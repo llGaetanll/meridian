@@ -1,0 +1,8 @@
+[package]
+name = "meridian"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+leptos = { version = "0.8.2", features = ["csr"] }
+leptos_meta = "0.8.2"
