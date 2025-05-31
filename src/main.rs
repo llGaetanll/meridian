@@ -4,6 +4,10 @@ use leptos_meta::Link;
 use leptos_meta::Stylesheet;
 use leptos_meta::Title;
 
+mod ui;
+use ui::button::Button;
+use ui::button::ButtonVariant;
+
 #[component]
 fn Home() -> impl IntoView {
     let (value, set_value) = signal(0);
@@ -39,7 +43,10 @@ pub fn App() -> impl IntoView {
     view! {
         <Stylesheet id="leptos" href="/style/output.css"/>
         <Link rel="shortcut icon" type_="image/ico" href="/favicon.ico"/>
-        <Home />
+        // <Home />
+        <Button
+        variant=ButtonVariant::Primary
+        >"Hello"</Button>
     }
 }
 
