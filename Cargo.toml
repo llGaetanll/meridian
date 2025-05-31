@@ -6,3 +6,5 @@ edition = "2021"
 [dependencies]
 leptos = { version = "0.8.2", features = ["csr"] }
 leptos_meta = "0.8.2"
+plotters = "0.3"
+plotters-canvas = "0.3"

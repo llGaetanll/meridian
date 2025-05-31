@@ -1,55 +1,37 @@
 use leptos::prelude::*;
-use leptos_meta::provide_meta_context;
-use leptos_meta::Link;
-use leptos_meta::Stylesheet;
-use leptos_meta::Title;
 
-mod ui;
-use ui::button::Button;
-use ui::button::ButtonVariant;
+mod util;
+use util::chart::LineChart;
 
 #[component]
-fn Home() -> impl IntoView {
-    let (value, set_value) = signal(0);
+fn App() -> impl IntoView {
+    // Fake price data - (time, price)
+    let price_data = vec![
+        (0.0, 100.0),
+        (1.0, 105.2),
+        (2.0, 103.8),
+        (3.0, 108.1),
+        (4.0, 112.5),
+        (5.0, 109.3),
+        (6.0, 115.7),
+        (7.0, 118.2),
+        (8.0, 114.6),
+        (9.0, 121.4),
+        (10.0, 125.8),
+        (11.0, 123.1),
+        (12.0, 128.5),
+        (13.0, 132.0),
+        (14.0, 129.7),
+        (15.0, 135.2),
+    ];
 
     view! {
-        <Title text="Leptos + Tailwindcss"/>
-        <main>
-            <div class="bg-gradient-to-tl from-blue-800 to-blue-500 text-white font-mono flex flex-col min-h-screen">
-                <div class="flex flex-row-reverse flex-wrap m-auto">
-                    <button on:click=move |_| set_value.update(|value| *value += 1) class="rounded px-3 py-2 m-1 border-b-4 border-l-2 shadow-lg bg-blue-700 border-blue-800 text-white">
-                        "+"
-                    </button>
-                    <button class="rounded px-3 py-2 m-1 border-b-4 border-l-2 shadow-lg bg-blue-800 border-blue-900 text-white">
-                        {value}
-                    </button>
-                    <button
-                        on:click=move |_| set_value.update(|value| *value -= 1)
-                        class="rounded px-3 py-2 m-1 border-b-4 border-l-2 shadow-lg bg-blue-700 border-blue-800 text-white"
-                        class:invisible=move || {value.get() < 1}
-                    >
-                        "-"
-                    </button>
-                </div>
-            </div>
-        </main>
-    }
-}
-
-#[component]
-pub fn App() -> impl IntoView {
-    provide_meta_context();
-
-    view! {
-        <Stylesheet id="leptos" href="/style/output.css"/>
-        <Link rel="shortcut icon" type_="image/ico" href="/favicon.ico"/>
-        // <Home />
-        <Button
-        variant=ButtonVariant::Primary
-        >"Hello"</Button>
+        <div style="width: 100%; height: 400px;">
+            <LineChart data=price_data />
+        </div>
     }
 }
 
 fn main() {
-    leptos::mount::mount_to_body(App)
+    mount_to_body(|| view! { <App /> })
 }
