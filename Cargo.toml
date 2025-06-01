@@ -1,12 +1,9 @@
-[package]
-name = "meridian"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = ["src/*"]
+resolver = "2"
 
-[dependencies]
+[workspace.dependencies]
 anyhow = "1.0.98"
 leptos = { version = "0.8.2", features = ["csr"] }
 leptos_meta = "0.8.2"
-plotters = "0.3"
-plotters-canvas = "0.3"
 rand = "0.9.1"
