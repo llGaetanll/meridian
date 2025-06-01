@@ -18,3 +18,18 @@ rustup target add wasm32-unknown-unknown
 ```
 
 Then, run `trunk serve --open`
+
+# TODO
+
+## UI
+- [ ] Transactions list
+- [ ] Search bar (search for tickers on yahoo finance)
+- [ ] Price chart
+    - [ ] Pull in data from yahoo finance
+
+### Price chart
+- Can show any time series data (portfolio performance, BTC price, derived
+statistics, etc...)
+
+## Misc
+- [ ] Import/Export ledgers
