@@ -184,7 +184,7 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
                 if let Some((x, y)) = closest_point.get() {
                     let svg_x = data_to_svg_x(x);
                     let svg_y = data_to_svg_y(y);
-                    let base_radius = 0.8;
+                    let base_radius = 0.5;
                     let aspect = container_aspect.get();
                     let rx = base_radius / aspect;
                     let ry = base_radius;
@@ -200,8 +200,6 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
                                 rx=rx
                                 ry=ry
                                 fill="#2563eb"
-                                stroke="white"
-                                stroke-width="0.3"
                                 vector-effect="non-scaling-stroke"
                             />
                         },
