@@ -8,9 +8,10 @@ use std::str::FromStr;
 use crate::Asset;
 use crate::Quantity;
 
+#[derive(Debug, Clone)]
 pub struct Position {
-    asset: Asset,
-    qty: Quantity,
+    pub asset: Asset,
+    pub qty: Quantity,
 }
 
 impl Display for Position {

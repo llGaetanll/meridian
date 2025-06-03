@@ -6,6 +6,7 @@ use anyhow::anyhow;
 use crate::Position;
 use crate::Timestamp;
 
+#[derive(Debug, Clone)]
 pub enum Tx {
     Trade {
         ts: Timestamp,

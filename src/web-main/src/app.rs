@@ -1,10 +1,110 @@
+use api_ledger::Position;
+use api_ledger::Tx;
 use leptos::prelude::*;
 use leptos_meta::Stylesheet;
 
+use web_components::Transaction;
 use web_ui::Button;
 
 #[component]
 pub fn App() -> impl IntoView {
+    let transactions = vec![
+        Tx::Trade {
+            ts: 1735689600, // 2025-01-01 00:00:00 UTC
+            buy: Position {
+                asset: "BTC".to_string(),
+                qty: 0.5,
+            },
+            sell: Position {
+                asset: "USD".to_string(),
+                qty: 45000.0,
+            },
+        },
+        Tx::Transfer {
+            ts: 1735776000, // 2025-01-02 00:00:00 UTC
+            pos: Position {
+                asset: "ETH".to_string(),
+                qty: 2.3,
+            },
+        },
+        Tx::Trade {
+            ts: 1735862400, // 2025-01-03 00:00:00 UTC
+            buy: Position {
+                asset: "USD".to_string(),
+                qty: 7500.0,
+            },
+            sell: Position {
+                asset: "ETH".to_string(),
+                qty: 2.0,
+            },
+        },
+        Tx::Trade {
+            ts: 1735948800, // 2025-01-04 00:00:00 UTC
+            buy: Position {
+                asset: "SOL".to_string(),
+                qty: 50.0,
+            },
+            sell: Position {
+                asset: "USD".to_string(),
+                qty: 11000.0,
+            },
+        },
+        Tx::Transfer {
+            ts: 1736035200, // 2025-01-05 00:00:00 UTC
+            pos: Position {
+                asset: "USDC".to_string(),
+                qty: -1000.0,
+            },
+        },
+        Tx::Trade {
+            ts: 1736121600, // 2025-01-06 00:00:00 UTC
+            buy: Position {
+                asset: "MATIC".to_string(),
+                qty: 1500.0,
+            },
+            sell: Position {
+                asset: "USD".to_string(),
+                qty: 975.0,
+            },
+        },
+        Tx::Transfer {
+            ts: 1736208000, // 2025-01-07 00:00:00 UTC
+            pos: Position {
+                asset: "BTC".to_string(),
+                qty: 0.1,
+            },
+        },
+        Tx::Trade {
+            ts: 1736294400, // 2025-01-08 00:00:00 UTC
+            buy: Position {
+                asset: "USD".to_string(),
+                qty: 850.0,
+            },
+            sell: Position {
+                asset: "ADA".to_string(),
+                qty: 1000.0,
+            },
+        },
+        Tx::Trade {
+            ts: 1736380800, // 2025-01-09 00:00:00 UTC
+            buy: Position {
+                asset: "DOT".to_string(),
+                qty: 120.0,
+            },
+            sell: Position {
+                asset: "USD".to_string(),
+                qty: 960.0,
+            },
+        },
+        Tx::Transfer {
+            ts: 1736467200, // 2025-01-10 00:00:00 UTC
+            pos: Position {
+                asset: "LINK".to_string(),
+                qty: -75.0,
+            },
+        },
+    ];
+
     view! {
         <Stylesheet id="leptos" href="/style/output.css"/>
         <div class="flex flex-row h-screen bg-gray-950">
@@ -12,10 +112,12 @@ pub fn App() -> impl IntoView {
                 <h1 class="text-3xl font-bold text-white">"BTC"</h1>
                 <Button>"Hello"</Button>
             </div>
-            <div class="flex flex-col w-[300px] border-l border-gray-900">
-                <div class="bg-red-300 h-[100px]">
-                    <h1>"1BTC -> 100,000USD"</h1>
-                </div>
+            <div class="flex flex-col w-[400px] border-l border-gray-900">
+                <For
+                    each=move || transactions.clone()
+                    key=|tx| format!("{:?}", tx)
+                    children=|tx| view! { <Transaction tx=tx /> }
+                />
             </div>
         </div>
     }

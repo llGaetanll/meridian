@@ -1774,6 +1774,7 @@ dependencies = [
 name = "web-components"
 version = "0.1.0"
 dependencies = [
+ "api-ledger",
  "leptos",
 ]
 
@@ -1781,8 +1782,10 @@ dependencies = [
 name = "web-main"
 version = "0.1.0"
 dependencies = [
+ "api-ledger",
  "leptos",
  "leptos_meta",
+ "web-components",
  "web-sys",
  "web-ui",
 ]
