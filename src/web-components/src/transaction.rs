@@ -7,10 +7,10 @@ use leptos::*;
 #[component]
 pub fn Transaction(tx: Tx) -> impl IntoView {
     match tx {
-        Tx::Trade { ts, buy, sell } => view! { <TransactionTrade ts=ts buy=buy sell=sell /> }
-        .into_any(),
-        Tx::Transfer { ts, pos } => view! { <TransactionTransfer ts=ts pos=pos /> }
-        .into_any(),
+        Tx::Trade { ts, buy, sell } => {
+            view! { <TransactionTrade ts=ts buy=buy sell=sell /> }.into_any()
+        }
+        Tx::Transfer { ts, pos } => view! { <TransactionTransfer ts=ts pos=pos /> }.into_any(),
     }
 }
 
@@ -44,7 +44,7 @@ fn TransactionTrade(ts: Timestamp, buy: Position, sell: Position) -> impl IntoVi
                     </div>
                 </div>
 
-                <div class="text-4xl text-white font-bold text-right">
+                <div class="text-3xl text-white font-bold text-right">
                     {format!("{:.2}", sell.qty)}
                 </div>
                 <div class="flex items-center justify-center">
@@ -62,7 +62,7 @@ fn TransactionTrade(ts: Timestamp, buy: Position, sell: Position) -> impl IntoVi
                         ></path>
                     </svg>
                 </div>
-                <div class="text-4xl text-white font-bold">{format!("{:.2}", buy.qty)}</div>
+                <div class="text-3xl text-white font-bold">{format!("{:.2}", buy.qty)}</div>
             </div>
         </div>
     }
@@ -154,7 +154,7 @@ fn TransactionTransfer(ts: Timestamp, pos: Position) -> impl IntoView {
                         }}
                     </svg>
                 </div>
-                <div class="text-4xl text-white font-bold text-left">
+                <div class="text-3xl text-white font-bold text-left">
                     {format!("{:.2}", pos.qty.abs())}
                 </div>
             </div>

@@ -144,7 +144,7 @@ pub fn App() -> impl IntoView {
             <div class="flex flex-1 p-4">
                 <Chart data=chart_data />
             </div>
-            <div class="flex flex-col w-[400px] border-l border-gray-900">
+            <div class="flex flex-col w-[350px] border-l border-gray-900">
                 <For
                     each=move || transactions.clone()
                     key=|tx| format!("{:?}", tx)
