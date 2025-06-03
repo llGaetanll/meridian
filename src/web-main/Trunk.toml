@@ -1,0 +1,12 @@
+[watch]
+watch = [
+    "../web-main/src",
+    "../web-ui/src",
+    "../web-components/src",
+]
+
+[build]
+target = "index.html"
+
+[[assets]]
+file = "input.css"

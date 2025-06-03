@@ -3,6 +3,8 @@ members = ["src/*"]
 resolver = "2"
 
 [workspace.dependencies]
+web-ui = { workspace = true }
+
 anyhow = "1.0.98"
 leptos = { version = "0.8.2", features = ["csr"] }
 leptos_meta = "0.8.2"

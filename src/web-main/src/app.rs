@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 use leptos_meta::Stylesheet;
 
+use web_ui::Button;
+
 #[component]
 pub fn App() -> impl IntoView {
     view! {
@@ -8,6 +10,7 @@ pub fn App() -> impl IntoView {
         <div class="flex flex-row h-screen bg-gray-950">
             <div class="flex flex-1">
                 <h1 class="text-3xl font-bold text-white">"BTC"</h1>
+                <Button>"Hello"</Button>
             </div>
             <div class="flex flex-col w-[300px] border-l border-gray-900">
                 <div class="bg-red-300 h-[100px]">

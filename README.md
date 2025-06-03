@@ -17,7 +17,7 @@ cargo binstall trunk
 rustup target add wasm32-unknown-unknown
 ```
 
-Then, run `trunk serve --open`
+Then, from inside `web-main`, run `trunk serve --open`
 
 # TODO
 
