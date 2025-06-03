@@ -19,8 +19,11 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
 
     // Add some padding to y range
     let y_padding = (max_y - min_y) * 0.1;
-    let min_y = min_y - y_padding;
-    let max_y = max_y + y_padding;
+    let padded_min_y = min_y - y_padding;
+    let padded_max_y = max_y + y_padding;
+
+    // Get nice tick positions for the padded range
+    let tick_positions = get_nice_ticks(padded_min_y, padded_max_y);
 
     // Mouse tracking state
     let (mouse_x_percent, set_mouse_x_percent) = signal(0.0);
@@ -31,7 +34,8 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
 
     // Convert data coordinates to SVG coordinates (0-100 range)
     let data_to_svg_x = move |x: f64| ((x - min_x) / (max_x - min_x)) * 100.0;
-    let data_to_svg_y = move |y: f64| (1.0 - (y - min_y) / (max_y - min_y)) * 100.0;
+    let data_to_svg_y =
+        move |y: f64| (1.0 - (y - padded_min_y) / (padded_max_y - padded_min_y)) * 100.0;
 
     // Find closest data point to mouse
     let data_clone = data.clone();
@@ -92,7 +96,7 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
         <svg
             width="100%"
             height="100%"
-            viewBox="0 0 110 100"
+            viewBox="0 0 110 105"
             preserveAspectRatio="none"
             style="display: block; cursor: crosshair;"
             on:mouseenter=on_mouse_enter
@@ -109,13 +113,12 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
                 on:mousemove=on_mouse_move
             />
 
-            // Horizontal grid lines
+            // Horizontal grid lines using nice ticks
             {
-                let num_lines = 5;
-                (0..=num_lines)
-                    .map(|i| {
-                        let y_percent = (i as f64 / num_lines as f64) * 100.0;
-                        let y_value = max_y - (i as f64 / num_lines as f64) * (max_y - min_y);
+                tick_positions
+                    .iter()
+                    .map(|&tick_value| {
+                        let y_percent = data_to_svg_y(tick_value);
                         view! {
                             <line
                                 x1="0"
@@ -135,7 +138,7 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
                                 fill="#666"
                                 vector-effect="non-scaling-stroke"
                             >
-                                {format!("{:.1}", y_value)}
+                                {format!("{:.1}", tick_value)}
                             </text>
                         }
                     })
@@ -209,4 +212,50 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
             }}
         </svg>
     }
+}
+
+const TARGET_TICKS: usize = 7;
+
+/// Returns a list of "nice" tick mark positions for the given data range
+fn get_nice_ticks(lo: f64, hi: f64) -> Vec<f64> {
+    if lo >= hi {
+        return vec![lo];
+    }
+
+    let range = hi - lo;
+    let raw_step = range / (TARGET_TICKS - 1) as f64;
+
+    // Find the magnitude (power of 10)
+    let magnitude = 10_f64.powf(raw_step.log10().floor());
+
+    // Normalize the step to be between 1 and 10
+    let normalized_step = raw_step / magnitude;
+
+    // Round to nearest "nice" number: 1, 2, 5, or 10
+    let nice_step = if normalized_step <= 1.0 {
+        1.0
+    } else if normalized_step <= 2.0 {
+        2.0
+    } else if normalized_step <= 5.0 {
+        5.0
+    } else {
+        10.0
+    };
+
+    let step = nice_step * magnitude;
+
+    // Find nice start and end points
+    let nice_start = (lo / step).floor() * step;
+    let nice_end = (hi / step).ceil() * step;
+
+    // Generate ticks
+    let mut ticks = Vec::new();
+    let mut current = nice_start;
+
+    while current <= nice_end + f64::EPSILON {
+        ticks.push(current);
+        current += step;
+    }
+
+    ticks
 }
