@@ -4,7 +4,7 @@ use leptos::*;
 use web_sys::MouseEvent;
 
 #[component]
-pub fn LineChart(data: Vec<(f64, f64)>) -> impl IntoView {
+pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
     // Find data bounds
     let min_x = data.iter().map(|(x, _)| *x).fold(f64::INFINITY, f64::min);
     let max_x = data
@@ -108,6 +108,7 @@ pub fn LineChart(data: Vec<(f64, f64)>) -> impl IntoView {
                 (0..=num_lines)
                     .map(|i| {
                         let y_percent = (i as f64 / num_lines as f64) * 100.0;
+                        let y_value = max_y - (i as f64 / num_lines as f64) * (max_y - min_y);
                         view! {
                             <line
                                 x1="0"
@@ -115,9 +116,19 @@ pub fn LineChart(data: Vec<(f64, f64)>) -> impl IntoView {
                                 x2="100"
                                 y2=y_percent
                                 stroke="#e5e5e5"
-                                stroke-width="1.2"
+                                stroke-width="0.8"
                                 vector-effect="non-scaling-stroke"
                             />
+                            <text
+                                x="98"
+                                y=y_percent
+                                text-anchor="end"
+                                dominant-baseline="middle"
+                                font-size="3"
+                                fill="#666"
+                            >
+                                {format!("{:.1}", y_value)}
+                            </text>
                         }
                     })
                     .collect_view()
@@ -128,7 +139,7 @@ pub fn LineChart(data: Vec<(f64, f64)>) -> impl IntoView {
                 d=path_data
                 fill="none"
                 stroke="#2563eb"
-                stroke-width="0.5"
+                stroke-width="2.0"
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 vector-effect="non-scaling-stroke"
