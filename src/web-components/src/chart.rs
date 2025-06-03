@@ -92,15 +92,22 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
         <svg
             width="100%"
             height="100%"
-            viewBox="0 0 100 100"
+            viewBox="0 0 110 100"
             preserveAspectRatio="none"
             style="display: block; cursor: crosshair;"
-            on:mousemove=on_mouse_move
             on:mouseenter=on_mouse_enter
             on:mouseleave=on_mouse_leave
         >
             // Background (transparent)
-            <rect x="0" y="0" width="100" height="100" fill="transparent" stroke="none" />
+            <rect
+                x="0"
+                y="0"
+                width="100"
+                height="100"
+                fill="transparent"
+                stroke="none"
+                on:mousemove=on_mouse_move
+            />
 
             // Horizontal grid lines
             {
@@ -120,12 +127,13 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
                                 vector-effect="non-scaling-stroke"
                             />
                             <text
-                                x="98"
+                                x="102"
                                 y=y_percent
-                                text-anchor="end"
+                                text-anchor="start"
                                 dominant-baseline="middle"
                                 font-size="3"
                                 fill="#666"
+                                vector-effect="non-scaling-stroke"
                             >
                                 {format!("{:.1}", y_value)}
                             </text>

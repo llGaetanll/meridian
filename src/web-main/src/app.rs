@@ -139,7 +139,7 @@ pub fn App() -> impl IntoView {
     ];
 
     view! {
-        <Stylesheet id="leptos" href="/style/output.css"/>
+        <Stylesheet id="leptos" href="/style/output.css" />
         <div class="flex flex-row h-screen bg-gray-950">
             <div class="flex flex-1 p-4">
                 <Chart data=chart_data />
