@@ -140,11 +140,11 @@ pub fn App() -> impl IntoView {
 
     view! {
         <Stylesheet id="leptos" href="/style/output.css" />
-        <div class="flex flex-row h-screen bg-gray-950">
+        <div class="flex flex-row h-screen bg-base-950">
             <div class="flex flex-1 p-4">
                 <Chart data=chart_data />
             </div>
-            <div class="flex flex-col w-[350px] border-l border-gray-900">
+            <div class="flex flex-col w-[350px] border-l border-base-900">
                 <For
                     each=move || transactions.clone()
                     key=|tx| format!("{:?}", tx)

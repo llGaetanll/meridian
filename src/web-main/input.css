@@ -8,3 +8,8 @@
     font-family: 'Inter', sans-serif;
   }
 }
+
+:root {
+  --chart-accent: theme('colors.accent.500');
+  --chart-base: theme('colors.base.800');
+}

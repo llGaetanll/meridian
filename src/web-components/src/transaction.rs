@@ -21,7 +21,7 @@ fn TransactionTrade(ts: Timestamp, buy: Position, sell: Position) -> impl IntoVi
             <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center gap-2">
                     <div class="w-2 h-2 bg-purple-400 rounded-full"></div>
-                    <span class="text-xs font-medium text-purple-300 font-semibold uppercase tracking-wide">
+                    <span class="text-xs font-medium text-purple-400 font-semibold uppercase tracking-wide">
                         Trade
                     </span>
                 </div>
@@ -88,8 +88,8 @@ fn TransactionTransfer(ts: Timestamp, pos: Position) -> impl IntoView {
                     TransferType::Deposit => {
                         view! {
                             <div class="flex items-center gap-2">
-                                <div class="w-2 h-2 bg-green-400 rounded-full"></div>
-                                <span class="text-xs font-medium text-green-300 font-semibold uppercase tracking-wide">
+                                <div class="w-2 h-2 bg-lime-400 rounded-full"></div>
+                                <span class="text-xs font-medium text-lime-400 font-semibold uppercase tracking-wide">
                                     Deposit
                                 </span>
                             </div>
@@ -99,8 +99,8 @@ fn TransactionTransfer(ts: Timestamp, pos: Position) -> impl IntoView {
                     TransferType::Withdrawal => {
                         view! {
                             <div class="flex items-center gap-2">
-                                <div class="w-2 h-2 bg-red-400 rounded-full"></div>
-                                <span class="text-xs font-medium text-red-300 font-semibold uppercase tracking-wide">
+                                <div class="w-2 h-2 bg-rose-400 rounded-full"></div>
+                                <span class="text-xs font-medium text-rose-400 font-semibold uppercase tracking-wide">
                                     Withdrawal
                                 </span>
                             </div>

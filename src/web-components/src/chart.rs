@@ -125,7 +125,7 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
                                 y1=y_percent
                                 x2="100"
                                 y2=y_percent
-                                stroke="#e5e5e5"
+                                stroke="var(--chart-base)"
                                 stroke-width="0.8"
                                 vector-effect="non-scaling-stroke"
                             />
@@ -135,7 +135,7 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
                                 text-anchor="start"
                                 dominant-baseline="middle"
                                 font-size="3"
-                                fill="#666"
+                                fill="var(--chart-base)"
                                 vector-effect="non-scaling-stroke"
                             >
                                 {format!("{:.1}", tick_value)}
@@ -149,7 +149,7 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
             <path
                 d=path_data
                 fill="none"
-                stroke="#2563eb"
+                stroke="var(--chart-accent)"
                 stroke-width="2.0"
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -199,7 +199,7 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
                                 cy=svg_y
                                 rx=rx
                                 ry=ry
-                                fill="#2563eb"
+                                fill="var(--chart-accent)"
                                 vector-effect="non-scaling-stroke"
                             />
                         },
