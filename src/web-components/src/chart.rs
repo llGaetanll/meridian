@@ -6,16 +6,7 @@ use web_sys::MouseEvent;
 #[component]
 pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
     // Find data bounds
-    let min_x = data.iter().map(|(x, _)| *x).fold(f64::INFINITY, f64::min);
-    let max_x = data
-        .iter()
-        .map(|(x, _)| *x)
-        .fold(f64::NEG_INFINITY, f64::max);
-    let min_y = data.iter().map(|(_, y)| *y).fold(f64::INFINITY, f64::min);
-    let max_y = data
-        .iter()
-        .map(|(_, y)| *y)
-        .fold(f64::NEG_INFINITY, f64::max);
+    let (min_x, max_x, min_y, max_y) = data_range(&data);
 
     // Add some padding to y range
     let y_padding = (max_y - min_y) * 0.1;
@@ -210,6 +201,22 @@ pub fn Chart(data: Vec<(f64, f64)>) -> impl IntoView {
             }}
         </svg>
     }
+}
+
+fn data_range(data: &[(f64, f64)]) -> (f64, f64, f64, f64) {
+    // Find data bounds
+    let min_x = data.iter().map(|(x, _)| *x).fold(f64::INFINITY, f64::min);
+    let max_x = data
+        .iter()
+        .map(|(x, _)| *x)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let min_y = data.iter().map(|(_, y)| *y).fold(f64::INFINITY, f64::min);
+    let max_y = data
+        .iter()
+        .map(|(_, y)| *y)
+        .fold(f64::NEG_INFINITY, f64::max);
+
+    (min_x, max_x, min_y, max_y)
 }
 
 const TARGET_TICKS: usize = 7;
