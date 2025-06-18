@@ -3,7 +3,7 @@ use api_ledger::Tx;
 use leptos::prelude::*;
 use leptos_meta::Stylesheet;
 
-use web_components::Chart;
+use web_components::MainChart;
 use web_components::Transaction;
 
 #[component]
@@ -142,9 +142,9 @@ pub fn App() -> impl IntoView {
         <Stylesheet id="leptos" href="/style/output.css" />
         <div class="flex flex-row h-screen bg-base-950">
             <div class="flex flex-1 p-4">
-                <Chart data=chart_data />
+                <MainChart data=chart_data.clone() historical_data=chart_data />
             </div>
-            <div class="flex flex-col w-[350px] border-l border-base-900">
+            <div class="flex flex-col w-[350px] border-l border-base-900 overflow-y-auto">
                 <For
                     each=move || transactions.clone()
                     key=|tx| format!("{:?}", tx)
