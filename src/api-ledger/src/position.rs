@@ -1,12 +1,11 @@
 use anyhow::anyhow;
+use api_common::Asset;
+use api_common::Quantity;
 
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::ops::AddAssign;
 use std::str::FromStr;
-
-use crate::Asset;
-use crate::Quantity;
 
 #[derive(Debug, Clone)]
 pub struct Position {

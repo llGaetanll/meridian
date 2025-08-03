@@ -2,8 +2,9 @@ use std::fmt::Display;
 use std::ops::RangeBounds;
 use std::str::FromStr;
 
+use api_common::Timestamp;
+
 use crate::Positions;
-use crate::Timestamp;
 use crate::Tx;
 
 struct Ledger {

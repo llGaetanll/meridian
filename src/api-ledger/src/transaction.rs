@@ -2,9 +2,9 @@ use std::fmt::Display;
 use std::str::FromStr;
 
 use anyhow::anyhow;
+use api_common::Timestamp;
 
 use crate::Position;
-use crate::Timestamp;
 
 #[derive(Debug, Clone)]
 pub enum Tx {
