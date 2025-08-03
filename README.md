@@ -1,4 +1,4 @@
-# Building
+# Getting Started
 
 You will need the tailwindcss cli. If you want to install it without going
 through npm, you can do so as follows:
