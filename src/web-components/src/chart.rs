@@ -1,11 +1,14 @@
 use std::ops::Range;
 
+use api_common::ChartData;
+use api_common::Price;
+use api_common::Timestamp;
 use leptos::prelude::*;
 
 #[component]
-pub fn MainChart(data: Vec<(FData, FData)>, historical_data: Vec<(FData, FData)>) -> impl IntoView {
-    let (_, y_rng) = compute_data_range(&data);
-    let y_ticks = compute_nice_ticks(&y_rng);
+pub fn MainChart(data: ChartData, historical_data: ChartData) -> impl IntoView {
+    let px_rng = data.range_price();
+    let px_ticks = compute_nice_ticks(&px_rng);
 
     view! {
         <div class="grid gap-3 flex-1" style="grid-template-columns: 1fr 50px; grid-template-rows: 1fr 50px;">
@@ -14,13 +17,13 @@ pub fn MainChart(data: Vec<(FData, FData)>, historical_data: Vec<(FData, FData)>
                 viewBox="0 0 100 100"
                 preserveAspectRatio="none"
             >
-                <ChartTicks y_ticks=y_ticks.clone() y_rng=y_rng.clone() />
+                <ChartTicks px_ticks=px_ticks.clone() px_rng=px_rng.clone() />
 
                 <ChartPath id=String::from("main") data=data color=String::from("var(--chart-accent)") />
             </svg>
 
             <div class="relative w-full h-full" >
-                <ChartTexts y_ticks=y_ticks y_rng=y_rng />
+                <ChartTexts y_ticks=px_ticks px_rng=px_rng />
             </div>
 
             <svg
@@ -37,7 +40,7 @@ pub fn MainChart(data: Vec<(FData, FData)>, historical_data: Vec<(FData, FData)>
 }
 
 #[component]
-fn ChartPath(id: String, data: Vec<(f64, f64)>, color: String) -> impl IntoView {
+fn ChartPath(id: String, data: ChartData, color: String) -> impl IntoView {
     let path_data = compute_data_path(&data);
     let fill_path_data = compute_data_fill_path(&data);
 
@@ -73,11 +76,11 @@ fn ChartPath(id: String, data: Vec<(f64, f64)>, color: String) -> impl IntoView 
 }
 
 #[component]
-fn ChartTicks(y_ticks: Vec<FData>, y_rng: Range<FData>) -> impl IntoView {
-    y_ticks
+fn ChartTicks(px_ticks: Vec<Price>, px_rng: Range<Price>) -> impl IntoView {
+    px_ticks
         .iter()
         .map(|&y| {
-            let y = data_y_to_svg_y(y, &y_rng);
+            let y = px_to_svg_y(y, &px_rng);
             view! {
                 <line
                     x1="0"
@@ -94,11 +97,11 @@ fn ChartTicks(y_ticks: Vec<FData>, y_rng: Range<FData>) -> impl IntoView {
 }
 
 #[component]
-fn ChartTexts(y_ticks: Vec<FData>, y_rng: Range<FData>) -> impl IntoView {
+fn ChartTexts(y_ticks: Vec<Price>, px_rng: Range<Price>) -> impl IntoView {
     y_ticks
         .iter()
         .map(|&y| {
-            let y_percent = data_y_to_svg_y(y, &y_rng);
+            let y_percent = px_to_svg_y(y, &px_rng);
             view! {
                 <label
                     class="absolute -translate-y-1/2"
@@ -111,14 +114,15 @@ fn ChartTexts(y_ticks: Vec<FData>, y_rng: Range<FData>) -> impl IntoView {
         .collect_view()
 }
 
-fn compute_data_path(data: &[(f64, f64)]) -> String {
-    let (rng_x, rng_y) = compute_data_range(data);
+fn compute_data_path(data: &ChartData) -> String {
+    let ts_rng = data.range_time();
+    let px_rng = data.range_price();
 
-    data.iter()
+    data.into_iter()
         .enumerate()
-        .map(|(i, &(x, y))| {
-            let svg_x = data_x_to_svg_x(x, &rng_x);
-            let svg_y = data_y_to_svg_y(y, &rng_y);
+        .map(|(i, (&ts, &px))| {
+            let svg_x = ts_to_svg_x(ts, &ts_rng);
+            let svg_y = px_to_svg_y(px, &px_rng);
 
             if i == 0 {
                 format!("M {:.2} {:.2}", svg_x, svg_y)
@@ -130,28 +134,29 @@ fn compute_data_path(data: &[(f64, f64)]) -> String {
         .join(" ")
 }
 
-fn compute_data_fill_path(data: &[(f64, f64)]) -> String {
-    let (rng_x, rng_y) = compute_data_range(data);
+fn compute_data_fill_path(data: &ChartData) -> String {
+    let ts_rng = data.range_time();
+    let px_rng = data.range_price();
 
     let mut path_parts = Vec::new();
 
     // Start at bottom-left
-    if let Some((first_x, _)) = data.first() {
-        let svg_x = data_x_to_svg_x(*first_x, &rng_x);
+    if let Some((first_ts, _)) = data.first() {
+        let svg_x = ts_to_svg_x(*first_ts, &ts_rng);
         path_parts.push(format!("M {:.2} 100", svg_x));
     }
 
     // Draw up to first point and then along the line
-    for &(x, y) in data {
-        let svg_x = data_x_to_svg_x(x, &rng_x);
-        let svg_y = data_y_to_svg_y(y, &rng_y);
+    for (&ts, &px) in data {
+        let svg_x = ts_to_svg_x(ts, &ts_rng);
+        let svg_y = px_to_svg_y(px, &px_rng);
 
         path_parts.push(format!("L {:.2} {:.2}", svg_x, svg_y));
     }
 
     // Close the path by going down to bottom-right and back to start
-    if let Some((last_x, _)) = data.last() {
-        let svg_x = data_x_to_svg_x(*last_x, &rng_x);
+    if let Some((last_ts, _)) = data.last() {
+        let svg_x = ts_to_svg_x(*last_ts, &ts_rng);
         path_parts.push(format!("L {:.2} 100", svg_x));
         path_parts.push("Z".to_string());
     }
@@ -159,24 +164,7 @@ fn compute_data_fill_path(data: &[(f64, f64)]) -> String {
     path_parts.join(" ")
 }
 
-fn compute_data_range(data: &[(f64, f64)]) -> (Range<f64>, Range<f64>) {
-    let xs: Vec<_> = data.iter().map(|&(x, _)| x).collect();
-    let ys: Vec<_> = data.iter().map(|&(_, y)| y).collect();
-
-    let x_range = compute_range(&xs);
-    let y_range = compute_range(&ys);
-
-    (x_range, y_range)
-}
-
-fn compute_range(data: &[f64]) -> Range<f64> {
-    let min = data.iter().fold(f64::INFINITY, |a, &b| a.min(b));
-    let max = data.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
-
-    min..max
-}
-
-type FData = f64;
+/// A float used in svg drawing space
 type FSvg = f64;
 
 // We add padding because, depending on the thickness of the line, it can appear to clip
@@ -184,34 +172,37 @@ type FSvg = f64;
 const CHART_PAD: f64 = 0.; // TODO
 
 #[inline]
-fn data_y_to_svg_y(y: FData, y_rng: &Range<FData>) -> FSvg {
+fn px_to_svg_y(px: Price, px_rng: &Range<Price>) -> FSvg {
     let Range {
         start: min_y,
         end: max_y,
-    } = y_rng;
+    } = px_rng;
 
     let (min_y, max_y) = (min_y - CHART_PAD, max_y + CHART_PAD);
 
     // `1. -` because higher y means higher on the graph, but the svg origin is always top left
-    (1. - (y - min_y) / (max_y - min_y)) * 100.0
+    (1. - (px - min_y) / (max_y - min_y)) * 100.0
 }
 
 #[inline]
-fn data_x_to_svg_x(x: FData, x_rng: &Range<FData>) -> FSvg {
+fn ts_to_svg_x(ts: Timestamp, x_rng: &Range<Timestamp>) -> FSvg {
     let Range {
         start: min_x,
         end: max_x,
     } = x_rng;
 
+    let ts = ts as Price;
+    let (min_x, max_x) = (*min_x as Price, *max_x as Price);
+
     let (min_x, max_x) = (min_x - CHART_PAD, max_x + CHART_PAD);
 
-    ((x - min_x) / (max_x - min_x)) * 100.0
+    ((ts - min_x) / (max_x - min_x)) * 100.0
 }
 
 const TARGET_TICKS: usize = 7;
 
 /// Returns a list of "nice" tick mark positions for the given data range
-fn compute_nice_ticks(rng: &Range<FData>) -> Vec<FData> {
+fn compute_nice_ticks(rng: &Range<Price>) -> Vec<Price> {
     let Range { start, end } = rng;
 
     let range = end - start;

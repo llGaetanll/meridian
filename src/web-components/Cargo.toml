@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+api-common = { path = "../api-common" }
 api-ledger = { path = "../api-ledger" }
 leptos = { workspace = true }
