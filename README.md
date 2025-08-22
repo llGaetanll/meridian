@@ -41,7 +41,7 @@ Release Aug 31.
 
 ## Data Sources
 - [x] Parse Yahoo Finance API (`src-yahoo`)
-- [ ] Parse Coin Gecko API (`src-coin-gecko`)
+- [x] Parse Coin Gecko API (`src-coin-gecko`)
 
 ## Misc
 - [ ] Import/Export ledgers
