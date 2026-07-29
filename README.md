@@ -1,3 +1,7 @@
+Every financial decision can be expressed as a trade. Meridian is a program to
+keep track of your portfolio and general finances as trades. From trades, all
+can be reconstructed.
+
 # Getting Started
 
 You will need the tailwindcss cli. If you want to install it without going
