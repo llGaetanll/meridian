@@ -6,7 +6,7 @@ use crate::Price;
 use crate::Timestamp;
 
 // Both inner vectors should have the same length.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ChartData {
     /// Timestamps
     ts: Vec<Timestamp>,

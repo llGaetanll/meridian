@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 leptos = { workspace = true }
 leptos_meta = { workspace = true }
+api-common = { path = "../api-common" }
 api-ledger = { path = "../api-ledger" }
 web-ui = { path = "../web-ui" }
 web-components = { path = "../web-components" }

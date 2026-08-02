@@ -2456,6 +2456,7 @@ dependencies = [
 name = "web-main"
 version = "0.1.0"
 dependencies = [
+ "api-common",
  "api-ledger",
  "leptos",
  "leptos_meta",
