@@ -1,3 +1,4 @@
+use api_common::ChartData;
 use api_ledger::Position;
 use api_ledger::Tx;
 use leptos::prelude::*;
@@ -105,7 +106,7 @@ pub fn App() -> impl IntoView {
         },
     ];
 
-    let chart_data = vec![];
+    let chart_data = ChartData::default();
 
     view! {
         <Stylesheet id="leptos" href="/style/output.css" />
