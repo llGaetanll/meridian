@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridian — Portfolios</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="app.css">
+<style>
+  .pf-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--rail-w);
+    gap: 28px; align-items: start;
+  }
+  @media (max-width: 1180px) { .pf-layout { grid-template-columns: 1fr; } }
+
+  .col { display: flex; flex-direction: column; gap: 26px; }
+
+  .worth-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding-right: 66px; }
+  .worth-label { font-size: 12px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.08em; }
+  .worth-total { font-size: 42px; font-weight: 700; letter-spacing: -0.035em; line-height: 1.05; margin-top: 4px; }
+
+  .chart-wrap { position: relative; padding-right: 66px; margin-top: 22px; }
+  .chart { width: 100%; height: 44vh; min-height: 280px; display: block; }
+  .y-axis { position: absolute; inset: 0 0 0 auto; width: 66px; pointer-events: none; }
+  .y-axis span {
+    position: absolute; right: 0; transform: translateY(-50%);
+    font-size: 11px; color: var(--text-faint); font-variant-numeric: tabular-nums;
+  }
+  .chart-foot { padding-right: 66px; }
+  .chart-controls { padding-right: 66px; }
+
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+  .key { display: flex; gap: 16px; font-size: 12px; align-items: center; flex-wrap: wrap; }
+  .key span.k { display: inline-flex; align-items: center; gap: 7px; color: var(--text-muted); }
+
+  /* portfolio cards */
+  .pf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(248px, 1fr)); gap: 14px; }
+
+  .pf-card {
+    display: flex; flex-direction: column; gap: 11px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 16px;
+    color: inherit; text-decoration: none;
+  }
+  .pf-card:hover { background: var(--bg-raised); border-color: var(--border-strong); }
+  .pf-card .top { display: flex; align-items: center; gap: 8px; }
+  .pf-card .name { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+  .pf-card .count { margin-left: auto; font-size: 11px; color: var(--text-faint); }
+  .pf-card .val { font-size: 25px; font-weight: 600; letter-spacing: -0.025em; line-height: 1.1; }
+  .pf-card .delta { font-size: 12px; margin-top: 3px; }
+  .pf-card .cardspark { width: 100%; height: 44px; display: block; }
+  .pf-card .foot {
+    display: flex; justify-content: space-between; font-size: 11px;
+    color: var(--text-faint); padding-top: 11px; border-top: 1px solid var(--divider);
+  }
+
+  .pf-card.ghost {
+    border-style: dashed; align-items: center; justify-content: center;
+    gap: 8px; color: var(--text-faint); min-height: 190px;
+    font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+  }
+  .pf-card.ghost svg { width: 22px; height: 22px; }
+  .pf-card.ghost:hover { color: var(--violet-300); }
+
+  /* stacked composition bar */
+  .comp-bar { display: flex; gap: 2px; height: 6px; }
+  .comp-bar span { display: block; border-radius: var(--r-pill); }
+  .comp-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-faint); }
+  .comp-legend span.l { display: inline-flex; align-items: center; gap: 5px; }
+  .comp-legend .dot { width: 6px; height: 6px; }
+
+  .mix { display: flex; gap: 2px; height: 5px; width: 132px; margin-left: auto; }
+  .mix span { display: block; border-radius: var(--r-pill); }
+
+  .tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--text-faint);
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <aside class="sidebar">
+    <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 200 200" aria-hidden="true"
+         fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <defs>
+        <clipPath id="meridian-globe-clip">
+          <circle cx="100" cy="100" r="93"/>
+        </clipPath>
+      </defs>
+      <g clip-path="url(#meridian-globe-clip)">
+        <g stroke-width="14"><path d="M 181.753,73.308 C 171.596,42.2,126.76,28.932,81.61,43.674 C 36.459,58.415,8.09,95.584,18.247,126.692"/><path d="M 18.247,126.692 C 8.09,95.584,36.459,58.415,81.61,43.674 C 126.76,28.932,171.596,42.2,181.753,73.308"/><path d="M 118.172,15.942 C 108.574,13.867,92.658,49.819,82.622,96.243 C 72.586,142.667,72.23,181.983,81.828,184.058"/><path d="M 81.828,184.058 C 72.23,181.983,72.586,142.667,82.622,96.243 C 92.658,49.819,108.574,13.867,118.172,15.942"/><path d="M 100,186 C 100,186,100,186,100,186"/><path d="M 14,100 C 14,133.585,52.504,160.811,100,160.811 C 147.496,160.811,186,133.585,186,100"/><path d="M 100,14 C 66.415,14,39.189,33.252,39.189,57 C 39.189,80.748,66.415,100,100,100 C 133.585,100,160.811,80.748,160.811,57 C 160.811,33.252,133.585,14,100,14"/></g>
+        <g stroke-width="14"><path d="M 147.342,171.797 C 166.464,159.188,160.77,116.822,134.624,77.17 C 108.477,37.517,71.78,15.595,52.658,28.203"/><path d="M 52.658,28.203 C 71.78,15.595,108.477,37.517,134.624,77.17 C 160.77,116.822,166.464,159.188,147.342,171.797"/></g>
+      </g>
+      <circle cx="100" cy="100" r="86" stroke-width="14"/>
+    </svg>
+      <span>Meridian</span>
+    </div>
+
+    <nav class="nav">
+      <a href="home.html">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.2 12 3l9 7.2"/><path d="M5.5 9.2V20a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1V9.2"/></svg>
+        Home
+      </a>
+      <a class="active" href="portfolio.html">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+        Portfolio
+      </a>
+      <a href="asset.html">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+        Markets
+      </a>
+      <a href="spending.html">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        Spending
+      </a>
+      <a href="#">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="9" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+        Ledger
+      </a>
+      <a href="#">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        Connections
+      </a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <nav class="nav">
+        <a href="#">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+          Settings
+        </a>
+      </nav>
+      <div class="account">
+        <div class="avatar">
+          <svg viewBox="0 0 40 40" role="img" aria-label="Profile photo">
+            <defs>
+              <linearGradient id="av" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="var(--violet-400)"/>
+                <stop offset="100%" stop-color="var(--violet-700)"/>
+              </linearGradient>
+            </defs>
+            <rect width="40" height="40" fill="url(#av)"/>
+            <circle cx="20" cy="14.8" r="7.2" fill="var(--bg)" opacity="0.34"/>
+            <path d="M4.6 40c0-8.6 6.9-13.6 15.4-13.6S35.4 31.4 35.4 40z" fill="var(--bg)" opacity="0.34"/>
+          </svg>
+        </div>
+        <div class="account-id">
+          <div class="account-name">Gaetan Almela</div>
+          <div class="account-meta"><span class="status-dot"></span> 4 connections live</div>
+        </div>
+        <span class="more">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 9 12 5 16 9"/><polyline points="16 15 12 19 8 15"/></svg>
+        </span>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="content">
+
+      <div class="searchrow">
+        <div class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+          <input placeholder="Search assets, trades, merchants…">
+          <span class="kbd">⌘K</span>
+        </div>
+      </div>
+
+      <div class="pf-layout">
+        <div class="col">
+
+          <div>
+            <div class="worth-head">
+              <div>
+                <div class="worth-label">Net worth</div>
+                <div class="worth-total num">$70,120.44</div>
+                <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+                  <span class="pill up">▲ +$1,204.18 (+1.75%)</span>
+                  <span class="faint" style="font-size:12px">today · 3 portfolios · synced 2m ago</span>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn">New portfolio</button>
+                <button class="btn primary">Log a trade</button>
+              </div>
+            </div>
+
+            <div class="chart-bar" style="display:flex;align-items:center;justify-content:space-between;margin:20px 66px 0 0">
+              <div class="tabs">
+                <button class="active">Value</button>
+                <button>Net invested</button>
+                <button>P/L</button>
+                <button>Compare %</button>
+              </div>
+              <span class="card-sub">stacked by portfolio</span>
+            </div>
+
+            <div class="chart-wrap">
+              <svg class="chart" viewBox="0 0 800 280" preserveAspectRatio="none">
+                <g stroke="var(--border)" stroke-width="1" vector-effect="non-scaling-stroke">
+                  <line x1="0" y1="70" x2="800" y2="70" vector-effect="non-scaling-stroke"/>
+                  <line x1="0" y1="140" x2="800" y2="140" vector-effect="non-scaling-stroke"/>
+                  <line x1="0" y1="210" x2="800" y2="210" vector-effect="non-scaling-stroke"/>
+                </g>
+
+                <polygon fill="var(--series-3)" fill-opacity="0.30" points="0.0,265.3 13.3,265.1 26.7,265.2 40.0,264.8 53.3,264.7 66.7,265.3 80.0,265.4 93.3,264.4 106.7,265.1 120.0,265.2 133.3,264.4 146.7,265.0 160.0,264.6 173.3,264.9 186.7,264.6 200.0,265.0 213.3,264.1 226.7,263.5 240.0,263.6 253.3,262.9 266.7,262.6 280.0,263.0 293.3,261.9 306.7,261.8 320.0,261.9 333.3,262.1 346.7,261.0 360.0,261.3 373.3,261.0 386.7,260.7 400.0,260.8 413.3,260.5 426.7,261.0 440.0,260.4 453.3,260.6 466.7,259.8 480.0,259.7 493.3,260.4 506.7,260.2 520.0,259.9 533.3,259.0 546.7,259.6 560.0,259.4 573.3,259.8 586.7,259.7 600.0,260.0 613.3,260.1 626.7,259.9 640.0,260.0 653.3,259.6 666.7,259.8 680.0,259.3 693.3,259.2 706.7,258.8 720.0,258.9 733.3,259.1 746.7,258.0 760.0,257.6 773.3,257.4 786.7,257.6 800.0,257.5 800.0,280.0 0,280.0"/>
+                <polygon fill="var(--series-2)" fill-opacity="0.26" points="0.0,205.8 13.3,204.0 26.7,205.7 40.0,205.1 53.3,203.3 66.7,203.8 80.0,203.7 93.3,203.1 106.7,202.9 120.0,202.7 133.3,201.7 146.7,203.0 160.0,202.0 173.3,202.4 186.7,201.4 200.0,201.3 213.3,200.5 226.7,200.7 240.0,200.8 253.3,200.2 266.7,200.0 280.0,199.9 293.3,197.4 306.7,196.9 320.0,196.2 333.3,194.6 346.7,193.5 360.0,193.2 373.3,192.8 386.7,192.5 400.0,191.6 413.3,191.2 426.7,190.7 440.0,188.8 453.3,189.5 466.7,189.4 480.0,187.6 493.3,188.2 506.7,187.7 520.0,186.7 533.3,185.6 546.7,185.6 560.0,185.8 573.3,184.6 586.7,184.1 600.0,185.6 613.3,184.4 626.7,184.2 640.0,184.7 653.3,184.2 666.7,184.6 680.0,183.4 693.3,184.2 706.7,183.1 720.0,184.1 733.3,183.2 746.7,181.8 760.0,181.8 773.3,181.0 786.7,179.9 800.0,178.8 800.0,257.5 786.7,257.6 773.3,257.4 760.0,257.6 746.7,258.0 733.3,259.1 720.0,258.9 706.7,258.8 693.3,259.2 680.0,259.3 666.7,259.8 653.3,259.6 640.0,260.0 626.7,259.9 613.3,260.1 600.0,260.0 586.7,259.7 573.3,259.8 560.0,259.4 546.7,259.6 533.3,259.0 520.0,259.9 506.7,260.2 493.3,260.4 480.0,259.7 466.7,259.8 453.3,260.6 440.0,260.4 426.7,261.0 413.3,260.5 400.0,260.8 386.7,260.7 373.3,261.0 360.0,261.3 346.7,261.0 333.3,262.1 320.0,261.9 306.7,261.8 293.3,261.9 280.0,263.0 266.7,262.6 253.3,262.9 240.0,263.6 226.7,263.5 213.3,264.1 200.0,265.0 186.7,264.6 173.3,264.9 160.0,264.6 146.7,265.0 133.3,264.4 120.0,265.2 106.7,265.1 93.3,264.4 80.0,265.4 66.7,265.3 53.3,264.7 40.0,264.8 26.7,265.2 13.3,265.1 0.0,265.3"/>
+                <polygon fill="var(--series-1)" fill-opacity="0.22" points="0.0,107.8 13.3,100.6 26.7,102.3 40.0,103.4 53.3,100.4 66.7,100.8 80.0,99.6 93.3,98.2 106.7,100.2 120.0,99.7 133.3,94.8 146.7,96.9 160.0,93.7 173.3,96.3 186.7,92.8 200.0,90.9 213.3,91.6 226.7,88.6 240.0,88.6 253.3,91.4 266.7,91.1 280.0,89.0 293.3,84.7 306.7,86.2 320.0,85.7 333.3,82.7 346.7,82.3 360.0,80.1 373.3,77.6 386.7,75.5 400.0,74.1 413.3,72.2 426.7,70.2 440.0,66.0 453.3,65.9 466.7,65.8 480.0,59.8 493.3,60.7 506.7,59.1 520.0,59.3 533.3,54.3 546.7,54.2 560.0,56.5 573.3,53.6 586.7,50.6 600.0,51.1 613.3,47.8 626.7,48.4 640.0,46.2 653.3,45.3 666.7,46.1 680.0,43.1 693.3,42.2 706.7,40.9 720.0,43.1 733.3,41.8 746.7,42.7 760.0,42.0 773.3,39.0 786.7,39.3 800.0,34.6 800.0,178.8 786.7,179.9 773.3,181.0 760.0,181.8 746.7,181.8 733.3,183.2 720.0,184.1 706.7,183.1 693.3,184.2 680.0,183.4 666.7,184.6 653.3,184.2 640.0,184.7 626.7,184.2 613.3,184.4 600.0,185.6 586.7,184.1 573.3,184.6 560.0,185.8 546.7,185.6 533.3,185.6 520.0,186.7 506.7,187.7 493.3,188.2 480.0,187.6 466.7,189.4 453.3,189.5 440.0,188.8 426.7,190.7 413.3,191.2 400.0,191.6 386.7,192.5 373.3,192.8 360.0,193.2 346.7,193.5 333.3,194.6 320.0,196.2 306.7,196.9 293.3,197.4 280.0,199.9 266.7,200.0 253.3,200.2 240.0,200.8 226.7,200.7 213.3,200.5 200.0,201.3 186.7,201.4 173.3,202.4 160.0,202.0 146.7,203.0 133.3,201.7 120.0,202.7 106.7,202.9 93.3,203.1 80.0,203.7 66.7,203.8 53.3,203.3 40.0,205.1 26.7,205.7 13.3,204.0 0.0,205.8"/>
+
+                <polyline fill="none" stroke="var(--series-3)" stroke-width="1.4" stroke-linejoin="round"
+                  vector-effect="non-scaling-stroke" points="0.0,265.3 13.3,265.1 26.7,265.2 40.0,264.8 53.3,264.7 66.7,265.3 80.0,265.4 93.3,264.4 106.7,265.1 120.0,265.2 133.3,264.4 146.7,265.0 160.0,264.6 173.3,264.9 186.7,264.6 200.0,265.0 213.3,264.1 226.7,263.5 240.0,263.6 253.3,262.9 266.7,262.6 280.0,263.0 293.3,261.9 306.7,261.8 320.0,261.9 333.3,262.1 346.7,261.0 360.0,261.3 373.3,261.0 386.7,260.7 400.0,260.8 413.3,260.5 426.7,261.0 440.0,260.4 453.3,260.6 466.7,259.8 480.0,259.7 493.3,260.4 506.7,260.2 520.0,259.9 533.3,259.0 546.7,259.6 560.0,259.4 573.3,259.8 586.7,259.7 600.0,260.0 613.3,260.1 626.7,259.9 640.0,260.0 653.3,259.6 666.7,259.8 680.0,259.3 693.3,259.2 706.7,258.8 720.0,258.9 733.3,259.1 746.7,258.0 760.0,257.6 773.3,257.4 786.7,257.6 800.0,257.5"/>
+                <polyline fill="none" stroke="var(--series-2)" stroke-width="1.4" stroke-linejoin="round"
+                  vector-effect="non-scaling-stroke" points="0.0,205.8 13.3,204.0 26.7,205.7 40.0,205.1 53.3,203.3 66.7,203.8 80.0,203.7 93.3,203.1 106.7,202.9 120.0,202.7 133.3,201.7 146.7,203.0 160.0,202.0 173.3,202.4 186.7,201.4 200.0,201.3 213.3,200.5 226.7,200.7 240.0,200.8 253.3,200.2 266.7,200.0 280.0,199.9 293.3,197.4 306.7,196.9 320.0,196.2 333.3,194.6 346.7,193.5 360.0,193.2 373.3,192.8 386.7,192.5 400.0,191.6 413.3,191.2 426.7,190.7 440.0,188.8 453.3,189.5 466.7,189.4 480.0,187.6 493.3,188.2 506.7,187.7 520.0,186.7 533.3,185.6 546.7,185.6 560.0,185.8 573.3,184.6 586.7,184.1 600.0,185.6 613.3,184.4 626.7,184.2 640.0,184.7 653.3,184.2 666.7,184.6 680.0,183.4 693.3,184.2 706.7,183.1 720.0,184.1 733.3,183.2 746.7,181.8 760.0,181.8 773.3,181.0 786.7,179.9 800.0,178.8"/>
+                <polyline fill="none" stroke="var(--series-1)" stroke-width="1.8" stroke-linejoin="round"
+                  vector-effect="non-scaling-stroke" points="0.0,107.8 13.3,100.6 26.7,102.3 40.0,103.4 53.3,100.4 66.7,100.8 80.0,99.6 93.3,98.2 106.7,100.2 120.0,99.7 133.3,94.8 146.7,96.9 160.0,93.7 173.3,96.3 186.7,92.8 200.0,90.9 213.3,91.6 226.7,88.6 240.0,88.6 253.3,91.4 266.7,91.1 280.0,89.0 293.3,84.7 306.7,86.2 320.0,85.7 333.3,82.7 346.7,82.3 360.0,80.1 373.3,77.6 386.7,75.5 400.0,74.1 413.3,72.2 426.7,70.2 440.0,66.0 453.3,65.9 466.7,65.8 480.0,59.8 493.3,60.7 506.7,59.1 520.0,59.3 533.3,54.3 546.7,54.2 560.0,56.5 573.3,53.6 586.7,50.6 600.0,51.1 613.3,47.8 626.7,48.4 640.0,46.2 653.3,45.3 666.7,46.1 680.0,43.1 693.3,42.2 706.7,40.9 720.0,43.1 733.3,41.8 746.7,42.7 760.0,42.0 773.3,39.0 786.7,39.3 800.0,34.6"/>
+              </svg>
+
+              <div class="y-axis">
+                <span style="top:25%">$60k</span>
+                <span style="top:50%">$40k</span>
+                <span style="top:75%">$20k</span>
+              </div>
+            </div>
+
+            <div class="chart-foot">
+              <span>Aug 2025</span><span>Nov 2025</span><span>Feb 2026</span><span>May 2026</span><span>Aug 2026</span>
+            </div>
+
+            <div class="chart-controls">
+              <div class="key">
+                <span class="k"><span class="dot" style="background:var(--series-1)"></span> Core</span>
+                <span class="k"><span class="dot" style="background:var(--series-2)"></span> Retirement</span>
+                <span class="k"><span class="dot" style="background:var(--series-3)"></span> Play money</span>
+              </div>
+              <div class="seg">
+                <button>1W</button><button>1M</button><button>3M</button>
+                <button class="active">1Y</button><button>All</button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div class="section-head">
+              <span class="card-title">Portfolios</span>
+              <span class="card-sub">3 active · sorted by value</span>
+            </div>
+
+            <div class="pf-grid">
+
+              <a class="pf-card" href="portfolio-detail.html">
+                <div class="top">
+                  <span class="dot" style="background:var(--series-1)"></span>
+                  <span class="name">Core</span>
+                  <span class="count">6 positions</span>
+                </div>
+                <div>
+                  <div class="val num">$41,208.36</div>
+                  <div class="delta up num">+$742.10 (+1.83%) today</div>
+                </div>
+                <svg class="cardspark" viewBox="0 0 160 44" preserveAspectRatio="none">
+                  <polyline fill="none" stroke="var(--series-1)" stroke-width="1.5" stroke-linejoin="round"
+                    vector-effect="non-scaling-stroke" points="0.0,35.4 5.3,41.0 10.7,37.5 16.0,38.7 21.3,34.5 26.7,29.5 32.0,28.8 37.3,23.7 42.7,21.7 48.0,20.4 53.3,26.2 58.7,24.4 64.0,25.0 69.3,17.8 74.7,17.2 80.0,21.6 85.3,15.0 90.7,16.9 96.0,21.5 101.3,23.4 106.7,27.0 112.0,26.4 117.3,19.3 122.7,19.3 128.0,15.0 133.3,12.4 138.7,12.8 144.0,8.7 149.3,7.9 154.7,3.0 160.0,6.3"/>
+                </svg>
+                <div class="comp-bar">
+                  <span style="background:var(--series-1);flex:48.5"></span>
+                  <span style="background:var(--series-2);flex:41.2"></span>
+                  <span style="background:var(--series-rest);flex:10.3"></span>
+                </div>
+                <div class="comp-legend">
+                  <span class="l"><span class="dot" style="background:var(--series-1)"></span> Crypto 49%</span>
+                  <span class="l"><span class="dot" style="background:var(--series-2)"></span> Equities 41%</span>
+                  <span class="l"><span class="dot" style="background:var(--series-rest)"></span> Cash 10%</span>
+                </div>
+                <div class="foot">
+                  <span>Net invested <span class="num">$34,010.22</span></span>
+                  <span class="up num">+21.2% all time</span>
+                </div>
+              </a>
+
+              <a class="pf-card" href="portfolio-detail.html">
+                <div class="top">
+                  <span class="dot" style="background:var(--series-2)"></span>
+                  <span class="name">Retirement</span>
+                  <span class="count">6 positions</span>
+                </div>
+                <div>
+                  <div class="val num">$22,470.12</div>
+                  <div class="delta up num">+$298.44 (+1.35%) today</div>
+                </div>
+                <svg class="cardspark" viewBox="0 0 160 44" preserveAspectRatio="none">
+                  <polyline fill="none" stroke="var(--series-2)" stroke-width="1.5" stroke-linejoin="round"
+                    vector-effect="non-scaling-stroke" points="0.0,40.4 5.3,41.0 10.7,36.4 16.0,36.6 21.3,34.8 26.7,30.7 32.0,31.7 37.3,28.0 42.7,29.4 48.0,29.6 53.3,28.6 58.7,26.3 64.0,29.9 69.3,28.0 74.7,32.2 80.0,28.3 85.3,37.2 90.7,31.2 96.0,35.9 101.3,27.5 106.7,26.4 112.0,22.2 117.3,15.9 122.7,21.4 128.0,20.5 133.3,12.6 138.7,14.6 144.0,15.7 149.3,5.2 154.7,3.0 160.0,12.8"/>
+                </svg>
+                <div class="comp-bar">
+                  <span style="background:var(--series-1);flex:35.0"></span>
+                  <span style="background:var(--series-2);flex:45.7"></span>
+                  <span style="background:var(--series-rest);flex:19.3"></span>
+                </div>
+                <div class="comp-legend">
+                  <span class="l"><span class="dot" style="background:var(--series-1)"></span> Crypto 35%</span>
+                  <span class="l"><span class="dot" style="background:var(--series-2)"></span> Equities 46%</span>
+                  <span class="l"><span class="dot" style="background:var(--series-rest)"></span> Cash 19%</span>
+                </div>
+                <div class="foot">
+                  <span>Net invested <span class="num">$19,880.15</span></span>
+                  <span class="up num">+13.0% all time</span>
+                </div>
+              </a>
+
+              <a class="pf-card" href="portfolio-detail.html">
+                <div class="top">
+                  <span class="dot" style="background:var(--series-3)"></span>
+                  <span class="name">Play money</span>
+                  <span class="count">3 positions</span>
+                </div>
+                <div>
+                  <div class="val num">$6,441.96</div>
+                  <div class="delta up num">+$163.64 (+2.61%) today</div>
+                </div>
+                <svg class="cardspark" viewBox="0 0 160 44" preserveAspectRatio="none">
+                  <polyline fill="none" stroke="var(--series-3)" stroke-width="1.5" stroke-linejoin="round"
+                    vector-effect="non-scaling-stroke" points="0.0,17.1 5.3,3.2 10.7,3.0 16.0,3.0 21.3,16.1 26.7,18.7 32.0,21.6 37.3,20.7 42.7,13.1 48.0,22.3 53.3,19.1 58.7,28.3 64.0,32.9 69.3,36.1 74.7,33.1 80.0,35.9 85.3,41.0 90.7,32.3 96.0,29.4 101.3,16.1 106.7,16.4 112.0,17.5 117.3,18.5 122.7,20.0 128.0,15.7 133.3,15.6 138.7,21.2 144.0,12.6 149.3,20.5 154.7,22.1 160.0,30.7"/>
+                </svg>
+                <div class="comp-bar">
+                  <span style="background:var(--series-1);flex:84.5"></span>
+                  <span style="background:var(--series-2);flex:15.5"></span>
+                </div>
+                <div class="comp-legend">
+                  <span class="l"><span class="dot" style="background:var(--series-1)"></span> Crypto 85%</span>
+                  <span class="l"><span class="dot" style="background:var(--series-2)"></span> Equities 15%</span>
+                </div>
+                <div class="foot">
+                  <span>Net invested <span class="num">$5,300.00</span></span>
+                  <span class="up num">+21.5% all time</span>
+                </div>
+              </a>
+
+              <button class="pf-card ghost">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                New portfolio
+              </button>
+
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div class="tabs">
+                <button class="active">By asset</button>
+                <button>By class</button>
+                <button>By connection</button>
+              </div>
+              <span class="card-sub">6 assets across 3 portfolios</span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Asset</th>
+                  <th class="r">Core</th><th class="r">Retirement</th><th class="r">Play money</th>
+                  <th class="r">Total</th><th class="r">Split</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><div class="ticker"><div class="logo">BTC</div><div><div class="cell-main">Bitcoin</div><div class="cell-sub">0.2410 · CoinGecko</div></div></div></td>
+                  <td class="r num">$14,000.00</td><td class="r num">$5,704.61</td><td class="r num">$3,000.00</td>
+                  <td class="r num cell-main">$22,704.61</td>
+                  <td><div class="mix">
+                    <span style="background:var(--series-1);flex:61.7"></span>
+                    <span style="background:var(--series-2);flex:25.1"></span>
+                    <span style="background:var(--series-3);flex:13.2"></span>
+                  </div></td>
+                </tr>
+                <tr>
+                  <td><div class="ticker"><div class="logo">MSFT</div><div><div class="cell-main">Microsoft</div><div class="cell-sub">24.000 · NASDAQ</div></div></div></td>
+                  <td class="r num">$7,500.00</td><td class="r num">$4,797.60</td><td class="r faint">—</td>
+                  <td class="r num cell-main">$12,297.60</td>
+                  <td><div class="mix">
+                    <span style="background:var(--series-1);flex:61.0"></span>
+                    <span style="background:var(--series-2);flex:39.0"></span>
+                  </div></td>
+                </tr>
+                <tr>
+                  <td><div class="ticker"><div class="logo">ETH</div><div><div class="cell-main">Ethereum</div><div class="cell-sub">3.4100 · CoinGecko</div></div></div></td>
+                  <td class="r num">$6,000.00</td><td class="r num">$2,137.22</td><td class="r num">$2,441.96</td>
+                  <td class="r num cell-main">$10,579.18</td>
+                  <td><div class="mix">
+                    <span style="background:var(--series-1);flex:56.7"></span>
+                    <span style="background:var(--series-2);flex:20.2"></span>
+                    <span style="background:var(--series-3);flex:23.1"></span>
+                  </div></td>
+                </tr>
+                <tr>
+                  <td><div class="ticker"><div class="logo">AAPL</div><div><div class="cell-main">Apple</div><div class="cell-sub">35.000 · NASDAQ</div></div></div></td>
+                  <td class="r num">$5,191.85</td><td class="r num">$3,500.00</td><td class="r faint">—</td>
+                  <td class="r num cell-main">$8,691.85</td>
+                  <td><div class="mix">
+                    <span style="background:var(--series-1);flex:59.7"></span>
+                    <span style="background:var(--series-2);flex:40.3"></span>
+                  </div></td>
+                </tr>
+                <tr>
+                  <td><div class="ticker"><div class="logo">USD</div><div><div class="cell-main">US Dollar</div><div class="cell-sub">8,565.20 · Cash</div></div></div></td>
+                  <td class="r num">$4,234.51</td><td class="r num">$4,330.69</td><td class="r faint">—</td>
+                  <td class="r num cell-main">$8,565.20</td>
+                  <td><div class="mix">
+                    <span style="background:var(--series-1);flex:49.4"></span>
+                    <span style="background:var(--series-2);flex:50.6"></span>
+                  </div></td>
+                </tr>
+                <tr>
+                  <td><div class="ticker"><div class="logo">NVDA</div><div><div class="cell-main">NVIDIA</div><div class="cell-sub">40.000 · NASDAQ</div></div></div></td>
+                  <td class="r num">$4,282.00</td><td class="r num">$2,000.00</td><td class="r num">$1,000.00</td>
+                  <td class="r num cell-main">$7,282.00</td>
+                  <td><div class="mix">
+                    <span style="background:var(--series-1);flex:58.8"></span>
+                    <span style="background:var(--series-2);flex:27.5"></span>
+                    <span style="background:var(--series-3);flex:13.7"></span>
+                  </div></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+
+        <aside class="rail">
+
+          <div class="rail-section">
+            <div class="rail-head"><span class="rail-title">Combined</span>
+              <span class="card-sub">all portfolios</span></div>
+            <div class="stats">
+              <div class="stat-row"><span class="k">Today</span><span class="v up num">+$1,204.18</span></div>
+              <div class="stat-row"><span class="k">This month</span><span class="v up num">+$3,880.11</span></div>
+              <div class="stat-row"><span class="k">Net invested</span><span class="v num">$59,190.37</span></div>
+              <div class="stat-row"><span class="k">Unrealized P/L</span><span class="v up num">+$10,930.07</span></div>
+              <div class="stat-row"><span class="k">Realized P/L</span><span class="v num">+$1,882.44</span></div>
+            </div>
+          </div>
+
+          <div class="rail-section">
+            <div class="rail-head"><span class="rail-title">Weight</span>
+              <span class="card-sub">share of net worth</span></div>
+            <div class="comp-bar" style="height:8px;margin-bottom:12px">
+              <span style="background:var(--series-1);flex:58.8"></span>
+              <span style="background:var(--series-2);flex:32.0"></span>
+              <span style="background:var(--series-3);flex:9.2"></span>
+            </div>
+            <div class="stats">
+              <div class="stat-row"><span class="k"><span class="dot" style="background:var(--series-1)"></span> Core</span><span class="v num">58.8%</span></div>
+              <div class="stat-row"><span class="k"><span class="dot" style="background:var(--series-2)"></span> Retirement</span><span class="v num">32.0%</span></div>
+              <div class="stat-row"><span class="k"><span class="dot" style="background:var(--series-3)"></span> Play money</span><span class="v num">9.2%</span></div>
+            </div>
+          </div>
+
+          <div class="rail-section">
+            <div class="rail-head"><span class="rail-title">Movers</span><span class="card-sub">today</span></div>
+            <div class="stats">
+              <div class="stat-row"><span class="k cell-main" style="color:var(--text)">BTC</span><span class="v up num">+3.4%</span></div>
+              <div class="stat-row"><span class="k cell-main" style="color:var(--text)">ETH</span><span class="v up num">+2.1%</span></div>
+              <div class="stat-row"><span class="k cell-main" style="color:var(--text)">AAPL</span><span class="v up num">+2.1%</span></div>
+              <div class="stat-row"><span class="k cell-main" style="color:var(--text)">NVDA</span><span class="v down num">−0.8%</span></div>
+            </div>
+          </div>
+
+          <div class="rail-section">
+            <div class="rail-head"><span class="rail-title">Recent trades</span><span class="card-sub">all portfolios</span></div>
+            <div class="stats">
+              <div class="stat-row">
+                <span class="k">Buy 12 AAPL<br><span class="tag"><span class="dot" style="background:var(--series-1)"></span> Core · 14 Jun 2026</span></span>
+                <span class="v num">−$2,578.80</span>
+              </div>
+              <div class="stat-row">
+                <span class="k">Sell 0.05 BTC<br><span class="tag"><span class="dot" style="background:var(--series-3)"></span> Play money · 02 Jun 2026</span></span>
+                <span class="v num">+$4,610.00</span>
+              </div>
+              <div class="stat-row">
+                <span class="k">Buy 8 MSFT<br><span class="tag"><span class="dot" style="background:var(--series-2)"></span> Retirement · 31 May 2026</span></span>
+                <span class="v num">−$4,099.20</span>
+              </div>
+              <div class="stat-row">
+                <span class="k">Salary in<br><span class="tag"><span class="dot" style="background:var(--series-1)"></span> Core · 31 May 2026</span></span>
+                <span class="v num up">+$4,000.00</span>
+              </div>
+            </div>
+          </div>
+
+        </aside>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
