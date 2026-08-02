@@ -1,0 +1,73 @@
+/* All colors live here. Swap these to re-theme every sketch. */
+
+:root {
+  /* Tailwind slate */
+  --slate-950: #020617;
+  --slate-900: #0f172a;
+  --slate-800: #1e293b;
+  --slate-700: #334155;
+  --slate-600: #475569;
+  --slate-500: #64748b;
+  --slate-400: #94a3b8;
+  --slate-300: #cbd5e1;
+  --slate-200: #e2e8f0;
+  --slate-100: #f1f5f9;
+
+  /* Tailwind violet */
+  --violet-300: #c4b5fd;
+  --violet-400: #a78bfa;
+  --violet-500: #8b5cf6;
+  --violet-600: #7c3aed;
+  --violet-700: #6d28d9;
+
+  /* Tailwind lime / rose */
+  --lime-400: #a3e635;
+  --lime-500: #84cc16;
+  --rose-400: #fb7185;
+  --rose-500: #f43f5e;
+
+  /* Tailwind sky / amber / teal — categorical series only */
+  --sky-400: #38bdf8;
+  --amber-300: #fcd34d;
+  --teal-300: #5eead4;
+
+  /* Semantic roles */
+  --bg: #01030a;                /* page */
+  --bg-panel: #050a0f;          /* cards, searchbar, chips, controls */
+  --bg-raised: #0b1118;         /* hover — one soft step up */
+  --bg-input: #111921;          /* active states, inset bits */
+  --border: #131a22;            /* panel outlines, chart gridlines */
+  --divider: #161e26;           /* row separators inside panels */
+  --border-strong: #1d2731;
+  --bars: #27323f;              /* volume bars, range-selector history */
+
+  --text: var(--slate-100);
+  --text-muted: var(--slate-400);
+  --text-faint: var(--slate-500);
+
+  --accent: var(--violet-500);
+  --accent-soft: var(--violet-400);
+  --accent-strong: var(--violet-600);
+  --accent-tint: rgba(139, 92, 246, 0.14);
+
+  /* Categorical series — one per portfolio. Never carries up/down meaning. */
+  --series-1: var(--violet-400);
+  --series-2: var(--sky-400);
+  --series-3: var(--amber-300);
+  --series-4: var(--teal-300);
+  --series-rest: var(--slate-600);
+
+  --up: var(--lime-400);
+  --up-tint: rgba(163, 230, 53, 0.14);
+  --down: var(--rose-400);
+  --down-tint: rgba(251, 113, 133, 0.14);
+
+  /* Shape */
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+
+  --sidebar-w: 300px;
+  --rail-w: var(--sidebar-w);
+}

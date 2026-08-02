@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Meridian — logo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: #0e1116;
+    color: #e6edf3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    font: 12px ui-monospace, monospace;
+  }
+  #stage { display: flex; align-items: center; gap: 28px; }
+  #stage .wordmark { order: 1; }
+  .lm { display: flex; }
+  #sizes { display: flex; align-items: center; gap: 24px; }
+  .wordmark {
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    font-size: 108px;
+    line-height: 1;
+  }
+  .lockups { display: flex; flex-direction: column; gap: 22px; align-items: flex-start;
+             font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+  .lockup { display: flex; align-items: center; gap: 12px; }
+  .lockup .wordmark { font-size: 28px; }
+  .lockup.sm .wordmark { font-size: 17px; letter-spacing: -0.02em; }
+  .exports {
+    display: flex; align-items: center; gap: 28px;
+    background: #f5f5f4; color: #57534e;
+    padding: 14px 20px; border-radius: 10px;
+  }
+  .exports img { display: block; }
+  #panel { display: grid; grid-template-columns: auto 180px 48px; gap: 8px 14px; align-items: center; color: #8b949e; }
+  input[type=range] { width: 180px; }
+</style>
+</head>
+<body>
+
+<div id="stage"><span class="wordmark">meridian</span></div>
+<div id="sizes"></div>
+
+<div class="lockups">
+  <div class="lockup"><span class="lm"></span><span class="wordmark">meridian</span></div>
+  <div class="lockup sm"><span class="lm"></span><span class="wordmark">meridian</span></div>
+</div>
+
+<div class="exports">
+  <span>exported svg</span>
+  <img src="meridian-mark.svg" width="72" height="72" alt="mark">
+  <span>loader</span>
+  <img src="meridian-loader.svg" width="72" height="72" alt="loader">
+  <img src="meridian-loader.svg" width="28" height="28" alt="loader small">
+</div>
+
+<div id="panel"></div>
+
+<script>
+const R = 86, CX = 100, CY = 100;
+const rad = d => d * Math.PI / 180;
+
+// Orthographic projection of a sphere.
+// tilt  = viewer latitude (negative -> looking from below, parallels bow up)
+// spin  = rotation about the polar axis
+function project(latDeg, lonDeg, tiltDeg, spinDeg) {
+  const p = rad(latDeg), l = rad(lonDeg - spinDeg), p0 = rad(tiltDeg);
+  const cosc = Math.sin(p0) * Math.sin(p) + Math.cos(p0) * Math.cos(p) * Math.cos(l);
+  return {
+    x: CX + R * Math.cos(p) * Math.sin(l),
+    y: CY - R * (Math.cos(p0) * Math.sin(p) - Math.sin(p0) * Math.cos(p) * Math.cos(l)),
+    front: cosc > 0,
+  };
+}
+
+// Walk a parametric curve on the sphere, keeping only the front-facing runs.
+// curve(t) -> [lat, lon] for t in [0, 1]
+function visiblePath(curve, tilt, spin, steps = 360) {
+  const at = t => { const [la, lo] = curve(t); return project(la, lo, tilt, spin); };
+  // Binary search for the horizon crossing between two samples.
+  const horizon = (ta, tb) => {
+    let a = ta, b = tb;
+    for (let i = 0; i < 24; i++) {
+      const m = (a + b) / 2;
+      if (at(m).front === at(ta).front) a = m; else b = m;
+    }
+    return at((a + b) / 2);
+  };
+
+  let d = '', prev = null, prevT = 0, open = false;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps, p = at(t);
+    if (p.front) {
+      if (!open) {
+        const start = prev ? horizon(t, prevT) : p;
+        d += `M ${fmt(start.x)},${fmt(start.y)} `;
+        open = true;
+      }
+      d += `L ${fmt(p.x)},${fmt(p.y)} `;
+    } else if (open) {
+      const end = horizon(prevT, t);
+      d += `L ${fmt(end.x)},${fmt(end.y)} `;
+      open = false;
+    }
+    prev = p; prevT = t;
+  }
+  return d.trim();
+}
+
+const fmt = n => Math.round(n * 100) / 100;
+
+const meridian = lon => t => [-90 + 180 * t, lon];          // pole to pole
+const parallel = lat => t => [lat, 360 * t];                // full circle
+
+// Returns the inner markup of the logo, independent of render size.
+function build(o) {
+  const base = [];
+  const accent = [];
+
+  // n great circles spaced 180/n apart; each contributes one visible half,
+  // so the slider is the number of meridian arcs actually drawn.
+  // The first one is the accent meridian and gets its own stroke width.
+  for (let i = 0; i < o.meridians; i++) {
+    const lon = (i * 180) / o.meridians;
+    for (const l of [lon, lon + 180]) {
+      const d = visiblePath(meridian(l), o.tilt, o.spin);
+      if (d) (i === 0 ? accent : base).push(`<path d="${d}"/>`);
+    }
+  }
+  // n parallels evenly spaced in latitude, pole to pole
+  for (let i = 1; i <= o.parallels; i++) {
+    const lat = -90 + (180 * i) / (o.parallels + 1);
+    const d = visiblePath(parallel(lat), o.tilt, o.spin);
+    if (d) base.push(`<path d="${d}"/>`);
+  }
+
+  const g = (w, kids) => `<g fill="none" stroke="currentColor" stroke-width="${w}"
+    stroke-linecap="round" stroke-linejoin="round">${kids.join('')}</g>`;
+
+  // The grid is clipped to the outer edge of the silhouette stroke, so a thick
+  // meridian cannot bulge past the sphere at the poles.
+  const clipR = R + o.stroke / 2;
+  return `<defs><clipPath id="sphereClip">
+      <circle cx="${CX}" cy="${CY}" r="${clipR}"/>
+    </clipPath></defs>
+    <g clip-path="url(#sphereClip)">${g(o.stroke, base) + g(o.accentStroke, accent)}</g>
+    ${g(o.stroke, [`<circle cx="${CX}" cy="${CY}" r="${R}"/>`])}`;
+}
+
+function addSvg(parent, size) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  el.setAttribute('viewBox', '0 0 200 200');
+  el.setAttribute('width', size);
+  el.setAttribute('height', size);
+  parent.append(el);
+  return el;
+}
+
+const svgs = [
+  addSvg(document.getElementById('stage'), 420),
+  ...[96, 64, 48, 32, 24, 16].map(s => addSvg(document.getElementById('sizes'), s)),
+  ...[...document.querySelectorAll('.lockup')].map((l, i) =>
+    addSvg(l.querySelector('.lm'), i === 0 ? 34 : 22)),
+];
+
+function render(o) {
+  const markup = build(o);
+  for (const el of svgs) el.innerHTML = markup;
+}
+
+const controls = [
+  ['spin',      0,   360, 1, 317],
+  ['tilt',    -45,    45, 1,  45],
+  ['meridians', 1,     8, 1,   3],
+  ['parallels', 1,     9, 1,   3],
+  ['stroke',       1, 20, 0.5, 14],
+  ['accentStroke', 1, 24, 0.5, 14],
+];
+const opts = {};
+const panel = document.getElementById('panel');
+for (const [name, min, max, step, val] of controls) {
+  opts[name] = val;
+  const label = document.createElement('label');
+  label.textContent = name;
+  const input = document.createElement('input');
+  Object.assign(input, { type: 'range', min, max, step, value: val });
+  const out = document.createElement('span');
+  out.textContent = val;
+  input.oninput = () => { opts[name] = +input.value; out.textContent = input.value; render(opts); };
+  panel.append(label, input, out);
+}
+render(opts);
+</script>
+
+</body>
+</html>
