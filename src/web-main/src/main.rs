@@ -1,6 +1,9 @@
 use leptos::prelude::*;
 
 mod app;
+mod fake;
+mod pages;
+
 use app::App;
 
 fn main() {

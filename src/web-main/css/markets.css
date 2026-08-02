@@ -1,0 +1,183 @@
+/* Markets page: asset header, price/volume charts, range selector, trade box. */
+
+.asset-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--rail-w);
+  gap: 28px;
+  align-items: start;
+}
+@media (max-width: 1180px) { .asset-layout { grid-template-columns: 1fr; } }
+
+.col { display: flex; flex-direction: column; gap: 26px; min-width: 0; }
+
+.asset-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 24px; padding-right: 66px;
+}
+.asset-sym { font-size: 42px; font-weight: 700; letter-spacing: -0.035em; line-height: 1.05; }
+.asset-tags { display: flex; gap: 8px; margin-top: 12px; }
+.asset-price { text-align: right; }
+.asset-price .p { font-size: 40px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1; }
+.asset-range { display: flex; justify-content: flex-end; margin-top: 12px; }
+
+/* Price chart — gridlines paint first, then the dotted fill, then the line. */
+
+.chart-wrap { position: relative; padding-right: 66px; margin-top: 26px; }
+.chart { width: 100%; height: 48vh; min-height: 300px; display: block; position: relative; }
+.chart-grid { position: absolute; inset: 0 66px 0 0; }
+
+/* A CSS dot grid clipped to the price curve, so the dots stay round however
+   the chart is stretched. --chart-tone follows the series color. */
+.chart-fill {
+  position: absolute; inset: 0 66px 0 0;
+  background-image: radial-gradient(circle at center,
+    color-mix(in srgb, var(--chart-tone, var(--up)) 58%, transparent) 0.7px, transparent 1px);
+  background-size: 4px 4px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 25%, transparent 96%);
+  mask-image: linear-gradient(to bottom, #000 25%, transparent 96%);
+}
+
+.y-axis { position: absolute; inset: 0 0 0 auto; width: 66px; pointer-events: none; }
+.y-axis span {
+  position: absolute; right: 0; transform: translateY(-50%);
+  font-size: 11px; color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.volume-wrap { position: relative; padding-right: 66px; margin-top: 6px; }
+.volume { width: 100%; height: 86px; display: block; }
+.volume rect { fill: var(--bars); }
+
+/* Range selector */
+
+.range-wrap { margin-top: 18px; }
+.range-track { position: relative; margin-right: 66px; }
+.range { width: 100%; height: 62px; display: block; }
+.range-mask { position: absolute; top: 0; bottom: 0; background: var(--bg); opacity: 0.55; }
+.range-window {
+  position: absolute; top: 0; bottom: 0;
+  background: var(--accent-tint);
+  border-left: 1px solid var(--accent-soft);
+  border-right: 1px solid var(--accent-soft);
+  cursor: ew-resize;
+}
+.range-window::before, .range-window::after {
+  content: ""; position: absolute; top: 50%; width: 5px; height: 22px;
+  transform: translateY(-50%); border-radius: 3px;
+  background: var(--accent-soft);
+}
+.range-window::before { left: -3px; }
+.range-window::after { right: -3px; }
+.range-foot {
+  display: flex; justify-content: space-between;
+  padding: 8px 66px 0 0;
+  font-size: 11px; color: var(--text-faint);
+}
+
+/* Position rail */
+
+.position-value { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+.position-sub { font-size: 12px; margin: 2px 0 14px; }
+
+.alloc-bar { height: 6px; border-radius: var(--r-pill); background: var(--bg-input); overflow: hidden; }
+.alloc-bar span { display: block; height: 100%; background: var(--accent); }
+
+.pf-row { margin-bottom: 16px; }
+.pf-row:last-child { margin-bottom: 0; }
+.pf-line { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.pf-name { font-size: 13px; font-weight: 600; }
+.pf-val { font-size: 13px; font-weight: 600; }
+.pf-sub { margin-top: 5px; font-size: 11px; color: var(--text-faint); }
+.pf-line + .alloc-bar { margin-top: 7px; }
+
+/* Trade composer — the one boxed block in the rail */
+
+.trade-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 16px;
+  margin-bottom: 4px;
+}
+.trade-head { margin-bottom: 14px; }
+
+.trade { position: relative; display: flex; flex-direction: column; gap: 4px; }
+.leg {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 10px 12px 11px;
+}
+.leg-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+.leg-row { display: flex; align-items: center; gap: 10px; margin-top: 7px; }
+.leg-amount {
+  flex: 1; min-width: 0; text-align: right;
+  background: none; border: 0; outline: none;
+  color: var(--text); font: inherit; font-size: 21px; font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.asset-pick {
+  display: flex; align-items: center; gap: 7px; flex: none;
+  border: 0; background: var(--bg-input); cursor: pointer;
+  color: var(--text); font: inherit; font-size: 13px; font-weight: 600;
+  padding: 6px 9px 6px 12px; border-radius: var(--r-pill);
+}
+.asset-pick:hover { background: var(--bg-raised); }
+.asset-pick svg { width: 14px; height: 14px; color: var(--text-faint); }
+
+.swap {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: 28px; height: 28px; border-radius: var(--r-pill);
+  display: grid; place-items: center;
+  background: var(--bg-input); border: 2px solid var(--bg-panel);
+  color: var(--text-muted); cursor: pointer;
+}
+.swap:hover { color: var(--text); }
+.swap svg { width: 13px; height: 13px; }
+
+.trade-rate {
+  display: flex; justify-content: space-between; align-items: center;
+  margin: 12px 2px; font-size: 12px;
+}
+
+.field { display: flex; align-items: center; gap: 10px; }
+.field-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-faint); flex: none;
+}
+.pick-wide {
+  flex: 1; display: flex; align-items: center; justify-content: space-between;
+  border: 0; background: var(--bg-raised); cursor: pointer;
+  color: var(--text); font: inherit; font-size: 14px; font-weight: 600;
+  padding: 9px 12px; border-radius: var(--r-md);
+}
+.pick-wide:hover { background: var(--bg-input); }
+.pick-wide svg { width: 16px; height: 16px; color: var(--text-muted); }
+
+.trade-card .btn { margin-top: 12px; }
+
+.linkish {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 0; background: none; cursor: pointer;
+  color: var(--violet-300); font: inherit; font-size: 12px; font-weight: 500;
+}
+.linkish svg { width: 13px; height: 13px; }
+
+/* Compact quote list */
+
+.mini-list { display: flex; flex-direction: column; gap: 2px; }
+.mini-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 7px 8px; margin: 0 -8px;
+  border-radius: var(--r-sm); cursor: pointer;
+}
+.mini-row:hover { background: var(--bg-raised); }
+.mini-row .sym { font-weight: 600; font-size: 13px; }
+.mini-row .nm { font-size: 11px; color: var(--text-faint); }
+.mini-quote { text-align: right; }
+.mini-change { font-size: 11px; }

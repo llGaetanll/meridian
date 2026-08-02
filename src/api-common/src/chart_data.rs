@@ -42,12 +42,31 @@ impl ChartData {
         min..max
     }
 
+    pub fn len(&self) -> usize {
+        self.ts.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ts.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (Timestamp, Price)> + '_ {
+        self.ts.iter().copied().zip(self.px.iter().copied())
+    }
+
     pub fn first(&self) -> Option<(&Timestamp, &Price)> {
         self.ts.first().zip(self.px.first())
     }
 
     pub fn last(&self) -> Option<(&Timestamp, &Price)> {
         self.ts.last().zip(self.px.last())
+    }
+}
+
+impl FromIterator<(Timestamp, Price)> for ChartData {
+    fn from_iter<I: IntoIterator<Item = (Timestamp, Price)>>(iter: I) -> Self {
+        let (ts, px) = iter.into_iter().unzip();
+        Self { ts, px }
     }
 }
 
