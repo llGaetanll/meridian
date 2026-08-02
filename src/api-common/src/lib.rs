@@ -1,5 +1,6 @@
 mod asset;
 mod chart_data;
+pub mod format;
 mod price;
 mod quantity;
 mod timestamp;

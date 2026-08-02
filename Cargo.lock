@@ -2450,6 +2450,7 @@ dependencies = [
  "api-common",
  "api-ledger",
  "leptos",
+ "web-ui",
 ]
 
 [[package]]

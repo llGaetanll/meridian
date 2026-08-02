@@ -7,3 +7,4 @@ edition = "2024"
 api-common = { path = "../api-common" }
 api-ledger = { path = "../api-ledger" }
 leptos = { workspace = true }
+web-ui = { path = "../web-ui" }
