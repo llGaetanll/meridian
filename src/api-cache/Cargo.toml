@@ -1,0 +1,9 @@
+[package]
+name = "api-cache"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+api-common = { path = "../api-common" }
+futures = { workspace = true }
+tracing = { workspace = true }

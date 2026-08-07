@@ -1,7 +1,8 @@
 //! Talking to the outside world. No reactive state lives here.
 
+mod markets;
 mod yahoo;
 
-pub use yahoo::AssetQuote;
+pub use markets::AssetQuote;
+pub use markets::Markets;
 pub use yahoo::ChartRange;
-pub use yahoo::fetch_quote;
