@@ -309,11 +309,22 @@ tbody tr:hover { background: var(--bg-raised); }
 
 /* Charts (unboxed) */
 
+/* Time labels sit where their point does, not spread evenly, so they still
+   line up once the closed hours have taken their share of the width. */
 .chart-foot {
-  display: flex; justify-content: space-between;
-  font-size: 11px; color: var(--text-faint);
-  padding-top: 10px;
+  /* Margin, not padding: the labels are placed as percentages, and those are
+     read against this box — which therefore has to be the plot, not the plot
+     plus the price axis. */
+  position: relative; height: 16px;
+  margin: 10px 66px 0 0;
 }
+.chart-foot span {
+  position: absolute; transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 11px; color: var(--text-faint);
+}
+.chart-foot span.at-start { transform: none; }
+.chart-foot span.at-end { transform: translateX(-100%); }
 
 /* range control sits under the chart, bottom right */
 .chart-controls {

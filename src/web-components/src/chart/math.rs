@@ -14,6 +14,8 @@ use api_common::ChartData;
 use api_common::Price;
 use api_common::Timestamp;
 
+use super::Layout;
+
 /// Width of the SVG user space every chart draws in. Charts stretch with
 /// `preserveAspectRatio="none"`, so this is an arbitrary but shared unit.
 pub const VIEW_W: f64 = 800.0;
@@ -36,15 +38,6 @@ pub fn px_to_y(px: Price, rng: &Range<Price>, height: f64) -> f64 {
     (1.0 - (px - rng.start) / span) * height
 }
 
-/// Maps the `i`th of `count` points onto `0..width`.
-pub fn slot_to_x(i: usize, count: usize, width: f64) -> f64 {
-    if count <= 1 {
-        return 0.0;
-    }
-
-    i as f64 / (count - 1) as f64 * width
-}
-
 /// The price range padded a little, so the line never touches the frame.
 pub fn padded_price_range(data: &ChartData, pad: f64) -> Range<Price> {
     let rng = data.range_price();
@@ -57,9 +50,50 @@ pub fn padded_price_range(data: &ChartData, pad: f64) -> Range<Price> {
     (rng.start - span * pad)..(rng.end + span * pad)
 }
 
+/// `x,y x,y …` for an SVG `points` attribute, one string per session, so that
+/// no line is drawn across the hours the market was shut.
+pub fn session_lines(
+    data: &ChartData,
+    layout: &Layout,
+    px_rng: &Range<Price>,
+    width: f64,
+    height: f64,
+) -> Vec<String> {
+    layout
+        .sessions()
+        .iter()
+        .map(|session| points(data, layout, session.clone(), px_rng, width, height, 1))
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+
+/// Each session's curve closed down to the baseline, in `objectBoundingBox`
+/// units (`0..1`), for a `clipPath` that has to survive being stretched by
+/// CSS. Unit space needs the extra precision.
+pub fn session_clips(data: &ChartData, layout: &Layout, px_rng: &Range<Price>) -> Vec<String> {
+    layout
+        .sessions()
+        .iter()
+        .filter_map(|session| {
+            let line = points(data, layout, session.clone(), px_rng, 1.0, 1.0, 5);
+
+            if line.is_empty() {
+                return None;
+            }
+
+            let (from, to) = (
+                layout.fraction(session.start),
+                layout.fraction(session.end - 1),
+            );
+
+            Some(format!("{from:.5},1 {line} {to:.5},1"))
+        })
+        .collect()
+}
+
 /// `x,y x,y …` for an SVG `points` attribute.
 pub fn polyline_points(data: &ChartData, px_rng: &Range<Price>, width: f64, height: f64) -> String {
-    points(data, px_rng, width, height, 1)
+    session_lines(data, &Layout::even(data.len()), px_rng, width, height).join(" ")
 }
 
 /// The same curve closed down to the baseline, for area fills.
@@ -73,34 +107,24 @@ pub fn area_points(data: &ChartData, px_rng: &Range<Price>, width: f64, height: 
     format!("0,{height:.1} {line} {width:.1},{height:.1}")
 }
 
-/// The curve in `objectBoundingBox` units (`0..1`), for a `clipPath` that has
-/// to survive being stretched by CSS. Unit space needs the extra precision.
-pub fn clip_polygon_points(data: &ChartData, px_rng: &Range<Price>) -> String {
-    let line = points(data, px_rng, 1.0, 1.0, 4);
-
-    if line.is_empty() {
-        return String::new();
-    }
-
-    format!("0,1 {line} 1,1")
-}
-
 fn points(
     data: &ChartData,
+    layout: &Layout,
+    session: Range<usize>,
     px_rng: &Range<Price>,
     width: f64,
     height: f64,
     decimals: usize,
 ) -> String {
-    let count = data.len();
-
     data.iter()
         .enumerate()
+        .skip(session.start)
+        .take(session.len())
         .map(|(i, (_, px))| {
             format!(
                 "{:.*},{:.*}",
                 decimals,
-                slot_to_x(i, count, width),
+                layout.x(i, width),
                 decimals,
                 px_to_y(px, px_rng, height)
             )
@@ -143,29 +167,35 @@ pub fn nice_ticks(rng: &Range<Price>) -> Vec<Price> {
     ticks
 }
 
-/// The timestamps sitting under `count` evenly spaced points on the x axis.
+/// `count` points spread evenly over a series of `len`, as indices into it.
 ///
-/// Sampled by slot, not by clock, so a label lands exactly where its point is
-/// drawn — the two only agree while the market is open.
-pub fn axis_stops(data: &ChartData, count: usize) -> Vec<Timestamp> {
-    let timestamps = data.timestamps();
-
-    if timestamps.is_empty() || count == 0 {
+/// Counted in slots, not by clock, so a label lands exactly on the point it
+/// belongs to — the two only agree while the market is open.
+pub fn axis_stops_at(len: usize, count: usize) -> Vec<usize> {
+    if len == 0 || count == 0 {
         return Vec::new();
     }
 
-    let last = timestamps.len() - 1;
+    let last = len - 1;
 
     (0..count)
         .map(|i| {
-            let at = if count == 1 {
+            if count == 1 {
                 0
             } else {
-                (last * i).div_ceil(count - 1)
-            };
-
-            timestamps[at.min(last)]
+                (last * i).div_ceil(count - 1).min(last)
+            }
         })
+        .collect()
+}
+
+/// The timestamps sitting under those stops.
+pub fn axis_stops(data: &ChartData, count: usize) -> Vec<Timestamp> {
+    let timestamps = data.timestamps();
+
+    axis_stops_at(timestamps.len(), count)
+        .into_iter()
+        .map(|at| timestamps[at])
         .collect()
 }
 
