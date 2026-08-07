@@ -10,3 +10,11 @@ target = "index.html"
 
 [[assets]]
 file = "input.css"
+
+# Browsers cannot call Yahoo directly (no CORS headers), so in development the
+# dev server forwards /v8 and /v1 to it. Native builds talk to Yahoo directly.
+[[proxy]]
+backend = "https://query1.finance.yahoo.com/v8"
+
+[[proxy]]
+backend = "https://query1.finance.yahoo.com/v1"

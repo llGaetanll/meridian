@@ -1,8 +1,6 @@
-//! Stand-in data until the ledger and the price sources are wired up.
+//! Stand-in data for the ledger side of the page: what the user holds and
+//! traded. Prices come from Yahoo — see `crate::io`.
 
-use api_common::ChartData;
-use api_common::Price;
-use api_common::Timestamp;
 use web_components::AssetPosition;
 use web_components::AssetTrade;
 use web_components::PortfolioHolding;
@@ -10,94 +8,8 @@ use web_components::Quote;
 use web_components::TradeResult;
 use web_components::TradeSide;
 
-/// 2026-08-03 09:30:00 UTC — the open of the session we are showing.
-const SESSION_OPEN: Timestamp = 1_785_749_400;
-
-const MINUTE: Timestamp = 60;
-const WEEK: Timestamp = 7 * 86_400;
-
-/// 2014-08-04 00:00:00 UTC — where the range selector's history starts.
-const HISTORY_START: Timestamp = 1_407_110_400;
-
+/// The asset the page opens on, until it can be picked.
 pub const SYMBOL: &str = "SPY";
-
-/// Deterministic pseudo-random walk, so the charts look the same on every reload.
-struct Lcg(u64);
-
-impl Lcg {
-    fn new(seed: u64) -> Self {
-        Self(seed)
-    }
-
-    /// Uniform in 0.0..1.0
-    fn next_unit(&mut self) -> f64 {
-        self.0 = self
-            .0
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
-
-        (self.0 >> 11) as f64 / (1u64 << 53) as f64
-    }
-
-    /// Uniform in -1.0..1.0
-    fn next_signed(&mut self) -> f64 {
-        self.next_unit() * 2.0 - 1.0
-    }
-}
-
-fn random_walk(
-    seed: u64,
-    start_ts: Timestamp,
-    step: Timestamp,
-    points: usize,
-    start_px: Price,
-    drift: Price,
-    volatility: Price,
-) -> ChartData {
-    let mut rng = Lcg::new(seed);
-    let mut px = start_px;
-
-    (0..points)
-        .map(|i| {
-            px *= 1.0 + drift + rng.next_signed() * volatility;
-            (start_ts + i as Timestamp * step, px)
-        })
-        .collect()
-}
-
-/// One trading session, minute by minute.
-pub fn price_series() -> ChartData {
-    random_walk(
-        0x5EED_1234,
-        SESSION_OPEN,
-        MINUTE,
-        390,
-        639.99,
-        0.00006,
-        0.0009,
-    )
-}
-
-/// Volume for the same session. Heaviest at the open and into the close.
-pub fn volume_series() -> ChartData {
-    let mut rng = Lcg::new(0xB0B0_CAFE);
-
-    (0..390)
-        .map(|i| {
-            let t = i as f64 / 389.0;
-            // U shaped session profile.
-            let shape = 0.35 + 2.2 * (t - 0.5).powi(2) + if t > 0.97 { 1.4 } else { 0.0 };
-            let volume = shape * (0.55 + rng.next_unit() * 0.9) * 900_000.0;
-
-            (SESSION_OPEN + i as Timestamp * MINUTE, volume)
-        })
-        .collect()
-}
-
-/// Twelve years of weekly closes, for the range selector.
-pub fn history_series() -> ChartData {
-    random_walk(0xC0FF_EE42, HISTORY_START, WEEK, 626, 190.0, 0.0021, 0.018)
-}
 
 pub fn position() -> AssetPosition {
     AssetPosition {
@@ -183,23 +95,6 @@ pub fn trades() -> Vec<AssetTrade> {
             result: TradeResult::Unrealized(1_691.76),
         },
     ]
-}
-
-pub fn key_stats() -> Vec<(String, String)> {
-    [
-        ("Open", "$639.99"),
-        ("Prev close", "$638.42"),
-        ("Day range", "$638.69 – $652.53"),
-        ("52w range", "$521.40 – $652.53"),
-        ("Volume", "71.4M"),
-        ("Avg volume", "58.9M"),
-        ("Net assets", "$612.8B"),
-        ("Expense ratio", "0.09%"),
-        ("Div. yield", "1.21%"),
-    ]
-    .into_iter()
-    .map(|(k, v)| (k.to_string(), v.to_string()))
-    .collect()
 }
 
 pub fn recently_seen() -> Vec<Quote> {

@@ -23,8 +23,10 @@ pub fn TradeComposer(
     #[prop(into)]
     receive_asset: Asset,
     receive_amount: Quantity,
-    /// Price of one `receive_asset` in `pay_asset` terms.
-    rate: Price,
+    /// Price of one `receive_asset` in `pay_asset` terms, or `None` until it
+    /// is known.
+    #[prop(into)]
+    rate: Signal<Option<Price>>,
     #[prop(default = 0.0)] fees: Price,
     #[prop(into)] portfolio: String,
     #[prop(into)] date_label: String,
@@ -51,7 +53,9 @@ pub fn TradeComposer(
             <div class="trade-rate">
                 <span class="faint">
                     {rate_label}
-                    <span class="num">{fmt_money(rate)}</span>
+                    <span class="num">
+                        {move || rate.get().map(fmt_money).unwrap_or_else(|| "—".to_string())}
+                    </span>
                 </span>
                 <span class="faint">{format!("Fees {}", fmt_money(fees))}</span>
             </div>

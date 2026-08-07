@@ -13,16 +13,16 @@ pub fn VolumeChart(
     #[prop(into, default = String::from("Volume"))] label: String,
 ) -> impl IntoView {
     let max = data.range_price().end.max(f64::MIN_POSITIVE);
-    let count = data.len().max(1) as f64;
-    let slot = math::VIEW_W / count;
-    let width = (slot * 0.62).max(0.5);
+    let count = data.len();
+    let width = (math::VIEW_W / count.max(1) as f64 * 0.62).max(0.5);
 
     let bars = data
         .iter()
         .enumerate()
         .map(|(i, (_, volume))| {
             let height = (volume / max).clamp(0.0, 1.0) * VOLUME_H;
-            let x = i as f64 * slot + (slot - width) / 2.0;
+            // Centred on the same slot the price chart draws point `i` at.
+            let x = math::slot_to_x(i, count, math::VIEW_W) - width / 2.0;
 
             view! {
                 <rect

@@ -4,9 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = { workspace = true }
+api-common = { path = "../api-common" }
 serde = { workspace = true }
 reqwest = { workspace = true }
 chrono = { workspace = true }
 serde_json = { workspace = true }
 http = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
