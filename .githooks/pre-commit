@@ -1,0 +1,14 @@
+#!/bin/sh
+# Formats the workspace with nightly rustfmt and re-stages any staged Rust
+# files that changed as a result.
+
+set -e
+
+staged_rs=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs')
+[ -z "$staged_rs" ] && exit 0
+
+cargo +nightly fmt --all
+
+echo "$staged_rs" | while IFS= read -r file; do
+    [ -f "$file" ] && git add -- "$file"
+done
