@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+api-trace = { path = "../api-trace" }
+tracing = { workspace = true }
 leptos = { workspace = true }
 leptos_meta = { workspace = true }
 api-common = { path = "../api-common" }
