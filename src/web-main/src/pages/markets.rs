@@ -10,6 +10,7 @@ use api_common::format::fmt_year;
 use leptos::prelude::*;
 use web_components::AssetHeader;
 use web_components::AssetTradesTable;
+use web_components::CHART_RESOLUTION;
 use web_components::ChartFoot;
 use web_components::HeldIn;
 use web_components::KeyStats;
@@ -141,24 +142,38 @@ fn SessionCharts(quote: AssetQuote) -> impl IntoView {
         None => Tone::Neutral,
     };
 
-    let layout = Layout::new(&quote.prices, quote.utc_offset);
-    let labels = axis_labels(&quote.prices, &layout, 6, quote.utc_offset);
+    // Thinned here rather than on the way in: the series is cached whole, and
+    // a chart only has so many pixels. Prices keep each bucket's close and
+    // volume adds its bucket up, which lands them on the same buckets and so
+    // keeps a bar under its point.
+    let prices = quote.prices.resample_last(CHART_RESOLUTION);
+    let volume = quote.volume.resample_sum(CHART_RESOLUTION);
+
+    let layout = Layout::new(&prices, quote.utc_offset);
+    let labels = axis_labels(&prices, &layout, 6, quote.utc_offset);
+
+    // The point the crosshair is on. The price chart sets it; the time axis
+    // reads it, so that the two say the same thing.
+    let hover = RwSignal::new(None);
+    let cursor = cursor_labels(&prices, &layout, hover, quote.utc_offset);
 
     view! {
-        <PriceChart data=quote.prices layout=layout.clone() tone=tone />
-        <VolumeChart data=quote.volume layout=layout />
-        <ChartFoot labels=labels />
+        <PriceChart data=prices layout=layout.clone() tone=tone hover=hover />
+        <VolumeChart data=volume layout=layout hover=hover />
+        <ChartFoot labels=labels cursor=cursor />
     }
 }
 
 /// The full history strip, with the stretch on show highlighted.
 #[component]
 fn HistoryStrip(history: AssetQuote, shown: Option<Range<Timestamp>>) -> impl IntoView {
-    let labels = range_labels(&history.prices, 7, history.utc_offset);
-    let window = window_of(&history.prices, shown);
+    let prices = history.prices.resample_last(CHART_RESOLUTION);
+
+    let labels = range_labels(&prices, 7, history.utc_offset);
+    let window = window_of(&prices, shown);
 
     view! {
-        <RangeSelector data=history.prices window=window />
+        <RangeSelector data=prices window=window />
         <RangeFoot labels=labels />
     }
 }
@@ -186,6 +201,32 @@ fn axis_labels(
             (layout.fraction(at), format(local(ts, utc_offset)))
         })
         .collect()
+}
+
+/// The label for every point, ready for whichever one the crosshair lands on.
+/// Written out up front: there are only as many as the chart has points, and
+/// the pointer asks for them far more often than they change.
+fn cursor_labels(
+    data: &ChartData,
+    layout: &Layout,
+    hover: RwSignal<Option<usize>>,
+    utc_offset: i64,
+) -> Signal<Option<(f64, String)>> {
+    let format = cursor_format(data);
+
+    let labels = StoredValue::new(
+        data.timestamps()
+            .iter()
+            .enumerate()
+            .map(|(i, &ts)| (layout.fraction(i), format(local(ts, utc_offset))))
+            .collect::<Vec<_>>(),
+    );
+
+    Signal::derive(move || {
+        hover
+            .get()
+            .and_then(|i| labels.with_value(|l| l.get(i).cloned()))
+    })
 }
 
 /// The same labels for the history strip, which spreads them itself.
@@ -220,6 +261,27 @@ fn label_format(data: &ChartData) -> fn(Timestamp) -> String {
     } else {
         fmt_year
     }
+}
+
+/// The same, for the one point under the crosshair, which can afford to be
+/// more precise than the axis: an intraday point is named by day and time
+/// even when the axis only has room for the day.
+fn cursor_format(data: &ChartData) -> fn(Timestamp) -> String {
+    let rng = data.range_time();
+    let span = rng.end.saturating_sub(rng.start);
+
+    if span <= 2 * DAY {
+        fmt_time_of_day
+    } else if data.len() > 1 && span / data.len() as u64 <= DAY {
+        fmt_day_time
+    } else {
+        fmt_date
+    }
+}
+
+/// `"Aug 05 · 10:30"`
+fn fmt_day_time(ts: Timestamp) -> String {
+    format!("{} · {}", fmt_month_day(ts), fmt_time_of_day(ts))
 }
 
 /// Where `shown` falls inside the whole history, as fractions of its width.

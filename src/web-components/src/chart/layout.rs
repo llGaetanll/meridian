@@ -178,6 +178,20 @@ impl Layout {
         self.fraction(i) * width
     }
 
+    /// The point sitting closest to `fraction` of the width. What a pointer
+    /// hovering over the chart is pointing at.
+    pub fn nearest(&self, fraction: f64) -> Option<usize> {
+        let at = self.xs.partition_point(|&x| x < fraction);
+
+        match at {
+            0 if self.xs.is_empty() => None,
+            0 => Some(0),
+            at if at == self.xs.len() => Some(at - 1),
+            at if fraction - self.xs[at - 1] <= self.xs[at] - fraction => Some(at - 1),
+            at => Some(at),
+        }
+    }
+
     /// The gap between two points the market was open across, as a fraction
     /// of the width. What a bar drawn for one point has to fit inside.
     pub fn slot(&self) -> f64 {
@@ -322,6 +336,17 @@ mod tests {
         let daily = (0..30).map(|i| (i * DAY, 10.0)).collect::<ChartData>();
 
         assert!(Layout::new(&daily, 0).closures().is_empty());
+    }
+
+    #[test]
+    fn finds_the_point_under_the_pointer() {
+        let layout = Layout::even(5);
+
+        assert_eq!(layout.nearest(0.0), Some(0));
+        assert_eq!(layout.nearest(0.26), Some(1));
+        assert_eq!(layout.nearest(0.6), Some(2));
+        assert_eq!(layout.nearest(1.0), Some(4));
+        assert_eq!(layout.nearest(4.0), Some(4));
     }
 
     #[test]

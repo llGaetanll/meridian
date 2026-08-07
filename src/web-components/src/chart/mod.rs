@@ -7,6 +7,16 @@ mod volume;
 
 use leptos::prelude::*;
 
+/// How many points a chart is drawn from, whatever stretch of time it covers.
+///
+/// Roughly one per pixel of chart width on a desktop screen: past that the
+/// extra points fall inside the same pixel and only cost drawing time. Holding
+/// it steady across ranges is what makes a month look as detailed as a day.
+///
+/// It is applied on the way to the screen and nowhere else. A series thinned
+/// any earlier than that is no use for drawing anything but itself.
+pub const CHART_RESOLUTION: usize = 900;
+
 pub use layout::Closed;
 pub use layout::Closure;
 pub use layout::Layout;
@@ -50,10 +60,24 @@ pub fn ClosedBands(layout: Layout) -> impl IntoView {
 /// The row of time labels under a chart, each one placed at the point it
 /// belongs to. Kept separate from the charts themselves so several stacked
 /// charts can share one axis.
+///
+/// `cursor` is the label for whatever the crosshair is on, if it is on
+/// anything. While it is, the regular labels give way to it.
 #[component]
-pub fn ChartFoot(labels: Vec<(f64, String)>) -> impl IntoView {
+pub fn ChartFoot(
+    labels: Vec<(f64, String)>,
+    #[prop(optional, into)] cursor: Option<Signal<Option<(f64, String)>>>,
+) -> impl IntoView {
+    let cursor = cursor.unwrap_or_else(|| Signal::derive(|| None));
+
+    // Kept after the pointer has left, so the label has something to fade out
+    // with. See the crosshair rules in the stylesheet.
+    let last = Memo::new(move |prev: Option<&Option<(f64, String)>>| {
+        cursor.get().or_else(|| prev.cloned().flatten())
+    });
+
     view! {
-        <div class="chart-foot">
+        <div class="chart-foot" class:cursor=move || cursor.get().is_some()>
             {labels
                 .into_iter()
                 .map(|(at, label)| {
@@ -72,6 +96,13 @@ pub fn ChartFoot(labels: Vec<(f64, String)>) -> impl IntoView {
                     }
                 })
                 .collect_view()}
+
+            <span
+                class="cursor-val"
+                style=move || last.get().map(|(at, _)| format!("left:{:.3}%", at * 100.0))
+            >
+                {move || last.get().map(|(_, label)| label)}
+            </span>
         </div>
     }
 }

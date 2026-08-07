@@ -12,14 +12,25 @@ const VOLUME_H: f64 = 100.0;
 ///
 /// `layout` should be the one the price chart above was drawn with, so that
 /// each bar sits under its point and the closed hours line up.
+///
+/// `hover` is the price chart's crosshair, carried on down here so the line
+/// runs through both charts.
 #[component]
 pub fn VolumeChart(
     data: ChartData,
     layout: Layout,
     #[prop(into, default = String::from("Volume"))] label: String,
+    #[prop(optional)] hover: Option<RwSignal<Option<usize>>>,
 ) -> impl IntoView {
     let max = data.range_price().end.max(f64::MIN_POSITIVE);
     let width = (layout.slot() * math::VIEW_W * 0.62).max(0.5);
+
+    let hover = hover.unwrap_or_else(|| RwSignal::new(None));
+    let xs = StoredValue::new(
+        (0..data.len())
+            .map(|i| layout.fraction(i) * 100.0)
+            .collect::<Vec<_>>(),
+    );
 
     let bars = data
         .iter()
@@ -51,6 +62,14 @@ pub fn VolumeChart(
             </svg>
 
             <ClosedBands layout=layout />
+
+            <div class="cursor-layer" aria-hidden="true">
+                {move || {
+                    let x = hover.get().and_then(|i| xs.with_value(|xs| xs.get(i).copied()))?;
+
+                    Some(view! { <span class="cursor-line" style=format!("left:{x:.3}%") /> })
+                }}
+            </div>
 
             <div class="y-axis">
                 <span style="top:8%">{label}</span>
