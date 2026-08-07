@@ -22,9 +22,12 @@
 
 /* Price chart — gridlines paint first, then the dotted fill, then the line. */
 
-.chart-wrap { position: relative; padding-right: 66px; margin-top: 26px; }
+.chart-wrap { position: relative; padding-right: 66px; margin-top: 26px; cursor: crosshair; }
 .chart { width: 100%; height: 48vh; min-height: 300px; display: block; position: relative; }
-.chart-grid { position: absolute; inset: 0 66px 0 0; }
+/* The gridlines go with the ticks that name them: under the crosshair only
+   the one price is being read, and unlabelled lines say nothing. */
+.chart-grid { position: absolute; inset: 0 66px 0 0; transition: opacity 0.14s ease; }
+.chart-grid.cursor { opacity: 0; }
 
 /* A CSS dot grid clipped to the price curve, so the dots stay round however
    the chart is stretched. --chart-tone follows the series color. */
@@ -64,12 +67,45 @@
 }
 .closed-band:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* Crosshair: a line down the chart and a dot where it meets the curve. Sits
+   over everything, and takes no pointer events — the chart itself tracks the
+   pointer, so the bands underneath keep their own hover. */
+.cursor-layer { position: absolute; inset: 0 66px 0 0; pointer-events: none; }
+.cursor-line {
+  position: absolute; top: 0; bottom: 0; width: 1px;
+  transform: translateX(-0.5px);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--text-faint) 60%, transparent) 0 3px,
+    transparent 3px 7px);
+}
+.cursor-dot {
+  position: absolute; width: 8px; height: 8px; border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--chart-tone, var(--up));
+  box-shadow: 0 0 0 3px var(--bg), 0 0 9px 1px var(--chart-tone, var(--up));
+}
+
 .y-axis { position: absolute; inset: 0 0 0 auto; width: 66px; pointer-events: none; }
 .y-axis span {
   position: absolute; right: 0; transform: translateY(-50%);
   font-size: 11px; color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
+
+/* While the crosshair is up, both axes say where it is and nothing else. It
+   reads as the same axis moved, so it is lettered like the rest of it, and the
+   two cross-fade rather than cutting.
+
+   The cursor value stays mounted, holding the last point it read, so that it
+   has something to fade out. */
+.y-axis span, .chart-foot span { transition: opacity 0.14s ease; }
+.y-axis .cursor-val, .chart-foot .cursor-val {
+  opacity: 0;
+  color: var(--text-faint); font-weight: inherit;
+}
+.y-axis.cursor span, .chart-foot.cursor span { opacity: 0; }
+.y-axis.cursor .cursor-val, .chart-foot.cursor .cursor-val { opacity: 1; }
 
 .volume-wrap { position: relative; padding-right: 66px; margin-top: 6px; }
 .volume { width: 100%; height: 86px; display: block; }
