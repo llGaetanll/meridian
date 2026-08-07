@@ -47,7 +47,9 @@ impl GcRequest for GcRequestCoinData<'_> {
         let GcRequestCoinData { id, vs, start, end } = self;
         let (start, end) = (start.timestamp(), end.timestamp());
 
-        let url = format!("https://api.coingecko.com/api/v3/coins/{id}/market_chart/range?vs_currency={vs}&from={start}&to={end}");
+        let url = format!(
+            "https://api.coingecko.com/api/v3/coins/{id}/market_chart/range?vs_currency={vs}&from={start}&to={end}"
+        );
 
         url.parse().unwrap() // won't fail
     }
