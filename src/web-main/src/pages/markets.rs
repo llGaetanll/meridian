@@ -13,6 +13,7 @@ use web_components::AssetTradesTable;
 use web_components::ChartFoot;
 use web_components::HeldIn;
 use web_components::KeyStats;
+use web_components::Layout;
 use web_components::PositionSummary;
 use web_components::PriceChart;
 use web_components::QuoteList;
@@ -129,6 +130,10 @@ pub fn MarketsPage() -> impl IntoView {
 }
 
 /// The price chart, its volume bars, and the shared time axis.
+///
+/// One layout for all three: it is what places the points along the x axis,
+/// and passing the same one down is what keeps a bar under its point and the
+/// closed hours in the same place on both charts.
 #[component]
 fn SessionCharts(quote: AssetQuote) -> impl IntoView {
     let tone = match quote.open.or(quote.previous_close) {
@@ -136,11 +141,12 @@ fn SessionCharts(quote: AssetQuote) -> impl IntoView {
         None => Tone::Neutral,
     };
 
-    let labels = axis_labels(&quote.prices, 6, quote.utc_offset);
+    let layout = Layout::new(&quote.prices, quote.utc_offset);
+    let labels = axis_labels(&quote.prices, &layout, 6, quote.utc_offset);
 
     view! {
-        <PriceChart data=quote.prices tone=tone />
-        <VolumeChart data=quote.volume />
+        <PriceChart data=quote.prices layout=layout.clone() tone=tone />
+        <VolumeChart data=quote.volume layout=layout />
         <ChartFoot labels=labels />
     }
 }
@@ -148,7 +154,7 @@ fn SessionCharts(quote: AssetQuote) -> impl IntoView {
 /// The full history strip, with the stretch on show highlighted.
 #[component]
 fn HistoryStrip(history: AssetQuote, shown: Option<Range<Timestamp>>) -> impl IntoView {
-    let labels = axis_labels(&history.prices, 7, history.utc_offset);
+    let labels = range_labels(&history.prices, 7, history.utc_offset);
     let window = window_of(&history.prices, shown);
 
     view! {
@@ -162,32 +168,58 @@ fn ChartPlaceholder(#[prop(into)] message: String) -> impl IntoView {
     view! { <div class="chart-placeholder">{message}</div> }
 }
 
-/// Evenly spaced time labels, at whatever precision the span calls for. The
-/// span is what decides, not the interval: a month of half-hourly points still
-/// wants dates on the axis, not clock times.
-fn axis_labels(data: &ChartData, count: usize, utc_offset: i64) -> Vec<String> {
-    let span = {
-        let rng = data.range_time();
-        rng.end.saturating_sub(rng.start)
-    };
+/// Evenly spaced time labels, each with where along the width it belongs.
+/// Placed by the layout rather than spread out on their own, so a label still
+/// sits under its point once the closed hours have taken their share.
+fn axis_labels(
+    data: &ChartData,
+    layout: &Layout,
+    count: usize,
+    utc_offset: i64,
+) -> Vec<(f64, String)> {
+    let format = label_format(data);
+
+    math::axis_stops_at(data.len(), count)
+        .into_iter()
+        .map(|at| {
+            let ts = data.timestamps()[at];
+            (layout.fraction(at), format(local(ts, utc_offset)))
+        })
+        .collect()
+}
+
+/// The same labels for the history strip, which spreads them itself.
+fn range_labels(data: &ChartData, count: usize, utc_offset: i64) -> Vec<String> {
+    let format = label_format(data);
 
     math::axis_stops(data, count)
         .into_iter()
-        // Read every timestamp where the asset trades, so days turn over at
-        // the exchange's midnight rather than UTC's.
-        .map(|ts| ts.saturating_add_signed(utc_offset))
-        .map(|ts| {
-            if span <= 2 * DAY {
-                fmt_time_of_day(ts)
-            } else if span <= 90 * DAY {
-                fmt_month_day(ts)
-            } else if span <= 3 * YEAR {
-                fmt_month_year(ts)
-            } else {
-                fmt_year(ts)
-            }
-        })
+        .map(|ts| format(local(ts, utc_offset)))
         .collect()
+}
+
+/// Read a timestamp where the asset trades, so days turn over at the
+/// exchange's midnight rather than UTC's.
+fn local(ts: Timestamp, utc_offset: i64) -> Timestamp {
+    ts.saturating_add_signed(utc_offset)
+}
+
+/// How precisely to say when, at whatever the span calls for. The span is what
+/// decides, not the interval: a month of half-hourly points still wants dates
+/// on the axis, not clock times.
+fn label_format(data: &ChartData) -> fn(Timestamp) -> String {
+    let rng = data.range_time();
+    let span = rng.end.saturating_sub(rng.start);
+
+    if span <= 2 * DAY {
+        fmt_time_of_day
+    } else if span <= 90 * DAY {
+        fmt_month_day
+    } else if span <= 3 * YEAR {
+        fmt_month_year
+    } else {
+        fmt_year
+    }
 }
 
 /// Where `shown` falls inside the whole history, as fractions of its width.

@@ -1,20 +1,25 @@
 use api_common::ChartData;
 use leptos::prelude::*;
 
+use super::ClosedBands;
+use super::Layout;
 use super::math;
 
 const VOLUME_H: f64 = 100.0;
 
 /// Traded volume, drawn as bars under the price chart. The series reuses
 /// [`ChartData`]: the "price" of each point is that bar's volume.
+///
+/// `layout` should be the one the price chart above was drawn with, so that
+/// each bar sits under its point and the closed hours line up.
 #[component]
 pub fn VolumeChart(
     data: ChartData,
+    layout: Layout,
     #[prop(into, default = String::from("Volume"))] label: String,
 ) -> impl IntoView {
     let max = data.range_price().end.max(f64::MIN_POSITIVE);
-    let count = data.len();
-    let width = (math::VIEW_W / count.max(1) as f64 * 0.62).max(0.5);
+    let width = (layout.slot() * math::VIEW_W * 0.62).max(0.5);
 
     let bars = data
         .iter()
@@ -22,7 +27,7 @@ pub fn VolumeChart(
         .map(|(i, (_, volume))| {
             let height = (volume / max).clamp(0.0, 1.0) * VOLUME_H;
             // Centred on the same slot the price chart draws point `i` at.
-            let x = math::slot_to_x(i, count, math::VIEW_W) - width / 2.0;
+            let x = layout.x(i, math::VIEW_W) - width / 2.0;
 
             view! {
                 <rect
@@ -44,6 +49,9 @@ pub fn VolumeChart(
             >
                 {bars}
             </svg>
+
+            <ClosedBands layout=layout />
+
             <div class="y-axis">
                 <span style="top:8%">{label}</span>
             </div>

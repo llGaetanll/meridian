@@ -37,6 +37,33 @@
   mask-image: linear-gradient(to bottom, #000 25%, transparent 96%);
 }
 
+/* Hours the market was shut: hatched, and named on hover. Laid over the plot,
+   which the price line never crosses — each session is drawn on its own. */
+.band-layer { position: absolute; inset: 0 66px 0 0; pointer-events: none; }
+.closed-band {
+  position: absolute; top: 0; bottom: 0;
+  pointer-events: auto; cursor: help;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--border-strong) 0 2.5px,
+    transparent 2.5px 9px);
+}
+.closed-band:hover {
+  background-color: color-mix(in srgb, var(--bg-raised) 55%, transparent);
+}
+.closed-band::after {
+  content: attr(data-label);
+  position: absolute; left: 50%; top: 14px;
+  transform: translateX(-50%) translateY(-4px);
+  white-space: nowrap; pointer-events: none;
+  padding: 7px 11px; border-radius: var(--r-sm);
+  background: var(--bg-input);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  font-size: 12px; font-weight: 500; color: var(--text);
+  opacity: 0; transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.closed-band:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+
 .y-axis { position: absolute; inset: 0 0 0 auto; width: 66px; pointer-events: none; }
 .y-axis span {
   position: absolute; right: 0; transform: translateY(-50%);
