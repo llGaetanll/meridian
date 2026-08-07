@@ -181,3 +181,11 @@
 .mini-row .nm { font-size: 11px; color: var(--text-faint); }
 .mini-quote { text-align: right; }
 .mini-change { font-size: 11px; }
+
+.chart-placeholder {
+  display: grid; place-items: center;
+  height: 48vh; min-height: 300px;
+  margin: 26px 66px 0 0;
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  color: var(--text-faint); font-size: 13px;
+}

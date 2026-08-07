@@ -1,4 +1,12 @@
 //! Scaling and tick helpers shared by every chart.
+//!
+//! The x axis is *ordinal*: points are spread evenly across the width, one
+//! slot each, rather than placed by timestamp. Markets are shut most of the
+//! time, and a time-proportional axis spends that width on nothing — an
+//! overnight gap is 17 hours against a 6.5 hour session, so the trading gets
+//! squeezed into narrow bands joined by long empty diagonals. Plotting by slot
+//! drops the closed hours, which is how price charts are read everywhere, and
+//! it keeps the price line aligned with the volume bars under it.
 
 use std::ops::Range;
 
@@ -13,7 +21,9 @@ pub const VIEW_W: f64 = 800.0;
 /// Height of the SVG user space for price charts.
 pub const VIEW_H: f64 = 280.0;
 
-const TARGET_TICKS: usize = 5;
+/// Aimed at, not guaranteed: the step is rounded to a readable number after
+/// dividing by this, which usually costs a tick or two.
+const TARGET_TICKS: usize = 6;
 
 /// Maps a price onto `0..height`, flipped so that higher prices sit higher.
 pub fn px_to_y(px: Price, rng: &Range<Price>, height: f64) -> f64 {
@@ -26,15 +36,13 @@ pub fn px_to_y(px: Price, rng: &Range<Price>, height: f64) -> f64 {
     (1.0 - (px - rng.start) / span) * height
 }
 
-/// Maps a timestamp onto `0..width`.
-pub fn ts_to_x(ts: Timestamp, rng: &Range<Timestamp>, width: f64) -> f64 {
-    let span = (rng.end - rng.start) as f64;
-
-    if span <= 0.0 {
+/// Maps the `i`th of `count` points onto `0..width`.
+pub fn slot_to_x(i: usize, count: usize, width: f64) -> f64 {
+    if count <= 1 {
         return 0.0;
     }
 
-    ((ts - rng.start) as f64 / span) * width
+    i as f64 / (count - 1) as f64 * width
 }
 
 /// The price range padded a little, so the line never touches the frame.
@@ -51,18 +59,7 @@ pub fn padded_price_range(data: &ChartData, pad: f64) -> Range<Price> {
 
 /// `x,y x,y …` for an SVG `points` attribute.
 pub fn polyline_points(data: &ChartData, px_rng: &Range<Price>, width: f64, height: f64) -> String {
-    let ts_rng = data.range_time();
-
-    data.iter()
-        .map(|(ts, px)| {
-            format!(
-                "{:.1},{:.1}",
-                ts_to_x(ts, &ts_rng, width),
-                px_to_y(px, px_rng, height)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+    points(data, px_rng, width, height, 1)
 }
 
 /// The same curve closed down to the baseline, for area fills.
@@ -77,30 +74,39 @@ pub fn area_points(data: &ChartData, px_rng: &Range<Price>, width: f64, height: 
 }
 
 /// The curve in `objectBoundingBox` units (`0..1`), for a `clipPath` that has
-/// to survive being stretched by CSS.
+/// to survive being stretched by CSS. Unit space needs the extra precision.
 pub fn clip_polygon_points(data: &ChartData, px_rng: &Range<Price>) -> String {
-    let line = polyline_points(data, px_rng, 1.0, 1.0);
+    let line = points(data, px_rng, 1.0, 1.0, 4);
 
     if line.is_empty() {
         return String::new();
     }
 
-    // The polyline helper rounds to one decimal, which is far too coarse in
-    // unit space, so re-render at full precision here.
-    let ts_rng = data.range_time();
-    let line = data
-        .iter()
-        .map(|(ts, px)| {
+    format!("0,1 {line} 1,1")
+}
+
+fn points(
+    data: &ChartData,
+    px_rng: &Range<Price>,
+    width: f64,
+    height: f64,
+    decimals: usize,
+) -> String {
+    let count = data.len();
+
+    data.iter()
+        .enumerate()
+        .map(|(i, (_, px))| {
             format!(
-                "{:.4},{:.4}",
-                ts_to_x(ts, &ts_rng, 1.0),
-                px_to_y(px, px_rng, 1.0)
+                "{:.*},{:.*}",
+                decimals,
+                slot_to_x(i, count, width),
+                decimals,
+                px_to_y(px, px_rng, height)
             )
         })
         .collect::<Vec<_>>()
-        .join(" ");
-
-    format!("0,1 {line} 1,1")
+        .join(" ")
 }
 
 /// Rounded tick values covering `rng`, at most one per ~`TARGET_TICKS`.
@@ -137,23 +143,104 @@ pub fn nice_ticks(rng: &Range<Price>) -> Vec<Price> {
     ticks
 }
 
-/// `count` evenly spaced timestamps across the data, for the x axis.
-pub fn time_axis(data: &ChartData, count: usize) -> Vec<Timestamp> {
-    let rng = data.range_time();
+/// The timestamps sitting under `count` evenly spaced points on the x axis.
+///
+/// Sampled by slot, not by clock, so a label lands exactly where its point is
+/// drawn — the two only agree while the market is open.
+pub fn axis_stops(data: &ChartData, count: usize) -> Vec<Timestamp> {
+    let timestamps = data.timestamps();
 
-    if data.is_empty() || count == 0 || rng.end < rng.start {
+    if timestamps.is_empty() || count == 0 {
         return Vec::new();
     }
 
-    let span = rng.end - rng.start;
+    let last = timestamps.len() - 1;
 
     (0..count)
         .map(|i| {
-            if count == 1 {
-                rng.start
+            let at = if count == 1 {
+                0
             } else {
-                rng.start + span * i as u64 / (count - 1) as u64
-            }
+                (last * i).div_ceil(count - 1)
+            };
+
+            timestamps[at.min(last)]
         })
         .collect()
+}
+
+/// Where `ts` falls along the x axis, as a fraction of the width.
+pub fn slot_fraction(data: &ChartData, ts: Timestamp) -> f64 {
+    let timestamps = data.timestamps();
+
+    if timestamps.len() <= 1 {
+        return 0.0;
+    }
+
+    let last = timestamps.len() - 1;
+    let at = timestamps.partition_point(|&t| t < ts).min(last);
+
+    at as f64 / last as f64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Three sessions of two points each, with a long night between them —
+    /// the shape that made a time-proportional axis unreadable.
+    fn gapped() -> ChartData {
+        const DAY: Timestamp = 86_400;
+
+        [
+            (0, 10.0),
+            (3_600, 11.0),
+            (DAY, 12.0),
+            (DAY + 3_600, 13.0),
+            (2 * DAY, 14.0),
+            (2 * DAY + 3_600, 15.0),
+        ]
+        .into_iter()
+        .collect()
+    }
+
+    #[test]
+    fn spreads_points_evenly_whatever_the_gaps() {
+        let data = gapped();
+        let rng = 10.0..15.0;
+
+        let xs = polyline_points(&data, &rng, 100.0, 10.0)
+            .split(' ')
+            .map(|point| point.split_once(',').unwrap().0.parse::<f64>().unwrap())
+            .collect::<Vec<_>>();
+
+        assert_eq!(xs, vec![0.0, 20.0, 40.0, 60.0, 80.0, 100.0]);
+    }
+
+    #[test]
+    fn labels_land_on_points() {
+        let data = gapped();
+        let stops = axis_stops(&data, 3);
+
+        // First, middle and last point — not first, midnight and last.
+        assert_eq!(stops, vec![0, 86_400 + 3_600, 2 * 86_400 + 3_600]);
+    }
+
+    #[test]
+    fn locates_a_timestamp_by_slot() {
+        let data = gapped();
+
+        assert_eq!(slot_fraction(&data, 0), 0.0);
+        assert_eq!(slot_fraction(&data, 86_400), 0.4);
+        assert_eq!(slot_fraction(&data, 2 * 86_400 + 3_600), 1.0);
+        // Anything past the end pins to the end.
+        assert_eq!(slot_fraction(&data, 10 * 86_400), 1.0);
+    }
+
+    #[test]
+    fn ticks_cover_the_range() {
+        let ticks = nice_ticks(&(101.0..149.0));
+
+        assert_eq!(ticks, vec![110.0, 120.0, 130.0, 140.0]);
+    }
 }

@@ -7,10 +7,11 @@ edition = "2024"
 leptos = { workspace = true }
 leptos_meta = { workspace = true }
 api-common = { path = "../api-common" }
+src-yahoo = { path = "../src-yahoo" }
 api-ledger = { path = "../api-ledger" }
 web-ui = { path = "../web-ui" }
 web-components = { path = "../web-components" }
 
 [dependencies.web-sys]
 version = "0.3"
-features = ["DomRect"]
+features = ["DomRect", "Window", "Location"]

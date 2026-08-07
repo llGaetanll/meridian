@@ -126,6 +126,12 @@ pub fn fmt_date(ts: Timestamp) -> String {
     format!("{} {:02} {}", MONTHS[m as usize - 1], d, y)
 }
 
+/// `"Aug 02"`
+pub fn fmt_month_day(ts: Timestamp) -> String {
+    let (_, m, d) = civil_from_ts(ts);
+    format!("{} {:02}", MONTHS[m as usize - 1], d)
+}
+
 /// `"Aug 2026"`
 pub fn fmt_month_year(ts: Timestamp) -> String {
     let (y, m, _) = civil_from_ts(ts);

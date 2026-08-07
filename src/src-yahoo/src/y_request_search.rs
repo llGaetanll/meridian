@@ -1,5 +1,21 @@
 use crate::YRequest;
 
+/// Minimal percent-encoding for a query value.
+fn urlencoding(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| match c {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
+            c => c
+                .to_string()
+                .as_bytes()
+                .iter()
+                .map(|b| format!("%{b:02X}"))
+                .collect(),
+        })
+        .collect()
+}
+
 pub struct YRequestSearch<'a> {
     query: &'a str,
 }
@@ -12,11 +28,19 @@ impl<'a> YRequestSearch<'a> {
 }
 
 impl<'a> YRequest for YRequestSearch<'a> {
-    fn url(&self) -> reqwest::Url {
-        reqwest::Url::parse_with_params(
-            "https://query2.finance.yahoo.com/v1/finance/search",
-            &[("q", self.query)],
-        )
-        .unwrap() // won't fail
+    fn path(&self) -> String {
+        format!("v1/finance/search?q={}", urlencoding(self.query))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escapes_the_query() {
+        let req = YRequestSearch::new("s&p 500");
+
+        assert_eq!(req.path(), "v1/finance/search?q=s%26p%20500");
     }
 }

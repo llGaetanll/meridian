@@ -46,8 +46,8 @@ impl<'a> YRequestChart<'a> {
 }
 
 impl<'a> YRequest for YRequestChart<'a> {
-    fn url(&self) -> reqwest::Url {
-        let url = match self {
+    fn path(&self) -> String {
+        match self {
             YRequestChart::Period {
                 symbol,
                 start,
@@ -55,8 +55,11 @@ impl<'a> YRequest for YRequestChart<'a> {
                 interval,
             } => {
                 format!(
-                    "https://query1.finance.yahoo.com/v8/finance/chart/{}?period1={}&period2={}&interval={}",
-                    symbol, start.timestamp(), end.timestamp(), interval
+                    "v8/finance/chart/{}?period1={}&period2={}&interval={}",
+                    symbol,
+                    start.timestamp(),
+                    end.timestamp(),
+                    interval
                 )
             }
             YRequestChart::Range {
@@ -65,12 +68,36 @@ impl<'a> YRequest for YRequestChart<'a> {
                 interval,
             } => {
                 format!(
-                    "https://query1.finance.yahoo.com/v8/finance/chart/{}?range={}&interval={}",
+                    "v8/finance/chart/{}?range={}&interval={}",
                     symbol, range, interval
                 )
             }
-        };
+        }
+    }
+}
 
-        url.parse().unwrap() // won't fail
+#[cfg(test)]
+mod tests {
+    use chrono::TimeZone;
+
+    use super::*;
+
+    #[test]
+    fn builds_a_range_path() {
+        let req = YRequestChart::range("SPY", YRange::DayOne, YInterval::MinuteOne);
+
+        assert_eq!(req.path(), "v8/finance/chart/SPY?range=1d&interval=1m");
+    }
+
+    #[test]
+    fn builds_a_period_path() {
+        let start = Utc.timestamp_opt(1_700_000_000, 0).unwrap();
+        let end = Utc.timestamp_opt(1_700_086_400, 0).unwrap();
+        let req = YRequestChart::period("BTC-USD", start, end, YInterval::DayOne);
+
+        assert_eq!(
+            req.path(),
+            "v8/finance/chart/BTC-USD?period1=1700000000&period2=1700086400&interval=1d"
+        );
     }
 }

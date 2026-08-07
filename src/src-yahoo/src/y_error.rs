@@ -8,6 +8,9 @@ pub enum YError {
 
     // Rate limiting
     TooManyRequests,
+
+    // Malformed base url or request path
+    InvalidUrl(String),
 }
 
 impl From<reqwest::Error> for YError {
@@ -28,6 +31,7 @@ impl std::fmt::Display for YError {
             YError::ReqwestError(e) => write!(f, "Network error: {}", e),
             YError::JsonError(e) => write!(f, "JSON parsing error: {}", e),
             YError::TooManyRequests => write!(f, "Rate limit exceeded"),
+            YError::InvalidUrl(e) => write!(f, "Invalid url: {}", e),
         }
     }
 }
@@ -37,7 +41,7 @@ impl std::error::Error for YError {
         match self {
             YError::ReqwestError(e) => Some(e),
             YError::JsonError(e) => Some(e),
-            YError::TooManyRequests => None,
+            YError::TooManyRequests | YError::InvalidUrl(_) => None,
         }
     }
 }
