@@ -8,7 +8,9 @@ api-trace = { path = "../api-trace" }
 tracing = { workspace = true }
 leptos = { workspace = true }
 leptos_meta = { workspace = true }
+api-cache = { path = "../api-cache" }
 api-common = { path = "../api-common" }
+chrono = { workspace = true }
 src-yahoo = { path = "../src-yahoo" }
 api-ledger = { path = "../api-ledger" }
 web-ui = { path = "../web-ui" }

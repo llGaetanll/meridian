@@ -1,25 +1,27 @@
-//! Fetching prices from Yahoo Finance and mapping them onto the app's types.
+//! Yahoo Finance as something the cache can pull bars from.
 //!
 //! Nothing here is reactive: these are plain async functions over plain data,
 //! so they can be called from any front-end, a test, or a background job.
 
-use api_common::ChartData;
+use std::cell::RefCell;
+use std::ops::Range;
+use std::rc::Rc;
+
+use api_cache::Bars;
+use api_cache::Fetched;
+use api_cache::Interval;
+use api_cache::Source;
 use api_common::Price;
+use api_common::Timestamp;
 use api_common::format::fmt_compact;
 use api_common::format::fmt_money;
+use chrono::DateTime;
+use chrono::Utc;
 use src_yahoo::YInterval;
 use src_yahoo::YQuoteBlock;
-use src_yahoo::YRange;
 use src_yahoo::YRequestChart;
 use src_yahoo::YResponseChart;
 use src_yahoo::YahooClient;
-
-/// How many points a chart is drawn from, whatever stretch of time it covers.
-///
-/// Roughly one per pixel of chart width on a desktop screen: past that the
-/// extra points fall inside the same pixel and only cost bytes. Holding it
-/// steady across ranges is what makes a month look as detailed as a day.
-pub const CHART_RESOLUTION: usize = 900;
 
 /// How much history to ask for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +33,8 @@ pub enum ChartRange {
     FiveYears,
     Max,
 }
+
+const DAY: u64 = 86_400;
 
 impl ChartRange {
     pub const ALL: [Self; 6] = [
@@ -53,98 +57,253 @@ impl ChartRange {
         }
     }
 
-    fn range(&self) -> YRange {
-        match self {
-            Self::Day => YRange::DayOne,
-            Self::Week => YRange::DayFive,
-            Self::Month => YRange::MonthOne,
-            Self::Year => YRange::YearOne,
-            Self::FiveYears => YRange::YearFive,
-            Self::Max => YRange::Max,
-        }
+    /// The stretch of time the range covers, ending now.
+    ///
+    /// Windows are absolute rather than relative — "the last month" is a
+    /// different month every day, and two of them cannot be merged, while
+    /// two spans of seconds always can.
+    pub fn window(&self, now: Timestamp) -> Range<Timestamp> {
+        // It ends at the last bar to have closed rather than at this instant.
+        // The bar still forming is revised until it closes, so asking for it
+        // is asking for something that cannot be settled — and a window that
+        // can never be settled is a window fetched again every time it is
+        // looked at, which is the one thing worth avoiding here. What it costs
+        // is a chart that stops a bar short of now: a minute on a day, a week
+        // on thirty years.
+        let end = self.interval().last_closed(now);
+
+        let back = match self {
+            Self::Day => DAY,
+            Self::Week => 7 * DAY,
+            Self::Month => 30 * DAY,
+            Self::Year => 365 * DAY,
+            Self::FiveYears => 5 * 365 * DAY,
+            // Yahoo clamps to the first trade it has, whatever we ask for.
+            Self::Max => return 0..end,
+        };
+
+        now.saturating_sub(back)..end
     }
 
-    /// The finest interval that covers the range without overshooting
-    /// [`CHART_RESOLUTION`] so far that we are paying for points we then throw
-    /// away. Anything still over the target gets resampled after it arrives.
-    ///
-    /// Two ceilings are not ours to raise: Yahoo stops serving one-minute data
-    /// past 7 days and other intraday intervals past 60, and a single session
-    /// only holds ~390 minutes, so 1D is as detailed as the market itself.
-    fn interval(&self) -> YInterval {
+    /// The finest interval that covers the range without asking for points so
+    /// far past what a chart can show that we are only paying for bytes.
+    pub fn interval(&self) -> Interval {
         match self {
-            Self::Day => YInterval::MinuteOne,
-            Self::Week => YInterval::MinuteTwo,
-            Self::Month => YInterval::MinuteFive,
-            Self::Year => YInterval::HourOne,
-            Self::FiveYears => YInterval::DayOne,
-            // Yahoo hands back ~400 points for the full history whatever we ask.
-            Self::Max => YInterval::WeekOne,
+            Self::Day => Interval::Min1,
+            Self::Week => Interval::Min2,
+            Self::Month => Interval::Min5,
+            Self::Year => Interval::Hour1,
+            Self::FiveYears => Interval::Day1,
+            Self::Max => Interval::Week1,
         }
     }
 }
 
-/// One asset's price history and the facts that go with it.
+/// What Yahoo says about the asset itself, as opposed to its price history.
+///
+/// This ages in seconds where a closed bar never ages at all, which is why the
+/// cache keeps it apart from the bars and replaces it whole on every fetch.
 #[derive(Debug, Clone)]
-pub struct AssetQuote {
+pub struct AssetInfo {
     pub symbol: String,
     pub name: String,
     /// Classification line for the header, e.g. "ETF · USD · NYSEArca".
     pub details: String,
-    pub price: Price,
-    /// The first point of the series — the open for an intraday range.
-    pub open: Option<Price>,
+    /// The live price, when the market is open enough to have one.
+    pub price: Option<Price>,
     pub previous_close: Option<Price>,
-    pub prices: ChartData,
-    pub volume: ChartData,
     /// Facts as the source states them, ready to list.
     pub key_stats: Vec<(String, String)>,
     /// Seconds to add to a UTC timestamp to read it in exchange local time.
     pub utc_offset: i64,
+    /// The regular session in progress, or the last one to have run.
+    pub session: Option<Range<Timestamp>>,
 }
 
-pub async fn fetch_quote(symbol: &str, range: ChartRange) -> Result<AssetQuote, String> {
-    let client = client()?;
-
-    let request = YRequestChart::range(symbol, range.range(), range.interval());
-
-    let response: YResponseChart = client
-        .send_request(&request)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let block = response
-        .chart
-        .result
-        .into_iter()
-        .next()
-        .ok_or_else(|| format!("No data for {symbol}"))?;
-
-    Ok(quote_from(block))
+pub struct YahooSource {
+    /// Built on first use and kept: the browser build has to read its own
+    /// origin to know where to send requests, which is not something a
+    /// constructor should be able to fail at.
+    client: RefCell<Option<Rc<YahooClient>>>,
 }
 
-/// Yahoo is reachable directly from native builds. In the browser it is not —
-/// it sends no CORS headers — so requests go to this app's own origin, which
-/// forwards them (see the dev server proxy in `Trunk.toml`).
-fn client() -> Result<YahooClient, String> {
-    #[cfg(target_arch = "wasm32")]
-    let client = {
-        let origin = web_sys::window()
-            .ok_or("No window")?
-            .location()
-            .origin()
-            .map_err(|_| "No origin")?;
+impl YahooSource {
+    pub fn new() -> Self {
+        Self {
+            client: RefCell::new(None),
+        }
+    }
 
-        YahooClient::with_base_url(&format!("{origin}/"))
+    /// Yahoo is reachable directly from native builds. In the browser it is
+    /// not — it sends no CORS headers — so requests go to this app's own
+    /// origin, which forwards them (see the dev server proxy in `Trunk.toml`).
+    fn client(&self) -> Result<Rc<YahooClient>, String> {
+        if let Some(client) = self.client.borrow().as_ref() {
+            return Ok(client.clone());
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        let client = {
+            let origin = web_sys::window()
+                .ok_or("No window")?
+                .location()
+                .origin()
+                .map_err(|_| "No origin")?;
+
+            YahooClient::with_base_url(&format!("{origin}/"))
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let client = YahooClient::new();
+
+        let client = Rc::new(client.map_err(|e| e.to_string())?);
+        *self.client.borrow_mut() = Some(client.clone());
+
+        Ok(client)
+    }
+}
+
+impl Source for YahooSource {
+    type Snapshot = AssetInfo;
+
+    async fn fetch(
+        &self,
+        symbol: &str,
+        interval: Interval,
+        window: Range<Timestamp>,
+    ) -> Result<Fetched<AssetInfo>, String> {
+        let now = Utc::now().timestamp().max(0) as Timestamp;
+
+        // Bars settle when they close and are revised until they do, so the
+        // one still forming is left outside coverage and fetched again next
+        // time. Everything behind it is fetched once and never again.
+        let covered = window.start..window.end.min(interval.last_closed(now));
+
+        let asked = servable(&window, interval, now);
+
+        // Nothing left to ask for: Yahoo will not serve bars this fine this
+        // far back, and never will again. Recording the window as covered
+        // says so, rather than asking every time it is looked at.
+        let Some(asked) = asked else {
+            return Ok(Fetched {
+                interval,
+                covered,
+                bars: Bars::default(),
+                snapshot: None,
+            });
+        };
+
+        let request = YRequestChart::period(
+            symbol,
+            stamp(asked.start),
+            stamp(asked.end),
+            yahoo_interval(interval),
+        );
+
+        let response: YResponseChart = self
+            .client()?
+            .send_request(&request)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if let Some(error) = response.chart.error {
+            return Err(error.to_string());
+        }
+
+        let block = response
+            .chart
+            .result
+            .unwrap_or_default()
+            .into_iter()
+            .next()
+            .ok_or_else(|| format!("No data for {symbol}"))?;
+
+        Ok(Fetched {
+            // Yahoo states the granularity it served, which is not always the
+            // one asked for.
+            interval: served_interval(&block).unwrap_or(interval),
+            covered,
+            bars: bars(&block),
+            snapshot: Some(info(&block)),
+        })
+    }
+}
+
+/// The part of `window` Yahoo will still serve at this interval, if any.
+///
+/// Intraday bars fall off the back of the API as they age, at a different age
+/// per interval. Asking for them anyway is answered with an error rather than
+/// with what is left, so the ask is trimmed to what is left.
+fn servable(
+    window: &Range<Timestamp>,
+    interval: Interval,
+    now: Timestamp,
+) -> Option<Range<Timestamp>> {
+    let max_age = match interval {
+        Interval::Min1 => 7 * DAY,
+        Interval::Hour1 => 730 * DAY,
+        Interval::Day1 | Interval::Week1 => return Some(window.clone()),
+        _ => 60 * DAY,
     };
 
-    #[cfg(not(target_arch = "wasm32"))]
-    let client = YahooClient::new();
+    // A bar of margin: the cut-off moves while the request is in flight.
+    let oldest = now.saturating_sub(max_age) + interval.seconds();
+    let asked = window.start.max(oldest)..window.end;
 
-    client.map_err(|e| e.to_string())
+    (asked.start < asked.end).then_some(asked)
 }
 
-fn quote_from(block: YQuoteBlock) -> AssetQuote {
+fn stamp(ts: Timestamp) -> DateTime<Utc> {
+    DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()
+}
+
+fn yahoo_interval(interval: Interval) -> YInterval {
+    match interval {
+        Interval::Min1 => YInterval::MinuteOne,
+        Interval::Min2 => YInterval::MinuteTwo,
+        Interval::Min5 => YInterval::MinuteFive,
+        Interval::Min15 => YInterval::MinuteFifteen,
+        Interval::Min30 => YInterval::MinuteThirty,
+        Interval::Hour1 => YInterval::HourOne,
+        Interval::Day1 => YInterval::DayOne,
+        Interval::Week1 => YInterval::WeekOne,
+    }
+}
+
+/// What Yahoo says it served, read back off the response.
+fn served_interval(block: &YQuoteBlock) -> Option<Interval> {
+    let granularity = block.meta.data_granularity.as_deref()?;
+
+    Interval::ALL
+        .into_iter()
+        .find(|&interval| yahoo_interval(interval).to_string() == granularity)
+}
+
+/// The bars of a quote block, dropping the ones Yahoo has no close for —
+/// halted minutes and the like. A bar with no reported volume counts as zero
+/// rather than shifting every bar after it.
+fn bars(block: &YQuoteBlock) -> Bars {
+    let mut bars = Bars::default();
+
+    let Some(quote) = block.indicators.quote.first() else {
+        return bars;
+    };
+
+    for (i, &ts) in block.timestamp.iter().enumerate() {
+        let Some(Some(close)) = quote.close.get(i) else {
+            continue;
+        };
+
+        let open = quote.open.get(i).copied().flatten().unwrap_or(*close);
+        let volume = quote.volume.get(i).copied().flatten().unwrap_or(0);
+
+        bars.push(ts, open, *close, volume as Price);
+    }
+
+    bars
+}
+
+fn info(block: &YQuoteBlock) -> AssetInfo {
     let meta = &block.meta;
 
     let details = [
@@ -165,27 +324,45 @@ fn quote_from(block: YQuoteBlock) -> AssetQuote {
         .or_else(|| meta.short_name.clone())
         .unwrap_or_else(|| meta.symbol.clone());
 
-    AssetQuote {
+    let session = meta
+        .current_trading_period
+        .as_ref()
+        .and_then(|period| period.regular.as_ref())
+        .map(|regular| {
+            regular.start.timestamp().max(0) as Timestamp
+                ..regular.end.timestamp().max(0) as Timestamp
+        });
+
+    AssetInfo {
         symbol: meta.symbol.clone(),
         name,
         details,
-        price: block.last_price().unwrap_or_default(),
-        open: block.first_open(),
+        price: meta.regular_market_price,
         previous_close: meta.previous_close.or(meta.chart_previous_close),
-        key_stats: key_stats(&block),
+        key_stats: key_stats(block, first_open(block)),
         utc_offset: meta.gmtoffset.unwrap_or_default(),
-        prices: block.close_series().resample_last(CHART_RESOLUTION),
-        volume: block.volume_series().resample_sum(CHART_RESOLUTION),
+        session,
     }
+}
+
+/// The price the first bar of the block opened at.
+fn first_open(block: &YQuoteBlock) -> Option<Price> {
+    let quote = block.indicators.quote.first()?;
+
+    quote
+        .open
+        .iter()
+        .zip(quote.close.iter())
+        .find_map(|(open, close)| open.or(*close))
 }
 
 /// The facts Yahoo returns alongside a chart. Anything it leaves out is left
 /// out here too, rather than guessed at.
-fn key_stats(block: &YQuoteBlock) -> Vec<(String, String)> {
+fn key_stats(block: &YQuoteBlock, open: Option<Price>) -> Vec<(String, String)> {
     let meta = &block.meta;
     let mut stats = Vec::new();
 
-    if let Some(open) = block.first_open() {
+    if let Some(open) = open {
         stats.push(("Open", fmt_money(open)));
     }
 
@@ -217,4 +394,55 @@ fn key_stats(block: &YQuoteBlock) -> Vec<(String, String)> {
         .into_iter()
         .map(|(label, value)| (label.to_string(), value))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NOW: Timestamp = 1_786_000_000;
+
+    #[test]
+    fn windows_end_now_and_reach_back() {
+        assert_eq!(ChartRange::Day.window(NOW), NOW - DAY..NOW);
+        assert_eq!(ChartRange::Max.window(NOW), 0..NOW);
+    }
+
+    /// A window reaching past what Yahoo will serve is trimmed rather than
+    /// refused outright.
+    #[test]
+    fn trims_an_ask_to_what_is_still_served() {
+        let asked = servable(&(0..NOW), Interval::Min1, NOW).unwrap();
+
+        assert!(asked.start >= NOW - 7 * DAY);
+        assert_eq!(asked.end, NOW);
+    }
+
+    #[test]
+    fn asks_for_nothing_once_bars_are_too_old_to_serve() {
+        let window = NOW - 90 * DAY..NOW - 80 * DAY;
+
+        assert_eq!(servable(&window, Interval::Min5, NOW), None);
+    }
+
+    #[test]
+    fn daily_bars_are_served_however_far_back() {
+        assert_eq!(servable(&(0..NOW), Interval::Day1, NOW), Some(0..NOW));
+    }
+
+    /// Every interval the cache knows has to name itself the way Yahoo does,
+    /// or reading the granularity back off a response would find nothing.
+    #[test]
+    fn every_interval_maps_onto_a_yahoo_one() {
+        for interval in Interval::ALL {
+            let granularity = yahoo_interval(interval).to_string();
+
+            assert_eq!(
+                Interval::ALL
+                    .into_iter()
+                    .find(|&i| yahoo_interval(i).to_string() == granularity),
+                Some(interval)
+            );
+        }
+    }
 }
