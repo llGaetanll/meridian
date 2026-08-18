@@ -1382,6 +1382,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
+name = "phone-main"
+version = "0.1.0"
+dependencies = [
+ "api-common",
+ "api-ledger",
+ "api-trace",
+ "leptos",
+ "leptos_meta",
+ "tracing",
+ "web-components",
+ "web-ui",
+]
+
+[[package]]
 name = "pin-project"
 version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
