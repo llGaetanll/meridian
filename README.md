@@ -17,28 +17,11 @@ It shows you your money. It does not tell you what to do with it.
 edge is, how the assistant works, and why everything is a trade.
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) covers how it's put together.
 
-# Getting Started
+# Getting started
 
-You will need the tailwindcss cli. If you want to install it without going
-through npm, you can do so as follows:
-```
-curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
-chmod +x tailwindcss-linux-x64
-sudo mv tailwindcss-linux-x64 /usr/local/bin/tailwindcss
-```
-
-You will also need `trunk`, and the right wasm target
-```
-cargo binstall trunk
-```
-
-```
-rustup target add wasm32-unknown-unknown
-```
-
-Then run `trunk serve --open` from inside the front-end you want:
-`crates/web-main` for the web app, `crates/phone-main` for the phone app.
-They use different ports, so both can run at once.
+The web app needs the tailwindcss CLI, `trunk`, and the wasm target; the
+phone apps need a Kotlin and Android toolchain on top of that.
+[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) has the commands.
 
 # Road to 1.0
 

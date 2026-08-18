@@ -131,7 +131,7 @@ signal graph becomes plumbing, not the place where behaviour is decided.
 | Crate | What it is |
 | --- | --- |
 | `api-common` | Shared types: `Asset`, `Price`, `Quantity`, `Timestamp`, `ChartData`, and formatting helpers. No dependencies. |
-| `api-core` | Planned. Events, actions, and the state machine that turns one into the other. Synchronous, no IO. |
+| `api-core` | Events, actions, and the state machine that turns one into the other. Synchronous, no IO. Reached from Swift and Kotlin over UniFFI — see [FFI.md](FFI.md). |
 | `api-ledger` | Transactions, positions, the ledger itself. |
 | `src-yahoo`, `src-coingecko` | Price sources. Requests, responses, and pure projections onto `api-common` types. |
 | `web-ui` | Design-system pieces: buttons, pills, cards, segmented controls, icons. No domain knowledge. |
