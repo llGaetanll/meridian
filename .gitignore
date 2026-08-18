@@ -1,3 +1,7 @@
 /target
 /**/dist
 /logs
+
+# Secrets. Sandbox only — see docs/PLAID.md.
+.env
+.env.*
