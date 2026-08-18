@@ -1,0 +1,57 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  overflow: hidden;             /* the shell owns scrolling, not the page */
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, "Inter var", ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  font-size: 15px;             /* a step up from the web app: this is arm's length */
+  line-height: 1.5;
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+}
+
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--text-muted); }
+
+/* Shell — one column, a fixed header and footer, a scrolling middle. The
+   safe-area insets are zero in a desktop browser and non-zero once a real
+   phone puts a notch or a home indicator in the way. */
+
+.phone-shell {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+}
+
+.phone-header {
+  padding: calc(14px + env(safe-area-inset-top)) 18px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.phone-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.phone-body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.phone-footer {
+  padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+/* Rows are separated by a rule rather than a card: a phone list is long, and
+   cards spend vertical space on nothing. */
+.tx-row + .tx-row { border-top: 1px solid var(--border); }
+
+/* Touch targets. 44px is the floor on both platforms. */
+.tap { min-height: 44px; }
