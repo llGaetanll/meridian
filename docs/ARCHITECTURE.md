@@ -146,4 +146,4 @@ Requests carry a path, not a URL, and the client resolves it against a base
 directly. Browsers cannot: Yahoo sends no CORS headers, and the `User-Agent` it
 insists on cannot be set from a page. So in the browser the base is the app's
 own origin and something in front forwards the call — in development that is
-the Trunk proxy configured in `src/web-main/Trunk.toml`.
+the Trunk proxy configured in `crates/web-main/Trunk.toml`.

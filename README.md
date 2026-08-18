@@ -36,7 +36,9 @@ cargo binstall trunk
 rustup target add wasm32-unknown-unknown
 ```
 
-Then, from inside `web-main`, run `trunk serve --open`
+Then run `trunk serve --open` from inside the front-end you want:
+`crates/web-main` for the web app, `crates/phone-main` for the phone app.
+They use different ports, so both can run at once.
 
 # Road to 1.0
 

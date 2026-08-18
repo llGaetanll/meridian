@@ -63,6 +63,6 @@ means adding, changing or removing its example here.
   — the request was dropped before an answer, which is what switching range
   mid-fetch looks like from here.
 - `WARN trace log file unavailable error="logs/meridian.log: permission denied"`
-- `ERROR panic panicked at=src/web-main/src/pages/markets.rs:112 message="…"`
+- `ERROR panic panicked at=crates/web-main/src/pages/markets.rs:112 message="…"`
 
 `cargo run -p api-trace --example lines` prints these for real.
