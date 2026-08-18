@@ -134,6 +134,7 @@ signal graph becomes plumbing, not the place where behaviour is decided.
 | `api-core` | Events, actions, and the state machine that turns one into the other. Synchronous, no IO. Reached from Swift and Kotlin over UniFFI — see [FFI.md](FFI.md). |
 | `api-ledger` | Transactions, positions, the ledger itself. |
 | `src-yahoo`, `src-coingecko` | Price sources. Requests, responses, and pure projections onto `api-common` types. |
+| `src-plaid` | Stub. The bank connection, same shape as the price sources. |
 | `web-ui` | Design-system pieces: buttons, pills, cards, segmented controls, icons. No domain knowledge. |
 | `web-components` | Domain components: the shell, charts, and the markets page's blocks. |
 | `web-state` | State shared across pages. |
