@@ -13,4 +13,5 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+dotenvy = "0.15.7"
 tokio = { workspace = true }
