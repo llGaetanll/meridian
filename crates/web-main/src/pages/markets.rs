@@ -297,7 +297,7 @@ fn window_of(history: &ChartData, shown: Option<Range<Timestamp>>) -> (f64, f64)
 
     let start = math::slot_fraction(history, shown.start);
     let end = math::slot_fraction(history, shown.end);
-    let width = (end - start).max(MIN_WIDTH).min(1.0);
+    let width = (end - start).clamp(MIN_WIDTH, 1.0);
 
     ((end - width).max(0.0), end)
 }

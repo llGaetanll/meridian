@@ -57,6 +57,9 @@ impl MarketsState {
 
     /// Point the page at another asset. Both resources refetch on their own —
     /// though "refetch" is only a request for whatever is not cached yet.
+    ///
+    /// Waiting on the search bar to be wired to the chart.
+    #[allow(dead_code)]
     pub fn look_at(&self, symbol: &str) {
         self.symbol.set(symbol.to_string());
     }

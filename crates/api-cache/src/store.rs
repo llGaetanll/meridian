@@ -284,7 +284,10 @@ fn plan(missing: Vec<Range<Timestamp>>, interval: Interval) -> Vec<Range<Timesta
     }
 
     match (spans.first(), spans.last()) {
-        (Some(first), Some(last)) if spans.len() > MAX_REQUESTS => vec![first.start..last.end],
+        // One request over the lot, not one range per timestamp in it.
+        (Some(first), Some(last)) if spans.len() > MAX_REQUESTS => {
+            std::iter::once(first.start..last.end).collect()
+        }
         _ => spans,
     }
 }
@@ -299,15 +302,22 @@ impl<S: Source> Clone for Store<S> {
 }
 
 #[cfg(test)]
+// These tests compare a list of spans against a literal list of ranges, which
+// is exactly what it looks like. Clippy reads `[a..b]` as a botched attempt at
+// a range of values instead.
+#[allow(clippy::single_range_in_vec_init)]
 mod tests {
     use std::cell::Cell;
 
     use super::*;
 
+    /// What a fake source was asked for, in order.
+    type Calls = Rc<RefCell<Vec<(Interval, Range<Timestamp>)>>>;
+
     /// A source that counts what it was asked for and answers with one bar per
     /// interval across the window.
     struct Fake {
-        calls: Rc<RefCell<Vec<(Interval, Range<Timestamp>)>>>,
+        calls: Calls,
         serves: Cell<Option<Interval>>,
     }
 
@@ -357,7 +367,7 @@ mod tests {
         }
     }
 
-    fn store() -> (Store<Fake>, Rc<RefCell<Vec<(Interval, Range<Timestamp>)>>>) {
+    fn store() -> (Store<Fake>, Calls) {
         let source = Fake::new();
         let calls = source.calls.clone();
 

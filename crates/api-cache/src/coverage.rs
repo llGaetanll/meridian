@@ -91,6 +91,10 @@ impl Coverage {
 }
 
 #[cfg(test)]
+// These tests compare a list of spans against a literal list of ranges, which
+// is exactly what it looks like. Clippy reads `[a..b]` as a botched attempt at
+// a range of values instead.
+#[allow(clippy::single_range_in_vec_init)]
 mod tests {
     use super::*;
 
