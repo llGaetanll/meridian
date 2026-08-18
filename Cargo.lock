@@ -2247,6 +2247,13 @@ name = "src-plaid"
 version = "0.1.0"
 dependencies = [
  "api-common",
+ "api-trace",
+ "chrono",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

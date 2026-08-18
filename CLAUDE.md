@@ -24,3 +24,10 @@ responsibility to jot that down in the issue.
 
 You need to be very concise when writing anything in the GitHub issues, use
 simple language whenever possible, no need to make it complicated.
+
+## Plaid
+
+`docs/PLAID.md` explains how the bank connection works. The rule that matters:
+**only ever use the Plaid Sandbox unless the user explicitly says otherwise.**
+The account is capped at 10 Production Items and removing an Item does not free
+the slot, so a careless connection is permanent.

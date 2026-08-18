@@ -16,6 +16,25 @@ fn main() {
 
     tracing::info!(target: "app", version = "0.1.0", "meridian starting");
 
+    // Plaid, which is POST and whose body is never logged: it holds the secret.
+    tracing::info!(
+        target: "app",
+        env = "sandbox",
+        base_url = "https://sandbox.plaid.com/",
+        "plaid client",
+    );
+
+    ApiCall::post("plaid", "https://sandbox.plaid.com/transactions/sync")
+        .response(200, "{\"added\":[{\"account_id\":\"6Pd…");
+
+    tracing::info!(
+        target: "app",
+        added = 18,
+        modified = 0,
+        removed = 1,
+        "transactions synced",
+    );
+
     let span = tracing::info_span!("quote", symbol = "SPY", range = "1D");
     let _entered = span.enter();
 

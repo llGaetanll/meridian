@@ -40,13 +40,26 @@ impl ApiCall {
     /// `source` names the API ("yahoo", "coingecko") and `url` is the request
     /// as sent, query string and all, so it can be replayed from the log.
     pub fn get(source: &'static str, url: impl Display) -> Self {
+        Self::new(source, "GET", url)
+    }
+
+    /// The same, for an API that only answers POSTs.
+    ///
+    /// The body is deliberately not logged. A POST to Plaid carries the
+    /// secret in its body, and a log is the one place it must never end up.
+    /// What was asked for is recoverable from the path.
+    pub fn post(source: &'static str, url: impl Display) -> Self {
+        Self::new(source, "POST", url)
+    }
+
+    fn new(source: &'static str, method: &'static str, url: impl Display) -> Self {
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
 
         tracing::info!(
             target: TARGET,
             id,
             source,
-            method = "GET",
+            method,
             url = %url,
             "-> request",
         );

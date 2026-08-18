@@ -5,3 +5,12 @@ edition = "2024"
 
 [dependencies]
 api-common = { path = "../api-common" }
+api-trace = { path = "../api-trace" }
+chrono = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
