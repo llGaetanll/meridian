@@ -1,0 +1,8 @@
+@config "./tailwind.config.js";
+
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* The palette is shared with the web app; only the layout differs. */
+@import "../web-main/css/theme.css";
+@import "./css/app.css";

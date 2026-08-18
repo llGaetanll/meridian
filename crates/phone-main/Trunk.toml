@@ -1,0 +1,20 @@
+# The phone app is a browser app until it is not: Tauri wraps this same trunk
+# output, so day to day development stays a `trunk serve` in a narrow window.
+[watch]
+watch = [
+    "../phone-main/src",
+    "../phone-main/css",
+    "../phone-main/input.css",
+    "../web-ui/src",
+    "../web-components/src",
+]
+
+[build]
+target = "index.html"
+
+[[assets]]
+file = "input.css"
+
+# A different port from web-main, so both can run at once.
+[serve]
+port = 8081
