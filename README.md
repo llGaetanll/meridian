@@ -30,4 +30,4 @@ phone apps need a Kotlin and Android toolchain on top of that.
 - Doesn't have to be feature-packed
 - Connects to my bank using Plaid. I don't want to input transactions myself
 - Super simple homepage. How much did I spend last week? Basic categorization of transactions.
-- No accounts, no servers, everything local to the app.
+- One basic server to abide by Plaid's TOS
