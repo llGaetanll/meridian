@@ -23,9 +23,10 @@ pub const BASE_CLASSES: &str = r#"
 "#;
 
 // Define possible variants and sizes
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum ButtonVariant {
     Primary,
+    #[default]
     Secondary,
     Failure,
     Danger,
@@ -33,24 +34,13 @@ pub enum ButtonVariant {
     Warning,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum ButtonSize {
+    #[default]
     Sm,
     Md,
     Lg,
     Xl,
-}
-
-impl Default for ButtonVariant {
-    fn default() -> Self {
-        Self::Secondary
-    }
-}
-
-impl Default for ButtonSize {
-    fn default() -> Self {
-        Self::Sm
-    }
 }
 
 impl ButtonVariant {

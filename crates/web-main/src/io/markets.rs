@@ -20,7 +20,11 @@ use crate::io::yahoo::YahooSource;
 /// chart's business, and doing it here would leave nothing worth keeping.
 #[derive(Debug, Clone)]
 pub struct AssetQuote {
+    /// As the source names it. The header reads the symbol the page was
+    /// pointed at, so these two are carried but not yet shown.
+    #[allow(dead_code)]
     pub symbol: String,
+    #[allow(dead_code)]
     pub name: String,
     /// Classification line for the header, e.g. "ETF · USD · NYSEArca".
     pub details: String,

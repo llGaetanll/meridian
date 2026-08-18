@@ -7,7 +7,7 @@ use api_common::Timestamp;
 use crate::Positions;
 use crate::Tx;
 
-struct Ledger {
+pub struct Ledger {
     txs: Vec<Tx>,
 }
 
