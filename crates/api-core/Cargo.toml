@@ -1,0 +1,19 @@
+[package]
+name = "api-core"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+# cdylib for the phone apps to link against, lib so the Rust front-ends can
+# depend on it directly.
+crate-type = ["cdylib", "lib"]
+name = "api_core"
+
+[dependencies]
+uniffi = { workspace = true, features = ["cli"] }
+
+[[bin]]
+# The bindings generator, so `cargo run -p api-core --bin uniffi-bindgen`
+# needs no separately installed tool at a matching version.
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
