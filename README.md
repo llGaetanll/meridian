@@ -23,40 +23,11 @@ The web app needs the tailwindcss CLI, `trunk`, and the wasm target; the
 phone apps need a Kotlin and Android toolchain on top of that.
 [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) has the commands.
 
-# Road to 1.0
+# MVP Goals
+*Due August 23 2026*. One week as of writing.
 
-Release Aug 31.
-
-## Transactions
-- [x] Display tx list
-- [ ] Support adding new tx
-
-## Chart
-- [ ] Add time windows (24H, 7D, 1M, 3M, 1Y, Max)
-- [ ] Add timewindow selection (left click and hold to select a time window,
-      like on CoinGecko).
-- [ ] Can graph any derived data
-    - Portfolio performance, BTC price, sharpe ratio overtime, etc...
-
-## Misc
-- [ ] Search bar, can pull from all data sources
-    - Tickers on Yahoo Finance
-    - Coins on CoinGecko
-
-## Data Sources
-- [x] Parse Yahoo Finance API (`src-yahoo`)
-- [x] Parse Coin Gecko API (`src-coin-gecko`)
-
-## Misc
-- [ ] Import/Export ledgers
-
-## Portfolios
-- [ ] Support creation of portfolios
-
-# Reach/Less important
-
-- [ ] General theme support
-
-## Chart
-- [ ] Can graph any derived data
-    - Portfolio performance, BTC price, sharpe ratio overtime, etc...
+- Something genuinely useful to me.
+- Doesn't have to be feature-packed
+- Connects to my bank using Plaid. I don't want to input transactions myself
+- Super simple homepage. How much did I spend last week? Basic categorization of transactions.
+- No accounts, no servers, everything local to the app.
