@@ -7,7 +7,7 @@ use std::fmt::Display;
 use std::ops::AddAssign;
 use std::str::FromStr;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Position {
     pub asset: Asset,
     pub qty: Quantity,

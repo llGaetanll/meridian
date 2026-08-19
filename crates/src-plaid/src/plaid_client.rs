@@ -85,9 +85,13 @@ impl PlaidClient {
         })
     }
 
+    /// `&(dyn PRequest + Sync)` rather than `&dyn PRequest`: without the
+    /// `Sync` bound the returned future is not `Send`, and a multi-threaded
+    /// runtime (the server's) cannot hold it across an await. Still dynamic,
+    /// so this stays one function rather than one per request type.
     pub async fn send_request<Response: serde::de::DeserializeOwned>(
         &self,
-        req: &dyn PRequest,
+        req: &(dyn PRequest + Sync),
     ) -> Result<Response, PError> {
         let url = self
             .base_url

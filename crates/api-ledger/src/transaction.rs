@@ -6,7 +6,7 @@ use api_common::Timestamp;
 
 use crate::Position;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Tx {
     Trade {
         ts: Timestamp,

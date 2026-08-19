@@ -15,7 +15,11 @@
 mod p_env;
 mod p_error;
 mod p_request;
+mod p_request_balances;
+mod p_request_recurring;
 mod p_request_sync;
+mod p_response_balances;
+mod p_response_recurring;
 mod p_response_sync;
 mod plaid_client;
 mod transaction;
@@ -23,7 +27,11 @@ mod transaction;
 pub use p_env::*;
 pub use p_error::*;
 pub use p_request::*;
+pub use p_request_balances::*;
+pub use p_request_recurring::*;
 pub use p_request_sync::*;
+pub use p_response_balances::*;
+pub use p_response_recurring::*;
 pub use p_response_sync::*;
 pub use plaid_client::*;
 pub use transaction::*;
@@ -89,4 +97,24 @@ pub struct Sync {
 
     /// Where to resume next time.
     pub cursor: String,
+}
+
+/// Every account's balance, straight from the bank.
+pub async fn fetch_balances(
+    client: &PlaidClient,
+    access_token: &str,
+) -> Result<BalancesResponse, PError> {
+    client
+        .send_request(&BalancesRequest::new(access_token))
+        .await
+}
+
+/// The recurring streams Plaid has detected on this Item.
+pub async fn fetch_recurring(
+    client: &PlaidClient,
+    access_token: &str,
+) -> Result<RecurringResponse, PError> {
+    client
+        .send_request(&RecurringRequest::new(access_token))
+        .await
 }
