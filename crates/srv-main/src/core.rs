@@ -12,6 +12,7 @@
 
 use api_ledger::Connection;
 use api_ledger::Entry;
+use api_ledger::Ledger;
 use api_ledger::Stream;
 
 /// How long a snapshot is served before Plaid is asked again.
@@ -28,9 +29,15 @@ pub enum ServerEvent {
     SnapshotRequested { now: u64, force: bool },
 
     /// Plaid answered.
+    ///
+    /// The transaction lists are a **diff** — what changed since the cursor —
+    /// so they are applied to the held ledger rather than replacing it. A
+    /// second sync a minute later legitimately returns three empty lists.
     PlaidLoaded {
         now: u64,
-        entries: Vec<Entry>,
+        added: Vec<Entry>,
+        modified: Vec<Entry>,
+        removed: Vec<String>,
         connections: Vec<Connection>,
         streams: Vec<Stream>,
         cursor: String,
@@ -55,7 +62,10 @@ pub enum ServerAction {
 /// Everything the server holds between requests.
 #[derive(Debug, Default)]
 pub struct ServerState {
-    entries: Vec<Entry>,
+    /// Everything synced so far. Held across fetches, because each fetch only
+    /// says what changed.
+    ledger: Ledger,
+
     connections: Vec<Connection>,
     streams: Vec<Stream>,
 
@@ -92,12 +102,18 @@ impl ServerState {
 
             ServerEvent::PlaidLoaded {
                 now,
-                entries,
+                added,
+                modified,
+                removed,
                 connections,
                 streams,
                 cursor,
             } => {
-                self.entries = entries.clone();
+                // Applied, not assigned. This is the difference between a
+                // ledger that accumulates and one that empties itself on the
+                // second sync.
+                self.ledger.apply(added.clone(), modified.clone(), removed);
+
                 self.connections = connections.clone();
                 self.streams = streams.clone();
                 self.cursor = Some(cursor.clone());
@@ -149,7 +165,7 @@ impl ServerState {
     }
 
     pub fn entries(&self) -> &[Entry] {
-        &self.entries
+        self.ledger.entries()
     }
 
     pub fn connections(&self) -> &[Connection] {
@@ -182,11 +198,91 @@ mod tests {
     fn loaded(now: u64) -> ServerEvent {
         ServerEvent::PlaidLoaded {
             now,
-            entries: vec![],
+            added: vec![],
+            modified: vec![],
+            removed: vec![],
             connections: vec![],
             streams: vec![],
             cursor: "cursor-1".into(),
         }
+    }
+
+    fn entry(id: &str) -> Entry {
+        Entry::from_tx(
+            id.to_string(),
+            api_ledger::Tx::Transfer {
+                ts: 1_787_000_000,
+                pos: api_ledger::Position {
+                    asset: "USD".into(),
+                    qty: -1.0,
+                },
+            },
+        )
+    }
+
+    /// The trap that emptied the app on its second fetch.
+    ///
+    /// `/transactions/sync` is a diff: once the cursor is saved, a sync a
+    /// minute later legitimately answers with nothing new. Assigning that
+    /// answer over the held ledger wipes it, and the screen goes blank while
+    /// every log line still says the sync succeeded.
+    #[test]
+    fn a_second_sync_with_nothing_new_keeps_the_ledger() {
+        let mut state = ServerState::default();
+
+        run(
+            &mut state,
+            &[ServerEvent::PlaidLoaded {
+                now: 1_000,
+                added: vec![entry("a"), entry("b")],
+                modified: vec![],
+                removed: vec![],
+                connections: vec![],
+                streams: vec![],
+                cursor: "cursor-1".into(),
+            }],
+        );
+
+        assert_eq!(state.entries().len(), 2);
+
+        // The empty second page, exactly as Plaid sends it.
+        run(&mut state, &[loaded(2_000)]);
+
+        assert_eq!(state.entries().len(), 2, "the ledger must not empty itself");
+    }
+
+    #[test]
+    fn a_later_sync_adds_to_what_is_held() {
+        let mut state = ServerState::default();
+
+        run(
+            &mut state,
+            &[ServerEvent::PlaidLoaded {
+                now: 1_000,
+                added: vec![entry("a")],
+                modified: vec![],
+                removed: vec![],
+                connections: vec![],
+                streams: vec![],
+                cursor: "c1".into(),
+            }],
+        );
+
+        run(
+            &mut state,
+            &[ServerEvent::PlaidLoaded {
+                now: 2_000,
+                added: vec![entry("b")],
+                modified: vec![],
+                removed: vec![entry("a").id],
+                connections: vec![],
+                streams: vec![],
+                cursor: "c2".into(),
+            }],
+        );
+
+        let ids: Vec<&str> = state.entries().iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["b"], "added joins, removed leaves");
     }
 
     #[test]

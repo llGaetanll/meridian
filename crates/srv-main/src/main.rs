@@ -165,7 +165,9 @@ async fn fetch(app: &Arc<App>, cursor: Option<String>, now: u64) {
         Some(config) => match plaid_io::fetch_all(config, cursor, now).await {
             Ok(fetched) => ServerEvent::PlaidLoaded {
                 now,
-                entries: fetched.entries,
+                added: fetched.added,
+                modified: fetched.modified,
+                removed: fetched.removed,
                 connections: fetched.connections,
                 streams: fetched.streams,
                 cursor: fetched.cursor,
@@ -188,7 +190,9 @@ async fn fetch(app: &Arc<App>, cursor: Option<String>, now: u64) {
 
             ServerEvent::PlaidLoaded {
                 now,
-                entries: fetched.entries,
+                added: fetched.added,
+                modified: fetched.modified,
+                removed: fetched.removed,
                 connections: fetched.connections,
                 streams: fetched.streams,
                 cursor: fetched.cursor,

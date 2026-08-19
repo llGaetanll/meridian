@@ -1,10 +1,10 @@
 use leptos::prelude::*;
 
 mod app;
-mod fake;
-mod pages;
-mod shell;
-mod state;
+mod io;
+mod runtime;
+mod screens;
+mod ui;
 
 use app::App;
 

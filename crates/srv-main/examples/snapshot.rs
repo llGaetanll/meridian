@@ -16,8 +16,9 @@ mod project;
 fn main() {
     let fetched = plaid_io::fetch_fixtures(0);
 
+    // The example serialises a first sync, where the diff is the whole thing.
     let snapshot = api_wire::Snapshot::new(
-        &fetched.entries,
+        &fetched.added,
         &fetched.connections,
         &fetched.streams,
         0,
