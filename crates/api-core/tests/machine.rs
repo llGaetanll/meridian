@@ -848,6 +848,37 @@ fn a_distant_stream_is_not_marked_soon() {
     assert!(!row.soon, "three weeks out is not urgent");
 }
 
+/// The bar and the list are two views of one split, so the groups have to run
+/// in the same order the bar's segments do — biggest commitment first.
+#[test]
+fn stream_groups_run_biggest_first_like_the_bar() {
+    let (_, actions) = with(&[
+        open(Screen::Recurring),
+        Event::FromUi {
+            event: UiEvent::MaskToggled,
+        },
+    ]);
+
+    let view = recurring_of(&actions);
+
+    // Outflow groups only: the inflow group is deliberately last regardless
+    // of size, being a different kind of thing.
+    let outflow: Vec<&StreamGroup> = view
+        .groups
+        .iter()
+        .filter(|g| g.streams.iter().any(|s| s.amount.starts_with('−')))
+        .collect();
+
+    assert_eq!(outflow[0].name, "Transfer out", "the $2,078.50 group leads");
+    assert_eq!(outflow[0].total, "$2,078.50");
+
+    // And the bar agrees, segment for segment.
+    let bar: Vec<&str> = view.breakdown.iter().map(|s| s.label.as_str()).collect();
+    let list: Vec<&str> = outflow.iter().map(|g| g.name.as_str()).collect();
+
+    assert_eq!(bar, list, "the bar and the list must not disagree");
+}
+
 #[test]
 fn money_coming_in_is_grouped_after_everything_going_out() {
     let (_, actions) = with(&[open(Screen::Recurring)]);

@@ -502,7 +502,16 @@ fn group_streams(streams: &[&Stream], now: u64, masked: bool) -> Vec<StreamGroup
         }
     }
 
-    let mut groups: Vec<StreamGroup> = groups
+    // Biggest commitment first, matching the breakdown bar above — the two are
+    // meant to read as one split, so they cannot disagree about the order.
+    // Sorted here, while the totals are still numbers rather than text.
+    groups.sort_by(|(_, a), (_, b)| {
+        let total =
+            |list: &Vec<&Stream>| list.iter().map(|s| s.monthly_amount().abs()).sum::<f64>();
+        total(b).total_cmp(&total(a))
+    });
+
+    groups
         .into_iter()
         .map(|(category, mut list)| {
             // Biggest first inside a group too, so the eye lands on the charge
@@ -518,14 +527,7 @@ fn group_streams(streams: &[&Stream], now: u64, masked: bool) -> Vec<StreamGroup
                 streams: list.iter().map(|s| stream_row(s, now, masked)).collect(),
             }
         })
-        .collect();
-
-    groups.sort_by(|a, b| {
-        let value = |g: &StreamGroup| g.streams.len();
-        value(b).cmp(&value(a))
-    });
-
-    groups
+        .collect()
 }
 
 fn stream_row(stream: &Stream, now: u64, masked: bool) -> StreamRow {
