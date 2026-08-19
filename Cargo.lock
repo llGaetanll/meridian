@@ -81,6 +81,10 @@ version = "0.1.0"
 name = "api-core"
 version = "0.1.0"
 dependencies = [
+ "api-common",
+ "api-ledger",
+ "api-wire",
+ "serde_json",
  "uniffi",
 ]
 

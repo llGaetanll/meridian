@@ -162,7 +162,7 @@ async fn snapshot(
 /// Carry out a `FetchPlaid`, and feed the result back in as the next event.
 async fn fetch(app: &Arc<App>, cursor: Option<String>, now: u64) {
     let event = match &app.plaid {
-        Some(config) => match plaid_io::fetch_all(config, cursor).await {
+        Some(config) => match plaid_io::fetch_all(config, cursor, now).await {
             Ok(fetched) => ServerEvent::PlaidLoaded {
                 now,
                 entries: fetched.entries,
@@ -184,7 +184,7 @@ async fn fetch(app: &Arc<App>, cursor: Option<String>, now: u64) {
 
         // No credentials: the fixtures stand in, and the app runs anyway.
         None => {
-            let fetched = plaid_io::fetch_fixtures();
+            let fetched = plaid_io::fetch_fixtures(now);
 
             ServerEvent::PlaidLoaded {
                 now,

@@ -60,7 +60,11 @@ impl PlaidConfig {
 /// The three endpoints are independent, so a failure in the optional two does
 /// not sink the whole fetch: transactions are what the app is for, and a
 /// missing recurring list costs one screen rather than all of them.
-pub async fn fetch_all(config: &PlaidConfig, cursor: Option<String>) -> Result<Fetched, PError> {
+pub async fn fetch_all(
+    config: &PlaidConfig,
+    cursor: Option<String>,
+    now: u64,
+) -> Result<Fetched, PError> {
     // Guard rail, not decoration. Nothing should be able to reach Production
     // by accident, and a panic here is far cheaper than a permanent Item.
     assert_eq!(
@@ -87,10 +91,7 @@ pub async fn fetch_all(config: &PlaidConfig, cursor: Option<String>) -> Result<F
     );
 
     let balances = src_plaid::fetch_balances(&client, token).await?;
-    let connections = vec![project::connection(
-        &balances,
-        "synced just now".to_string(),
-    )];
+    let connections = vec![project::connection(&balances, now)];
 
     // Recurring is derived from transactions, so a freshly created Item has
     // none yet. That is a thin screen, not a failed sync.
@@ -119,7 +120,7 @@ pub async fn fetch_all(config: &PlaidConfig, cursor: Option<String>) -> Result<F
 /// This is what makes the app runnable with no credentials at all — and it is
 /// the same code path afterwards, so a screen that works on fixtures works on
 /// live data.
-pub fn fetch_fixtures() -> Fetched {
+pub fn fetch_fixtures(now: u64) -> Fetched {
     let sync: src_plaid::SyncResponse =
         serde_json::from_str(include_str!("../fixtures/sync.json")).expect("fixture parses");
     let balances: src_plaid::BalancesResponse =
@@ -140,7 +141,7 @@ pub fn fetch_fixtures() -> Fetched {
 
     Fetched {
         entries: ledger.entries().to_vec(),
-        connections: vec![project::connection(&balances, "from fixtures".to_string())],
+        connections: vec![project::connection(&balances, now)],
         streams: project::streams(&recurring),
         cursor: sync.next_cursor,
     }
@@ -154,7 +155,7 @@ mod tests {
     /// no-credentials path is not actually usable.
     #[test]
     fn the_fixtures_produce_every_screens_data() {
-        let fetched = fetch_fixtures();
+        let fetched = fetch_fixtures(1_787_097_600);
 
         assert_eq!(fetched.entries.len(), 48);
         assert_eq!(fetched.connections.len(), 1);

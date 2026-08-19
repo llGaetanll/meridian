@@ -10,6 +10,14 @@ crate-type = ["cdylib", "lib"]
 name = "api_core"
 
 [dependencies]
+# The value types the machine decides over, and the wire shapes it is handed.
+# Both are platform-agnostic and neither does IO, so the machine stays
+# synchronous and testable with them in scope.
+api-common = { path = "../api-common" }
+api-ledger = { path = "../api-ledger" }
+api-wire = { path = "../api-wire" }
+
+serde_json = { workspace = true }
 uniffi = { workspace = true, features = ["cli"] }
 
 [[bin]]
