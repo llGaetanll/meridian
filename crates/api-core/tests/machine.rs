@@ -177,13 +177,13 @@ fn every_screen_renders() {
 
         let view = last_screen(&actions);
 
-        let matches = match (screen, &view) {
+        let matches = matches!(
+            (screen, &view),
             (Screen::Home, ScreenView::Home { .. })
-            | (Screen::Ledger, ScreenView::Ledger { .. })
-            | (Screen::Recurring, ScreenView::Recurring { .. })
-            | (Screen::Balances, ScreenView::Balances { .. }) => true,
-            _ => false,
-        };
+                | (Screen::Ledger, ScreenView::Ledger { .. })
+                | (Screen::Recurring, ScreenView::Recurring { .. })
+                | (Screen::Balances, ScreenView::Balances { .. })
+        );
 
         assert!(matches, "{screen:?} rendered as {view:?}");
     }

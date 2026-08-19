@@ -13,10 +13,6 @@
 //! captured Sandbox fixtures instead, so the phone app runs from a clean
 //! checkout.
 
-mod core;
-mod plaid_io;
-mod project;
-
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::SystemTime;
@@ -31,12 +27,13 @@ use serde::Deserialize;
 use tower_http::cors::Any;
 use tower_http::cors::CorsLayer;
 
-use crate::core::ServerAction;
-use crate::core::ServerEvent;
-use crate::core::ServerState;
-use crate::plaid_io::PlaidConfig;
 use api_wire::Snapshot;
 use api_wire::SnapshotSource;
+use srv_main::core::ServerAction;
+use srv_main::core::ServerEvent;
+use srv_main::core::ServerState;
+use srv_main::plaid_io;
+use srv_main::plaid_io::PlaidConfig;
 
 /// A different port from either front-end, so all three can run at once.
 const PORT: u16 = 8082;
@@ -105,7 +102,6 @@ struct SnapshotQuery {
 /// The handler is the runtime the architecture describes: it reads the clock,
 /// hands an event to the machine, and carries out whatever actions come back.
 /// It decides nothing itself.
-
 async fn snapshot(
     State(app): State<Arc<App>>,
     Query(query): Query<SnapshotQuery>,
