@@ -8,7 +8,6 @@
 
 use api_ledger::Connection;
 use api_ledger::Entry;
-use api_ledger::Ledger;
 use api_ledger::Stream;
 use src_plaid::PEnv;
 use src_plaid::PError;
@@ -18,8 +17,18 @@ use src_plaid::PlaidCredentials;
 use crate::project;
 
 /// What one trip to Plaid turned up.
+///
+/// A **diff**, not a snapshot. `/transactions/sync` answers with what has
+/// changed since the cursor, so a second call usually returns three empty
+/// lists — and treating that as "the ledger is now empty" is the whole trap.
+/// The caller applies this to what it already holds.
 pub struct Fetched {
-    pub entries: Vec<Entry>,
+    pub added: Vec<Entry>,
+    pub modified: Vec<Entry>,
+
+    /// Ids of transactions the bank retracted.
+    pub removed: Vec<String>,
+
     pub connections: Vec<Connection>,
     pub streams: Vec<Stream>,
     pub cursor: String,
@@ -83,13 +92,6 @@ pub async fn fetch_all(
 
     let sync = src_plaid::sync_transactions(&client, token, cursor).await?;
 
-    let mut ledger = Ledger::default();
-    ledger.apply(
-        sync.added.iter().map(project::entry).collect(),
-        sync.modified.iter().map(project::entry).collect(),
-        &sync.removed,
-    );
-
     let balances = src_plaid::fetch_balances(&client, token).await?;
     let connections = vec![project::connection(&balances, now)];
 
@@ -108,7 +110,9 @@ pub async fn fetch_all(
     };
 
     Ok(Fetched {
-        entries: ledger.entries().to_vec(),
+        added: sync.added.iter().map(project::entry).collect(),
+        modified: sync.modified.iter().map(project::entry).collect(),
+        removed: sync.removed,
         connections,
         streams,
         cursor: sync.cursor,
@@ -128,19 +132,14 @@ pub fn fetch_fixtures(now: u64) -> Fetched {
     let recurring: src_plaid::RecurringResponse =
         serde_json::from_str(include_str!("../fixtures/recurring.json")).expect("fixture parses");
 
-    let mut ledger = Ledger::default();
-    ledger.apply(
-        sync.added.iter().map(project::entry).collect(),
-        sync.modified.iter().map(project::entry).collect(),
-        &sync
+    Fetched {
+        added: sync.added.iter().map(project::entry).collect(),
+        modified: sync.modified.iter().map(project::entry).collect(),
+        removed: sync
             .removed
             .iter()
             .map(|r| r.transaction_id.clone())
-            .collect::<Vec<_>>(),
-    );
-
-    Fetched {
-        entries: ledger.entries().to_vec(),
+            .collect(),
         connections: vec![project::connection(&balances, now)],
         streams: project::streams(&recurring),
         cursor: sync.next_cursor,
@@ -157,7 +156,7 @@ mod tests {
     fn the_fixtures_produce_every_screens_data() {
         let fetched = fetch_fixtures(1_787_097_600);
 
-        assert_eq!(fetched.entries.len(), 48);
+        assert_eq!(fetched.added.len(), 48);
         assert_eq!(fetched.connections.len(), 1);
         assert_eq!(fetched.connections[0].accounts.len(), 14);
         assert_eq!(fetched.streams.len(), 8);

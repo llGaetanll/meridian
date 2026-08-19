@@ -4,11 +4,23 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# The decisions. Everything this crate does is render what the core hands it.
+api-core = { path = "../api-core" }
 api-trace = { path = "../api-trace" }
-tracing = { workspace = true }
+
 leptos = { workspace = true }
-leptos_meta = { workspace = true }
-api-common = { path = "../api-common" }
-api-ledger = { path = "../api-ledger" }
-web-ui = { path = "../web-ui" }
-web-components = { path = "../web-components" }
+tracing = { workspace = true }
+
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+    "Headers",
+    "Request",
+    "RequestInit",
+    "Response",
+    "Window",
+]
