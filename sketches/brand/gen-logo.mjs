@@ -4,7 +4,7 @@
 // projection, so each meridian / parallel comes out as a handful of exact
 // cubic Beziers instead of a sampled polyline.
 //
-//   node sketches/gen-logo.mjs
+//   node sketches/brand/gen-logo.mjs
 
 import { writeFileSync } from 'node:fs';
 
