@@ -1,0 +1,664 @@
+/* Phone shell. Shared colors come from ../shared/theme.css; the desktop
+   app.css assumes a sidebar shell, so mobile gets its own base. */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  color: var(--text);
+  font-family: Inter, "Inter var", ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+
+  background: #0a0d12;
+  padding: 44px 40px 60px;
+}
+
+.num { font-variant-numeric: tabular-nums; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+.muted { color: var(--text-muted); }
+.faint { color: var(--text-faint); }
+
+/* Sketch canvas — scaffolding, not part of the app. Stacked vertically so
+   the sketch can sit beside notes in a split screen. */
+
+.canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  width: max-content;
+}
+.screen { display: flex; flex-direction: column; gap: 14px; }
+.screen-label {
+  font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+  padding-left: 4px;
+}
+
+.phone {
+  position: relative;
+  width: 390px; height: 844px;
+  background: var(--bg);
+  border-radius: 46px;
+  border: 1px solid var(--border-strong);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Status bar */
+
+.statusbar {
+  flex: none;
+  height: 52px;
+  padding: 14px 30px 0;
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px; font-weight: 600;
+}
+.statusbar .glyphs { display: flex; align-items: center; gap: 6px; }
+
+/* Page title */
+
+.header {
+  flex: none;
+  padding: 10px 20px 2px;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+}
+.page-title { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; }
+.page-sub { font-size: 13px; color: var(--text-faint); margin-top: 2px; }
+
+/* Filter panel — one box per filter, in the same style the collapsed
+   filter bar used to have. Two independent filters, two boxes. */
+
+.panel { flex: none; padding: 12px 20px 4px; }
+
+.filter-group {
+  padding: 12px;
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+}
+.filter-group + .filter-group { margin-top: 10px; }
+
+.filter-head {
+  display: flex; align-items: center; gap: 9px;
+  margin-bottom: 11px;
+  cursor: pointer;
+}
+/* collapsed, the heading is the whole control, so it loses its bottom gap */
+.filter-group.shut .filter-head { margin-bottom: 0; }
+.filter-head > svg { width: 16px; height: 16px; flex: none; color: var(--text-faint); }
+
+/* the disclosure arrow, pointing down when open */
+.filter-head .caret {
+  margin-left: auto;
+  width: 15px; height: 15px; flex: none;
+  color: var(--text-faint);
+  transition: transform 120ms ease;
+}
+.filter-group.shut .filter-head .caret { transform: rotate(-90deg); }
+
+/* what a shut group shows instead of its controls: the current selection,
+   set smaller so a closed filter reads as a summary, not a second copy */
+.filter-sum {
+  display: flex; align-items: center; gap: 5px;
+  margin-left: auto;
+  min-width: 0;
+  font-size: 12px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.filter-sum .cat {
+  font-size: 10.5px; font-weight: 600;
+  padding: 2px 8px; gap: 0;
+  cursor: default;
+  background: var(--cat-tint, var(--bg-input));
+  color: var(--cat-color, var(--text-muted));
+}
+.filter-sum .more { color: var(--text-faint); font-size: 11.5px; }
+/* the arrow still comes last when a summary is present */
+.filter-sum + .caret { margin-left: 7px; }
+
+.filter-group.shut .cat-grid,
+.filter-group.shut .range { display: none; }
+.filter-title {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+
+/* Category chips. Each keeps its natural width and simply wraps; the order
+   is picked so each line fills as much of the measure as it can, which is a
+   bin-packing job rather than a justification one. */
+.cat-grid { display: flex; flex-wrap: wrap; gap: 7px; }
+
+/* Category tag. The same element selects in the panel and labels a row. */
+.cat {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid transparent;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font: inherit; font-size: 12px; font-weight: 600;
+  /* the count is a disc, so it needs far less inset than the text side */
+  padding: 4px 12px 4px 4px;
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+  cursor: pointer;
+}
+/* a chip with no count (on a transaction row) goes back to even insets */
+.tx .cat, .rec .cat { padding: 3px 9px; }
+/* selected: colour alone carries the state — no tick */
+.cat.on {
+  background: var(--cat-tint, var(--accent-tint));
+  color: var(--cat-color, var(--violet-300));
+}
+
+/* count of matching transactions, in a circle at the left of the chip */
+.cat .n {
+  flex: none;
+  min-width: 19px; height: 19px; padding: 0 5px;
+  display: grid; place-items: center;
+  border-radius: var(--r-pill);
+  background: rgba(255,255,255,0.07);
+  color: var(--text-faint);
+  font-size: 10px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.cat.on .n {
+  background: color-mix(in srgb, var(--cat-color) 22%, transparent);
+  color: var(--cat-color);
+}
+/* a category with nothing in it stays visible but reads as unavailable */
+.cat.empty { opacity: 0.4; }
+
+/* on a transaction row the tag is not interactive and always carries colour */
+.tx .cat {
+  cursor: default;
+  background: var(--cat-tint, var(--bg-input));
+  color: var(--cat-color, var(--text-muted));
+  font-size: 11.5px; padding: 3px 9px;
+}
+
+/* One colour per Plaid primary. Categorical only — never up/down meaning. */
+.c-food        { --cat-color: var(--amber-300);  --cat-tint: rgba(252, 211, 77, 0.13); }
+.c-transport   { --cat-color: var(--sky-400);    --cat-tint: rgba(56, 189, 248, 0.13); }
+.c-travel      { --cat-color: var(--violet-400); --cat-tint: rgba(167, 139, 250, 0.14); }
+.c-merch       { --cat-color: var(--teal-300);   --cat-tint: rgba(94, 234, 212, 0.13); }
+.c-loans       { --cat-color: var(--rose-400);   --cat-tint: rgba(251, 113, 133, 0.13); }
+.c-transfer    { --cat-color: var(--slate-300);  --cat-tint: rgba(203, 213, 225, 0.10); }
+.c-personal    { --cat-color: var(--lime-400);   --cat-tint: rgba(163, 230, 53, 0.13); }
+.c-utilities   { --cat-color: var(--slate-400);  --cat-tint: rgba(148, 163, 184, 0.12); }
+.c-income      { --cat-color: var(--lime-400);   --cat-tint: rgba(163, 230, 53, 0.13); }
+.c-entertain   { --cat-color: var(--violet-400); --cat-tint: rgba(167, 139, 250, 0.14); }
+.c-services    { --cat-color: var(--teal-300);   --cat-tint: rgba(94, 234, 212, 0.13); }
+.c-medical     { --cat-color: var(--rose-400);   --cat-tint: rgba(251, 113, 133, 0.13); }
+.c-fees        { --cat-color: var(--amber-300);  --cat-tint: rgba(252, 211, 77, 0.13); }
+.c-home        { --cat-color: var(--sky-400);    --cat-tint: rgba(56, 189, 248, 0.13); }
+.c-govt        { --cat-color: var(--slate-400);  --cat-tint: rgba(148, 163, 184, 0.12); }
+
+/* Time range — the range reads as a sentence you edit in place. The active
+   form is the one lit; tapping an inactive one moves the highlight to it.
+   No radios: the filled pill already says which is live. */
+
+.range { display: flex; flex-direction: column; gap: 7px; }
+
+.range-row {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--bg-input);
+  font-size: 13px; color: var(--text-faint);
+  cursor: pointer;
+}
+.range-row.on {
+  background: var(--accent-tint);
+  color: var(--violet-300);
+  font-weight: 500;
+}
+
+/* a token inside the sentence — "This [month]" */
+.sel {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: var(--r-sm);
+  background: rgba(255,255,255,0.06);
+  border: 0;
+  color: var(--text-muted);
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  cursor: pointer;
+}
+.range-row.on .sel {
+  background: rgba(167,139,250,0.22);
+  color: var(--violet-300);
+}
+.sel svg { width: 10px; height: 10px; opacity: 0.75; }
+.sel.n { min-width: 34px; justify-content: center; }
+
+/* "All time" has nothing to configure, so it is just the row */
+.range-row .plain { padding: 3px 0; font-weight: 600; }
+
+/* Transaction list */
+
+.list {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  /* bottom padding clears the floating dock so the last row is reachable */
+  padding: 0 20px 132px;
+  scrollbar-width: none;
+}
+.list::-webkit-scrollbar { display: none; }
+
+/* Month marker — the coarse ruler over the day groups */
+.month {
+  display: flex; align-items: center; gap: 12px;
+  padding: 26px 4px 4px;
+}
+.month:first-child { padding-top: 12px; }
+.month .name {
+  font-size: 15px; font-weight: 700; letter-spacing: -0.01em;
+  color: var(--text);
+}
+.month .rule { flex: 1; height: 1px; background: var(--border-strong); }
+.month .year { font-size: 12px; font-weight: 500; color: var(--text-faint); }
+
+.day {
+  padding: 16px 4px 8px;
+  font-size: 12px; font-weight: 600;
+  color: var(--text-faint);
+  position: sticky; top: 0;
+  background: var(--bg);
+}
+
+.tx {
+  display: flex; align-items: center; gap: 13px;
+  padding: 11px 4px;
+  border-top: 1px solid var(--divider);
+}
+.day + .tx, .month + .tx { border-top: 0; }
+
+/* Icon. Shown only where Plaid gives a real merchant `logo_url` — no
+   stand-in glyph. The slot is reserved either way, so every row's text
+   starts on the same line whether or not a logo exists. */
+.tx-logo {
+  width: 40px; height: 40px; flex: none;
+  border-radius: var(--r-md);
+  background: var(--bg-input);
+  overflow: hidden;
+}
+.tx-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* the empty slot: keeps the column, shows nothing */
+.tx-logo.none { background: none; }
+
+.tx-id { flex: 1; min-width: 0; }
+.tx-name {
+  font-size: 15px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tx-meta { display: flex; align-items: center; gap: 7px; margin-top: 4px; }
+
+.tx-amt {
+  flex: none; text-align: right;
+  font-size: 15px; font-weight: 600;
+}
+
+/* Pending — the whole row recedes, chip included, so it reads as one
+   provisional thing rather than a row with some grey parts. */
+.tx.pending { opacity: 0.45; }
+
+.pending-tag {
+  font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--amber-300);
+}
+
+/* Dock — iOS 26 liquid glass, floating over the list. Search sits apart in
+   its own circle on the right. */
+
+.dockrow {
+  position: absolute;
+  left: 16px; right: 16px; bottom: 22px;
+  display: flex; align-items: center; gap: 10px;
+}
+
+.glass {
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,0.10), rgba(255,255,255,0.02) 42%, rgba(255,255,255,0.05));
+  backdrop-filter: blur(28px) saturate(180%) brightness(1.25);
+  -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(1.25);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.22) inset,
+    0 -1px 0 rgba(255,255,255,0.05) inset,
+    0 18px 40px rgba(0,0,0,0.55);
+}
+
+/* the bar stands exactly as tall as the search circle beside it */
+.dock {
+  flex: 1; min-width: 0;
+  height: 62px;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  border-radius: 31px;
+}
+
+.dock a {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 6px 2px;
+  border-radius: 22px;
+  text-decoration: none;
+  font-size: 9.5px; font-weight: 500;
+  color: rgba(255,255,255,0.62);
+}
+.dock svg { width: 20px; height: 20px; stroke-width: 1.8; }
+
+.dock a.on {
+  color: var(--violet-300);
+  background: rgba(167,139,250,0.16);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.16) inset;
+}
+
+.dock-search {
+  flex: none;
+  width: 62px; height: 62px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  color: rgba(255,255,255,0.82);
+}
+.dock-search svg { width: 23px; height: 23px; stroke-width: 1.9; }
+
+/* Balances */
+
+.bal-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 20px 132px; scrollbar-width: none; }
+.bal-list::-webkit-scrollbar { display: none; }
+
+.conn { margin-top: 22px; }
+.conn:first-child { margin-top: 8px; }
+
+.conn-head {
+  display: flex; align-items: center; gap: 11px;
+  padding-bottom: 10px;
+}
+.conn-logo {
+  width: 30px; height: 30px; flex: none;
+  border-radius: var(--r-sm);
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 700;
+  background: var(--bg-input); color: var(--slate-300);
+}
+.conn-name { font-size: 15px; font-weight: 600; flex: 1; min-width: 0; }
+.conn-sync { font-size: 11px; color: var(--up); }
+
+.acct {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 2px;
+  border-top: 1px solid var(--divider);
+}
+.acct-id { flex: 1; min-width: 0; }
+.acct-name {
+  font-size: 14px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.acct-sub { font-size: 11.5px; color: var(--text-faint); margin-top: 1px; }
+.acct-amt { flex: none; text-align: right; font-size: 14px; font-weight: 600; }
+.acct-amt.owed { color: var(--rose-400); }
+.acct-util { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+
+.conn-total {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 11px 2px 0;
+  border-top: 1px solid var(--border-strong);
+  margin-top: 2px;
+}
+.conn-total .k { font-size: 12px; color: var(--text-faint); }
+.conn-total .v { font-size: 15px; font-weight: 700; }
+
+/* Balances headline. Leads with what you hold, not net worth: Plaid reports
+   the mortgage but never the house behind it, so a net figure is
+   structurally too red. Net worth is still there, one line down, honest
+   about being incomplete. */
+.networth { padding: 16px 20px 4px; }
+.networth .k {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+.networth .v {
+  font-size: 38px; font-weight: 700; letter-spacing: -0.035em;
+  line-height: 1.1; margin-top: 4px;
+}
+.networth .d { font-size: 12.5px; margin-top: 6px; }
+
+/* a debt group reads differently from an asset group: same rows, but the
+   heading says plainly that these are balances owed */
+.conn.debts .conn-name { color: var(--text-muted); }
+.conn-tag {
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--rose-400);
+  background: var(--down-tint);
+  padding: 2px 7px; border-radius: var(--r-pill);
+}
+
+/* Hiding amounts. Not blurred glyphs and not dots — a dot row reads as a
+   password field. Instead the figure is covered by a solid bar the width of
+   the number it hides: unmistakably "withheld" rather than "typed". The real
+   value stays in the DOM underneath at zero opacity so the layout never
+   shifts on reveal. */
+.masked {
+  position: relative;
+  display: inline-block;
+  vertical-align: baseline;
+}
+.masked > .val { opacity: 0; }
+.masked::after {
+  content: "";
+  position: absolute;
+  /* inset a hair top and bottom so the bar sits on the text's own body */
+  left: 0; right: 0; top: 12%; bottom: 12%;
+  border-radius: 5px;
+  background: var(--bg-input);
+}
+
+/* on the hero figure the bar is heavier and carries a soft sheen, so the
+   biggest number on the page does not read as a plain grey slab */
+.networth .masked::after {
+  border-radius: 8px;
+  background:
+    linear-gradient(105deg, var(--bg-input) 0%, var(--border-strong) 48%, var(--bg-input) 100%);
+}
+
+/* The reveal label is written onto the redaction bar itself rather than
+   floated over it in a pill — the bar is already a surface, so it does not
+   need a second one on top. */
+.masked.tappable::after { background: var(--bg-input); }
+.masked.tappable > .hint {
+  position: absolute;
+  inset: 0;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  /* sits above the ::after bar */
+  z-index: 1;
+  color: var(--text-muted);
+  /* the hint is UI, not part of the figure it covers */
+  font-size: 15px; font-weight: 500; letter-spacing: -0.006em;
+  cursor: pointer;
+}
+.masked.tappable > .hint svg { width: 17px; height: 17px; }
+
+/* the bar needs room for the label, which is wider than some figures */
+.masked.tappable { min-width: 210px; }
+
+/* Recurring */
+
+.rec-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 20px 132px; scrollbar-width: none; }
+.rec-list::-webkit-scrollbar { display: none; }
+
+/* the monthly commitment, up top — the number this page exists to answer */
+.rec-hero { padding: 14px 20px 2px; }
+.rec-hero .v {
+  font-size: 34px; font-weight: 700; letter-spacing: -0.035em;
+  line-height: 1.1;
+}
+/* the unit rides with the figure rather than a label above it */
+.rec-hero .per {
+  font-size: 15px; font-weight: 500; letter-spacing: -0.01em;
+  color: var(--text-faint);
+  margin-left: 3px;
+}
+.rec-hero .d { font-size: 12.5px; margin-top: 5px; }
+
+/* the breakdown bar: one segment per category, widths by share of spend */
+.rec-bar {
+  display: flex; gap: 2px; height: 8px;
+  margin: 14px 20px 10px;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.rec-bar i { display: block; height: 100%; background: var(--cat-color, var(--bars)); }
+
+/* Two columns of boxes and glue: the swatch and name set flush left, the
+   amount flush right, so the figures form a column you can read down. */
+.rec-legend {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 7px 18px;
+  padding: 2px 20px 6px;
+  font-size: 11.5px;
+}
+.rec-legend .item {
+  display: flex; align-items: center; gap: 7px;
+  min-width: 0;
+}
+.rec-legend .sw {
+  width: 7px; height: 7px; border-radius: 50%; flex: none;
+  background: var(--cat-color, var(--bars));
+}
+.rec-legend .nm {
+  flex: 1; min-width: 0;
+  color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rec-legend .amt {
+  flex: none;
+  color: var(--text); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Streams are grouped by the same categories as the breakdown above, so the
+   bar and the list are two views of one split. */
+.rec-head {
+  display: flex; align-items: baseline; gap: 9px;
+  padding: 22px 4px 8px;
+}
+.rec-head .nm {
+  font-size: 12px; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-faint);
+}
+.rec-head .sum {
+  margin-left: auto;
+  font-size: 12px; font-weight: 600; color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.rec {
+  display: flex; align-items: center; gap: 13px;
+  padding: 12px 4px;
+  border-top: 1px solid var(--divider);
+}
+.rec-head + .rec { border-top: 0; }
+.rec-id { flex: 1; min-width: 0; }
+.rec-name {
+  font-size: 15px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rec-meta { display: flex; align-items: center; gap: 7px; margin-top: 4px; }
+.rec-when { font-size: 11.5px; color: var(--text-faint); }
+/* due within the week reads as a heads-up, not an alarm */
+.rec-when.soon { color: var(--amber-300); font-weight: 600; }
+
+.rec-right { flex: none; text-align: right; }
+.rec-amt { font-size: 15px; font-weight: 600; }
+.rec-freq { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+
+/* Home — the highlight of each tab, nothing more. Every block is a door to
+   the page that owns the detail. */
+
+.home { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 20px 132px; scrollbar-width: none; }
+.home::-webkit-scrollbar { display: none; }
+
+/* Each block is a box named for the tab it previews. No "see all" link —
+   the dock is right there, and the title already says where this lives. */
+.hi {
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+}
+.hi:first-child { margin-top: 4px; }
+
+.hi-head {
+  display: flex; align-items: baseline; gap: 9px;
+  margin-bottom: 10px;
+}
+.hi-title {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+
+/* the one figure a block leads with */
+.hi-lead { font-size: 27px; font-weight: 700; letter-spacing: -0.03em; }
+.hi-lead .per {
+  font-size: 14px; font-weight: 500;
+  color: var(--text-faint); margin-left: 3px;
+}
+/* the unit stays legible when the figure beside it is covered */
+.hi-lead .masked + .per { margin-left: 5px; }
+.hi-sub { font-size: 12.5px; color: var(--text-faint); margin-top: 3px; }
+
+/* a compact row — smaller than a ledger row, since this is a preview */
+.hi-row {
+  display: flex; align-items: center; gap: 11px;
+  padding: 9px 0;
+  border-top: 1px solid var(--divider);
+}
+.hi-row:first-of-type { border-top: 0; }
+.hi-row .tx-logo { width: 32px; height: 32px; }
+.hi-id { flex: 1; min-width: 0; }
+.hi-name {
+  font-size: 14px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hi-meta { font-size: 11.5px; color: var(--text-faint); margin-top: 1px; }
+.hi-amt { flex: none; font-size: 14px; font-weight: 600; }
+
+/* the recurring breakdown, reused on Home at preview scale */
+.hi .rec-bar { margin: 12px 0 9px; height: 7px; }
+.hi .rec-legend { padding: 0; gap: 6px 14px; font-size: 11px; }
+
+/* the reconnect action: a real button, since "reconnect" alone does not
+   tell the user how. Opens Link in update mode, which is the only thing
+   that clears ITEM_LOGIN_REQUIRED. */
+.fix {
+  flex: none;
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+  font: inherit; font-size: 12.5px; font-weight: 600;
+  padding: 7px 13px; border-radius: var(--r-pill);
+  cursor: pointer;
+}
+.fix:hover { background: var(--accent-strong); }
+
+/* same button on the balances page, where the connection block heads it */
+.conn-head .fix { padding: 5px 11px; font-size: 11.5px; }
+
+/* Home header — the mark, not a greeting */
+.brandline { display: flex; align-items: center; gap: 11px; }
+.brandline .brand-mark { width: 30px; height: 30px; flex: none; color: var(--violet-300); }
+.brandline .brand-name {
+  font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
+  color: var(--violet-300);
+}

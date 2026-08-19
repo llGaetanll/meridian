@@ -1,0 +1,1111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridian — Phone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared/theme.css">
+<link rel="stylesheet" href="phone.css">
+</head>
+<body>
+
+<!--
+  Everything below is real Plaid Sandbox data.
+
+  Transactions: `cargo run -p src-plaid --example sync_transactions`
+  Balances:     POST /accounts/balance/get
+  Recurring:    POST /transactions/recurring/get
+  Categories:   the 16 PRIMARY values of Plaid's personal finance taxonomy,
+                with per-category counts off the live feed.
+  Logos:        `logo_url`, shown only where Plaid actually has one.
+
+  Plaid reports positive as money *leaving* the account; signs here are
+  flipped to ledger convention. That is why the −500.00 United Airlines row
+  reads as +$500.00 in.
+-->
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-ledger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="9" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></symbol>
+    <symbol id="i-spending" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></symbol>
+    <symbol id="i-balances" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></symbol>
+    <symbol id="i-connections" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="10" y1="17" x2="14" y2="17"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></symbol>
+    <symbol id="i-tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/><line x1="3" y1="21" x2="21" y2="3"/></symbol>
+
+    <symbol id="i-status" viewBox="0 0 90 24">
+      <g fill="currentColor"><rect x="0" y="14" width="3.6" height="6" rx="1"/><rect x="5.5" y="11" width="3.6" height="9" rx="1"/><rect x="11" y="7.5" width="3.6" height="12.5" rx="1"/><rect x="16.5" y="4" width="3.6" height="16" rx="1"/></g>
+      <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" transform="translate(26 0)"><path d="M2 8.5a15 15 0 0 1 20 0"/><path d="M5.5 12.5a10 10 0 0 1 13 0"/><path d="M9 16.5a5 5 0 0 1 6 0"/></g>
+      <circle cx="38" cy="20" r="1" fill="currentColor"/>
+      <g transform="translate(54 0)" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.5" y="7.5" width="19" height="9" rx="2.6"/><rect x="3.5" y="9.5" width="13" height="5" rx="1.2" fill="currentColor" stroke="none"/><path d="M22.6 11v2" stroke-linecap="round"/></g>
+    </symbol>
+
+    <!-- dock, repeated per screen; `on` marks the active tab -->
+    <symbol id="i-recurring" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11a9 9 0 0 1 15-6.7L21 7"/><polyline points="21 3 21 7 17 7"/><path d="M21 13a9 9 0 0 1-15 6.7L3 17"/><polyline points="3 21 3 17 7 17"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 12 4.8H4.8V12l8.6 8.6a1.7 1.7 0 0 0 2.4 0l4.8-4.8a1.7 1.7 0 0 0 0-2.4Z"/><circle cx="8.4" cy="8.4" r="1.2"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.2 12 3l9 7.2"/><path d="M5.5 9.2V20a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1V9.2"/></symbol>
+    <symbol id="i-caret" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 9 18 9 12 16"/></symbol>
+  </defs>
+</svg>
+
+<div class="canvas">
+
+  <!-- ══════════════════ Home ══════════════════ -->
+  <section class="screen">
+    <div class="screen-label">Home</div>
+    <div class="phone">
+
+      <div class="statusbar">
+        <span class="num">9:41</span>
+        <span class="glyphs"><svg viewBox="0 0 90 24" style="width:74px;height:16px"><use href="#i-status"/></svg></span>
+      </div>
+
+      <header class="header">
+        <div class="brandline">
+          <svg class="brand-mark" viewBox="0 0 200 200" aria-hidden="true"
+               fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+            <defs>
+              <clipPath id="home-globe-clip"><circle cx="100" cy="100" r="93"/></clipPath>
+            </defs>
+            <g clip-path="url(#home-globe-clip)">
+              <g stroke-width="14"><path d="M 181.753,73.308 C 171.596,42.2,126.76,28.932,81.61,43.674 C 36.459,58.415,8.09,95.584,18.247,126.692"/><path d="M 18.247,126.692 C 8.09,95.584,36.459,58.415,81.61,43.674 C 126.76,28.932,171.596,42.2,181.753,73.308"/><path d="M 118.172,15.942 C 108.574,13.867,92.658,49.819,82.622,96.243 C 72.586,142.667,72.23,181.983,81.828,184.058"/><path d="M 81.828,184.058 C 72.23,181.983,72.586,142.667,82.622,96.243 C 92.658,49.819,108.574,13.867,118.172,15.942"/><path d="M 14,100 C 14,133.585,52.504,160.811,100,160.811 C 147.496,160.811,186,133.585,186,100"/><path d="M 100,14 C 66.415,14,39.189,33.252,39.189,57 C 39.189,80.748,66.415,100,100,100 C 133.585,100,160.811,80.748,160.811,57 C 160.811,33.252,133.585,14,100,14"/></g>
+              <g stroke-width="14"><path d="M 147.342,171.797 C 166.464,159.188,160.77,116.822,134.624,77.17 C 108.477,37.517,71.78,15.595,52.658,28.203"/><path d="M 52.658,28.203 C 71.78,15.595,108.477,37.517,134.624,77.17 C 160.77,116.822,166.464,159.188,147.342,171.797"/></g>
+            </g>
+            <circle cx="100" cy="100" r="86" stroke-width="14"/>
+          </svg>
+          <span class="brand-name">Meridian</span>
+        </div>
+      </header>
+
+      <main class="home">
+
+        <!-- Balances: the one figure, hidden by default exactly as on its
+             own page. -->
+        <div class="hi">
+          <div class="hi-head"><span class="hi-title">Balances</span></div>
+          <div class="hi-lead num"><span class="masked tappable"><span class="val">$86,541.74</span><span class="hint"><svg><use href="#i-eye"/></svg> Tap to reveal</span></span></div>
+          <div class="hi-sub">held across 14 accounts</div>
+        </div>
+
+        <!-- Recurring: the commitment, the same breakdown bar its own page
+             leads with, then only what lands next. -->
+        <div class="hi">
+          <div class="hi-head"><span class="hi-title">Recurring</span></div>
+          <div class="hi-lead num"><span class="masked tappable"><span class="val">−$3,771.40</span><span class="hint"><svg><use href="#i-eye"/></svg> Tap to reveal</span></span><span class="per">/mo</span></div>
+          <div class="rec-bar">
+            <i class="c-transfer" style="flex:2078.5"></i>
+            <i class="c-food" style="flex:589.4"></i>
+            <i class="c-merch" style="flex:500"></i>
+            <i class="c-travel" style="flex:500"></i>
+            <i class="c-personal" style="flex:78.5"></i>
+            <i class="c-loans" style="flex:25"></i>
+          </div>
+          <div class="rec-legend">
+        <div class="item c-transfer"><i class="sw"></i><span class="nm">Transfer out</span><span class="amt num">$2,078.50</span></div>
+        <div class="item c-food"><i class="sw"></i><span class="nm">Food &amp; drink</span><span class="amt num">$589.40</span></div>
+        <div class="item c-merch"><i class="sw"></i><span class="nm">Merchandise</span><span class="amt num">$500.00</span></div>
+        <div class="item c-travel"><i class="sw"></i><span class="nm">Travel</span><span class="amt num">$500.00</span></div>
+          </div>
+          <div class="hi-sub" style="margin:10px 0 4px">3 due within the week</div>
+          <div class="hi-row">
+            <div class="tx-logo none"></div>
+            <div class="hi-id">
+              <div class="hi-name">AUTOMATIC PAYMENT - THANK</div>
+              <div class="hi-meta">Aug 22 · in 3 days</div>
+            </div>
+            <div class="hi-amt num">−$2,078.50</div>
+          </div>
+          <div class="hi-row">
+            <div class="tx-logo none"></div>
+            <div class="hi-id">
+              <div class="hi-name">Madison Bicycle Shop</div>
+              <div class="hi-meta">Aug 22 · in 3 days</div>
+            </div>
+            <div class="hi-amt num">−$500.00</div>
+          </div>
+        </div>
+
+        <!-- Ledger: just the latest few -->
+        <div class="hi">
+          <div class="hi-head"><span class="hi-title">Ledger</span></div>
+          <div class="hi-row">
+            <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/uber_1060.png" alt=""></div>
+            <div class="hi-id">
+              <div class="hi-name">Uber</div>
+              <div class="hi-meta">Pending · Transportation</div>
+            </div>
+            <div class="hi-amt num">−$5.40</div>
+          </div>
+          <div class="hi-row">
+            <div class="tx-logo none"></div>
+            <div class="hi-id">
+              <div class="hi-name">CREDIT CARD 3333 PAYMENT *//</div>
+              <div class="hi-meta">Aug 12 · Loan payments</div>
+            </div>
+            <div class="hi-amt num">−$25.00</div>
+          </div>
+          <div class="hi-row">
+            <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/united_airlines_1065.png" alt=""></div>
+            <div class="hi-id">
+              <div class="hi-name">United Airlines</div>
+              <div class="hi-meta">Aug 10 · Travel</div>
+            </div>
+            <div class="hi-amt num up">+$500.00</div>
+          </div>
+          <div class="hi-row">
+            <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/mcdonalds_619.png" alt=""></div>
+            <div class="hi-id">
+              <div class="hi-name">McDonald's</div>
+              <div class="hi-meta">Aug 9 · Food &amp; drink</div>
+            </div>
+            <div class="hi-amt num">−$12.00</div>
+          </div>
+        </div>
+
+        <!-- A real Plaid Item state: /transactions/sync answers
+             ITEM_LOGIN_REQUIRED once a bank's credentials go stale, and only
+             Link's update mode clears it — so the row carries the action
+             rather than just naming the problem. -->
+        <div class="hi">
+          <div class="hi-head"><span class="hi-title">Connections</span></div>
+          <div class="hi-row">
+            <div class="tx-logo none"></div>
+            <div class="hi-id">
+              <div class="hi-name">Houndstooth Bank</div>
+              <div class="hi-meta">Sign-in expired · not syncing</div>
+            </div>
+            <button class="fix">Reconnect</button>
+          </div>
+        </div>
+
+      </main>
+
+      <div class="dockrow">
+        <nav class="dock glass">
+          <a class="on" href="#"><svg><use href="#i-home"/></svg>Home</a>
+          <a href="#"><svg><use href="#i-ledger"/></svg>Ledger</a>
+          <a href="#"><svg><use href="#i-recurring"/></svg>Recurring</a>
+          <a href="#"><svg><use href="#i-balances"/></svg>Balances</a>
+        </nav>
+        <a class="dock-search glass" href="#" aria-label="Search"><svg><use href="#i-search"/></svg></a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ══════════════════ Ledger ══════════════════ -->
+  <section class="screen">
+    <div class="screen-label">Ledger</div>
+    <div class="phone">
+
+      <div class="statusbar">
+        <span class="num">9:41</span>
+        <span class="glyphs"><svg viewBox="0 0 90 24" style="width:74px;height:16px"><use href="#i-status"/></svg></span>
+      </div>
+
+      <header class="header">
+        <div>
+          <div class="page-title">Ledger</div>
+          <div class="page-sub">3 connections · synced 2m ago</div>
+        </div>
+      </header>
+
+      <main class="list">
+
+        <div class="month"><span class="name">August</span><span class="rule"></span><span class="year">2026</span></div>
+
+        <div class="day">Wed, Aug 12</div>
+
+        <div class="tx pending">
+          <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/uber_1060.png" alt=""></div>
+          <div class="tx-id">
+            <div class="tx-name">Uber</div>
+            <div class="tx-meta"><span class="pending-tag">Pending</span><span class="cat c-transport">Transportation</span></div>
+          </div>
+          <div class="tx-amt num">−$5.40</div>
+        </div>
+
+        <div class="tx">
+          <div class="tx-logo none"></div>
+          <div class="tx-id">
+            <div class="tx-name">CREDIT CARD 3333 PAYMENT *//</div>
+            <div class="tx-meta"><span class="cat c-loans">Loan payments</span></div>
+          </div>
+          <div class="tx-amt num">−$25.00</div>
+        </div>
+
+        <div class="day">Tue, Aug 11</div>
+
+        <div class="tx">
+          <div class="tx-logo none"></div>
+          <div class="tx-id">
+            <div class="tx-name">ACH Electronic Credit — GUSTO PAY 123456</div>
+            <div class="tx-meta"><span class="cat c-transfer">Transfer out</span></div>
+          </div>
+          <div class="tx-amt num">−$5,850.00</div>
+        </div>
+
+        <div class="tx">
+          <div class="tx-logo none"></div>
+          <div class="tx-id">
+            <div class="tx-name">CD DEPOSIT .INITIAL.</div>
+            <div class="tx-meta"><span class="cat c-transfer">Transfer out</span></div>
+          </div>
+          <div class="tx-amt num">−$1,000.00</div>
+        </div>
+
+        <div class="day">Mon, Aug 10</div>
+
+        <div class="tx">
+          <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/united_airlines_1065.png" alt=""></div>
+          <div class="tx-id">
+            <div class="tx-name">United Airlines</div>
+            <div class="tx-meta"><span class="cat c-travel">Travel</span></div>
+          </div>
+          <div class="tx-amt num up">+$500.00</div>
+        </div>
+
+        <div class="tx">
+          <div class="tx-logo none"></div>
+          <div class="tx-id">
+            <div class="tx-name">Touchstone Climbing</div>
+            <div class="tx-meta"><span class="cat c-personal">Personal care</span></div>
+          </div>
+          <div class="tx-amt num">−$78.50</div>
+        </div>
+
+        <div class="day">Sun, Aug 9</div>
+
+        <div class="tx">
+          <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/mcdonalds_619.png" alt=""></div>
+          <div class="tx-id">
+            <div class="tx-name">McDonald's</div>
+            <div class="tx-meta"><span class="cat c-food">Food &amp; drink</span></div>
+          </div>
+          <div class="tx-amt num">−$12.00</div>
+        </div>
+
+        <div class="tx">
+          <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/starbucks_956.png" alt=""></div>
+          <div class="tx-id">
+            <div class="tx-name">Starbucks</div>
+            <div class="tx-meta"><span class="cat c-food">Food &amp; drink</span></div>
+          </div>
+          <div class="tx-amt num">−$4.33</div>
+        </div>
+
+        <div class="day">Sat, Aug 8</div>
+
+        <div class="tx">
+          <div class="tx-logo none"></div>
+          <div class="tx-id">
+            <div class="tx-name">FUN</div>
+            <div class="tx-meta"><span class="cat c-merch">General merchandise</span></div>
+          </div>
+          <div class="tx-amt num">−$89.40</div>
+        </div>
+
+        <div class="day">Fri, Aug 7</div>
+
+        <div class="tx">
+          <div class="tx-logo none"></div>
+          <div class="tx-id">
+            <div class="tx-name">INTRST PYMNT</div>
+            <div class="tx-meta"><span class="cat c-transfer">Transfer in</span></div>
+          </div>
+          <div class="tx-amt num up">+$4.22</div>
+        </div>
+
+        <div class="month"><span class="name">July</span><span class="rule"></span><span class="year">2026</span></div>
+
+        <div class="day">Tue, Jul 28</div>
+
+        <div class="tx">
+          <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/united_airlines_1065.png" alt=""></div>
+          <div class="tx-id">
+            <div class="tx-name">United Airlines</div>
+            <div class="tx-meta"><span class="cat c-travel">Travel</span></div>
+          </div>
+          <div class="tx-amt num">−$500.00</div>
+        </div>
+
+        <div class="day">Sun, Jul 26</div>
+
+        <div class="tx">
+          <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/uber_1060.png" alt=""></div>
+          <div class="tx-id">
+            <div class="tx-name">Uber</div>
+            <div class="tx-meta"><span class="cat c-transport">Transportation</span></div>
+          </div>
+          <div class="tx-amt num">−$6.33</div>
+        </div>
+
+        <div class="day">Thu, Jul 23</div>
+
+        <div class="tx">
+          <div class="tx-logo none"></div>
+          <div class="tx-id">
+            <div class="tx-name">Tectra Inc</div>
+            <div class="tx-meta"><span class="cat c-utilities">Rent &amp; utilities</span></div>
+          </div>
+          <div class="tx-amt num">−$500.00</div>
+        </div>
+
+        <div class="day">Wed, Jul 22</div>
+
+        <div class="tx">
+          <div class="tx-logo none"></div>
+          <div class="tx-id">
+            <div class="tx-name">AUTOMATIC PAYMENT - THANK</div>
+            <div class="tx-meta"><span class="cat c-loans">Loan payments</span></div>
+          </div>
+          <div class="tx-amt num">−$2,078.50</div>
+        </div>
+
+        <div class="tx">
+          <div class="tx-logo none"></div>
+          <div class="tx-id">
+            <div class="tx-name">Madison Bicycle Shop</div>
+            <div class="tx-meta"><span class="cat c-transport">Transportation</span></div>
+          </div>
+          <div class="tx-amt num">−$500.00</div>
+        </div>
+
+        <div class="tx">
+          <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/kfc_546.png" alt=""></div>
+          <div class="tx-id">
+            <div class="tx-name">KFC</div>
+            <div class="tx-meta"><span class="cat c-food">Food &amp; drink</span></div>
+          </div>
+          <div class="tx-amt num">−$500.00</div>
+        </div>
+
+      </main>
+
+      <div class="dockrow">
+        <nav class="dock glass">
+          <a href="#"><svg><use href="#i-home"/></svg>Home</a>
+          <a class="on" href="#"><svg><use href="#i-ledger"/></svg>Ledger</a>
+          <a href="#"><svg><use href="#i-recurring"/></svg>Recurring</a>
+          <a href="#"><svg><use href="#i-balances"/></svg>Balances</a>
+        </nav>
+        <a class="dock-search glass" href="#" aria-label="Search"><svg><use href="#i-search"/></svg></a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ══════════════════ Ledger · filter open ══════════════════ -->
+  <section class="screen">
+    <div class="screen-label">Ledger · filter open</div>
+    <div class="phone">
+
+      <div class="statusbar">
+        <span class="num">9:41</span>
+        <span class="glyphs"><svg viewBox="0 0 90 24" style="width:74px;height:16px"><use href="#i-status"/></svg></span>
+      </div>
+
+      <header class="header">
+        <div>
+          <div class="page-title">Ledger</div>
+        </div>
+      </header>
+
+      <!-- Categories and time range are independent filters, so they are two
+           sections split by a hairline rather than one card. All 16 Plaid
+           primaries, multi-select, each carrying its match count. Colour
+           alone marks selection. -->
+      <div class="panel">
+
+        <div class="filter-group">
+          <div class="filter-head"><svg><use href="#i-tag"/></svg><span class="filter-title">Categories</span><svg class="caret"><use href="#i-chev"/></svg></div>
+          <div class="cat-grid">
+            <button class="cat c-transport"><span class="n">9</span>Transportation</button>
+            <button class="cat c-home empty"><span class="n">0</span>Home improvement</button>
+            <button class="cat c-food on"><span class="n">9</span>Food &amp; drink</button>
+            <button class="cat c-govt empty"><span class="n">0</span>Government &amp; non-profit</button>
+            <button class="cat c-travel on"><span class="n">6</span>Travel</button>
+            <button class="cat c-transfer"><span class="n">3</span>Transfer in</button>
+            <button class="cat c-fees empty"><span class="n">0</span>Bank fees</button>
+            <button class="cat c-loans"><span class="n">6</span>Loan payments</button>
+            <button class="cat c-services empty"><span class="n">0</span>General services</button>
+            <button class="cat c-transfer"><span class="n">6</span>Transfer out</button>
+            <button class="cat c-income empty"><span class="n">0</span>Income</button>
+            <button class="cat c-medical empty"><span class="n">0</span>Medical</button>
+            <button class="cat c-merch"><span class="n">3</span>General merchandise</button>
+            <button class="cat c-utilities"><span class="n">3</span>Rent &amp; utilities</button>
+            <button class="cat c-personal"><span class="n">3</span>Personal care</button>
+            <button class="cat c-entertain empty"><span class="n">0</span>Entertainment</button>
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <div class="filter-head"><svg><use href="#i-clock"/></svg><span class="filter-title">Time range</span><svg class="caret"><use href="#i-chev"/></svg></div>
+        <div class="range">
+          <div class="range-row on">This <button class="sel">month <svg><use href="#i-caret"/></svg></button></div>
+          <div class="range-row">Last <button class="sel n">3 <svg><use href="#i-caret"/></svg></button> <button class="sel">months <svg><use href="#i-caret"/></svg></button></div>
+          <div class="range-row">Between <button class="sel">Jun 1 <svg><use href="#i-caret"/></svg></button> and <button class="sel">Aug 19 <svg><use href="#i-caret"/></svg></button></div>
+          <div class="range-row"><span class="plain">All time</span></div>
+        </div>
+        </div>
+
+      </div>
+
+      <main class="list">
+
+        <div class="month"><span class="name">August</span><span class="rule"></span><span class="year">2026</span></div>
+
+        <div class="day">Mon, Aug 10</div>
+
+        <div class="tx">
+          <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/united_airlines_1065.png" alt=""></div>
+          <div class="tx-id">
+            <div class="tx-name">United Airlines</div>
+            <div class="tx-meta"><span class="cat c-travel">Travel</span></div>
+          </div>
+          <div class="tx-amt num up">+$500.00</div>
+        </div>
+
+        <div class="day">Sun, Aug 9</div>
+
+        <div class="tx">
+          <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/mcdonalds_619.png" alt=""></div>
+          <div class="tx-id">
+            <div class="tx-name">McDonald's</div>
+            <div class="tx-meta"><span class="cat c-food">Food &amp; drink</span></div>
+          </div>
+          <div class="tx-amt num">−$12.00</div>
+        </div>
+
+        <div class="tx">
+          <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/starbucks_956.png" alt=""></div>
+          <div class="tx-id">
+            <div class="tx-name">Starbucks</div>
+            <div class="tx-meta"><span class="cat c-food">Food &amp; drink</span></div>
+          </div>
+          <div class="tx-amt num">−$4.33</div>
+        </div>
+
+      </main>
+
+      <div class="dockrow">
+        <nav class="dock glass">
+          <a href="#"><svg><use href="#i-home"/></svg>Home</a>
+          <a class="on" href="#"><svg><use href="#i-ledger"/></svg>Ledger</a>
+          <a href="#"><svg><use href="#i-recurring"/></svg>Recurring</a>
+          <a href="#"><svg><use href="#i-balances"/></svg>Balances</a>
+        </nav>
+        <a class="dock-search glass" href="#" aria-label="Search"><svg><use href="#i-search"/></svg></a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ══════════════════ Ledger · filter, relative range ══════════════════ -->
+  <section class="screen">
+    <div class="screen-label">Ledger · filter, relative range</div>
+    <div class="phone">
+
+      <div class="statusbar">
+        <span class="num">9:41</span>
+        <span class="glyphs"><svg viewBox="0 0 90 24" style="width:74px;height:16px"><use href="#i-status"/></svg></span>
+      </div>
+
+      <header class="header">
+        <div>
+          <div class="page-title">Ledger</div>
+        </div>
+      </header>
+
+      <!-- Same panel, nothing selected, and the range on its second form —
+           every part of the sentence is its own dropdown. -->
+      <div class="panel">
+
+        <!-- shut: the heading keeps the selection on one small line, so a
+             closed filter still says what it is doing -->
+        <div class="filter-group shut">
+          <div class="filter-head">
+            <svg><use href="#i-tag"/></svg><span class="filter-title">Categories</span>
+            <span class="filter-sum">
+              <span class="cat c-food">Food &amp; drink</span>
+              <span class="cat c-travel">Travel</span>
+              <span class="more">+2</span>
+            </span>
+            <svg class="caret"><use href="#i-chev"/></svg>
+          </div>
+          <div class="cat-grid">
+            <button class="cat c-transport"><span class="n">9</span>Transportation</button>
+            <button class="cat c-home empty"><span class="n">0</span>Home improvement</button>
+            <button class="cat c-food on"><span class="n">9</span>Food &amp; drink</button>
+            <button class="cat c-govt empty"><span class="n">0</span>Government &amp; non-profit</button>
+            <button class="cat c-travel on"><span class="n">6</span>Travel</button>
+            <button class="cat c-transfer"><span class="n">3</span>Transfer in</button>
+            <button class="cat c-fees empty"><span class="n">0</span>Bank fees</button>
+            <button class="cat c-loans"><span class="n">6</span>Loan payments</button>
+            <button class="cat c-services empty"><span class="n">0</span>General services</button>
+            <button class="cat c-transfer"><span class="n">6</span>Transfer out</button>
+            <button class="cat c-income empty"><span class="n">0</span>Income</button>
+            <button class="cat c-medical empty"><span class="n">0</span>Medical</button>
+            <button class="cat c-merch"><span class="n">3</span>General merchandise</button>
+            <button class="cat c-utilities"><span class="n">3</span>Rent &amp; utilities</button>
+            <button class="cat c-personal"><span class="n">3</span>Personal care</button>
+            <button class="cat c-entertain empty"><span class="n">0</span>Entertainment</button>
+          </div>
+        </div>
+
+        <div class="filter-group shut">
+          <div class="filter-head">
+            <svg><use href="#i-clock"/></svg><span class="filter-title">Time range</span>
+            <span class="filter-sum">Last 3 months</span>
+            <svg class="caret"><use href="#i-chev"/></svg>
+          </div>
+        <div class="range">
+          <div class="range-row">This <button class="sel">month <svg><use href="#i-caret"/></svg></button></div>
+          <div class="range-row on">Last <button class="sel n">3 <svg><use href="#i-caret"/></svg></button> <button class="sel">months <svg><use href="#i-caret"/></svg></button></div>
+          <div class="range-row">Between <button class="sel">Jun 1 <svg><use href="#i-caret"/></svg></button> and <button class="sel">Aug 19 <svg><use href="#i-caret"/></svg></button></div>
+          <div class="range-row"><span class="plain">All time</span></div>
+        </div>
+        </div>
+
+      </div>
+
+      <main class="list">
+
+        <div class="month"><span class="name">August</span><span class="rule"></span><span class="year">2026</span></div>
+
+        <div class="day">Wed, Aug 12</div>
+
+        <div class="tx pending">
+          <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/uber_1060.png" alt=""></div>
+          <div class="tx-id">
+            <div class="tx-name">Uber</div>
+            <div class="tx-meta"><span class="pending-tag">Pending</span><span class="cat c-transport">Transportation</span></div>
+          </div>
+          <div class="tx-amt num">−$5.40</div>
+        </div>
+
+        <div class="tx">
+          <div class="tx-logo none"></div>
+          <div class="tx-id">
+            <div class="tx-name">CREDIT CARD 3333 PAYMENT *//</div>
+            <div class="tx-meta"><span class="cat c-loans">Loan payments</span></div>
+          </div>
+          <div class="tx-amt num">−$25.00</div>
+        </div>
+
+      </main>
+
+      <div class="dockrow">
+        <nav class="dock glass">
+          <a href="#"><svg><use href="#i-home"/></svg>Home</a>
+          <a class="on" href="#"><svg><use href="#i-ledger"/></svg>Ledger</a>
+          <a href="#"><svg><use href="#i-recurring"/></svg>Recurring</a>
+          <a href="#"><svg><use href="#i-balances"/></svg>Balances</a>
+        </nav>
+        <a class="dock-search glass" href="#" aria-label="Search"><svg><use href="#i-search"/></svg></a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ══════════════════ Balances · default (hidden) ══════════════════ -->
+  <section class="screen">
+    <div class="screen-label">Balances · default (hidden)</div>
+    <div class="phone">
+
+      <div class="statusbar">
+        <span class="num">9:41</span>
+        <span class="glyphs"><svg viewBox="0 0 90 24" style="width:74px;height:16px"><use href="#i-status"/></svg></span>
+      </div>
+
+      <header class="header">
+        <div>
+          <div class="page-title">Balances</div>
+          <div class="page-sub">3 connections · 14 accounts</div>
+        </div>
+      </header>
+
+      <!-- Numbers live only on this page and start hidden, so the ledger can
+           be opened in public. Each figure is covered by a solid bar its own
+           width — withheld, not typed. The reveal control sits on the bar it
+           lifts, so what is hidden stays visible behind it. -->
+      <div class="networth">
+        <div class="k">Held</div>
+        <div class="v num"><span class="masked tappable"><span class="val">$86,541.74</span><span class="hint"><svg><use href="#i-eye"/></svg> Tap to reveal</span></span></div>
+      </div>
+
+      <main class="bal-list">
+        <div class="conn">
+          <div class="conn-head">
+            <div class="conn-logo">FT</div>
+            <div class="conn-name">First Platypus Bank</div>
+            <span class="conn-sync">synced 2m</span>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid Checking</div>
+              <div class="acct-sub">Checking ·0000</div>
+            </div>
+            <div class="acct-amt num"><span class="masked"><span class="val">$110.00</span></span></div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid Saving</div>
+              <div class="acct-sub">Savings ·1111</div>
+            </div>
+            <div class="acct-amt num"><span class="masked"><span class="val">$210.00</span></span></div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid Money Market</div>
+              <div class="acct-sub">Money market ·4444</div>
+            </div>
+            <div class="acct-amt num"><span class="masked"><span class="val">$43,200.00</span></span></div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid Cash Management</div>
+              <div class="acct-sub">Cash management ·9002</div>
+            </div>
+            <div class="acct-amt num"><span class="masked"><span class="val">$12,060.00</span></span></div>
+          </div>
+          <div class="conn-total">
+            <span class="k">8 accounts</span>
+            <span class="v num"><span class="masked"><span class="val">$57,159.00</span></span></span>
+          </div>
+        </div>
+
+        <div class="conn">
+          <div class="conn-head">
+            <div class="conn-logo">HS</div>
+            <div class="conn-name">Houndstooth Bank</div>
+            <button class="fix">Reconnect</button>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid 401k</div>
+              <div class="acct-sub">401(k) ·6666</div>
+            </div>
+            <div class="acct-amt num"><span class="masked"><span class="val">$23,631.98</span></span></div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid IRA</div>
+              <div class="acct-sub">IRA ·5555</div>
+            </div>
+            <div class="acct-amt num"><span class="masked"><span class="val">$320.76</span></span></div>
+          </div>
+          <div class="conn-total">
+            <span class="k">2 accounts</span>
+            <span class="v num"><span class="masked"><span class="val">$23,952.74</span></span></span>
+          </div>
+        </div>
+      </main>
+
+      <div class="dockrow">
+        <nav class="dock glass">
+          <a href="#"><svg><use href="#i-home"/></svg>Home</a>
+          <a href="#"><svg><use href="#i-ledger"/></svg>Ledger</a>
+          <a href="#"><svg><use href="#i-recurring"/></svg>Recurring</a>
+          <a class="on" href="#"><svg><use href="#i-balances"/></svg>Balances</a>
+        </nav>
+        <a class="dock-search glass" href="#" aria-label="Search"><svg><use href="#i-search"/></svg></a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ══════════════════ Balances · revealed ══════════════════ -->
+  <section class="screen">
+    <div class="screen-label">Balances · revealed</div>
+    <div class="phone">
+
+      <div class="statusbar">
+        <span class="num">9:41</span>
+        <span class="glyphs"><svg viewBox="0 0 90 24" style="width:74px;height:16px"><use href="#i-status"/></svg></span>
+      </div>
+
+      <header class="header">
+        <div>
+          <div class="page-title">Balances</div>
+          <div class="page-sub">3 connections · 14 accounts</div>
+        </div>
+      </header>
+
+      <!-- Headline is what you hold, not net worth. Plaid reports the
+           mortgage but never the house behind it, and the student loan but
+           not the degree, so a net figure is structurally too red — opening
+           the app should not read as "you are $77k in the hole". Debts get
+           their own section below rather than a number up here. -->
+      <div class="networth">
+        <div class="k">Held</div>
+        <div class="v num">$86,541.74</div>
+      </div>
+
+      <main class="bal-list">
+
+        <!-- One block per Item. Plaid returns type/subtype/mask/limit/APY per
+             account, so this is a straight render of /accounts/balance/get. -->
+        <div class="conn">
+          <div class="conn-head">
+            <div class="conn-logo">FT</div>
+            <div class="conn-name">First Platypus Bank</div>
+            <span class="conn-sync">synced 2m</span>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid Checking</div>
+              <div class="acct-sub">Checking ·0000 · $100.00 available</div>
+            </div>
+            <div class="acct-amt num">$110.00</div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid Saving</div>
+              <div class="acct-sub">Savings ·1111 · 0.10% APY</div>
+            </div>
+            <div class="acct-amt num">$210.00</div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid Money Market</div>
+              <div class="acct-sub">Money market ·4444 · 1.85% APY</div>
+            </div>
+            <div class="acct-amt num">$43,200.00</div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid CD</div>
+              <div class="acct-sub">CD ·2222 · 0.20% APY</div>
+            </div>
+            <div class="acct-amt num">$1,000.00</div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid Cash Management</div>
+              <div class="acct-sub">Cash management ·9002</div>
+            </div>
+            <div class="acct-amt num">$12,060.00</div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid HSA</div>
+              <div class="acct-sub">HSA ·9001</div>
+            </div>
+            <div class="acct-amt num">$6,009.00</div>
+          </div>
+          <div class="conn-total">
+            <span class="k">6 accounts held</span>
+            <span class="v num">$62,589.00</span>
+          </div>
+        </div>
+
+        <div class="conn">
+          <div class="conn-head">
+            <div class="conn-logo">HS</div>
+            <div class="conn-name">Houndstooth Bank</div>
+            <button class="fix">Reconnect</button>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid 401k</div>
+              <div class="acct-sub">401(k) ·6666</div>
+            </div>
+            <div class="acct-amt num">$23,631.98</div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid IRA</div>
+              <div class="acct-sub">IRA ·5555</div>
+            </div>
+            <div class="acct-amt num">$320.76</div>
+          </div>
+          <div class="conn-total">
+            <span class="k">2 accounts held</span>
+            <span class="v num">$23,952.74</span>
+          </div>
+        </div>
+
+        <!-- Debts are one tap away rather than folded into the headline.
+             Credit cards sit here too: Plaid reports a card's balance as a
+             positive `current` on a `credit` account, same as a loan. -->
+        <div class="conn debts">
+          <div class="conn-head">
+            <div class="conn-logo">TA</div>
+            <div class="conn-name">Tartan Bank</div>
+            <span class="conn-tag">Owed</span>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid Mortgage</div>
+              <div class="acct-sub">Mortgage ·8888</div>
+            </div>
+            <div class="acct-amt num owed">−$56,302.06</div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid Student Loan</div>
+              <div class="acct-sub">Student loan ·7777</div>
+            </div>
+            <div class="acct-amt num owed">−$65,262.00</div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid Auto Loan</div>
+              <div class="acct-sub">Auto loan ·9003</div>
+            </div>
+            <div class="acct-amt num owed">−$23,211.33</div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Home Equity Line of Credit</div>
+              <div class="acct-sub">HELOC ·9004</div>
+              <div class="acct-util">$47,647.50 still available</div>
+            </div>
+            <div class="acct-amt num owed">−$13,500.50</div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid Credit Card</div>
+              <div class="acct-sub">Credit ·3333</div>
+              <div class="acct-util">$410 of $2,000 limit used</div>
+            </div>
+            <div class="acct-amt num owed">−$410.00</div>
+          </div>
+          <div class="acct">
+            <div class="acct-id">
+              <div class="acct-name">Plaid Business Credit Card</div>
+              <div class="acct-sub">Credit ·9999</div>
+              <div class="acct-util">$5,020 of $10,000 limit used</div>
+            </div>
+            <div class="acct-amt num owed">−$5,020.00</div>
+          </div>
+          <div class="conn-total">
+            <span class="k">6 accounts owed</span>
+            <span class="v num owed">−$163,705.89</span>
+          </div>
+        </div>
+
+      </main>
+
+      <div class="dockrow">
+        <nav class="dock glass">
+          <a href="#"><svg><use href="#i-home"/></svg>Home</a>
+          <a href="#"><svg><use href="#i-ledger"/></svg>Ledger</a>
+          <a href="#"><svg><use href="#i-recurring"/></svg>Recurring</a>
+          <a class="on" href="#"><svg><use href="#i-balances"/></svg>Balances</a>
+        </nav>
+        <a class="dock-search glass" href="#" aria-label="Search"><svg><use href="#i-search"/></svg></a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ══════════════════ Recurring ══════════════════ -->
+  <section class="screen">
+    <div class="screen-label">Recurring</div>
+    <div class="phone">
+
+      <div class="statusbar">
+        <span class="num">9:41</span>
+        <span class="glyphs"><svg viewBox="0 0 90 24" style="width:74px;height:16px"><use href="#i-status"/></svg></span>
+      </div>
+
+      <header class="header">
+        <div>
+          <div class="page-title">Recurring</div>
+          <div class="page-sub">8 streams · 7 out, 1 in</div>
+        </div>
+      </header>
+
+      <!-- /transactions/recurring/get does the detection: Plaid returns a
+           frequency, average amount, predicted next date and status per
+           stream, so this page is a render rather than a classifier of ours.
+           Its categories are the endpoint's own, which sometimes disagree
+           with the matching transaction — Tectra Inc is FOOD_AND_DRINK here
+           and RENT_AND_UTILITIES in the ledger. -->
+      <div class="rec-hero">
+        <div class="v num">−$3,771.40<span class="per">/mo</span></div>
+        <div class="d faint">+$4.22 in · net −$3,767.18</div>
+      </div>
+
+      <div class="rec-bar">
+        <i class="c-transfer" style="flex:2078.5"></i>
+        <i class="c-food" style="flex:589.4"></i>
+        <i class="c-merch" style="flex:500"></i>
+        <i class="c-travel" style="flex:500"></i>
+        <i class="c-personal" style="flex:78.5"></i>
+        <i class="c-loans" style="flex:25"></i>
+      </div>
+      <div class="rec-legend">
+        <div class="item c-transfer"><i class="sw"></i><span class="nm">Transfer out</span><span class="amt num">$2,078.50</span></div>
+        <div class="item c-food"><i class="sw"></i><span class="nm">Food &amp; drink</span><span class="amt num">$589.40</span></div>
+        <div class="item c-merch"><i class="sw"></i><span class="nm">Merchandise</span><span class="amt num">$500.00</span></div>
+        <div class="item c-travel"><i class="sw"></i><span class="nm">Travel</span><span class="amt num">$500.00</span></div>
+        <div class="item c-personal"><i class="sw"></i><span class="nm">Personal care</span><span class="amt num">$78.50</span></div>
+        <div class="item c-loans"><i class="sw"></i><span class="nm">Loan payments</span><span class="amt num">$25.00</span></div>
+      </div>
+
+      <!-- Streams grouped by the same split as the bar above, biggest first.
+           Every row is a ledger transaction Plaid matched into a stream; the
+           date shown is the predicted next one. -->
+      <main class="rec-list">
+
+        <div class="rec-head c-transfer">
+          <span class="nm">Transfer out</span>
+          <span class="sum num">$2,078.50</span>
+        </div>
+
+        <div class="rec">
+          <div class="tx-logo none"></div>
+          <div class="rec-id">
+            <div class="rec-name">AUTOMATIC PAYMENT - THANK</div>
+            <div class="rec-meta"><span class="rec-when soon">next Aug 22 · in 3 days</span></div>
+          </div>
+          <div class="rec-right">
+            <div class="rec-amt num">−$2,078.50</div>
+            <div class="rec-freq">Monthly</div>
+          </div>
+        </div>
+
+        <div class="rec-head c-food">
+          <span class="nm">Food &amp; drink</span>
+          <span class="sum num">$589.40</span>
+        </div>
+
+        <div class="rec">
+          <div class="tx-logo none"></div>
+          <div class="rec-id">
+            <div class="rec-name">Tectra Inc</div>
+            <div class="rec-meta"><span class="rec-when soon">next Aug 23 · in 4 days</span></div>
+          </div>
+          <div class="rec-right">
+            <div class="rec-amt num">−$500.00</div>
+            <div class="rec-freq">Monthly</div>
+          </div>
+        </div>
+
+        <div class="rec">
+          <div class="tx-logo none"></div>
+          <div class="rec-id">
+            <div class="rec-name">FUN</div>
+            <div class="rec-meta"><span class="rec-when">next Sep 8 · in 20 days</span></div>
+          </div>
+          <div class="rec-right">
+            <div class="rec-amt num">−$89.40</div>
+            <div class="rec-freq">Monthly</div>
+          </div>
+        </div>
+
+        <div class="rec-head c-merch">
+          <span class="nm">Merchandise</span>
+          <span class="sum num">$500.00</span>
+        </div>
+
+        <div class="rec">
+          <div class="tx-logo none"></div>
+          <div class="rec-id">
+            <div class="rec-name">Madison Bicycle Shop</div>
+            <div class="rec-meta"><span class="rec-when soon">next Aug 22 · in 3 days</span></div>
+          </div>
+          <div class="rec-right">
+            <div class="rec-amt num">−$500.00</div>
+            <div class="rec-freq">Monthly</div>
+          </div>
+        </div>
+
+        <div class="rec-head c-travel">
+          <span class="nm">Travel</span>
+          <span class="sum num">$500.00</span>
+        </div>
+
+        <div class="rec">
+          <div class="tx-logo"><img src="https://plaid-merchant-logos.plaid.com/united_airlines_1065.png" alt=""></div>
+          <div class="rec-id">
+            <div class="rec-name">United Airlines</div>
+            <div class="rec-meta"><span class="rec-when">next Aug 28 · in 9 days</span></div>
+          </div>
+          <div class="rec-right">
+            <div class="rec-amt num">−$500.00</div>
+            <div class="rec-freq">Monthly</div>
+          </div>
+        </div>
+
+        <div class="rec-head c-personal">
+          <span class="nm">Personal care</span>
+          <span class="sum num">$78.50</span>
+        </div>
+
+        <div class="rec">
+          <div class="tx-logo none"></div>
+          <div class="rec-id">
+            <div class="rec-name">Touchstone Climbing</div>
+            <div class="rec-meta"><span class="rec-when">next Sep 10 · in 22 days</span></div>
+          </div>
+          <div class="rec-right">
+            <div class="rec-amt num">−$78.50</div>
+            <div class="rec-freq">Monthly</div>
+          </div>
+        </div>
+
+        <div class="rec-head c-loans">
+          <span class="nm">Loan payments</span>
+          <span class="sum num">$25.00</span>
+        </div>
+
+        <div class="rec">
+          <div class="tx-logo none"></div>
+          <div class="rec-id">
+            <div class="rec-name">CREDIT CARD 3333 PAYMENT *//</div>
+            <div class="rec-meta"><span class="rec-when">next Sep 12 · in 24 days</span></div>
+          </div>
+          <div class="rec-right">
+            <div class="rec-amt num">−$25.00</div>
+            <div class="rec-freq">Monthly</div>
+          </div>
+        </div>
+
+        <div class="rec-head c-transfer">
+          <span class="nm">Transfer in</span>
+          <span class="sum num">+$4.22</span>
+        </div>
+
+        <div class="rec">
+          <div class="tx-logo none"></div>
+          <div class="rec-id">
+            <div class="rec-name">INTRST PYMNT</div>
+            <div class="rec-meta"><span class="rec-when">next Sep 7 · in 19 days</span></div>
+          </div>
+          <div class="rec-right">
+            <div class="rec-amt num">+$4.22</div>
+            <div class="rec-freq">Monthly</div>
+          </div>
+        </div>
+
+      </main>
+
+      <div class="dockrow">
+        <nav class="dock glass">
+          <a href="#"><svg><use href="#i-home"/></svg>Home</a>
+          <a href="#"><svg><use href="#i-ledger"/></svg>Ledger</a>
+          <a class="on" href="#"><svg><use href="#i-recurring"/></svg>Recurring</a>
+          <a href="#"><svg><use href="#i-balances"/></svg>Balances</a>
+        </nav>
+        <a class="dock-search glass" href="#" aria-label="Search"><svg><use href="#i-search"/></svg></a>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+
+</body>
+</html>
