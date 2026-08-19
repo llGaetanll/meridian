@@ -402,10 +402,19 @@ mod tests {
 
     const NOW: Timestamp = 1_786_000_000;
 
+    /// A window ends at the last bar to have *closed*, not at this instant —
+    /// see `window`. `NOW` is not minute-aligned, so the end is a little
+    /// before it, and asserting on `NOW` itself would be asserting the bug
+    /// that comment exists to prevent.
     #[test]
-    fn windows_end_now_and_reach_back() {
-        assert_eq!(ChartRange::Day.window(NOW), NOW - DAY..NOW);
-        assert_eq!(ChartRange::Max.window(NOW), 0..NOW);
+    fn windows_end_at_the_last_closed_bar_and_reach_back() {
+        let day = ChartRange::Day.window(NOW);
+
+        assert_eq!(day.start, NOW - DAY);
+        assert_eq!(day.end, ChartRange::Day.interval().last_closed(NOW));
+        assert!(day.end <= NOW);
+
+        assert_eq!(ChartRange::Max.window(NOW).start, 0);
     }
 
     /// A window reaching past what Yahoo will serve is trimmed rather than

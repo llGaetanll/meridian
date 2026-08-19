@@ -176,12 +176,10 @@ impl ServerState {
         &self.streams
     }
 
+    /// Whether the connection needs the user to sign in again. Read by tests;
+    /// the served snapshot carries the same fact per connection.
     pub fn login_required(&self) -> bool {
         self.login_required
-    }
-
-    pub fn has_data(&self) -> bool {
-        self.fetched_at.is_some()
     }
 }
 

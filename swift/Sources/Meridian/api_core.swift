@@ -2425,6 +2425,13 @@ public func FfiConverterTypeTxRow_lower(_ value: TxRow) -> RustBuffer {
 }
 
 
+/**
+ * `Render` is far larger than the other variants, which clippy notices. It is
+ * deliberate: the whole screen crosses in one action so that the view holds no
+ * state to apply a diff against (see the note on `UiAction::Render`). Boxing
+ * it would not help — UniFFI copies the payload across the boundary either
+ * way, so the indirection would cost an allocation and buy nothing.
+ */
 
 public enum Action: Equatable, Hashable {
     

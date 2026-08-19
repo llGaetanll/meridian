@@ -8,10 +8,7 @@
 //! `now` is written as 0 and the tests substitute a fixed clock, so nothing
 //! about them depends on when this was generated.
 
-#[path = "../src/plaid_io.rs"]
-mod plaid_io;
-#[path = "../src/project.rs"]
-mod project;
+use srv_main::plaid_io;
 
 fn main() {
     let fetched = plaid_io::fetch_fixtures(0);

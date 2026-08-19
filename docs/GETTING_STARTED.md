@@ -21,6 +21,19 @@ Then run `trunk serve --open` from inside the front-end you want:
 `crates/web-main` for the web app, `crates/phone-main` for the phone app.
 They use different ports, so both can run at once.
 
+The phone app reads its data from `srv-main`, which is what holds the Plaid
+secret — see [PLAID.md](PLAID.md) for why that cannot live in the app. So the
+phone app is two commands:
+
+```
+cargo run -p srv-main                  # :8082
+cd crates/phone-main && trunk serve    # :8081
+```
+
+With no `.env` the server answers from the captured Sandbox fixtures in
+`crates/srv-main/fixtures/` instead of calling out, so the app runs from a
+clean checkout. Fill in `.env` to get live Sandbox data.
+
 That is everything the web and phone front-ends need. The rest of this document
 is only for working on the native phone apps.
 

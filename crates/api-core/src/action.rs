@@ -5,6 +5,15 @@
 use crate::view::DockView;
 use crate::view::ScreenView;
 
+/// `Render` is far larger than the other variants, which clippy notices. It is
+/// deliberate: the whole screen crosses in one action so that the view holds no
+/// state to apply a diff against (see the note on `UiAction::Render`). Boxing
+/// it would not help — UniFFI copies the payload across the boundary either
+/// way, so the indirection would cost an allocation and buy nothing.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the whole screen crosses at once, by design"
+)]
 #[derive(Debug, Clone, PartialEq, uniffi::Enum)]
 pub enum Action {
     ToUi { action: UiAction },
@@ -15,6 +24,10 @@ pub enum Action {
 ///
 /// These carry finished values, not instructions to go and compute one. A
 /// platform that receives `Render` draws exactly what it is given.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the whole screen crosses at once, by design"
+)]
 #[derive(Debug, Clone, PartialEq, uniffi::Enum)]
 pub enum UiAction {
     /// Draw this screen. The whole screen, in the state it should be in.

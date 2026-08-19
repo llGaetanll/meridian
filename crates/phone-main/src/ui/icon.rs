@@ -110,7 +110,7 @@ fn path(name: &str) -> AnyView {
 
         // An unknown name draws nothing rather than a "missing" glyph: a gap
         // is easier to spot in review than a box that looks deliberate.
-        _ => view! {}.into_any(),
+        _ => ().into_any(),
     }
 }
 

@@ -117,6 +117,19 @@ crate rather than `web-state`. `api-common` is meant to stay a
 dependency-free bag of value types, so the machine belongs next to it in its
 own crate — `api-core` — depending on `api-common` and on nothing else.
 
+### What this looks like once it is built
+
+`crates/phone-main` is the worked example, and `docs/DECISIONS.md` explains the
+calls it makes. Two are worth repeating here because they are what the design
+actually buys:
+
+- **The whole screen crosses, not a diff.** `UiAction::Render` carries the
+  finished screen, so the view is a pure function of the last action it saw and
+  holds no state to apply a diff against.
+- **The clock is an event field.** Nothing in `api-core` reads one, so `"in 3
+  days"` is a function of two timestamps and a replay lands where it did the
+  first time.
+
 ### Where Leptos fits
 
 Today most of this goes through Leptos signals and resources directly: a click
@@ -131,14 +144,17 @@ signal graph becomes plumbing, not the place where behaviour is decided.
 | Crate | What it is |
 | --- | --- |
 | `api-common` | Shared types: `Asset`, `Price`, `Quantity`, `Timestamp`, `ChartData`, and formatting helpers. No dependencies. |
-| `api-core` | Events, actions, and the state machine that turns one into the other. Synchronous, no IO. Reached from Swift and Kotlin over UniFFI — see [FFI.md](FFI.md). |
-| `api-ledger` | Transactions, positions, the ledger itself. |
+| `api-core` | Events, actions, and the state machine that turns one into the other. Holds every phone screen's logic and every string it prints. Synchronous, no IO. Reached from Swift and Kotlin over UniFFI — see [FFI.md](FFI.md). |
+| `api-ledger` | Entries, positions, accounts, recurring streams, the ledger itself. |
+| `api-wire` | The JSON the server and the front ends share. One definition rather than two that drift. |
 | `src-yahoo`, `src-coingecko` | Price sources. Requests, responses, and pure projections onto `api-common` types. |
-| `src-plaid` | Stub. The bank connection, same shape as the price sources. |
+| `src-plaid` | The bank connection, same shape as the price sources: sync, balances, recurring. |
+| `srv-main` | The server. Holds the Plaid secret, which is why it exists; events and actions like everything else. Sandbox only. |
 | `web-ui` | Design-system pieces: buttons, pills, cards, segmented controls, icons. No domain knowledge. |
 | `web-components` | Domain components: the shell, charts, and the markets page's blocks. |
 | `web-state` | State shared across pages. |
 | `web-main` | The web front-end: `io`, `state`, `pages`, and the styles. |
+| `phone-main` | The phone front-end. Renders what `api-core` decides and holds one signal; a runnable specification for the Swift and Kotlin views. |
 
 ## Talking to price sources
 
