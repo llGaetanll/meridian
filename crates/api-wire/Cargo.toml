@@ -1,0 +1,11 @@
+[package]
+name = "api-wire"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+api-ledger = { path = "../api-ledger" }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

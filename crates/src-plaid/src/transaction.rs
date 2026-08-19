@@ -41,6 +41,12 @@ pub struct PlaidTransaction {
     #[serde(default)]
     pub merchant_name: Option<String>,
 
+    /// The merchant's logo, where Plaid has one. Only about half of a real
+    /// feed carries this, so the view reserves the slot and shows nothing
+    /// rather than substituting a glyph.
+    #[serde(default)]
+    pub logo_url: Option<String>,
+
     /// Still pending. A pending transaction is *replaced* by a posted one with
     /// a different id — see `pending_transaction_id`.
     pub pending: bool,
@@ -97,7 +103,7 @@ where
     parse_date(&s).ok_or_else(|| serde::de::Error::custom(format!("bad date: {s}")))
 }
 
-fn optional_date<'de, D>(deserializer: D) -> Result<Option<Timestamp>, D::Error>
+pub(crate) fn optional_date<'de, D>(deserializer: D) -> Result<Option<Timestamp>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
