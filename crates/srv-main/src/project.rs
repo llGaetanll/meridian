@@ -71,7 +71,7 @@ pub fn entry(tx: &PlaidTransaction) -> Entry {
 }
 
 /// The whole connection: the institution, its accounts, and its health.
-pub fn connection(balances: &BalancesResponse, synced: String) -> Connection {
+pub fn connection(balances: &BalancesResponse, synced_at: u64) -> Connection {
     let name = balances
         .item
         .institution_name
@@ -90,7 +90,7 @@ pub fn connection(balances: &BalancesResponse, synced: String) -> Connection {
         .and_then(|e| e.error_code.as_deref())
     {
         Some("ITEM_LOGIN_REQUIRED") => ConnectionStatus::LoginRequired,
-        _ => ConnectionStatus::Ok { synced },
+        _ => ConnectionStatus::Ok { synced_at },
     };
 
     Connection {
@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn accounts_project_with_debts_marked() {
-        let conn = connection(&balances(), "synced now".into());
+        let conn = connection(&balances(), 1_787_097_600);
 
         assert_eq!(conn.name, "First Platypus Bank");
         assert_eq!(conn.initials, "FP");
@@ -285,7 +285,7 @@ mod tests {
 
     #[test]
     fn a_mortgage_is_never_counted_as_savings() {
-        let conn = connection(&balances(), "synced now".into());
+        let conn = connection(&balances(), 1_787_097_600);
 
         let mortgage = conn
             .accounts
@@ -300,7 +300,7 @@ mod tests {
     /// An APY of zero is nothing to say, so the row should not say it.
     #[test]
     fn only_real_interest_is_kept() {
-        let conn = connection(&balances(), "synced now".into());
+        let conn = connection(&balances(), 1_787_097_600);
 
         let checking = conn
             .accounts

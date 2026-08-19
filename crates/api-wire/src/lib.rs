@@ -79,7 +79,12 @@ pub struct WireConnection {
     pub initials: String,
     /// `"ok"` or `"login_required"`.
     pub status: String,
-    pub synced: String,
+    /// When this connection last synced, as a unix timestamp.
+    ///
+    /// A timestamp rather than "synced 2m ago": the phrase goes stale the
+    /// moment it is sent, and only the core knows what "now" is. The wording
+    /// happens there, against the snapshot's clock.
+    pub synced_at: u64,
     pub accounts: Vec<WireAccount>,
 }
 
@@ -175,9 +180,9 @@ impl WireEntry {
 
 impl WireConnection {
     fn from_connection(c: &Connection) -> Self {
-        let (status, synced) = match &c.status {
-            ConnectionStatus::Ok { synced } => ("ok", synced.clone()),
-            ConnectionStatus::LoginRequired => ("login_required", String::new()),
+        let (status, synced_at) = match &c.status {
+            ConnectionStatus::Ok { synced_at } => ("ok", *synced_at),
+            ConnectionStatus::LoginRequired => ("login_required", 0),
         };
 
         Self {
@@ -185,7 +190,7 @@ impl WireConnection {
             name: c.name.clone(),
             initials: c.initials.clone(),
             status: status.to_string(),
-            synced,
+            synced_at,
             accounts: c.accounts.iter().map(WireAccount::from_account).collect(),
         }
     }
@@ -198,7 +203,7 @@ impl WireConnection {
             status: match self.status.as_str() {
                 "login_required" => ConnectionStatus::LoginRequired,
                 _ => ConnectionStatus::Ok {
-                    synced: self.synced.clone(),
+                    synced_at: self.synced_at,
                 },
             },
             accounts: self.accounts.iter().map(WireAccount::to_account).collect(),

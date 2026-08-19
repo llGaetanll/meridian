@@ -1245,6 +1245,66 @@ public object FfiConverterUInt : FfiConverter<UInt, Int> {
 /**
  * @suppress
  */
+public object FfiConverterULong : FfiConverter<ULong, Long> {
+    override fun lift(value: Long): ULong = value.toULong()
+
+    override fun read(buf: ByteBuffer): ULong = lift(buf.getLong())
+
+    override fun lower(value: ULong): Long = value.toLong()
+
+    override fun allocationSize(value: ULong) = 8UL
+
+    override fun write(
+        value: ULong,
+        buf: ByteBuffer,
+    ) {
+        buf.putLong(value.toLong())
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterDouble : FfiConverter<Double, Double> {
+    override fun lift(value: Double): Double = value
+
+    override fun read(buf: ByteBuffer): Double = buf.getDouble()
+
+    override fun lower(value: Double): Double = value
+
+    override fun allocationSize(value: Double) = 8UL
+
+    override fun write(
+        value: Double,
+        buf: ByteBuffer,
+    ) {
+        buf.putDouble(value)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterBoolean : FfiConverter<Boolean, Byte> {
+    override fun lift(value: Byte): Boolean = value.toInt() != 0
+
+    override fun read(buf: ByteBuffer): Boolean = lift(buf.get())
+
+    override fun lower(value: Boolean): Byte = if (value) 1.toByte() else 0.toByte()
+
+    override fun allocationSize(value: Boolean) = 1UL
+
+    override fun write(
+        value: Boolean,
+        buf: ByteBuffer,
+    ) {
+        buf.put(lower(value))
+    }
+}
+
+/**
+ * @suppress
+ */
 public object FfiConverterString : FfiConverter<String, RustBuffer.ByValue> {
     // Note: we don't inherit from FfiConverterRustBuffer, because we use a
     // special encoding when lowering/lifting.  We can use `RustBuffer.len` to
@@ -1582,30 +1642,25 @@ public object FfiConverterTypeCore : FfiConverter<Core, Long> {
     }
 }
 
-/**
- * One transaction, already formatted for display.
- *
- * Deliberately not `api_ledger::Tx`: every formatting decision that crosses
- * as a raw number is a decision two more codebases have to make the same way.
- * The core decides what the row says; the platform decides how it looks.
- */
-data class TxSummary(
+data class AccountRow(
+    var `id`: kotlin.String,
+    var `name`: kotlin.String,
     /**
-     * "Trade" or "Deposit" — what the row calls itself.
+     * `"Checking ·0000 · $100.00 available"` — the whole subtitle, assembled.
      */
-    var `kind`: kotlin.String,
+    var `subtitle`: kotlin.String,
     /**
-     * The date, as the row shows it.
+     * `"$110.00"` or `"−$56,302.06"`.
      */
-    var `date`: kotlin.String,
+    var `amount`: kotlin.String,
     /**
-     * What left, if anything did.
+     * Whether this is money owed, for colour.
      */
-    var `from`: kotlin.String?,
+    var `owed`: kotlin.Boolean,
     /**
-     * What arrived.
+     * `"$410 of $2,000 limit used"`, where a limit exists.
      */
-    var `to`: kotlin.String,
+    var `utilisation`: kotlin.String?,
 ) {
     companion object
 }
@@ -1613,31 +1668,1052 @@ data class TxSummary(
 /**
  * @suppress
  */
-public object FfiConverterTypeTxSummary : FfiConverterRustBuffer<TxSummary> {
-    override fun read(buf: ByteBuffer): TxSummary =
-        TxSummary(
+public object FfiConverterTypeAccountRow : FfiConverterRustBuffer<AccountRow> {
+    override fun read(buf: ByteBuffer): AccountRow =
+        AccountRow(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+
+    override fun allocationSize(value: AccountRow) =
+        (
+            FfiConverterString.allocationSize(value.`id`) +
+                FfiConverterString.allocationSize(value.`name`) +
+                FfiConverterString.allocationSize(value.`subtitle`) +
+                FfiConverterString.allocationSize(value.`amount`) +
+                FfiConverterBoolean.allocationSize(value.`owed`) +
+                FfiConverterOptionalString.allocationSize(value.`utilisation`)
+        )
+
+    override fun write(
+        value: AccountRow,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`id`, buf)
+        FfiConverterString.write(value.`name`, buf)
+        FfiConverterString.write(value.`subtitle`, buf)
+        FfiConverterString.write(value.`amount`, buf)
+        FfiConverterBoolean.write(value.`owed`, buf)
+        FfiConverterOptionalString.write(value.`utilisation`, buf)
+    }
+}
+
+/**
+ * The Balances screen.
+ */
+data class BalancesView(
+    /**
+     * `"3 connections · 14 accounts"`.
+     */
+    var `subtitle`: kotlin.String,
+    /**
+     * `"Held"`. The headline is what you hold, not net worth: Plaid reports
+     * the mortgage but never the house behind it, so a net figure is
+     * structurally too red.
+     */
+    var `headlineLabel`: kotlin.String,
+    /**
+     * `"$86,541.74"`, or the same string masked.
+     */
+    var `headline`: kotlin.String,
+    /**
+     * Whether the figures are covered. The view draws a bar over them; the
+     * real value is still in `headline` so the layout does not shift on
+     * reveal.
+     */
+    var `masked`: kotlin.Boolean,
+    var `connections`: List<ConnectionView>,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeBalancesView : FfiConverterRustBuffer<BalancesView> {
+    override fun read(buf: ByteBuffer): BalancesView =
+        BalancesView(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceTypeConnectionView.read(buf),
+        )
+
+    override fun allocationSize(value: BalancesView) =
+        (
+            FfiConverterString.allocationSize(value.`subtitle`) +
+                FfiConverterString.allocationSize(value.`headlineLabel`) +
+                FfiConverterString.allocationSize(value.`headline`) +
+                FfiConverterBoolean.allocationSize(value.`masked`) +
+                FfiConverterSequenceTypeConnectionView.allocationSize(value.`connections`)
+        )
+
+    override fun write(
+        value: BalancesView,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`subtitle`, buf)
+        FfiConverterString.write(value.`headlineLabel`, buf)
+        FfiConverterString.write(value.`headline`, buf)
+        FfiConverterBoolean.write(value.`masked`, buf)
+        FfiConverterSequenceTypeConnectionView.write(value.`connections`, buf)
+    }
+}
+
+/**
+ * One segment of the breakdown bar.
+ */
+data class BreakdownSlice(
+    var `label`: kotlin.String,
+    var `token`: kotlin.String,
+    /**
+     * The segment's share of the bar, 0..1. A ratio rather than a percentage
+     * string, because this one is geometry — the exception `docs/FFI.md`
+     * carves out for the chart.
+     */
+    var `share`: kotlin.Double,
+    /**
+     * `"$2,078.50"`.
+     */
+    var `amount`: kotlin.String,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeBreakdownSlice : FfiConverterRustBuffer<BreakdownSlice> {
+    override fun read(buf: ByteBuffer): BreakdownSlice =
+        BreakdownSlice(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterString.read(buf),
+        )
+
+    override fun allocationSize(value: BreakdownSlice) =
+        (
+            FfiConverterString.allocationSize(value.`label`) +
+                FfiConverterString.allocationSize(value.`token`) +
+                FfiConverterDouble.allocationSize(value.`share`) +
+                FfiConverterString.allocationSize(value.`amount`)
+        )
+
+    override fun write(
+        value: BreakdownSlice,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`label`, buf)
+        FfiConverterString.write(value.`token`, buf)
+        FfiConverterDouble.write(value.`share`, buf)
+        FfiConverterString.write(value.`amount`, buf)
+    }
+}
+
+/**
+ * One category in the filter grid, or on a row.
+ */
+data class CategoryChip(
+    /**
+     * The stable name, e.g. `"FoodAndDrink"` — what a tap sends back.
+     */
+    var `id`: kotlin.String,
+    /**
+     * `"Food & drink"`.
+     */
+    var `label`: kotlin.String,
+    /**
+     * `"c-food"`.
+     */
+    var `token`: kotlin.String,
+    /**
+     * How many transactions match, as text.
+     */
+    var `count`: kotlin.String,
+    var `selected`: kotlin.Boolean,
+    /**
+     * Nothing matches. The chip stays visible but reads as unavailable.
+     */
+    var `empty`: kotlin.Boolean,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCategoryChip : FfiConverterRustBuffer<CategoryChip> {
+    override fun read(buf: ByteBuffer): CategoryChip =
+        CategoryChip(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+
+    override fun allocationSize(value: CategoryChip) =
+        (
+            FfiConverterString.allocationSize(value.`id`) +
+                FfiConverterString.allocationSize(value.`label`) +
+                FfiConverterString.allocationSize(value.`token`) +
+                FfiConverterString.allocationSize(value.`count`) +
+                FfiConverterBoolean.allocationSize(value.`selected`) +
+                FfiConverterBoolean.allocationSize(value.`empty`)
+        )
+
+    override fun write(
+        value: CategoryChip,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`id`, buf)
+        FfiConverterString.write(value.`label`, buf)
+        FfiConverterString.write(value.`token`, buf)
+        FfiConverterString.write(value.`count`, buf)
+        FfiConverterBoolean.write(value.`selected`, buf)
+        FfiConverterBoolean.write(value.`empty`, buf)
+    }
+}
+
+data class ConnectionView(
+    var `id`: kotlin.String,
+    var `name`: kotlin.String,
+    var `initials`: kotlin.String,
+    /**
+     * `"synced 2m"`, or empty when the connection needs attention.
+     */
+    var `synced`: kotlin.String,
+    /**
+     * Whether the user has to sign in again. Carries the action, rather than
+     * just naming the problem.
+     */
+    var `needsReconnect`: kotlin.Boolean,
+    /**
+     * Whether these balances are owed rather than held.
+     */
+    var `isDebts`: kotlin.Boolean,
+    var `accounts`: List<AccountRow>,
+    /**
+     * `"6 accounts held"` / `"6 accounts owed"`.
+     */
+    var `totalLabel`: kotlin.String,
+    /**
+     * `"$62,589.00"`.
+     */
+    var `total`: kotlin.String,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeConnectionView : FfiConverterRustBuffer<ConnectionView> {
+    override fun read(buf: ByteBuffer): ConnectionView =
+        ConnectionView(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceTypeAccountRow.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+
+    override fun allocationSize(value: ConnectionView) =
+        (
+            FfiConverterString.allocationSize(value.`id`) +
+                FfiConverterString.allocationSize(value.`name`) +
+                FfiConverterString.allocationSize(value.`initials`) +
+                FfiConverterString.allocationSize(value.`synced`) +
+                FfiConverterBoolean.allocationSize(value.`needsReconnect`) +
+                FfiConverterBoolean.allocationSize(value.`isDebts`) +
+                FfiConverterSequenceTypeAccountRow.allocationSize(value.`accounts`) +
+                FfiConverterString.allocationSize(value.`totalLabel`) +
+                FfiConverterString.allocationSize(value.`total`)
+        )
+
+    override fun write(
+        value: ConnectionView,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`id`, buf)
+        FfiConverterString.write(value.`name`, buf)
+        FfiConverterString.write(value.`initials`, buf)
+        FfiConverterString.write(value.`synced`, buf)
+        FfiConverterBoolean.write(value.`needsReconnect`, buf)
+        FfiConverterBoolean.write(value.`isDebts`, buf)
+        FfiConverterSequenceTypeAccountRow.write(value.`accounts`, buf)
+        FfiConverterString.write(value.`totalLabel`, buf)
+        FfiConverterString.write(value.`total`, buf)
+    }
+}
+
+/**
+ * A day's worth of rows, under its heading.
+ *
+ * Grouping is done here rather than in the view because three view layers
+ * would otherwise each write the same date-bucketing loop, and the one that
+ * got it subtly wrong would be the one nobody looked at.
+ */
+data class DaySection(
+    /**
+     * `"Wed, Aug 12"`.
+     */
+    var `heading`: kotlin.String,
+    var `rows`: List<TxRow>,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDaySection : FfiConverterRustBuffer<DaySection> {
+    override fun read(buf: ByteBuffer): DaySection =
+        DaySection(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeTxRow.read(buf),
+        )
+
+    override fun allocationSize(value: DaySection) =
+        (
+            FfiConverterString.allocationSize(value.`heading`) +
+                FfiConverterSequenceTypeTxRow.allocationSize(value.`rows`)
+        )
+
+    override fun write(
+        value: DaySection,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`heading`, buf)
+        FfiConverterSequenceTypeTxRow.write(value.`rows`, buf)
+    }
+}
+
+data class DockItem(
+    var `screen`: Screen,
+    var `label`: kotlin.String,
+    /**
+     * An icon name the view resolves in its own asset catalogue.
+     */
+    var `icon`: kotlin.String,
+    var `selected`: kotlin.Boolean,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDockItem : FfiConverterRustBuffer<DockItem> {
+    override fun read(buf: ByteBuffer): DockItem =
+        DockItem(
+            FfiConverterTypeScreen.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+
+    override fun allocationSize(value: DockItem) =
+        (
+            FfiConverterTypeScreen.allocationSize(value.`screen`) +
+                FfiConverterString.allocationSize(value.`label`) +
+                FfiConverterString.allocationSize(value.`icon`) +
+                FfiConverterBoolean.allocationSize(value.`selected`)
+        )
+
+    override fun write(
+        value: DockItem,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterTypeScreen.write(value.`screen`, buf)
+        FfiConverterString.write(value.`label`, buf)
+        FfiConverterString.write(value.`icon`, buf)
+        FfiConverterBoolean.write(value.`selected`, buf)
+    }
+}
+
+/**
+ * The dock, and which tab is lit.
+ */
+data class DockView(
+    var `items`: List<DockItem>,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDockView : FfiConverterRustBuffer<DockView> {
+    override fun read(buf: ByteBuffer): DockView =
+        DockView(
+            FfiConverterSequenceTypeDockItem.read(buf),
+        )
+
+    override fun allocationSize(value: DockView) =
+        (
+            FfiConverterSequenceTypeDockItem.allocationSize(value.`items`)
+        )
+
+    override fun write(
+        value: DockView,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterSequenceTypeDockItem.write(value.`items`, buf)
+    }
+}
+
+/**
+ * The filter panel: categories and a time range, independent of each other.
+ */
+data class FilterView(
+    var `open`: kotlin.Boolean,
+    var `categoriesOpen`: kotlin.Boolean,
+    var `rangeOpen`: kotlin.Boolean,
+    /**
+     * All sixteen, each with its live count.
+     */
+    var `categories`: List<CategoryChip>,
+    /**
+     * What a shut category group says instead of its chips: the first few
+     * selected, then `"+2"`.
+     */
+    var `categoriesSummary`: List<CategoryChip>,
+    var `categoriesOverflow`: kotlin.String?,
+    var `range`: RangeView,
+    /**
+     * `"Last 3 months"` — what a shut range group shows.
+     */
+    var `rangeSummary`: kotlin.String,
+    /**
+     * Whether anything is filtering at all. Drives the dot on the filter
+     * button.
+     */
+    var `active`: kotlin.Boolean,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFilterView : FfiConverterRustBuffer<FilterView> {
+    override fun read(buf: ByteBuffer): FilterView =
+        FilterView(
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceTypeCategoryChip.read(buf),
+            FfiConverterSequenceTypeCategoryChip.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterTypeRangeView.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+
+    override fun allocationSize(value: FilterView) =
+        (
+            FfiConverterBoolean.allocationSize(value.`open`) +
+                FfiConverterBoolean.allocationSize(value.`categoriesOpen`) +
+                FfiConverterBoolean.allocationSize(value.`rangeOpen`) +
+                FfiConverterSequenceTypeCategoryChip.allocationSize(value.`categories`) +
+                FfiConverterSequenceTypeCategoryChip.allocationSize(value.`categoriesSummary`) +
+                FfiConverterOptionalString.allocationSize(value.`categoriesOverflow`) +
+                FfiConverterTypeRangeView.allocationSize(value.`range`) +
+                FfiConverterString.allocationSize(value.`rangeSummary`) +
+                FfiConverterBoolean.allocationSize(value.`active`)
+        )
+
+    override fun write(
+        value: FilterView,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterBoolean.write(value.`open`, buf)
+        FfiConverterBoolean.write(value.`categoriesOpen`, buf)
+        FfiConverterBoolean.write(value.`rangeOpen`, buf)
+        FfiConverterSequenceTypeCategoryChip.write(value.`categories`, buf)
+        FfiConverterSequenceTypeCategoryChip.write(value.`categoriesSummary`, buf)
+        FfiConverterOptionalString.write(value.`categoriesOverflow`, buf)
+        FfiConverterTypeRangeView.write(value.`range`, buf)
+        FfiConverterString.write(value.`rangeSummary`, buf)
+        FfiConverterBoolean.write(value.`active`, buf)
+    }
+}
+
+data class HomeBalances(
+    /**
+     * `"$86,541.74"`.
+     */
+    var `headline`: kotlin.String,
+    var `masked`: kotlin.Boolean,
+    /**
+     * `"held across 14 accounts"`.
+     */
+    var `detail`: kotlin.String,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHomeBalances : FfiConverterRustBuffer<HomeBalances> {
+    override fun read(buf: ByteBuffer): HomeBalances =
+        HomeBalances(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+        )
+
+    override fun allocationSize(value: HomeBalances) =
+        (
+            FfiConverterString.allocationSize(value.`headline`) +
+                FfiConverterBoolean.allocationSize(value.`masked`) +
+                FfiConverterString.allocationSize(value.`detail`)
+        )
+
+    override fun write(
+        value: HomeBalances,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`headline`, buf)
+        FfiConverterBoolean.write(value.`masked`, buf)
+        FfiConverterString.write(value.`detail`, buf)
+    }
+}
+
+data class HomeRecurring(
+    /**
+     * `"−$3,771.40"`.
+     */
+    var `headline`: kotlin.String,
+    var `masked`: kotlin.Boolean,
+    /**
+     * `"3 due within the week"`.
+     */
+    var `detail`: kotlin.String,
+    var `breakdown`: List<BreakdownSlice>,
+    /**
+     * Only what lands next.
+     */
+    var `upcoming`: List<StreamRow>,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHomeRecurring : FfiConverterRustBuffer<HomeRecurring> {
+    override fun read(buf: ByteBuffer): HomeRecurring =
+        HomeRecurring(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeBreakdownSlice.read(buf),
+            FfiConverterSequenceTypeStreamRow.read(buf),
+        )
+
+    override fun allocationSize(value: HomeRecurring) =
+        (
+            FfiConverterString.allocationSize(value.`headline`) +
+                FfiConverterBoolean.allocationSize(value.`masked`) +
+                FfiConverterString.allocationSize(value.`detail`) +
+                FfiConverterSequenceTypeBreakdownSlice.allocationSize(value.`breakdown`) +
+                FfiConverterSequenceTypeStreamRow.allocationSize(value.`upcoming`)
+        )
+
+    override fun write(
+        value: HomeRecurring,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`headline`, buf)
+        FfiConverterBoolean.write(value.`masked`, buf)
+        FfiConverterString.write(value.`detail`, buf)
+        FfiConverterSequenceTypeBreakdownSlice.write(value.`breakdown`, buf)
+        FfiConverterSequenceTypeStreamRow.write(value.`upcoming`, buf)
+    }
+}
+
+/**
+ * The Home screen: the highlight of each tab and nothing more.
+ */
+data class HomeView(
+    var `balances`: HomeBalances,
+    var `recurring`: HomeRecurring,
+    /**
+     * The latest few ledger rows.
+     */
+    var `ledger`: List<TxRow>,
+    /**
+     * Connections needing attention. Empty when everything is syncing, and
+     * the block is not drawn at all then.
+     */
+    var `attention`: List<ConnectionView>,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHomeView : FfiConverterRustBuffer<HomeView> {
+    override fun read(buf: ByteBuffer): HomeView =
+        HomeView(
+            FfiConverterTypeHomeBalances.read(buf),
+            FfiConverterTypeHomeRecurring.read(buf),
+            FfiConverterSequenceTypeTxRow.read(buf),
+            FfiConverterSequenceTypeConnectionView.read(buf),
+        )
+
+    override fun allocationSize(value: HomeView) =
+        (
+            FfiConverterTypeHomeBalances.allocationSize(value.`balances`) +
+                FfiConverterTypeHomeRecurring.allocationSize(value.`recurring`) +
+                FfiConverterSequenceTypeTxRow.allocationSize(value.`ledger`) +
+                FfiConverterSequenceTypeConnectionView.allocationSize(value.`attention`)
+        )
+
+    override fun write(
+        value: HomeView,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterTypeHomeBalances.write(value.`balances`, buf)
+        FfiConverterTypeHomeRecurring.write(value.`recurring`, buf)
+        FfiConverterSequenceTypeTxRow.write(value.`ledger`, buf)
+        FfiConverterSequenceTypeConnectionView.write(value.`attention`, buf)
+    }
+}
+
+/**
+ * The Ledger screen.
+ */
+data class LedgerView(
+    /**
+     * `"3 connections · synced 2m ago"`.
+     */
+    var `subtitle`: kotlin.String,
+    var `months`: List<MonthSection>,
+    /**
+     * The filter panel, whose state travels with the screen it filters.
+     */
+    var `filter`: FilterView,
+    /**
+     * What to show instead of the list when it is empty, if it is empty.
+     * `None` means there are rows.
+     */
+    var `empty`: kotlin.String?,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLedgerView : FfiConverterRustBuffer<LedgerView> {
+    override fun read(buf: ByteBuffer): LedgerView =
+        LedgerView(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeMonthSection.read(buf),
+            FfiConverterTypeFilterView.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+
+    override fun allocationSize(value: LedgerView) =
+        (
+            FfiConverterString.allocationSize(value.`subtitle`) +
+                FfiConverterSequenceTypeMonthSection.allocationSize(value.`months`) +
+                FfiConverterTypeFilterView.allocationSize(value.`filter`) +
+                FfiConverterOptionalString.allocationSize(value.`empty`)
+        )
+
+    override fun write(
+        value: LedgerView,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`subtitle`, buf)
+        FfiConverterSequenceTypeMonthSection.write(value.`months`, buf)
+        FfiConverterTypeFilterView.write(value.`filter`, buf)
+        FfiConverterOptionalString.write(value.`empty`, buf)
+    }
+}
+
+/**
+ * A month's worth of days, under its rule.
+ */
+data class MonthSection(
+    /**
+     * `"August"`.
+     */
+    var `name`: kotlin.String,
+    /**
+     * `"2026"`.
+     */
+    var `year`: kotlin.String,
+    var `days`: List<DaySection>,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeMonthSection : FfiConverterRustBuffer<MonthSection> {
+    override fun read(buf: ByteBuffer): MonthSection =
+        MonthSection(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeDaySection.read(buf),
+        )
+
+    override fun allocationSize(value: MonthSection) =
+        (
+            FfiConverterString.allocationSize(value.`name`) +
+                FfiConverterString.allocationSize(value.`year`) +
+                FfiConverterSequenceTypeDaySection.allocationSize(value.`days`)
+        )
+
+    override fun write(
+        value: MonthSection,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`name`, buf)
+        FfiConverterString.write(value.`year`, buf)
+        FfiConverterSequenceTypeDaySection.write(value.`days`, buf)
+    }
+}
+
+/**
+ * The time range, as the sentence the sketch draws.
+ */
+data class RangeView(
+    /**
+     * Which of the four forms is live.
+     */
+    var `kind`: RangeKind,
+    /**
+     * "This [month]" — the unit token.
+     */
+    var `thisUnit`: kotlin.String,
+    /**
+     * "Last [3] [months]" — the count and unit tokens.
+     */
+    var `lastCount`: kotlin.String,
+    var `lastUnit`: kotlin.String,
+    /**
+     * "Between [Jun 1] and [Aug 19]".
+     */
+    var `betweenStart`: kotlin.String,
+    var `betweenEnd`: kotlin.String,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRangeView : FfiConverterRustBuffer<RangeView> {
+    override fun read(buf: ByteBuffer): RangeView =
+        RangeView(
+            FfiConverterTypeRangeKind.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+
+    override fun allocationSize(value: RangeView) =
+        (
+            FfiConverterTypeRangeKind.allocationSize(value.`kind`) +
+                FfiConverterString.allocationSize(value.`thisUnit`) +
+                FfiConverterString.allocationSize(value.`lastCount`) +
+                FfiConverterString.allocationSize(value.`lastUnit`) +
+                FfiConverterString.allocationSize(value.`betweenStart`) +
+                FfiConverterString.allocationSize(value.`betweenEnd`)
+        )
+
+    override fun write(
+        value: RangeView,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterTypeRangeKind.write(value.`kind`, buf)
+        FfiConverterString.write(value.`thisUnit`, buf)
+        FfiConverterString.write(value.`lastCount`, buf)
+        FfiConverterString.write(value.`lastUnit`, buf)
+        FfiConverterString.write(value.`betweenStart`, buf)
+        FfiConverterString.write(value.`betweenEnd`, buf)
+    }
+}
+
+/**
+ * The Recurring screen.
+ */
+data class RecurringView(
+    /**
+     * `"8 streams · 7 out, 1 in"`.
+     */
+    var `subtitle`: kotlin.String,
+    /**
+     * `"−$3,771.40"`, the monthly commitment.
+     */
+    var `headline`: kotlin.String,
+    /**
+     * `"+$4.22 in · net −$3,767.18"`.
+     */
+    var `detail`: kotlin.String,
+    var `masked`: kotlin.Boolean,
+    /**
+     * The breakdown bar and its legend are two views of one split, so they
+     * come from one list.
+     */
+    var `breakdown`: List<BreakdownSlice>,
+    var `groups`: List<StreamGroup>,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRecurringView : FfiConverterRustBuffer<RecurringView> {
+    override fun read(buf: ByteBuffer): RecurringView =
+        RecurringView(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceTypeBreakdownSlice.read(buf),
+            FfiConverterSequenceTypeStreamGroup.read(buf),
+        )
+
+    override fun allocationSize(value: RecurringView) =
+        (
+            FfiConverterString.allocationSize(value.`subtitle`) +
+                FfiConverterString.allocationSize(value.`headline`) +
+                FfiConverterString.allocationSize(value.`detail`) +
+                FfiConverterBoolean.allocationSize(value.`masked`) +
+                FfiConverterSequenceTypeBreakdownSlice.allocationSize(value.`breakdown`) +
+                FfiConverterSequenceTypeStreamGroup.allocationSize(value.`groups`)
+        )
+
+    override fun write(
+        value: RecurringView,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`subtitle`, buf)
+        FfiConverterString.write(value.`headline`, buf)
+        FfiConverterString.write(value.`detail`, buf)
+        FfiConverterBoolean.write(value.`masked`, buf)
+        FfiConverterSequenceTypeBreakdownSlice.write(value.`breakdown`, buf)
+        FfiConverterSequenceTypeStreamGroup.write(value.`groups`, buf)
+    }
+}
+
+data class StreamGroup(
+    /**
+     * `"Transfer out"`.
+     */
+    var `name`: kotlin.String,
+    var `token`: kotlin.String,
+    /**
+     * `"$2,078.50"`.
+     */
+    var `total`: kotlin.String,
+    var `streams`: List<StreamRow>,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStreamGroup : FfiConverterRustBuffer<StreamGroup> {
+    override fun read(buf: ByteBuffer): StreamGroup =
+        StreamGroup(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeStreamRow.read(buf),
+        )
+
+    override fun allocationSize(value: StreamGroup) =
+        (
+            FfiConverterString.allocationSize(value.`name`) +
+                FfiConverterString.allocationSize(value.`token`) +
+                FfiConverterString.allocationSize(value.`total`) +
+                FfiConverterSequenceTypeStreamRow.allocationSize(value.`streams`)
+        )
+
+    override fun write(
+        value: StreamGroup,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`name`, buf)
+        FfiConverterString.write(value.`token`, buf)
+        FfiConverterString.write(value.`total`, buf)
+        FfiConverterSequenceTypeStreamRow.write(value.`streams`, buf)
+    }
+}
+
+data class StreamRow(
+    var `id`: kotlin.String,
+    var `title`: kotlin.String,
+    var `logoUrl`: kotlin.String?,
+    /**
+     * `"next Aug 22 · in 3 days"`.
+     */
+    var `when`: kotlin.String,
+    /**
+     * Due within the week, so it reads as a heads-up rather than an alarm.
+     */
+    var `soon`: kotlin.Boolean,
+    /**
+     * `"−$2,078.50"`.
+     */
+    var `amount`: kotlin.String,
+    /**
+     * `"Monthly"`.
+     */
+    var `frequency`: kotlin.String,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeStreamRow : FfiConverterRustBuffer<StreamRow> {
+    override fun read(buf: ByteBuffer): StreamRow =
+        StreamRow(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterOptionalString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
         )
 
-    override fun allocationSize(value: TxSummary) =
+    override fun allocationSize(value: StreamRow) =
         (
-            FfiConverterString.allocationSize(value.`kind`) +
-                FfiConverterString.allocationSize(value.`date`) +
-                FfiConverterOptionalString.allocationSize(value.`from`) +
-                FfiConverterString.allocationSize(value.`to`)
+            FfiConverterString.allocationSize(value.`id`) +
+                FfiConverterString.allocationSize(value.`title`) +
+                FfiConverterOptionalString.allocationSize(value.`logoUrl`) +
+                FfiConverterString.allocationSize(value.`when`) +
+                FfiConverterBoolean.allocationSize(value.`soon`) +
+                FfiConverterString.allocationSize(value.`amount`) +
+                FfiConverterString.allocationSize(value.`frequency`)
         )
 
     override fun write(
-        value: TxSummary,
+        value: StreamRow,
         buf: ByteBuffer,
     ) {
-        FfiConverterString.write(value.`kind`, buf)
-        FfiConverterString.write(value.`date`, buf)
-        FfiConverterOptionalString.write(value.`from`, buf)
-        FfiConverterString.write(value.`to`, buf)
+        FfiConverterString.write(value.`id`, buf)
+        FfiConverterString.write(value.`title`, buf)
+        FfiConverterOptionalString.write(value.`logoUrl`, buf)
+        FfiConverterString.write(value.`when`, buf)
+        FfiConverterBoolean.write(value.`soon`, buf)
+        FfiConverterString.write(value.`amount`, buf)
+        FfiConverterString.write(value.`frequency`, buf)
+    }
+}
+
+/**
+ * One transaction, as a row.
+ */
+data class TxRow(
+    /**
+     * Stable across refreshes, so a platform list can diff on it.
+     */
+    var `id`: kotlin.String,
+    /**
+     * The merchant, or the raw bank description where there is no merchant.
+     */
+    var `title`: kotlin.String,
+    /**
+     * What the row calls its category, e.g. `"Food & drink"`.
+     */
+    var `category`: kotlin.String,
+    /**
+     * A palette token for the category, e.g. `"c-food"`. The view maps this
+     * to its own colour; it never works one out from the category name.
+     */
+    var `categoryToken`: kotlin.String,
+    /**
+     * The amount, ready to print: `"−$5.40"`, `"+$500.00"`.
+     */
+    var `amount`: kotlin.String,
+    /**
+     * Whether the amount should read as money arriving. The view uses this
+     * for colour; it does not parse the sign back out of `amount`.
+     */
+    var `isInflow`: kotlin.Boolean,
+    /**
+     * A merchant logo, where one exists. The slot is reserved either way, so
+     * every row's text starts on the same line.
+     */
+    var `logoUrl`: kotlin.String?,
+    /**
+     * Authorised but not settled. The whole row recedes.
+     */
+    var `pending`: kotlin.Boolean,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTxRow : FfiConverterRustBuffer<TxRow> {
+    override fun read(buf: ByteBuffer): TxRow =
+        TxRow(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+
+    override fun allocationSize(value: TxRow) =
+        (
+            FfiConverterString.allocationSize(value.`id`) +
+                FfiConverterString.allocationSize(value.`title`) +
+                FfiConverterString.allocationSize(value.`category`) +
+                FfiConverterString.allocationSize(value.`categoryToken`) +
+                FfiConverterString.allocationSize(value.`amount`) +
+                FfiConverterBoolean.allocationSize(value.`isInflow`) +
+                FfiConverterOptionalString.allocationSize(value.`logoUrl`) +
+                FfiConverterBoolean.allocationSize(value.`pending`)
+        )
+
+    override fun write(
+        value: TxRow,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`id`, buf)
+        FfiConverterString.write(value.`title`, buf)
+        FfiConverterString.write(value.`category`, buf)
+        FfiConverterString.write(value.`categoryToken`, buf)
+        FfiConverterString.write(value.`amount`, buf)
+        FfiConverterBoolean.write(value.`isInflow`, buf)
+        FfiConverterOptionalString.write(value.`logoUrl`, buf)
+        FfiConverterBoolean.write(value.`pending`, buf)
     }
 }
 
@@ -1801,8 +2877,261 @@ public object FfiConverterTypeEvent : FfiConverterRustBuffer<Event> {
     }
 }
 
+/**
+ * Which half of the filter panel.
+ */
+
+enum class FilterGroup {
+    CATEGORIES,
+    RANGE,
+    ;
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFilterGroup : FfiConverterRustBuffer<FilterGroup> {
+    override fun read(buf: ByteBuffer) =
+        try {
+            FilterGroup.values()[buf.getInt() - 1]
+        } catch (e: IndexOutOfBoundsException) {
+            throw RuntimeException("invalid enum value, something is very wrong!!", e)
+        }
+
+    override fun allocationSize(value: FilterGroup) = 4UL
+
+    override fun write(
+        value: FilterGroup,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+enum class RangeKind {
+    THIS,
+    LAST,
+    BETWEEN,
+    ALL,
+    ;
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRangeKind : FfiConverterRustBuffer<RangeKind> {
+    override fun read(buf: ByteBuffer) =
+        try {
+            RangeKind.values()[buf.getInt() - 1]
+        } catch (e: IndexOutOfBoundsException) {
+            throw RuntimeException("invalid enum value, something is very wrong!!", e)
+        }
+
+    override fun allocationSize(value: RangeKind) = 4UL
+
+    override fun write(
+        value: RangeKind,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+/**
+ * A time range the user asked for.
+ *
+ * The parameters ride along with the choice rather than being separate
+ * events, so "last 3 months" is one event and not three. A replay of the log
+ * then shows the range the user actually picked, not a reconstruction of it.
+ */
+sealed class RangeSelection {
+    /**
+     * This month, this week, this year.
+     */
+    data class This(
+        val `unit`: uniffi.api_core.RangeUnit,
+    ) : RangeSelection() {
+        companion object
+    }
+
+    /**
+     * The last N of them.
+     */
+    data class Last(
+        val `count`: kotlin.UInt,
+        val `unit`: uniffi.api_core.RangeUnit,
+    ) : RangeSelection() {
+        companion object
+    }
+
+    /**
+     * Between two days, as unix timestamps.
+     */
+    data class Between(
+        val `start`: kotlin.ULong,
+        val `end`: kotlin.ULong,
+    ) : RangeSelection() {
+        companion object
+    }
+
+    /**
+     * Everything.
+     */
+    object All : RangeSelection()
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRangeSelection : FfiConverterRustBuffer<RangeSelection> {
+    override fun read(buf: ByteBuffer): RangeSelection =
+        when (buf.getInt()) {
+            1 -> {
+                RangeSelection.This(
+                    FfiConverterTypeRangeUnit.read(buf),
+                )
+            }
+
+            2 -> {
+                RangeSelection.Last(
+                    FfiConverterUInt.read(buf),
+                    FfiConverterTypeRangeUnit.read(buf),
+                )
+            }
+
+            3 -> {
+                RangeSelection.Between(
+                    FfiConverterULong.read(buf),
+                    FfiConverterULong.read(buf),
+                )
+            }
+
+            4 -> {
+                RangeSelection.All
+            }
+
+            else -> {
+                throw RuntimeException("invalid enum value, something is very wrong!!")
+            }
+        }
+
+    override fun allocationSize(value: RangeSelection): ULong =
+        when (value) {
+            is RangeSelection.This -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypeRangeUnit.allocationSize(value.`unit`)
+                )
+            }
+
+            is RangeSelection.Last -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterUInt.allocationSize(value.`count`) +
+                        FfiConverterTypeRangeUnit.allocationSize(value.`unit`)
+                )
+            }
+
+            is RangeSelection.Between -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterULong.allocationSize(value.`start`) +
+                        FfiConverterULong.allocationSize(value.`end`)
+                )
+            }
+
+            is RangeSelection.All -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+        }
+
+    override fun write(
+        value: RangeSelection,
+        buf: ByteBuffer,
+    ) {
+        when (value) {
+            is RangeSelection.This -> {
+                buf.putInt(1)
+                FfiConverterTypeRangeUnit.write(value.`unit`, buf)
+                Unit
+            }
+
+            is RangeSelection.Last -> {
+                buf.putInt(2)
+                FfiConverterUInt.write(value.`count`, buf)
+                FfiConverterTypeRangeUnit.write(value.`unit`, buf)
+                Unit
+            }
+
+            is RangeSelection.Between -> {
+                buf.putInt(3)
+                FfiConverterULong.write(value.`start`, buf)
+                FfiConverterULong.write(value.`end`, buf)
+                Unit
+            }
+
+            is RangeSelection.All -> {
+                buf.putInt(4)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+enum class RangeUnit {
+    WEEK,
+    MONTH,
+    YEAR,
+    ;
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRangeUnit : FfiConverterRustBuffer<RangeUnit> {
+    override fun read(buf: ByteBuffer) =
+        try {
+            RangeUnit.values()[buf.getInt() - 1]
+        } catch (e: IndexOutOfBoundsException) {
+            throw RuntimeException("invalid enum value, something is very wrong!!", e)
+        }
+
+    override fun allocationSize(value: RangeUnit) = 4UL
+
+    override fun write(
+        value: RangeUnit,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+/**
+ * Which screen the app is on.
+ *
+ * The dock's four tabs. Search is deliberately absent — the sketch draws the
+ * button but never the screen, so there is nothing to be faithful to yet.
+ */
+
 enum class Screen {
-    TRANSACTIONS,
+    HOME,
+    LEDGER,
+    RECURRING,
+    BALANCES,
     ;
 
     companion object
@@ -1830,15 +3159,155 @@ public object FfiConverterTypeScreen : FfiConverterRustBuffer<Screen> {
 }
 
 /**
+ * Everything on screen, in one value.
+ *
+ * One type rather than four optional ones: the view renders whichever arm it
+ * is handed and holds no "which screen am I on" state of its own. That is the
+ * state minimisation `docs/ARCHITECTURE.md` asks for, applied at the boundary.
+ */
+sealed class ScreenView {
+    data class Home(
+        val `view`: uniffi.api_core.HomeView,
+    ) : ScreenView() {
+        companion object
+    }
+
+    data class Ledger(
+        val `view`: uniffi.api_core.LedgerView,
+    ) : ScreenView() {
+        companion object
+    }
+
+    data class Recurring(
+        val `view`: uniffi.api_core.RecurringView,
+    ) : ScreenView() {
+        companion object
+    }
+
+    data class Balances(
+        val `view`: uniffi.api_core.BalancesView,
+    ) : ScreenView() {
+        companion object
+    }
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeScreenView : FfiConverterRustBuffer<ScreenView> {
+    override fun read(buf: ByteBuffer): ScreenView =
+        when (buf.getInt()) {
+            1 -> {
+                ScreenView.Home(
+                    FfiConverterTypeHomeView.read(buf),
+                )
+            }
+
+            2 -> {
+                ScreenView.Ledger(
+                    FfiConverterTypeLedgerView.read(buf),
+                )
+            }
+
+            3 -> {
+                ScreenView.Recurring(
+                    FfiConverterTypeRecurringView.read(buf),
+                )
+            }
+
+            4 -> {
+                ScreenView.Balances(
+                    FfiConverterTypeBalancesView.read(buf),
+                )
+            }
+
+            else -> {
+                throw RuntimeException("invalid enum value, something is very wrong!!")
+            }
+        }
+
+    override fun allocationSize(value: ScreenView): ULong =
+        when (value) {
+            is ScreenView.Home -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypeHomeView.allocationSize(value.`view`)
+                )
+            }
+
+            is ScreenView.Ledger -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypeLedgerView.allocationSize(value.`view`)
+                )
+            }
+
+            is ScreenView.Recurring -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypeRecurringView.allocationSize(value.`view`)
+                )
+            }
+
+            is ScreenView.Balances -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypeBalancesView.allocationSize(value.`view`)
+                )
+            }
+        }
+
+    override fun write(
+        value: ScreenView,
+        buf: ByteBuffer,
+    ) {
+        when (value) {
+            is ScreenView.Home -> {
+                buf.putInt(1)
+                FfiConverterTypeHomeView.write(value.`view`, buf)
+                Unit
+            }
+
+            is ScreenView.Ledger -> {
+                buf.putInt(2)
+                FfiConverterTypeLedgerView.write(value.`view`, buf)
+                Unit
+            }
+
+            is ScreenView.Recurring -> {
+                buf.putInt(3)
+                FfiConverterTypeRecurringView.write(value.`view`, buf)
+                Unit
+            }
+
+            is ScreenView.Balances -> {
+                buf.putInt(4)
+                FfiConverterTypeBalancesView.write(value.`view`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+/**
  * Something for a source to do.
  */
-
-enum class SourceAction {
+sealed class SourceAction {
     /**
-     * Go and get the transactions.
+     * Go and get everything. `force` skips whatever cache sits in the way,
+     * which is what pull-to-refresh means.
      */
-    LOAD_TXS,
-    ;
+    data class LoadSnapshot(
+        val `force`: kotlin.Boolean,
+    ) : SourceAction() {
+        companion object
+    }
 
     companion object
 }
@@ -1847,20 +3316,41 @@ enum class SourceAction {
  * @suppress
  */
 public object FfiConverterTypeSourceAction : FfiConverterRustBuffer<SourceAction> {
-    override fun read(buf: ByteBuffer) =
-        try {
-            SourceAction.values()[buf.getInt() - 1]
-        } catch (e: IndexOutOfBoundsException) {
-            throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    override fun read(buf: ByteBuffer): SourceAction =
+        when (buf.getInt()) {
+            1 -> {
+                SourceAction.LoadSnapshot(
+                    FfiConverterBoolean.read(buf),
+                )
+            }
+
+            else -> {
+                throw RuntimeException("invalid enum value, something is very wrong!!")
+            }
         }
 
-    override fun allocationSize(value: SourceAction) = 4UL
+    override fun allocationSize(value: SourceAction): ULong =
+        when (value) {
+            is SourceAction.LoadSnapshot -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterBoolean.allocationSize(value.`force`)
+                )
+            }
+        }
 
     override fun write(
         value: SourceAction,
         buf: ByteBuffer,
     ) {
-        buf.putInt(value.ordinal + 1)
+        when (value) {
+            is SourceAction.LoadSnapshot -> {
+                buf.putInt(1)
+                FfiConverterBoolean.write(value.`force`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 }
 
@@ -1869,10 +3359,18 @@ public object FfiConverterTypeSourceAction : FfiConverterRustBuffer<SourceAction
  */
 sealed class SourceEvent {
     /**
-     * Transactions arrived from wherever the ledger lives.
+     * A snapshot arrived. Everything the app knows, in one value — see
+     * `api-wire`.
+     *
+     * The payload is JSON rather than a structured record because the
+     * alternative is redeclaring every wire type as a UniFFI record and
+     * keeping the two in step by hand. The core parses it, which keeps the
+     * parsing in one place for all three platforms; `docs/DECISIONS.md` has
+     * the longer argument.
      */
-    data class TxsLoaded(
-        val `txs`: List<uniffi.api_core.TxSummary>,
+    data class SnapshotLoaded(
+        val `json`: kotlin.String,
+        val `now`: kotlin.ULong,
     ) : SourceEvent() {
         companion object
     }
@@ -1896,8 +3394,9 @@ public object FfiConverterTypeSourceEvent : FfiConverterRustBuffer<SourceEvent> 
     override fun read(buf: ByteBuffer): SourceEvent =
         when (buf.getInt()) {
             1 -> {
-                SourceEvent.TxsLoaded(
-                    FfiConverterSequenceTypeTxSummary.read(buf),
+                SourceEvent.SnapshotLoaded(
+                    FfiConverterString.read(buf),
+                    FfiConverterULong.read(buf),
                 )
             }
 
@@ -1914,11 +3413,12 @@ public object FfiConverterTypeSourceEvent : FfiConverterRustBuffer<SourceEvent> 
 
     override fun allocationSize(value: SourceEvent): ULong =
         when (value) {
-            is SourceEvent.TxsLoaded -> {
+            is SourceEvent.SnapshotLoaded -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
                     4UL +
-                        FfiConverterSequenceTypeTxSummary.allocationSize(value.`txs`)
+                        FfiConverterString.allocationSize(value.`json`) +
+                        FfiConverterULong.allocationSize(value.`now`)
                 )
             }
 
@@ -1936,9 +3436,10 @@ public object FfiConverterTypeSourceEvent : FfiConverterRustBuffer<SourceEvent> 
         buf: ByteBuffer,
     ) {
         when (value) {
-            is SourceEvent.TxsLoaded -> {
+            is SourceEvent.SnapshotLoaded -> {
                 buf.putInt(1)
-                FfiConverterSequenceTypeTxSummary.write(value.`txs`, buf)
+                FfiConverterString.write(value.`json`, buf)
+                FfiConverterULong.write(value.`now`, buf)
                 Unit
             }
 
@@ -1952,15 +3453,24 @@ public object FfiConverterTypeSourceEvent : FfiConverterRustBuffer<SourceEvent> 
 }
 
 /**
- * Something for the view to do. Note that these carry finished values, not
- * instructions to go and compute one.
+ * Something for the view to do.
+ *
+ * These carry finished values, not instructions to go and compute one. A
+ * platform that receives `Render` draws exactly what it is given.
  */
 sealed class UiAction {
     /**
-     * Draw this list. The whole list, in the order it is drawn in.
+     * Draw this screen. The whole screen, in the state it should be in.
+     *
+     * One action rather than a set of fine-grained ones — no `ShowTxs`,
+     * `SelectTab`, `OpenFilter`. A view that applies a diff has to hold the
+     * state the diff applies to, and holding state above the boundary is the
+     * thing this design exists to prevent. Sending the whole screen means the
+     * view can be a pure function of the last action it saw.
      */
-    data class ShowTxs(
-        val `txs`: List<uniffi.api_core.TxSummary>,
+    data class Render(
+        val `screen`: uniffi.api_core.ScreenView,
+        val `dock`: uniffi.api_core.DockView,
     ) : UiAction() {
         companion object
     }
@@ -1984,8 +3494,9 @@ public object FfiConverterTypeUiAction : FfiConverterRustBuffer<UiAction> {
     override fun read(buf: ByteBuffer): UiAction =
         when (buf.getInt()) {
             1 -> {
-                UiAction.ShowTxs(
-                    FfiConverterSequenceTypeTxSummary.read(buf),
+                UiAction.Render(
+                    FfiConverterTypeScreenView.read(buf),
+                    FfiConverterTypeDockView.read(buf),
                 )
             }
 
@@ -2002,11 +3513,12 @@ public object FfiConverterTypeUiAction : FfiConverterRustBuffer<UiAction> {
 
     override fun allocationSize(value: UiAction): ULong =
         when (value) {
-            is UiAction.ShowTxs -> {
+            is UiAction.Render -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
                     4UL +
-                        FfiConverterSequenceTypeTxSummary.allocationSize(value.`txs`)
+                        FfiConverterTypeScreenView.allocationSize(value.`screen`) +
+                        FfiConverterTypeDockView.allocationSize(value.`dock`)
                 )
             }
 
@@ -2024,9 +3536,10 @@ public object FfiConverterTypeUiAction : FfiConverterRustBuffer<UiAction> {
         buf: ByteBuffer,
     ) {
         when (value) {
-            is UiAction.ShowTxs -> {
+            is UiAction.Render -> {
                 buf.putInt(1)
-                FfiConverterSequenceTypeTxSummary.write(value.`txs`, buf)
+                FfiConverterTypeScreenView.write(value.`screen`, buf)
+                FfiConverterTypeDockView.write(value.`dock`, buf)
                 Unit
             }
 
@@ -2044,7 +3557,16 @@ public object FfiConverterTypeUiAction : FfiConverterRustBuffer<UiAction> {
  */
 sealed class UiEvent {
     /**
-     * A screen came into view and wants whatever it shows.
+     * The app came up. Carries the clock, because the machine has none.
+     */
+    data class Started(
+        val `now`: kotlin.ULong,
+    ) : UiEvent() {
+        companion object
+    }
+
+    /**
+     * A tab in the dock.
      */
     data class ScreenOpened(
         val `screen`: uniffi.api_core.Screen,
@@ -2053,10 +3575,59 @@ sealed class UiEvent {
     }
 
     /**
+     * Pull to refresh.
+     */
+    object RefreshRequested : UiEvent()
+
+    /**
+     * The eye on a covered figure. One switch for the whole app: revealing on
+     * Balances and staying covered on Home would be a strange thing to have
+     * to explain.
+     */
+    object MaskToggled : UiEvent()
+
+    /**
+     * The filter panel as a whole.
+     */
+    object FilterToggled : UiEvent()
+
+    /**
+     * One of the two groups inside it.
+     */
+    data class FilterGroupToggled(
+        val `group`: uniffi.api_core.FilterGroup,
+    ) : UiEvent() {
+        companion object
+    }
+
+    /**
+     * A category chip. Multi-select, so this toggles rather than sets.
+     */
+    data class CategoryToggled(
+        val `id`: kotlin.String,
+    ) : UiEvent() {
+        companion object
+    }
+
+    /**
+     * Clear every category.
+     */
+    object CategoriesCleared : UiEvent()
+
+    /**
+     * One of the four range forms.
+     */
+    data class RangeSelected(
+        val `kind`: uniffi.api_core.RangeSelection,
+    ) : UiEvent() {
+        companion object
+    }
+
+    /**
      * The user picked a transaction out of the list.
      */
     data class TxSelected(
-        val `index`: kotlin.UInt,
+        val `id`: kotlin.String,
     ) : UiEvent() {
         companion object
     }
@@ -2071,14 +3642,54 @@ public object FfiConverterTypeUiEvent : FfiConverterRustBuffer<UiEvent> {
     override fun read(buf: ByteBuffer): UiEvent =
         when (buf.getInt()) {
             1 -> {
+                UiEvent.Started(
+                    FfiConverterULong.read(buf),
+                )
+            }
+
+            2 -> {
                 UiEvent.ScreenOpened(
                     FfiConverterTypeScreen.read(buf),
                 )
             }
 
-            2 -> {
+            3 -> {
+                UiEvent.RefreshRequested
+            }
+
+            4 -> {
+                UiEvent.MaskToggled
+            }
+
+            5 -> {
+                UiEvent.FilterToggled
+            }
+
+            6 -> {
+                UiEvent.FilterGroupToggled(
+                    FfiConverterTypeFilterGroup.read(buf),
+                )
+            }
+
+            7 -> {
+                UiEvent.CategoryToggled(
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            8 -> {
+                UiEvent.CategoriesCleared
+            }
+
+            9 -> {
+                UiEvent.RangeSelected(
+                    FfiConverterTypeRangeSelection.read(buf),
+                )
+            }
+
+            10 -> {
                 UiEvent.TxSelected(
-                    FfiConverterUInt.read(buf),
+                    FfiConverterString.read(buf),
                 )
             }
 
@@ -2089,6 +3700,14 @@ public object FfiConverterTypeUiEvent : FfiConverterRustBuffer<UiEvent> {
 
     override fun allocationSize(value: UiEvent): ULong =
         when (value) {
+            is UiEvent.Started -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterULong.allocationSize(value.`now`)
+                )
+            }
+
             is UiEvent.ScreenOpened -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
@@ -2097,11 +3716,63 @@ public object FfiConverterTypeUiEvent : FfiConverterRustBuffer<UiEvent> {
                 )
             }
 
+            is UiEvent.RefreshRequested -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is UiEvent.MaskToggled -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is UiEvent.FilterToggled -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is UiEvent.FilterGroupToggled -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypeFilterGroup.allocationSize(value.`group`)
+                )
+            }
+
+            is UiEvent.CategoryToggled -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`id`)
+                )
+            }
+
+            is UiEvent.CategoriesCleared -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is UiEvent.RangeSelected -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypeRangeSelection.allocationSize(value.`kind`)
+                )
+            }
+
             is UiEvent.TxSelected -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
                     4UL +
-                        FfiConverterUInt.allocationSize(value.`index`)
+                        FfiConverterString.allocationSize(value.`id`)
                 )
             }
         }
@@ -2111,15 +3782,59 @@ public object FfiConverterTypeUiEvent : FfiConverterRustBuffer<UiEvent> {
         buf: ByteBuffer,
     ) {
         when (value) {
-            is UiEvent.ScreenOpened -> {
+            is UiEvent.Started -> {
                 buf.putInt(1)
+                FfiConverterULong.write(value.`now`, buf)
+                Unit
+            }
+
+            is UiEvent.ScreenOpened -> {
+                buf.putInt(2)
                 FfiConverterTypeScreen.write(value.`screen`, buf)
                 Unit
             }
 
+            is UiEvent.RefreshRequested -> {
+                buf.putInt(3)
+                Unit
+            }
+
+            is UiEvent.MaskToggled -> {
+                buf.putInt(4)
+                Unit
+            }
+
+            is UiEvent.FilterToggled -> {
+                buf.putInt(5)
+                Unit
+            }
+
+            is UiEvent.FilterGroupToggled -> {
+                buf.putInt(6)
+                FfiConverterTypeFilterGroup.write(value.`group`, buf)
+                Unit
+            }
+
+            is UiEvent.CategoryToggled -> {
+                buf.putInt(7)
+                FfiConverterString.write(value.`id`, buf)
+                Unit
+            }
+
+            is UiEvent.CategoriesCleared -> {
+                buf.putInt(8)
+                Unit
+            }
+
+            is UiEvent.RangeSelected -> {
+                buf.putInt(9)
+                FfiConverterTypeRangeSelection.write(value.`kind`, buf)
+                Unit
+            }
+
             is UiEvent.TxSelected -> {
-                buf.putInt(2)
-                FfiConverterUInt.write(value.`index`, buf)
+                buf.putInt(10)
+                FfiConverterString.write(value.`id`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -2161,27 +3876,279 @@ public object FfiConverterOptionalString : FfiConverterRustBuffer<kotlin.String?
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeTxSummary : FfiConverterRustBuffer<List<TxSummary>> {
-    override fun read(buf: ByteBuffer): List<TxSummary> {
+public object FfiConverterSequenceTypeAccountRow : FfiConverterRustBuffer<List<AccountRow>> {
+    override fun read(buf: ByteBuffer): List<AccountRow> {
         val len = buf.getInt()
-        return List<TxSummary>(len) {
-            FfiConverterTypeTxSummary.read(buf)
+        return List<AccountRow>(len) {
+            FfiConverterTypeAccountRow.read(buf)
         }
     }
 
-    override fun allocationSize(value: List<TxSummary>): ULong {
+    override fun allocationSize(value: List<AccountRow>): ULong {
         val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeTxSummary.allocationSize(it) }.sum()
+        val sizeForItems = value.map { FfiConverterTypeAccountRow.allocationSize(it) }.sum()
         return sizeForLength + sizeForItems
     }
 
     override fun write(
-        value: List<TxSummary>,
+        value: List<AccountRow>,
         buf: ByteBuffer,
     ) {
         buf.putInt(value.size)
         value.iterator().forEach {
-            FfiConverterTypeTxSummary.write(it, buf)
+            FfiConverterTypeAccountRow.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeBreakdownSlice : FfiConverterRustBuffer<List<BreakdownSlice>> {
+    override fun read(buf: ByteBuffer): List<BreakdownSlice> {
+        val len = buf.getInt()
+        return List<BreakdownSlice>(len) {
+            FfiConverterTypeBreakdownSlice.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<BreakdownSlice>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeBreakdownSlice.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<BreakdownSlice>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeBreakdownSlice.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeCategoryChip : FfiConverterRustBuffer<List<CategoryChip>> {
+    override fun read(buf: ByteBuffer): List<CategoryChip> {
+        val len = buf.getInt()
+        return List<CategoryChip>(len) {
+            FfiConverterTypeCategoryChip.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<CategoryChip>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeCategoryChip.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<CategoryChip>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeCategoryChip.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeConnectionView : FfiConverterRustBuffer<List<ConnectionView>> {
+    override fun read(buf: ByteBuffer): List<ConnectionView> {
+        val len = buf.getInt()
+        return List<ConnectionView>(len) {
+            FfiConverterTypeConnectionView.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ConnectionView>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeConnectionView.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<ConnectionView>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeConnectionView.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeDaySection : FfiConverterRustBuffer<List<DaySection>> {
+    override fun read(buf: ByteBuffer): List<DaySection> {
+        val len = buf.getInt()
+        return List<DaySection>(len) {
+            FfiConverterTypeDaySection.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<DaySection>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeDaySection.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<DaySection>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeDaySection.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeDockItem : FfiConverterRustBuffer<List<DockItem>> {
+    override fun read(buf: ByteBuffer): List<DockItem> {
+        val len = buf.getInt()
+        return List<DockItem>(len) {
+            FfiConverterTypeDockItem.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<DockItem>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeDockItem.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<DockItem>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeDockItem.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeMonthSection : FfiConverterRustBuffer<List<MonthSection>> {
+    override fun read(buf: ByteBuffer): List<MonthSection> {
+        val len = buf.getInt()
+        return List<MonthSection>(len) {
+            FfiConverterTypeMonthSection.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<MonthSection>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeMonthSection.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<MonthSection>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeMonthSection.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeStreamGroup : FfiConverterRustBuffer<List<StreamGroup>> {
+    override fun read(buf: ByteBuffer): List<StreamGroup> {
+        val len = buf.getInt()
+        return List<StreamGroup>(len) {
+            FfiConverterTypeStreamGroup.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<StreamGroup>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeStreamGroup.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<StreamGroup>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeStreamGroup.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeStreamRow : FfiConverterRustBuffer<List<StreamRow>> {
+    override fun read(buf: ByteBuffer): List<StreamRow> {
+        val len = buf.getInt()
+        return List<StreamRow>(len) {
+            FfiConverterTypeStreamRow.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<StreamRow>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeStreamRow.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<StreamRow>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeStreamRow.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTxRow : FfiConverterRustBuffer<List<TxRow>> {
+    override fun read(buf: ByteBuffer): List<TxRow> {
+        val len = buf.getInt()
+        return List<TxRow>(len) {
+            FfiConverterTypeTxRow.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TxRow>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTxRow.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<TxRow>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTxRow.write(it, buf)
         }
     }
 }

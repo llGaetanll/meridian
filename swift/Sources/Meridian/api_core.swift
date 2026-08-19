@@ -481,6 +481,62 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+    typealias FfiType = UInt64
+    typealias SwiftType = UInt64
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
+    typealias FfiType = Double
+    typealias SwiftType = Double
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Double {
+        return try lift(readDouble(&buf))
+    }
+
+    public static func write(_ value: Double, into buf: inout [UInt8]) {
+        writeDouble(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterBool : FfiConverter {
+    typealias FfiType = Int8
+    typealias SwiftType = Bool
+
+    public static func lift(_ value: Int8) throws -> Bool {
+        return value != 0
+    }
+
+    public static func lower(_ value: Bool) -> Int8 {
+        return value ? 1 : 0
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Bool {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: Bool, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterString: FfiConverter {
     typealias SwiftType = String
     typealias FfiType = RustBuffer
@@ -681,50 +737,47 @@ public func FfiConverterTypeCore_lower(_ value: Core) -> UInt64 {
 
 
 
-/**
- * One transaction, already formatted for display.
- *
- * Deliberately not `api_ledger::Tx`: every formatting decision that crosses
- * as a raw number is a decision two more codebases have to make the same way.
- * The core decides what the row says; the platform decides how it looks.
- */
-public struct TxSummary: Equatable, Hashable {
+public struct AccountRow: Equatable, Hashable {
+    public var id: String
+    public var name: String
     /**
-     * "Trade" or "Deposit" — what the row calls itself.
+     * `"Checking ·0000 · $100.00 available"` — the whole subtitle, assembled.
      */
-    public var kind: String
+    public var subtitle: String
     /**
-     * The date, as the row shows it.
+     * `"$110.00"` or `"−$56,302.06"`.
      */
-    public var date: String
+    public var amount: String
     /**
-     * What left, if anything did.
+     * Whether this is money owed, for colour.
      */
-    public var from: String?
+    public var owed: Bool
     /**
-     * What arrived.
+     * `"$410 of $2,000 limit used"`, where a limit exists.
      */
-    public var to: String
+    public var utilisation: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(
+    public init(id: String, name: String, 
         /**
-         * "Trade" or "Deposit" — what the row calls itself.
-         */kind: String, 
+         * `"Checking ·0000 · $100.00 available"` — the whole subtitle, assembled.
+         */subtitle: String, 
         /**
-         * The date, as the row shows it.
-         */date: String, 
+         * `"$110.00"` or `"−$56,302.06"`.
+         */amount: String, 
         /**
-         * What left, if anything did.
-         */from: String?, 
+         * Whether this is money owed, for colour.
+         */owed: Bool, 
         /**
-         * What arrived.
-         */to: String) {
-        self.kind = kind
-        self.date = date
-        self.from = from
-        self.to = to
+         * `"$410 of $2,000 limit used"`, where a limit exists.
+         */utilisation: String?) {
+        self.id = id
+        self.name = name
+        self.subtitle = subtitle
+        self.amount = amount
+        self.owed = owed
+        self.utilisation = utilisation
     }
 
     
@@ -733,28 +786,32 @@ public struct TxSummary: Equatable, Hashable {
 }
 
 #if compiler(>=6)
-extension TxSummary: Sendable {}
+extension AccountRow: Sendable {}
 #endif
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeTxSummary: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TxSummary {
+public struct FfiConverterTypeAccountRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AccountRow {
         return
-            try TxSummary(
-                kind: FfiConverterString.read(from: &buf), 
-                date: FfiConverterString.read(from: &buf), 
-                from: FfiConverterOptionString.read(from: &buf), 
-                to: FfiConverterString.read(from: &buf)
+            try AccountRow(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                subtitle: FfiConverterString.read(from: &buf), 
+                amount: FfiConverterString.read(from: &buf), 
+                owed: FfiConverterBool.read(from: &buf), 
+                utilisation: FfiConverterOptionString.read(from: &buf)
         )
     }
 
-    public static func write(_ value: TxSummary, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.kind, into: &buf)
-        FfiConverterString.write(value.date, into: &buf)
-        FfiConverterOptionString.write(value.from, into: &buf)
-        FfiConverterString.write(value.to, into: &buf)
+    public static func write(_ value: AccountRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.subtitle, into: &buf)
+        FfiConverterString.write(value.amount, into: &buf)
+        FfiConverterBool.write(value.owed, into: &buf)
+        FfiConverterOptionString.write(value.utilisation, into: &buf)
     }
 }
 
@@ -762,15 +819,1609 @@ public struct FfiConverterTypeTxSummary: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeTxSummary_lift(_ buf: RustBuffer) throws -> TxSummary {
-    return try FfiConverterTypeTxSummary.lift(buf)
+public func FfiConverterTypeAccountRow_lift(_ buf: RustBuffer) throws -> AccountRow {
+    return try FfiConverterTypeAccountRow.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeTxSummary_lower(_ value: TxSummary) -> RustBuffer {
-    return FfiConverterTypeTxSummary.lower(value)
+public func FfiConverterTypeAccountRow_lower(_ value: AccountRow) -> RustBuffer {
+    return FfiConverterTypeAccountRow.lower(value)
+}
+
+
+/**
+ * The Balances screen.
+ */
+public struct BalancesView: Equatable, Hashable {
+    /**
+     * `"3 connections · 14 accounts"`.
+     */
+    public var subtitle: String
+    /**
+     * `"Held"`. The headline is what you hold, not net worth: Plaid reports
+     * the mortgage but never the house behind it, so a net figure is
+     * structurally too red.
+     */
+    public var headlineLabel: String
+    /**
+     * `"$86,541.74"`, or the same string masked.
+     */
+    public var headline: String
+    /**
+     * Whether the figures are covered. The view draws a bar over them; the
+     * real value is still in `headline` so the layout does not shift on
+     * reveal.
+     */
+    public var masked: Bool
+    public var connections: [ConnectionView]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"3 connections · 14 accounts"`.
+         */subtitle: String, 
+        /**
+         * `"Held"`. The headline is what you hold, not net worth: Plaid reports
+         * the mortgage but never the house behind it, so a net figure is
+         * structurally too red.
+         */headlineLabel: String, 
+        /**
+         * `"$86,541.74"`, or the same string masked.
+         */headline: String, 
+        /**
+         * Whether the figures are covered. The view draws a bar over them; the
+         * real value is still in `headline` so the layout does not shift on
+         * reveal.
+         */masked: Bool, connections: [ConnectionView]) {
+        self.subtitle = subtitle
+        self.headlineLabel = headlineLabel
+        self.headline = headline
+        self.masked = masked
+        self.connections = connections
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BalancesView: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBalancesView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BalancesView {
+        return
+            try BalancesView(
+                subtitle: FfiConverterString.read(from: &buf), 
+                headlineLabel: FfiConverterString.read(from: &buf), 
+                headline: FfiConverterString.read(from: &buf), 
+                masked: FfiConverterBool.read(from: &buf), 
+                connections: FfiConverterSequenceTypeConnectionView.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BalancesView, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.subtitle, into: &buf)
+        FfiConverterString.write(value.headlineLabel, into: &buf)
+        FfiConverterString.write(value.headline, into: &buf)
+        FfiConverterBool.write(value.masked, into: &buf)
+        FfiConverterSequenceTypeConnectionView.write(value.connections, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBalancesView_lift(_ buf: RustBuffer) throws -> BalancesView {
+    return try FfiConverterTypeBalancesView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBalancesView_lower(_ value: BalancesView) -> RustBuffer {
+    return FfiConverterTypeBalancesView.lower(value)
+}
+
+
+/**
+ * One segment of the breakdown bar.
+ */
+public struct BreakdownSlice: Equatable, Hashable {
+    public var label: String
+    public var token: String
+    /**
+     * The segment's share of the bar, 0..1. A ratio rather than a percentage
+     * string, because this one is geometry — the exception `docs/FFI.md`
+     * carves out for the chart.
+     */
+    public var share: Double
+    /**
+     * `"$2,078.50"`.
+     */
+    public var amount: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(label: String, token: String, 
+        /**
+         * The segment's share of the bar, 0..1. A ratio rather than a percentage
+         * string, because this one is geometry — the exception `docs/FFI.md`
+         * carves out for the chart.
+         */share: Double, 
+        /**
+         * `"$2,078.50"`.
+         */amount: String) {
+        self.label = label
+        self.token = token
+        self.share = share
+        self.amount = amount
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BreakdownSlice: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBreakdownSlice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BreakdownSlice {
+        return
+            try BreakdownSlice(
+                label: FfiConverterString.read(from: &buf), 
+                token: FfiConverterString.read(from: &buf), 
+                share: FfiConverterDouble.read(from: &buf), 
+                amount: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BreakdownSlice, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterString.write(value.token, into: &buf)
+        FfiConverterDouble.write(value.share, into: &buf)
+        FfiConverterString.write(value.amount, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBreakdownSlice_lift(_ buf: RustBuffer) throws -> BreakdownSlice {
+    return try FfiConverterTypeBreakdownSlice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBreakdownSlice_lower(_ value: BreakdownSlice) -> RustBuffer {
+    return FfiConverterTypeBreakdownSlice.lower(value)
+}
+
+
+/**
+ * One category in the filter grid, or on a row.
+ */
+public struct CategoryChip: Equatable, Hashable {
+    /**
+     * The stable name, e.g. `"FoodAndDrink"` — what a tap sends back.
+     */
+    public var id: String
+    /**
+     * `"Food & drink"`.
+     */
+    public var label: String
+    /**
+     * `"c-food"`.
+     */
+    public var token: String
+    /**
+     * How many transactions match, as text.
+     */
+    public var count: String
+    public var selected: Bool
+    /**
+     * Nothing matches. The chip stays visible but reads as unavailable.
+     */
+    public var empty: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The stable name, e.g. `"FoodAndDrink"` — what a tap sends back.
+         */id: String, 
+        /**
+         * `"Food & drink"`.
+         */label: String, 
+        /**
+         * `"c-food"`.
+         */token: String, 
+        /**
+         * How many transactions match, as text.
+         */count: String, selected: Bool, 
+        /**
+         * Nothing matches. The chip stays visible but reads as unavailable.
+         */empty: Bool) {
+        self.id = id
+        self.label = label
+        self.token = token
+        self.count = count
+        self.selected = selected
+        self.empty = empty
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CategoryChip: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCategoryChip: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CategoryChip {
+        return
+            try CategoryChip(
+                id: FfiConverterString.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                token: FfiConverterString.read(from: &buf), 
+                count: FfiConverterString.read(from: &buf), 
+                selected: FfiConverterBool.read(from: &buf), 
+                empty: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CategoryChip, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterString.write(value.token, into: &buf)
+        FfiConverterString.write(value.count, into: &buf)
+        FfiConverterBool.write(value.selected, into: &buf)
+        FfiConverterBool.write(value.empty, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCategoryChip_lift(_ buf: RustBuffer) throws -> CategoryChip {
+    return try FfiConverterTypeCategoryChip.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCategoryChip_lower(_ value: CategoryChip) -> RustBuffer {
+    return FfiConverterTypeCategoryChip.lower(value)
+}
+
+
+public struct ConnectionView: Equatable, Hashable {
+    public var id: String
+    public var name: String
+    public var initials: String
+    /**
+     * `"synced 2m"`, or empty when the connection needs attention.
+     */
+    public var synced: String
+    /**
+     * Whether the user has to sign in again. Carries the action, rather than
+     * just naming the problem.
+     */
+    public var needsReconnect: Bool
+    /**
+     * Whether these balances are owed rather than held.
+     */
+    public var isDebts: Bool
+    public var accounts: [AccountRow]
+    /**
+     * `"6 accounts held"` / `"6 accounts owed"`.
+     */
+    public var totalLabel: String
+    /**
+     * `"$62,589.00"`.
+     */
+    public var total: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, name: String, initials: String, 
+        /**
+         * `"synced 2m"`, or empty when the connection needs attention.
+         */synced: String, 
+        /**
+         * Whether the user has to sign in again. Carries the action, rather than
+         * just naming the problem.
+         */needsReconnect: Bool, 
+        /**
+         * Whether these balances are owed rather than held.
+         */isDebts: Bool, accounts: [AccountRow], 
+        /**
+         * `"6 accounts held"` / `"6 accounts owed"`.
+         */totalLabel: String, 
+        /**
+         * `"$62,589.00"`.
+         */total: String) {
+        self.id = id
+        self.name = name
+        self.initials = initials
+        self.synced = synced
+        self.needsReconnect = needsReconnect
+        self.isDebts = isDebts
+        self.accounts = accounts
+        self.totalLabel = totalLabel
+        self.total = total
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ConnectionView: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeConnectionView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ConnectionView {
+        return
+            try ConnectionView(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                initials: FfiConverterString.read(from: &buf), 
+                synced: FfiConverterString.read(from: &buf), 
+                needsReconnect: FfiConverterBool.read(from: &buf), 
+                isDebts: FfiConverterBool.read(from: &buf), 
+                accounts: FfiConverterSequenceTypeAccountRow.read(from: &buf), 
+                totalLabel: FfiConverterString.read(from: &buf), 
+                total: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ConnectionView, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.initials, into: &buf)
+        FfiConverterString.write(value.synced, into: &buf)
+        FfiConverterBool.write(value.needsReconnect, into: &buf)
+        FfiConverterBool.write(value.isDebts, into: &buf)
+        FfiConverterSequenceTypeAccountRow.write(value.accounts, into: &buf)
+        FfiConverterString.write(value.totalLabel, into: &buf)
+        FfiConverterString.write(value.total, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeConnectionView_lift(_ buf: RustBuffer) throws -> ConnectionView {
+    return try FfiConverterTypeConnectionView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeConnectionView_lower(_ value: ConnectionView) -> RustBuffer {
+    return FfiConverterTypeConnectionView.lower(value)
+}
+
+
+/**
+ * A day's worth of rows, under its heading.
+ *
+ * Grouping is done here rather than in the view because three view layers
+ * would otherwise each write the same date-bucketing loop, and the one that
+ * got it subtly wrong would be the one nobody looked at.
+ */
+public struct DaySection: Equatable, Hashable {
+    /**
+     * `"Wed, Aug 12"`.
+     */
+    public var heading: String
+    public var rows: [TxRow]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"Wed, Aug 12"`.
+         */heading: String, rows: [TxRow]) {
+        self.heading = heading
+        self.rows = rows
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DaySection: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDaySection: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DaySection {
+        return
+            try DaySection(
+                heading: FfiConverterString.read(from: &buf), 
+                rows: FfiConverterSequenceTypeTxRow.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DaySection, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.heading, into: &buf)
+        FfiConverterSequenceTypeTxRow.write(value.rows, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDaySection_lift(_ buf: RustBuffer) throws -> DaySection {
+    return try FfiConverterTypeDaySection.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDaySection_lower(_ value: DaySection) -> RustBuffer {
+    return FfiConverterTypeDaySection.lower(value)
+}
+
+
+public struct DockItem: Equatable, Hashable {
+    public var screen: Screen
+    public var label: String
+    /**
+     * An icon name the view resolves in its own asset catalogue.
+     */
+    public var icon: String
+    public var selected: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(screen: Screen, label: String, 
+        /**
+         * An icon name the view resolves in its own asset catalogue.
+         */icon: String, selected: Bool) {
+        self.screen = screen
+        self.label = label
+        self.icon = icon
+        self.selected = selected
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DockItem: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDockItem: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DockItem {
+        return
+            try DockItem(
+                screen: FfiConverterTypeScreen.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
+                icon: FfiConverterString.read(from: &buf), 
+                selected: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DockItem, into buf: inout [UInt8]) {
+        FfiConverterTypeScreen.write(value.screen, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterString.write(value.icon, into: &buf)
+        FfiConverterBool.write(value.selected, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDockItem_lift(_ buf: RustBuffer) throws -> DockItem {
+    return try FfiConverterTypeDockItem.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDockItem_lower(_ value: DockItem) -> RustBuffer {
+    return FfiConverterTypeDockItem.lower(value)
+}
+
+
+/**
+ * The dock, and which tab is lit.
+ */
+public struct DockView: Equatable, Hashable {
+    public var items: [DockItem]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(items: [DockItem]) {
+        self.items = items
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DockView: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDockView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DockView {
+        return
+            try DockView(
+                items: FfiConverterSequenceTypeDockItem.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DockView, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeDockItem.write(value.items, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDockView_lift(_ buf: RustBuffer) throws -> DockView {
+    return try FfiConverterTypeDockView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDockView_lower(_ value: DockView) -> RustBuffer {
+    return FfiConverterTypeDockView.lower(value)
+}
+
+
+/**
+ * The filter panel: categories and a time range, independent of each other.
+ */
+public struct FilterView: Equatable, Hashable {
+    public var `open`: Bool
+    public var categoriesOpen: Bool
+    public var rangeOpen: Bool
+    /**
+     * All sixteen, each with its live count.
+     */
+    public var categories: [CategoryChip]
+    /**
+     * What a shut category group says instead of its chips: the first few
+     * selected, then `"+2"`.
+     */
+    public var categoriesSummary: [CategoryChip]
+    public var categoriesOverflow: String?
+    public var range: RangeView
+    /**
+     * `"Last 3 months"` — what a shut range group shows.
+     */
+    public var rangeSummary: String
+    /**
+     * Whether anything is filtering at all. Drives the dot on the filter
+     * button.
+     */
+    public var active: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(`open`: Bool, categoriesOpen: Bool, rangeOpen: Bool, 
+        /**
+         * All sixteen, each with its live count.
+         */categories: [CategoryChip], 
+        /**
+         * What a shut category group says instead of its chips: the first few
+         * selected, then `"+2"`.
+         */categoriesSummary: [CategoryChip], categoriesOverflow: String?, range: RangeView, 
+        /**
+         * `"Last 3 months"` — what a shut range group shows.
+         */rangeSummary: String, 
+        /**
+         * Whether anything is filtering at all. Drives the dot on the filter
+         * button.
+         */active: Bool) {
+        self.`open` = `open`
+        self.categoriesOpen = categoriesOpen
+        self.rangeOpen = rangeOpen
+        self.categories = categories
+        self.categoriesSummary = categoriesSummary
+        self.categoriesOverflow = categoriesOverflow
+        self.range = range
+        self.rangeSummary = rangeSummary
+        self.active = active
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension FilterView: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFilterView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FilterView {
+        return
+            try FilterView(
+                open: FfiConverterBool.read(from: &buf), 
+                categoriesOpen: FfiConverterBool.read(from: &buf), 
+                rangeOpen: FfiConverterBool.read(from: &buf), 
+                categories: FfiConverterSequenceTypeCategoryChip.read(from: &buf), 
+                categoriesSummary: FfiConverterSequenceTypeCategoryChip.read(from: &buf), 
+                categoriesOverflow: FfiConverterOptionString.read(from: &buf), 
+                range: FfiConverterTypeRangeView.read(from: &buf), 
+                rangeSummary: FfiConverterString.read(from: &buf), 
+                active: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FilterView, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.`open`, into: &buf)
+        FfiConverterBool.write(value.categoriesOpen, into: &buf)
+        FfiConverterBool.write(value.rangeOpen, into: &buf)
+        FfiConverterSequenceTypeCategoryChip.write(value.categories, into: &buf)
+        FfiConverterSequenceTypeCategoryChip.write(value.categoriesSummary, into: &buf)
+        FfiConverterOptionString.write(value.categoriesOverflow, into: &buf)
+        FfiConverterTypeRangeView.write(value.range, into: &buf)
+        FfiConverterString.write(value.rangeSummary, into: &buf)
+        FfiConverterBool.write(value.active, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFilterView_lift(_ buf: RustBuffer) throws -> FilterView {
+    return try FfiConverterTypeFilterView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFilterView_lower(_ value: FilterView) -> RustBuffer {
+    return FfiConverterTypeFilterView.lower(value)
+}
+
+
+public struct HomeBalances: Equatable, Hashable {
+    /**
+     * `"$86,541.74"`.
+     */
+    public var headline: String
+    public var masked: Bool
+    /**
+     * `"held across 14 accounts"`.
+     */
+    public var detail: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"$86,541.74"`.
+         */headline: String, masked: Bool, 
+        /**
+         * `"held across 14 accounts"`.
+         */detail: String) {
+        self.headline = headline
+        self.masked = masked
+        self.detail = detail
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HomeBalances: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHomeBalances: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HomeBalances {
+        return
+            try HomeBalances(
+                headline: FfiConverterString.read(from: &buf), 
+                masked: FfiConverterBool.read(from: &buf), 
+                detail: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HomeBalances, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.headline, into: &buf)
+        FfiConverterBool.write(value.masked, into: &buf)
+        FfiConverterString.write(value.detail, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHomeBalances_lift(_ buf: RustBuffer) throws -> HomeBalances {
+    return try FfiConverterTypeHomeBalances.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHomeBalances_lower(_ value: HomeBalances) -> RustBuffer {
+    return FfiConverterTypeHomeBalances.lower(value)
+}
+
+
+public struct HomeRecurring: Equatable, Hashable {
+    /**
+     * `"−$3,771.40"`.
+     */
+    public var headline: String
+    public var masked: Bool
+    /**
+     * `"3 due within the week"`.
+     */
+    public var detail: String
+    public var breakdown: [BreakdownSlice]
+    /**
+     * Only what lands next.
+     */
+    public var upcoming: [StreamRow]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"−$3,771.40"`.
+         */headline: String, masked: Bool, 
+        /**
+         * `"3 due within the week"`.
+         */detail: String, breakdown: [BreakdownSlice], 
+        /**
+         * Only what lands next.
+         */upcoming: [StreamRow]) {
+        self.headline = headline
+        self.masked = masked
+        self.detail = detail
+        self.breakdown = breakdown
+        self.upcoming = upcoming
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HomeRecurring: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHomeRecurring: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HomeRecurring {
+        return
+            try HomeRecurring(
+                headline: FfiConverterString.read(from: &buf), 
+                masked: FfiConverterBool.read(from: &buf), 
+                detail: FfiConverterString.read(from: &buf), 
+                breakdown: FfiConverterSequenceTypeBreakdownSlice.read(from: &buf), 
+                upcoming: FfiConverterSequenceTypeStreamRow.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HomeRecurring, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.headline, into: &buf)
+        FfiConverterBool.write(value.masked, into: &buf)
+        FfiConverterString.write(value.detail, into: &buf)
+        FfiConverterSequenceTypeBreakdownSlice.write(value.breakdown, into: &buf)
+        FfiConverterSequenceTypeStreamRow.write(value.upcoming, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHomeRecurring_lift(_ buf: RustBuffer) throws -> HomeRecurring {
+    return try FfiConverterTypeHomeRecurring.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHomeRecurring_lower(_ value: HomeRecurring) -> RustBuffer {
+    return FfiConverterTypeHomeRecurring.lower(value)
+}
+
+
+/**
+ * The Home screen: the highlight of each tab and nothing more.
+ */
+public struct HomeView: Equatable, Hashable {
+    public var balances: HomeBalances
+    public var recurring: HomeRecurring
+    /**
+     * The latest few ledger rows.
+     */
+    public var ledger: [TxRow]
+    /**
+     * Connections needing attention. Empty when everything is syncing, and
+     * the block is not drawn at all then.
+     */
+    public var attention: [ConnectionView]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(balances: HomeBalances, recurring: HomeRecurring, 
+        /**
+         * The latest few ledger rows.
+         */ledger: [TxRow], 
+        /**
+         * Connections needing attention. Empty when everything is syncing, and
+         * the block is not drawn at all then.
+         */attention: [ConnectionView]) {
+        self.balances = balances
+        self.recurring = recurring
+        self.ledger = ledger
+        self.attention = attention
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HomeView: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHomeView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HomeView {
+        return
+            try HomeView(
+                balances: FfiConverterTypeHomeBalances.read(from: &buf), 
+                recurring: FfiConverterTypeHomeRecurring.read(from: &buf), 
+                ledger: FfiConverterSequenceTypeTxRow.read(from: &buf), 
+                attention: FfiConverterSequenceTypeConnectionView.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HomeView, into buf: inout [UInt8]) {
+        FfiConverterTypeHomeBalances.write(value.balances, into: &buf)
+        FfiConverterTypeHomeRecurring.write(value.recurring, into: &buf)
+        FfiConverterSequenceTypeTxRow.write(value.ledger, into: &buf)
+        FfiConverterSequenceTypeConnectionView.write(value.attention, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHomeView_lift(_ buf: RustBuffer) throws -> HomeView {
+    return try FfiConverterTypeHomeView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHomeView_lower(_ value: HomeView) -> RustBuffer {
+    return FfiConverterTypeHomeView.lower(value)
+}
+
+
+/**
+ * The Ledger screen.
+ */
+public struct LedgerView: Equatable, Hashable {
+    /**
+     * `"3 connections · synced 2m ago"`.
+     */
+    public var subtitle: String
+    public var months: [MonthSection]
+    /**
+     * The filter panel, whose state travels with the screen it filters.
+     */
+    public var filter: FilterView
+    /**
+     * What to show instead of the list when it is empty, if it is empty.
+     * `None` means there are rows.
+     */
+    public var empty: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"3 connections · synced 2m ago"`.
+         */subtitle: String, months: [MonthSection], 
+        /**
+         * The filter panel, whose state travels with the screen it filters.
+         */filter: FilterView, 
+        /**
+         * What to show instead of the list when it is empty, if it is empty.
+         * `None` means there are rows.
+         */empty: String?) {
+        self.subtitle = subtitle
+        self.months = months
+        self.filter = filter
+        self.empty = empty
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LedgerView: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLedgerView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LedgerView {
+        return
+            try LedgerView(
+                subtitle: FfiConverterString.read(from: &buf), 
+                months: FfiConverterSequenceTypeMonthSection.read(from: &buf), 
+                filter: FfiConverterTypeFilterView.read(from: &buf), 
+                empty: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LedgerView, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.subtitle, into: &buf)
+        FfiConverterSequenceTypeMonthSection.write(value.months, into: &buf)
+        FfiConverterTypeFilterView.write(value.filter, into: &buf)
+        FfiConverterOptionString.write(value.empty, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLedgerView_lift(_ buf: RustBuffer) throws -> LedgerView {
+    return try FfiConverterTypeLedgerView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLedgerView_lower(_ value: LedgerView) -> RustBuffer {
+    return FfiConverterTypeLedgerView.lower(value)
+}
+
+
+/**
+ * A month's worth of days, under its rule.
+ */
+public struct MonthSection: Equatable, Hashable {
+    /**
+     * `"August"`.
+     */
+    public var name: String
+    /**
+     * `"2026"`.
+     */
+    public var year: String
+    public var days: [DaySection]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"August"`.
+         */name: String, 
+        /**
+         * `"2026"`.
+         */year: String, days: [DaySection]) {
+        self.name = name
+        self.year = year
+        self.days = days
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension MonthSection: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMonthSection: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MonthSection {
+        return
+            try MonthSection(
+                name: FfiConverterString.read(from: &buf), 
+                year: FfiConverterString.read(from: &buf), 
+                days: FfiConverterSequenceTypeDaySection.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: MonthSection, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.year, into: &buf)
+        FfiConverterSequenceTypeDaySection.write(value.days, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMonthSection_lift(_ buf: RustBuffer) throws -> MonthSection {
+    return try FfiConverterTypeMonthSection.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMonthSection_lower(_ value: MonthSection) -> RustBuffer {
+    return FfiConverterTypeMonthSection.lower(value)
+}
+
+
+/**
+ * The time range, as the sentence the sketch draws.
+ */
+public struct RangeView: Equatable, Hashable {
+    /**
+     * Which of the four forms is live.
+     */
+    public var kind: RangeKind
+    /**
+     * "This [month]" — the unit token.
+     */
+    public var thisUnit: String
+    /**
+     * "Last [3] [months]" — the count and unit tokens.
+     */
+    public var lastCount: String
+    public var lastUnit: String
+    /**
+     * "Between [Jun 1] and [Aug 19]".
+     */
+    public var betweenStart: String
+    public var betweenEnd: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Which of the four forms is live.
+         */kind: RangeKind, 
+        /**
+         * "This [month]" — the unit token.
+         */thisUnit: String, 
+        /**
+         * "Last [3] [months]" — the count and unit tokens.
+         */lastCount: String, lastUnit: String, 
+        /**
+         * "Between [Jun 1] and [Aug 19]".
+         */betweenStart: String, betweenEnd: String) {
+        self.kind = kind
+        self.thisUnit = thisUnit
+        self.lastCount = lastCount
+        self.lastUnit = lastUnit
+        self.betweenStart = betweenStart
+        self.betweenEnd = betweenEnd
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RangeView: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRangeView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RangeView {
+        return
+            try RangeView(
+                kind: FfiConverterTypeRangeKind.read(from: &buf), 
+                thisUnit: FfiConverterString.read(from: &buf), 
+                lastCount: FfiConverterString.read(from: &buf), 
+                lastUnit: FfiConverterString.read(from: &buf), 
+                betweenStart: FfiConverterString.read(from: &buf), 
+                betweenEnd: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RangeView, into buf: inout [UInt8]) {
+        FfiConverterTypeRangeKind.write(value.kind, into: &buf)
+        FfiConverterString.write(value.thisUnit, into: &buf)
+        FfiConverterString.write(value.lastCount, into: &buf)
+        FfiConverterString.write(value.lastUnit, into: &buf)
+        FfiConverterString.write(value.betweenStart, into: &buf)
+        FfiConverterString.write(value.betweenEnd, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRangeView_lift(_ buf: RustBuffer) throws -> RangeView {
+    return try FfiConverterTypeRangeView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRangeView_lower(_ value: RangeView) -> RustBuffer {
+    return FfiConverterTypeRangeView.lower(value)
+}
+
+
+/**
+ * The Recurring screen.
+ */
+public struct RecurringView: Equatable, Hashable {
+    /**
+     * `"8 streams · 7 out, 1 in"`.
+     */
+    public var subtitle: String
+    /**
+     * `"−$3,771.40"`, the monthly commitment.
+     */
+    public var headline: String
+    /**
+     * `"+$4.22 in · net −$3,767.18"`.
+     */
+    public var detail: String
+    public var masked: Bool
+    /**
+     * The breakdown bar and its legend are two views of one split, so they
+     * come from one list.
+     */
+    public var breakdown: [BreakdownSlice]
+    public var groups: [StreamGroup]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"8 streams · 7 out, 1 in"`.
+         */subtitle: String, 
+        /**
+         * `"−$3,771.40"`, the monthly commitment.
+         */headline: String, 
+        /**
+         * `"+$4.22 in · net −$3,767.18"`.
+         */detail: String, masked: Bool, 
+        /**
+         * The breakdown bar and its legend are two views of one split, so they
+         * come from one list.
+         */breakdown: [BreakdownSlice], groups: [StreamGroup]) {
+        self.subtitle = subtitle
+        self.headline = headline
+        self.detail = detail
+        self.masked = masked
+        self.breakdown = breakdown
+        self.groups = groups
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RecurringView: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRecurringView: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RecurringView {
+        return
+            try RecurringView(
+                subtitle: FfiConverterString.read(from: &buf), 
+                headline: FfiConverterString.read(from: &buf), 
+                detail: FfiConverterString.read(from: &buf), 
+                masked: FfiConverterBool.read(from: &buf), 
+                breakdown: FfiConverterSequenceTypeBreakdownSlice.read(from: &buf), 
+                groups: FfiConverterSequenceTypeStreamGroup.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RecurringView, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.subtitle, into: &buf)
+        FfiConverterString.write(value.headline, into: &buf)
+        FfiConverterString.write(value.detail, into: &buf)
+        FfiConverterBool.write(value.masked, into: &buf)
+        FfiConverterSequenceTypeBreakdownSlice.write(value.breakdown, into: &buf)
+        FfiConverterSequenceTypeStreamGroup.write(value.groups, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecurringView_lift(_ buf: RustBuffer) throws -> RecurringView {
+    return try FfiConverterTypeRecurringView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecurringView_lower(_ value: RecurringView) -> RustBuffer {
+    return FfiConverterTypeRecurringView.lower(value)
+}
+
+
+public struct StreamGroup: Equatable, Hashable {
+    /**
+     * `"Transfer out"`.
+     */
+    public var name: String
+    public var token: String
+    /**
+     * `"$2,078.50"`.
+     */
+    public var total: String
+    public var streams: [StreamRow]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"Transfer out"`.
+         */name: String, token: String, 
+        /**
+         * `"$2,078.50"`.
+         */total: String, streams: [StreamRow]) {
+        self.name = name
+        self.token = token
+        self.total = total
+        self.streams = streams
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension StreamGroup: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeStreamGroup: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StreamGroup {
+        return
+            try StreamGroup(
+                name: FfiConverterString.read(from: &buf), 
+                token: FfiConverterString.read(from: &buf), 
+                total: FfiConverterString.read(from: &buf), 
+                streams: FfiConverterSequenceTypeStreamRow.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: StreamGroup, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.token, into: &buf)
+        FfiConverterString.write(value.total, into: &buf)
+        FfiConverterSequenceTypeStreamRow.write(value.streams, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStreamGroup_lift(_ buf: RustBuffer) throws -> StreamGroup {
+    return try FfiConverterTypeStreamGroup.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStreamGroup_lower(_ value: StreamGroup) -> RustBuffer {
+    return FfiConverterTypeStreamGroup.lower(value)
+}
+
+
+public struct StreamRow: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    public var logoUrl: String?
+    /**
+     * `"next Aug 22 · in 3 days"`.
+     */
+    public var when: String
+    /**
+     * Due within the week, so it reads as a heads-up rather than an alarm.
+     */
+    public var soon: Bool
+    /**
+     * `"−$2,078.50"`.
+     */
+    public var amount: String
+    /**
+     * `"Monthly"`.
+     */
+    public var frequency: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, logoUrl: String?, 
+        /**
+         * `"next Aug 22 · in 3 days"`.
+         */when: String, 
+        /**
+         * Due within the week, so it reads as a heads-up rather than an alarm.
+         */soon: Bool, 
+        /**
+         * `"−$2,078.50"`.
+         */amount: String, 
+        /**
+         * `"Monthly"`.
+         */frequency: String) {
+        self.id = id
+        self.title = title
+        self.logoUrl = logoUrl
+        self.when = when
+        self.soon = soon
+        self.amount = amount
+        self.frequency = frequency
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension StreamRow: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeStreamRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StreamRow {
+        return
+            try StreamRow(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                logoUrl: FfiConverterOptionString.read(from: &buf), 
+                when: FfiConverterString.read(from: &buf), 
+                soon: FfiConverterBool.read(from: &buf), 
+                amount: FfiConverterString.read(from: &buf), 
+                frequency: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: StreamRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterOptionString.write(value.logoUrl, into: &buf)
+        FfiConverterString.write(value.when, into: &buf)
+        FfiConverterBool.write(value.soon, into: &buf)
+        FfiConverterString.write(value.amount, into: &buf)
+        FfiConverterString.write(value.frequency, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStreamRow_lift(_ buf: RustBuffer) throws -> StreamRow {
+    return try FfiConverterTypeStreamRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStreamRow_lower(_ value: StreamRow) -> RustBuffer {
+    return FfiConverterTypeStreamRow.lower(value)
+}
+
+
+/**
+ * One transaction, as a row.
+ */
+public struct TxRow: Equatable, Hashable {
+    /**
+     * Stable across refreshes, so a platform list can diff on it.
+     */
+    public var id: String
+    /**
+     * The merchant, or the raw bank description where there is no merchant.
+     */
+    public var title: String
+    /**
+     * What the row calls its category, e.g. `"Food & drink"`.
+     */
+    public var category: String
+    /**
+     * A palette token for the category, e.g. `"c-food"`. The view maps this
+     * to its own colour; it never works one out from the category name.
+     */
+    public var categoryToken: String
+    /**
+     * The amount, ready to print: `"−$5.40"`, `"+$500.00"`.
+     */
+    public var amount: String
+    /**
+     * Whether the amount should read as money arriving. The view uses this
+     * for colour; it does not parse the sign back out of `amount`.
+     */
+    public var isInflow: Bool
+    /**
+     * A merchant logo, where one exists. The slot is reserved either way, so
+     * every row's text starts on the same line.
+     */
+    public var logoUrl: String?
+    /**
+     * Authorised but not settled. The whole row recedes.
+     */
+    public var pending: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Stable across refreshes, so a platform list can diff on it.
+         */id: String, 
+        /**
+         * The merchant, or the raw bank description where there is no merchant.
+         */title: String, 
+        /**
+         * What the row calls its category, e.g. `"Food & drink"`.
+         */category: String, 
+        /**
+         * A palette token for the category, e.g. `"c-food"`. The view maps this
+         * to its own colour; it never works one out from the category name.
+         */categoryToken: String, 
+        /**
+         * The amount, ready to print: `"−$5.40"`, `"+$500.00"`.
+         */amount: String, 
+        /**
+         * Whether the amount should read as money arriving. The view uses this
+         * for colour; it does not parse the sign back out of `amount`.
+         */isInflow: Bool, 
+        /**
+         * A merchant logo, where one exists. The slot is reserved either way, so
+         * every row's text starts on the same line.
+         */logoUrl: String?, 
+        /**
+         * Authorised but not settled. The whole row recedes.
+         */pending: Bool) {
+        self.id = id
+        self.title = title
+        self.category = category
+        self.categoryToken = categoryToken
+        self.amount = amount
+        self.isInflow = isInflow
+        self.logoUrl = logoUrl
+        self.pending = pending
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TxRow: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTxRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TxRow {
+        return
+            try TxRow(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                category: FfiConverterString.read(from: &buf), 
+                categoryToken: FfiConverterString.read(from: &buf), 
+                amount: FfiConverterString.read(from: &buf), 
+                isInflow: FfiConverterBool.read(from: &buf), 
+                logoUrl: FfiConverterOptionString.read(from: &buf), 
+                pending: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TxRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.category, into: &buf)
+        FfiConverterString.write(value.categoryToken, into: &buf)
+        FfiConverterString.write(value.amount, into: &buf)
+        FfiConverterBool.write(value.isInflow, into: &buf)
+        FfiConverterOptionString.write(value.logoUrl, into: &buf)
+        FfiConverterBool.write(value.pending, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTxRow_lift(_ buf: RustBuffer) throws -> TxRow {
+    return try FfiConverterTypeTxRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTxRow_lower(_ value: TxRow) -> RustBuffer {
+    return FfiConverterTypeTxRow.lower(value)
 }
 
 
@@ -922,10 +2573,351 @@ public func FfiConverterTypeEvent_lower(_ value: Event) -> RustBuffer {
 
 
 
+/**
+ * Which half of the filter panel.
+ */
+
+public enum FilterGroup: Equatable, Hashable {
+    
+    case categories
+    case range
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FilterGroup: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFilterGroup: FfiConverterRustBuffer {
+    typealias SwiftType = FilterGroup
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FilterGroup {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .categories
+        
+        case 2: return .range
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FilterGroup, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .categories:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .range:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFilterGroup_lift(_ buf: RustBuffer) throws -> FilterGroup {
+    return try FfiConverterTypeFilterGroup.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFilterGroup_lower(_ value: FilterGroup) -> RustBuffer {
+    return FfiConverterTypeFilterGroup.lower(value)
+}
+
+
+
+
+public enum RangeKind: Equatable, Hashable {
+    
+    case this
+    case last
+    case between
+    case all
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension RangeKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRangeKind: FfiConverterRustBuffer {
+    typealias SwiftType = RangeKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RangeKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .this
+        
+        case 2: return .last
+        
+        case 3: return .between
+        
+        case 4: return .all
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: RangeKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .this:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .last:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .between:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .all:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRangeKind_lift(_ buf: RustBuffer) throws -> RangeKind {
+    return try FfiConverterTypeRangeKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRangeKind_lower(_ value: RangeKind) -> RustBuffer {
+    return FfiConverterTypeRangeKind.lower(value)
+}
+
+
+
+/**
+ * A time range the user asked for.
+ *
+ * The parameters ride along with the choice rather than being separate
+ * events, so "last 3 months" is one event and not three. A replay of the log
+ * then shows the range the user actually picked, not a reconstruction of it.
+ */
+
+public enum RangeSelection: Equatable, Hashable {
+    
+    /**
+     * This month, this week, this year.
+     */
+    case this(unit: RangeUnit
+    )
+    /**
+     * The last N of them.
+     */
+    case last(count: UInt32, unit: RangeUnit
+    )
+    /**
+     * Between two days, as unix timestamps.
+     */
+    case between(start: UInt64, end: UInt64
+    )
+    /**
+     * Everything.
+     */
+    case all
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension RangeSelection: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRangeSelection: FfiConverterRustBuffer {
+    typealias SwiftType = RangeSelection
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RangeSelection {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .this(unit: try FfiConverterTypeRangeUnit.read(from: &buf)
+        )
+        
+        case 2: return .last(count: try FfiConverterUInt32.read(from: &buf), unit: try FfiConverterTypeRangeUnit.read(from: &buf)
+        )
+        
+        case 3: return .between(start: try FfiConverterUInt64.read(from: &buf), end: try FfiConverterUInt64.read(from: &buf)
+        )
+        
+        case 4: return .all
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: RangeSelection, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .this(unit):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeRangeUnit.write(unit, into: &buf)
+            
+        
+        case let .last(count,unit):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt32.write(count, into: &buf)
+            FfiConverterTypeRangeUnit.write(unit, into: &buf)
+            
+        
+        case let .between(start,end):
+            writeInt(&buf, Int32(3))
+            FfiConverterUInt64.write(start, into: &buf)
+            FfiConverterUInt64.write(end, into: &buf)
+            
+        
+        case .all:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRangeSelection_lift(_ buf: RustBuffer) throws -> RangeSelection {
+    return try FfiConverterTypeRangeSelection.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRangeSelection_lower(_ value: RangeSelection) -> RustBuffer {
+    return FfiConverterTypeRangeSelection.lower(value)
+}
+
+
+
+
+public enum RangeUnit: Equatable, Hashable {
+    
+    case week
+    case month
+    case year
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension RangeUnit: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRangeUnit: FfiConverterRustBuffer {
+    typealias SwiftType = RangeUnit
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RangeUnit {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .week
+        
+        case 2: return .month
+        
+        case 3: return .year
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: RangeUnit, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .week:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .month:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .year:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRangeUnit_lift(_ buf: RustBuffer) throws -> RangeUnit {
+    return try FfiConverterTypeRangeUnit.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRangeUnit_lower(_ value: RangeUnit) -> RustBuffer {
+    return FfiConverterTypeRangeUnit.lower(value)
+}
+
+
+
+/**
+ * Which screen the app is on.
+ *
+ * The dock's four tabs. Search is deliberately absent — the sketch draws the
+ * button but never the screen, so there is nothing to be faithful to yet.
+ */
 
 public enum Screen: Equatable, Hashable {
     
-    case transactions
+    case home
+    case ledger
+    case recurring
+    case balances
 
 
 
@@ -947,7 +2939,13 @@ public struct FfiConverterTypeScreen: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .transactions
+        case 1: return .home
+        
+        case 2: return .ledger
+        
+        case 3: return .recurring
+        
+        case 4: return .balances
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -957,8 +2955,20 @@ public struct FfiConverterTypeScreen: FfiConverterRustBuffer {
         switch value {
         
         
-        case .transactions:
+        case .home:
             writeInt(&buf, Int32(1))
+        
+        
+        case .ledger:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .recurring:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .balances:
+            writeInt(&buf, Int32(4))
         
         }
     }
@@ -982,15 +2992,116 @@ public func FfiConverterTypeScreen_lower(_ value: Screen) -> RustBuffer {
 
 
 /**
+ * Everything on screen, in one value.
+ *
+ * One type rather than four optional ones: the view renders whichever arm it
+ * is handed and holds no "which screen am I on" state of its own. That is the
+ * state minimisation `docs/ARCHITECTURE.md` asks for, applied at the boundary.
+ */
+
+public enum ScreenView: Equatable, Hashable {
+    
+    case home(view: HomeView
+    )
+    case ledger(view: LedgerView
+    )
+    case recurring(view: RecurringView
+    )
+    case balances(view: BalancesView
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ScreenView: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeScreenView: FfiConverterRustBuffer {
+    typealias SwiftType = ScreenView
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ScreenView {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .home(view: try FfiConverterTypeHomeView.read(from: &buf)
+        )
+        
+        case 2: return .ledger(view: try FfiConverterTypeLedgerView.read(from: &buf)
+        )
+        
+        case 3: return .recurring(view: try FfiConverterTypeRecurringView.read(from: &buf)
+        )
+        
+        case 4: return .balances(view: try FfiConverterTypeBalancesView.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ScreenView, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .home(view):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeHomeView.write(view, into: &buf)
+            
+        
+        case let .ledger(view):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeLedgerView.write(view, into: &buf)
+            
+        
+        case let .recurring(view):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeRecurringView.write(view, into: &buf)
+            
+        
+        case let .balances(view):
+            writeInt(&buf, Int32(4))
+            FfiConverterTypeBalancesView.write(view, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeScreenView_lift(_ buf: RustBuffer) throws -> ScreenView {
+    return try FfiConverterTypeScreenView.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeScreenView_lower(_ value: ScreenView) -> RustBuffer {
+    return FfiConverterTypeScreenView.lower(value)
+}
+
+
+
+/**
  * Something for a source to do.
  */
 
 public enum SourceAction: Equatable, Hashable {
     
     /**
-     * Go and get the transactions.
+     * Go and get everything. `force` skips whatever cache sits in the way,
+     * which is what pull-to-refresh means.
      */
-    case loadTxs
+    case loadSnapshot(force: Bool
+    )
 
 
 
@@ -1012,7 +3123,8 @@ public struct FfiConverterTypeSourceAction: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .loadTxs
+        case 1: return .loadSnapshot(force: try FfiConverterBool.read(from: &buf)
+        )
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -1022,9 +3134,10 @@ public struct FfiConverterTypeSourceAction: FfiConverterRustBuffer {
         switch value {
         
         
-        case .loadTxs:
+        case let .loadSnapshot(force):
             writeInt(&buf, Int32(1))
-        
+            FfiConverterBool.write(force, into: &buf)
+            
         }
     }
 }
@@ -1053,9 +3166,16 @@ public func FfiConverterTypeSourceAction_lower(_ value: SourceAction) -> RustBuf
 public enum SourceEvent: Equatable, Hashable {
     
     /**
-     * Transactions arrived from wherever the ledger lives.
+     * A snapshot arrived. Everything the app knows, in one value — see
+     * `api-wire`.
+     *
+     * The payload is JSON rather than a structured record because the
+     * alternative is redeclaring every wire type as a UniFFI record and
+     * keeping the two in step by hand. The core parses it, which keeps the
+     * parsing in one place for all three platforms; `docs/DECISIONS.md` has
+     * the longer argument.
      */
-    case txsLoaded(txs: [TxSummary]
+    case snapshotLoaded(json: String, now: UInt64
     )
     /**
      * A request did not come back.
@@ -1083,7 +3203,7 @@ public struct FfiConverterTypeSourceEvent: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .txsLoaded(txs: try FfiConverterSequenceTypeTxSummary.read(from: &buf)
+        case 1: return .snapshotLoaded(json: try FfiConverterString.read(from: &buf), now: try FfiConverterUInt64.read(from: &buf)
         )
         
         case 2: return .loadFailed(message: try FfiConverterString.read(from: &buf)
@@ -1097,9 +3217,10 @@ public struct FfiConverterTypeSourceEvent: FfiConverterRustBuffer {
         switch value {
         
         
-        case let .txsLoaded(txs):
+        case let .snapshotLoaded(json,now):
             writeInt(&buf, Int32(1))
-            FfiConverterSequenceTypeTxSummary.write(txs, into: &buf)
+            FfiConverterString.write(json, into: &buf)
+            FfiConverterUInt64.write(now, into: &buf)
             
         
         case let .loadFailed(message):
@@ -1128,16 +3249,24 @@ public func FfiConverterTypeSourceEvent_lower(_ value: SourceEvent) -> RustBuffe
 
 
 /**
- * Something for the view to do. Note that these carry finished values, not
- * instructions to go and compute one.
+ * Something for the view to do.
+ *
+ * These carry finished values, not instructions to go and compute one. A
+ * platform that receives `Render` draws exactly what it is given.
  */
 
 public enum UiAction: Equatable, Hashable {
     
     /**
-     * Draw this list. The whole list, in the order it is drawn in.
+     * Draw this screen. The whole screen, in the state it should be in.
+     *
+     * One action rather than a set of fine-grained ones — no `ShowTxs`,
+     * `SelectTab`, `OpenFilter`. A view that applies a diff has to hold the
+     * state the diff applies to, and holding state above the boundary is the
+     * thing this design exists to prevent. Sending the whole screen means the
+     * view can be a pure function of the last action it saw.
      */
-    case showTxs(txs: [TxSummary]
+    case render(screen: ScreenView, dock: DockView
     )
     /**
      * Tell the user something went wrong, in these words.
@@ -1165,7 +3294,7 @@ public struct FfiConverterTypeUiAction: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .showTxs(txs: try FfiConverterSequenceTypeTxSummary.read(from: &buf)
+        case 1: return .render(screen: try FfiConverterTypeScreenView.read(from: &buf), dock: try FfiConverterTypeDockView.read(from: &buf)
         )
         
         case 2: return .showError(message: try FfiConverterString.read(from: &buf)
@@ -1179,9 +3308,10 @@ public struct FfiConverterTypeUiAction: FfiConverterRustBuffer {
         switch value {
         
         
-        case let .showTxs(txs):
+        case let .render(screen,dock):
             writeInt(&buf, Int32(1))
-            FfiConverterSequenceTypeTxSummary.write(txs, into: &buf)
+            FfiConverterTypeScreenView.write(screen, into: &buf)
+            FfiConverterTypeDockView.write(dock, into: &buf)
             
         
         case let .showError(message):
@@ -1216,14 +3346,52 @@ public func FfiConverterTypeUiAction_lower(_ value: UiAction) -> RustBuffer {
 public enum UiEvent: Equatable, Hashable {
     
     /**
-     * A screen came into view and wants whatever it shows.
+     * The app came up. Carries the clock, because the machine has none.
+     */
+    case started(now: UInt64
+    )
+    /**
+     * A tab in the dock.
      */
     case screenOpened(screen: Screen
     )
     /**
+     * Pull to refresh.
+     */
+    case refreshRequested
+    /**
+     * The eye on a covered figure. One switch for the whole app: revealing on
+     * Balances and staying covered on Home would be a strange thing to have
+     * to explain.
+     */
+    case maskToggled
+    /**
+     * The filter panel as a whole.
+     */
+    case filterToggled
+    /**
+     * One of the two groups inside it.
+     */
+    case filterGroupToggled(group: FilterGroup
+    )
+    /**
+     * A category chip. Multi-select, so this toggles rather than sets.
+     */
+    case categoryToggled(id: String
+    )
+    /**
+     * Clear every category.
+     */
+    case categoriesCleared
+    /**
+     * One of the four range forms.
+     */
+    case rangeSelected(kind: RangeSelection
+    )
+    /**
      * The user picked a transaction out of the list.
      */
-    case txSelected(index: UInt32
+    case txSelected(id: String
     )
 
 
@@ -1246,10 +3414,30 @@ public struct FfiConverterTypeUiEvent: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .screenOpened(screen: try FfiConverterTypeScreen.read(from: &buf)
+        case 1: return .started(now: try FfiConverterUInt64.read(from: &buf)
         )
         
-        case 2: return .txSelected(index: try FfiConverterUInt32.read(from: &buf)
+        case 2: return .screenOpened(screen: try FfiConverterTypeScreen.read(from: &buf)
+        )
+        
+        case 3: return .refreshRequested
+        
+        case 4: return .maskToggled
+        
+        case 5: return .filterToggled
+        
+        case 6: return .filterGroupToggled(group: try FfiConverterTypeFilterGroup.read(from: &buf)
+        )
+        
+        case 7: return .categoryToggled(id: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 8: return .categoriesCleared
+        
+        case 9: return .rangeSelected(kind: try FfiConverterTypeRangeSelection.read(from: &buf)
+        )
+        
+        case 10: return .txSelected(id: try FfiConverterString.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -1260,14 +3448,50 @@ public struct FfiConverterTypeUiEvent: FfiConverterRustBuffer {
         switch value {
         
         
-        case let .screenOpened(screen):
+        case let .started(now):
             writeInt(&buf, Int32(1))
+            FfiConverterUInt64.write(now, into: &buf)
+            
+        
+        case let .screenOpened(screen):
+            writeInt(&buf, Int32(2))
             FfiConverterTypeScreen.write(screen, into: &buf)
             
         
-        case let .txSelected(index):
-            writeInt(&buf, Int32(2))
-            FfiConverterUInt32.write(index, into: &buf)
+        case .refreshRequested:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .maskToggled:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .filterToggled:
+            writeInt(&buf, Int32(5))
+        
+        
+        case let .filterGroupToggled(group):
+            writeInt(&buf, Int32(6))
+            FfiConverterTypeFilterGroup.write(group, into: &buf)
+            
+        
+        case let .categoryToggled(id):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(id, into: &buf)
+            
+        
+        case .categoriesCleared:
+            writeInt(&buf, Int32(8))
+        
+        
+        case let .rangeSelected(kind):
+            writeInt(&buf, Int32(9))
+            FfiConverterTypeRangeSelection.write(kind, into: &buf)
+            
+        
+        case let .txSelected(id):
+            writeInt(&buf, Int32(10))
+            FfiConverterString.write(id, into: &buf)
             
         }
     }
@@ -1316,23 +3540,248 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterSequenceTypeTxSummary: FfiConverterRustBuffer {
-    typealias SwiftType = [TxSummary]
+fileprivate struct FfiConverterSequenceTypeAccountRow: FfiConverterRustBuffer {
+    typealias SwiftType = [AccountRow]
 
-    public static func write(_ value: [TxSummary], into buf: inout [UInt8]) {
+    public static func write(_ value: [AccountRow], into buf: inout [UInt8]) {
         let len = Int32(value.count)
         writeInt(&buf, len)
         for item in value {
-            FfiConverterTypeTxSummary.write(item, into: &buf)
+            FfiConverterTypeAccountRow.write(item, into: &buf)
         }
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TxSummary] {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AccountRow] {
         let len: Int32 = try readInt(&buf)
-        var seq = [TxSummary]()
+        var seq = [AccountRow]()
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeTxSummary.read(from: &buf))
+            seq.append(try FfiConverterTypeAccountRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeBreakdownSlice: FfiConverterRustBuffer {
+    typealias SwiftType = [BreakdownSlice]
+
+    public static func write(_ value: [BreakdownSlice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeBreakdownSlice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [BreakdownSlice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [BreakdownSlice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeBreakdownSlice.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeCategoryChip: FfiConverterRustBuffer {
+    typealias SwiftType = [CategoryChip]
+
+    public static func write(_ value: [CategoryChip], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCategoryChip.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CategoryChip] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CategoryChip]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCategoryChip.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeConnectionView: FfiConverterRustBuffer {
+    typealias SwiftType = [ConnectionView]
+
+    public static func write(_ value: [ConnectionView], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeConnectionView.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ConnectionView] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ConnectionView]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeConnectionView.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeDaySection: FfiConverterRustBuffer {
+    typealias SwiftType = [DaySection]
+
+    public static func write(_ value: [DaySection], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDaySection.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DaySection] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DaySection]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeDaySection.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeDockItem: FfiConverterRustBuffer {
+    typealias SwiftType = [DockItem]
+
+    public static func write(_ value: [DockItem], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDockItem.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DockItem] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DockItem]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeDockItem.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeMonthSection: FfiConverterRustBuffer {
+    typealias SwiftType = [MonthSection]
+
+    public static func write(_ value: [MonthSection], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeMonthSection.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [MonthSection] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [MonthSection]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeMonthSection.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeStreamGroup: FfiConverterRustBuffer {
+    typealias SwiftType = [StreamGroup]
+
+    public static func write(_ value: [StreamGroup], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeStreamGroup.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [StreamGroup] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [StreamGroup]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeStreamGroup.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeStreamRow: FfiConverterRustBuffer {
+    typealias SwiftType = [StreamRow]
+
+    public static func write(_ value: [StreamRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeStreamRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [StreamRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [StreamRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeStreamRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeTxRow: FfiConverterRustBuffer {
+    typealias SwiftType = [TxRow]
+
+    public static func write(_ value: [TxRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTxRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TxRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TxRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTxRow.read(from: &buf))
         }
         return seq
     }

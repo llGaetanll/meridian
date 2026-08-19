@@ -55,8 +55,9 @@ impl Connection {
 /// state the user has to act on, so it is modelled rather than logged.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionStatus {
-    /// Syncing normally. Carries how long ago, already worded.
-    Ok { synced: String },
+    /// Syncing normally, as of this instant. The wording of "2m ago" is the
+    /// core's job, because only it is handed a clock.
+    Ok { synced_at: api_common::Timestamp },
 
     /// The user has to sign in again. Nothing else will fix it.
     LoginRequired,
@@ -223,9 +224,7 @@ mod tests {
             id: "i".into(),
             name: "First Platypus Bank".into(),
             initials: "FP".into(),
-            status: ConnectionStatus::Ok {
-                synced: "synced 2m".into(),
-            },
+            status: ConnectionStatus::Ok { synced_at: 0 },
             accounts: vec![
                 account(AccountGroup::Depository, 110.0),
                 account(AccountGroup::Investment, 890.0),
