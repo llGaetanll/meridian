@@ -297,13 +297,10 @@ impl RuntimeServer {
         let notified = self.shutdown.notified();
 
         tokio::select! {
-            _ = signal_received() => {
+            event = signal_received() => {
                 // The signal is not the decision. The machine gets to say what
                 // happens next, which is what makes shutdown replayable.
-                self.dispatch(vec![Event::FromTerminal {
-                    event: EventTerminal::ShutdownRequested,
-                }])
-                .await;
+                self.dispatch(vec![Event::FromTerminal { event }]).await;
             }
             _ = notified => {}
         }
@@ -370,8 +367,8 @@ async fn health() -> &'static str {
     "ok"
 }
 
-/// Resolves when the process is asked to stop.
-async fn signal_received() {
+/// Resolves with whichever signal arrives first.
+async fn signal_received() -> EventTerminal {
     let interrupt = async {
         let _ = tokio::signal::ctrl_c().await;
     };
@@ -394,8 +391,8 @@ async fn signal_received() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = interrupt => {}
-        _ = terminate => {}
+        _ = interrupt => EventTerminal::SigInt,
+        _ = terminate => EventTerminal::SigTerm,
     }
 }
 

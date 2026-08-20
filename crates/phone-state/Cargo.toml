@@ -23,7 +23,6 @@ uniffi = { workspace = true, features = ["cli"] }
 
 [dev-dependencies]
 api-eval = { path = "../api-eval" }
-insta = { workspace = true }
 
 [[bin]]
 # The bindings generator, so `cargo run -p phone-state --bin uniffi-bindgen`

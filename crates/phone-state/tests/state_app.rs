@@ -131,63 +131,8 @@ fn starting_asks_for_a_snapshot() {
 
     eval!(&mut state,
         < ui(EventUi::Started),
-        @r#"
-    [1] ToSource {
-        action: LoadSnapshot {
-            force: false,
-        },
-    }
-    [1] ToUi {
-        action: Render {
-            screen: Home {
-                view: ViewHome {
-                    balances: ViewHomeBalances {
-                        headline: "••••••",
-                        masked: true,
-                        detail: "held across 0 accounts",
-                    },
-                    recurring: ViewHomeRecurring {
-                        headline: "••••••",
-                        masked: true,
-                        detail: "nothing due this week",
-                        breakdown: [],
-                        upcoming: [],
-                    },
-                    ledger: [],
-                    attention: [],
-                },
-            },
-            dock: ViewDock {
-                items: [
-                    ViewDockItem {
-                        screen: Home,
-                        label: "Home",
-                        icon: "home",
-                        selected: true,
-                    },
-                    ViewDockItem {
-                        screen: Ledger,
-                        label: "Ledger",
-                        icon: "ledger",
-                        selected: false,
-                    },
-                    ViewDockItem {
-                        screen: Recurring,
-                        label: "Recurring",
-                        icon: "recurring",
-                        selected: false,
-                    },
-                    ViewDockItem {
-                        screen: Balances,
-                        label: "Balances",
-                        icon: "balances",
-                        selected: false,
-                    },
-                ],
-            },
-        },
-    }
-    "#,
+        > Action::ToSource { action: ActionSource::LoadSnapshot { force: false } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }
 
@@ -197,63 +142,8 @@ fn pull_to_refresh_forces_a_fetch() {
 
     eval!(&mut state,
         < ui(EventUi::RefreshRequested),
-        @r#"
-    [1] ToSource {
-        action: LoadSnapshot {
-            force: true,
-        },
-    }
-    [1] ToUi {
-        action: Render {
-            screen: Home {
-                view: ViewHome {
-                    balances: ViewHomeBalances {
-                        headline: "••••••",
-                        masked: true,
-                        detail: "held across 0 accounts",
-                    },
-                    recurring: ViewHomeRecurring {
-                        headline: "••••••",
-                        masked: true,
-                        detail: "nothing due this week",
-                        breakdown: [],
-                        upcoming: [],
-                    },
-                    ledger: [],
-                    attention: [],
-                },
-            },
-            dock: ViewDock {
-                items: [
-                    ViewDockItem {
-                        screen: Home,
-                        label: "Home",
-                        icon: "home",
-                        selected: true,
-                    },
-                    ViewDockItem {
-                        screen: Ledger,
-                        label: "Ledger",
-                        icon: "ledger",
-                        selected: false,
-                    },
-                    ViewDockItem {
-                        screen: Recurring,
-                        label: "Recurring",
-                        icon: "recurring",
-                        selected: false,
-                    },
-                    ViewDockItem {
-                        screen: Balances,
-                        label: "Balances",
-                        icon: "balances",
-                        selected: false,
-                    },
-                ],
-            },
-        },
-    }
-    "#,
+        > Action::ToSource { action: ActionSource::LoadSnapshot { force: true } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }
 
@@ -940,125 +830,17 @@ fn a_failed_load_tells_the_user_and_still_draws() {
     let mut state = at_now();
 
     eval!(&mut state,
-        < ui(EventUi::Started);
+        < ui(EventUi::Started),
+        > Action::ToSource { action: ActionSource::LoadSnapshot { force: false } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromSource {
             event: EventSource::LoadFailed {
                 message: "the server is not running".to_string(),
             },
         },
-        @r#"
-    [1] ToSource {
-        action: LoadSnapshot {
-            force: false,
-        },
-    }
-    [1] ToUi {
-        action: Render {
-            screen: Home {
-                view: ViewHome {
-                    balances: ViewHomeBalances {
-                        headline: "••••••",
-                        masked: true,
-                        detail: "held across 0 accounts",
-                    },
-                    recurring: ViewHomeRecurring {
-                        headline: "••••••",
-                        masked: true,
-                        detail: "nothing due this week",
-                        breakdown: [],
-                        upcoming: [],
-                    },
-                    ledger: [],
-                    attention: [],
-                },
-            },
-            dock: ViewDock {
-                items: [
-                    ViewDockItem {
-                        screen: Home,
-                        label: "Home",
-                        icon: "home",
-                        selected: true,
-                    },
-                    ViewDockItem {
-                        screen: Ledger,
-                        label: "Ledger",
-                        icon: "ledger",
-                        selected: false,
-                    },
-                    ViewDockItem {
-                        screen: Recurring,
-                        label: "Recurring",
-                        icon: "recurring",
-                        selected: false,
-                    },
-                    ViewDockItem {
-                        screen: Balances,
-                        label: "Balances",
-                        icon: "balances",
-                        selected: false,
-                    },
-                ],
-            },
-        },
-    }
-    [2] ToUi {
-        action: Render {
-            screen: Home {
-                view: ViewHome {
-                    balances: ViewHomeBalances {
-                        headline: "••••••",
-                        masked: true,
-                        detail: "held across 0 accounts",
-                    },
-                    recurring: ViewHomeRecurring {
-                        headline: "••••••",
-                        masked: true,
-                        detail: "nothing due this week",
-                        breakdown: [],
-                        upcoming: [],
-                    },
-                    ledger: [],
-                    attention: [],
-                },
-            },
-            dock: ViewDock {
-                items: [
-                    ViewDockItem {
-                        screen: Home,
-                        label: "Home",
-                        icon: "home",
-                        selected: true,
-                    },
-                    ViewDockItem {
-                        screen: Ledger,
-                        label: "Ledger",
-                        icon: "ledger",
-                        selected: false,
-                    },
-                    ViewDockItem {
-                        screen: Recurring,
-                        label: "Recurring",
-                        icon: "recurring",
-                        selected: false,
-                    },
-                    ViewDockItem {
-                        screen: Balances,
-                        label: "Balances",
-                        icon: "balances",
-                        selected: false,
-                    },
-                ],
-            },
-        },
-    }
-    [2] ToUi {
-        action: ShowError {
-            message: "the server is not running",
-        },
-    }
-    "#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::ShowError { .. } },
     );
 }
 

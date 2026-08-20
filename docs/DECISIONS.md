@@ -156,9 +156,17 @@ costs a user-visible failure and the headroom costs nothing at this scale.
 
 ### `FromTerminal`
 
-Added, and it works: SIGINT becomes `EventTerminal::ShutdownRequested`, the
-machine decides, and `ActionProcess::Shutdown` is what actually stops the
-server. Verified by sending a real SIGINT — it drains and exits with
+Added, and it works: a signal becomes an event, the machine decides, and
+`ActionProcess::Shutdown` is what actually stops the server.
+
+The variants are `SigInt` and `SigTerm` — the signals themselves, not
+`ShutdownRequested`. You were right that the indirection was backwards: what a
+SIGINT *means* is the machine's business, and naming the variant for the
+intended outcome decides it at the edge, which is exactly what the runtime is
+not supposed to do. It also leaves room for SIGHUP, which means "reload your
+config" to most daemons, without renaming anything.
+
+Both currently take the same arm. The log records which arrived. Verified by sending a real SIGINT — it drains and exits with
 `INFO app shutting down` / `INFO app server stopped`. Shutdown is idempotent, so
 a second ^C while draining does nothing, and `should_fetch` refuses new work
 once it is set.
@@ -230,32 +238,48 @@ They still recover rather than propagating: losing every future request is
 worse than serving one that may be mid-update, and a panic across FFI is
 undefined behaviour rather than an exception.
 
-### Inline snapshots, and the death of `as` and `at`
+### `eval!` matches patterns; no snapshots at all
 
-All snapshots are inline now, and the `.snap` files are gone from the branch's
-history — the two commits that introduced them were unpushed, so they squashed
-into one clean commit rather than needing a filter-branch.
+You called the inline-snapshot instruction a mistake, and it was — the macro
+expands to `matches!` now and there is no `insta` in the workspace.
 
-You asked what `as` and `at` were for. Both were solving problems I had
-created:
+```rust
+eval!(&mut state,
+    < requested(false),
+    > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None } },
 
-- **`as`** disambiguated two `eval!` calls writing to the same snapshot *file*.
-  Inline snapshots are per-call-site, so it evaporated.
-- **`at`** set the clock for a batch. Your suggestion — a setter on the machine
-  before `eval!` — is better, and now `eval!` reads `state.now()` instead of
-  carrying a clock in its syntax.
+    < requested(true),
+    > Action::ToClient { action: ActionClient::Serve },
+);
+```
 
-One thing did have to be added: **`;` to end a batch**. Blank lines cannot work,
-because a proc macro sees tokens rather than whitespace — `proc_macro2`'s span
-line numbers are only real when it parses source itself, and under a real
-compiler they all come back as zero. I tried it and measured it before giving up
-on it.
+The `>` lines are patterns, so `..` and `_` cover what does not matter. That
+turns out to be strictly better than the snapshot version in three ways:
 
-There is also now **one snapshot per `eval!` rather than one per batch**, with
-`[1]`/`[2]` labels inside it saying which batch each action came from. Not a
-preference: `cargo insta` rewrites source by span, and every assertion a proc
-macro expands to shares the macro's call site, so with two inline assertions in
-one expansion it can only ever fill in one of them.
+- **It says what the test cares about.** A snapshot asserts on a whole `Debug`
+  string, so it fails when a field nobody was testing changes its formatting. A
+  pattern fails when the behaviour changes.
+- **Still no `PartialEq`.** `matches!` is pattern matching and needs no trait,
+  so the derives stay off — which was the reason for snapshots in the first
+  place, achieved without them.
+- **No second artifact.** No `.snap` files, no `cargo insta`, no accept step in
+  the loop.
+
+The failure messages name the batch and position, print the pattern as it reads
+in source, and check the count first so a missing action reports as a missing
+action rather than as a mismatch three lines down. Verified by breaking a test
+on purpose:
+
+```
+batch 1, action 1: expected `Action::ToClient { action: ActionClient::Serve }`, got ToSource { … }
+batch 1 produced 1 actions, expected 0: [ … ]
+```
+
+Both `as` and `at` are gone. `as` only existed to stop two `eval!` calls
+fighting over one snapshot *file*, so it went with the files. `at` is your
+setter-before-the-call, so the macro reads `state.now()` and carries no clock in
+its syntax. Nothing was added in their place — `>` was always the right
+notation, and I had detoured away from it.
 
 ### Plaid naming
 

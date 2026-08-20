@@ -96,9 +96,9 @@ program — follows all of them.
    disagree with itself.
 
 4. **Derive as little as possible on events and actions.** `Debug` for logging
-   and snapshots; `Clone` only where something must own one. Not `PartialEq` —
-   tests use `insta` snapshots, and that derive spreads a bound through every
-   type it touches.
+   and for failure messages; `Clone` only where something must own one. Not
+   `PartialEq` — tests match on patterns via `eval!`, and that derive spreads a
+   bound through every type it touches.
 
 5. **No panics.** `debug_assert!` for invariants, `unreachable!` where a case
    is provably impossible, `Result` for anything depending on input or IO. See
@@ -180,13 +180,13 @@ shape with the boilerplate removed:
 ```rust
 eval!(&mut state,
     < EventClient::SnapshotRequested { force: false },
-    > ActionSource::FetchPlaid { cursor: None },
+    > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None } },
 );
 ```
 
-`<` is an event in, `>` is an action out, adjacent events form one batch, and
-the assertion is an `insta` snapshot — which is why the types need no
-`PartialEq`. See [STYLE.md](STYLE.md).
+`<` is an event in, `>` is an action out, and adjacent events form one batch.
+The `>` lines are patterns, so the macro expands to `matches!` and the types
+need no `PartialEq`. See [STYLE.md](STYLE.md).
 
 ### Where it lives
 
