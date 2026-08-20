@@ -163,7 +163,7 @@ fn TransactionTransfer(ts: Timestamp, pos: Position) -> impl IntoView {
 }
 
 fn format_timestamp(ts: Timestamp) -> String {
-    let date = web_sys::js_sys::Date::new(&(ts as f64 * 1000.0).into());
+    let date = web_sys::js_sys::Date::new(&(ts.as_secs() as f64 * 1000.0).into());
     date.to_locale_string("en-US", &web_sys::js_sys::Object::new())
         .as_string()
         .unwrap_or_default()

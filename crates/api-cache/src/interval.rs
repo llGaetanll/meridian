@@ -49,7 +49,8 @@ impl Interval {
     /// grid is anchored at the epoch, so daily bars turn over at UTC midnight
     /// rather than at any exchange's.
     pub fn floor(self, ts: Timestamp) -> Timestamp {
-        ts - ts % self.seconds()
+        // Floor to the interval boundary this timestamp falls in.
+        Timestamp::from_secs(ts.as_secs() - ts.as_secs() % self.seconds())
     }
 
     /// The last bar that has finished forming as of `now`.
@@ -68,16 +69,28 @@ mod tests {
 
     #[test]
     fn floors_onto_the_grid() {
-        assert_eq!(Interval::Min5.floor(1_000_000_301), 1_000_000_200);
-        assert_eq!(Interval::Min5.floor(1_000_000_200), 1_000_000_200);
-        assert_eq!(Interval::Day1.floor(1_786_127_325), 1_786_060_800);
+        assert_eq!(
+            Interval::Min5.floor(Timestamp::from_secs(1_000_000_301)),
+            Timestamp::from_secs(1_000_000_200)
+        );
+        assert_eq!(
+            Interval::Min5.floor(Timestamp::from_secs(1_000_000_200)),
+            Timestamp::from_secs(1_000_000_200)
+        );
+        assert_eq!(
+            Interval::Day1.floor(Timestamp::from_secs(1_786_127_325)),
+            Timestamp::from_secs(1_786_060_800)
+        );
     }
 
     /// Two windows landing on the same bar must floor to the same timestamp,
     /// or merging them would double up the point.
     #[test]
     fn agrees_across_windows() {
-        let (a, b) = (1_786_127_325, 1_786_127_399);
+        let (a, b) = (
+            Timestamp::from_secs(1_786_127_325),
+            Timestamp::from_secs(1_786_127_399),
+        );
 
         assert_eq!(Interval::Min5.floor(a), Interval::Min5.floor(b));
     }

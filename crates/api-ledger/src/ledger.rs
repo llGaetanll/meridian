@@ -147,11 +147,11 @@ mod tests {
     use crate::Category;
     use crate::Position;
 
-    fn entry(id: &str, ts: Timestamp, qty: f64) -> Entry {
+    fn entry(id: &str, secs: u64, qty: f64) -> Entry {
         Entry {
             id: id.to_string(),
             tx: Tx::Transfer {
-                ts,
+                ts: Timestamp::from_secs(secs),
                 pos: Position {
                     asset: "USD".into(),
                     qty,

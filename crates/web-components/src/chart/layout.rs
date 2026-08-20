@@ -79,7 +79,7 @@ impl Layout {
         let mut closed = 0.0;
 
         for i in 0..widths.len() {
-            let gap = (ts[i + 1] - ts[i]) as f64;
+            let gap = (ts[i + 1] - ts[i]).as_secs() as f64;
 
             if gap <= GAP_FACTOR * typical as f64 {
                 continue;
@@ -213,7 +213,12 @@ impl Closed {
     /// A gap is a night unless it skipped a whole day at the exchange, and a
     /// weekend if one of the days it skipped fell on one.
     fn of(from: Timestamp, to: Timestamp, utc_offset: i64) -> Self {
-        let local = |ts: Timestamp| ts.saturating_add_signed(utc_offset) / DAY;
+        // Which local day a point falls on. The offset can be negative, so it
+        // is applied to the seconds before they become a day index.
+        let local = |ts: Timestamp| {
+            let secs = ts.as_secs() as i64 + utc_offset;
+            secs.div_euclid(DAY as i64)
+        };
         let (first, last) = (local(from) + 1, local(to));
 
         if first >= last {
@@ -245,7 +250,10 @@ fn typical_spacing(ts: &[Timestamp]) -> Option<u64> {
         return None;
     }
 
-    let mut steps = ts.windows(2).map(|w| w[1] - w[0]).collect::<Vec<_>>();
+    let mut steps = ts
+        .windows(2)
+        .map(|w| (w[1] - w[0]).as_secs())
+        .collect::<Vec<_>>();
     steps.sort_unstable();
 
     Some(steps[steps.len() / 2]).filter(|&step| step > 0)
@@ -264,7 +272,7 @@ mod tests {
         (0..days)
             .map(|day| FIRST_MONDAY + day / 5 * 7 + day % 5)
             .flat_map(|day| (0..len).map(move |i| day * DAY + 9 * HOUR + 1_800 * (i + 1)))
-            .map(|ts| (ts, 10.0))
+            .map(|secs| (Timestamp::from_secs(secs), 10.0))
             .collect()
     }
 
@@ -333,7 +341,9 @@ mod tests {
     /// next day, not a closure.
     #[test]
     fn judges_a_gap_against_the_usual_spacing() {
-        let daily = (0..30).map(|i| (i * DAY, 10.0)).collect::<ChartData>();
+        let daily = (0..30)
+            .map(|i| (Timestamp::from_secs(i * DAY), 10.0))
+            .collect::<ChartData>();
 
         assert!(Layout::new(&daily, 0).closures().is_empty());
     }

@@ -66,12 +66,12 @@ The `access_token` is permanent and the flow above is run once, ever. The
 `cursor` from `/transactions/sync` is what makes the next sync incremental, so
 it is saved beside the token and passed back on the following call.
 
-## Two ways to be quietly wrong
+## Three ways to be quietly wrong
 
-`src-plaid` holds Plaid's types as Plaid reports them, so neither of these is
-handled there. Whatever eventually reads a `PlaidTransaction` into the ledger
-owns both, and both are worth a test, because neither looks like a bug from the
-outside — the numbers stay plausible either way.
+`src-plaid` holds Plaid's types as Plaid reports them, so none of these is
+handled there. Whatever reads a `PlaidTransaction` into the ledger owns them
+all, and each is worth a test, because none looks like a bug from the outside —
+the numbers stay plausible either way.
 
 **Sign.** Plaid reports a card purchase as a *positive* `amount` — positive
 means money left the account. The ledger has the opposite convention, so
@@ -82,3 +82,16 @@ posts. A *new* transaction arrives with a different `transaction_id` and a
 `pending_transaction_id` pointing at the old one, which must then be dropped.
 Ignore this and every purchase is counted twice for the few days between
 authorisation and settlement.
+
+**A sync is a diff, and the second one usually returns nothing.** This is the
+one that actually bit us. `/transactions/sync` answers with what has changed
+since the cursor, so the first call returns the whole history and a call a
+minute later legitimately returns three empty lists. Assign that over the held
+ledger instead of applying it and the app goes blank — while every log line
+still says the sync succeeded, because it did.
+
+The fix is that the ledger accumulates: `added` joins, `modified` replaces by
+id, `removed` leaves, and nothing else is touched. `Ledger::apply` does this
+and `StateServer` is what calls it. It is worth knowing that no unit test
+starting from a fresh state can catch this; it only shows up on the *second*
+fetch, so the test has to be one.

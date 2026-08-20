@@ -3,6 +3,7 @@ mod chart_data;
 pub mod format;
 mod price;
 mod quantity;
+pub mod ratelimit;
 mod timestamp;
 
 pub use asset::Asset;

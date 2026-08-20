@@ -4,4 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+# Only for `Timestamp`, which crosses the wire between the server and the
+# phone. Nothing else here needs it.
+serde = { workspace = true }
 
+[dev-dependencies]
+serde_json = { workspace = true }

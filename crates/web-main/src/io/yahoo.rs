@@ -79,10 +79,10 @@ impl ChartRange {
             Self::Year => 365 * DAY,
             Self::FiveYears => 5 * 365 * DAY,
             // Yahoo clamps to the first trade it has, whatever we ask for.
-            Self::Max => return 0..end,
+            Self::Max => return Timestamp::EPOCH..end,
         };
 
-        now.saturating_sub(back)..end
+        now.saturating_sub_secs(back)..end
     }
 
     /// The finest interval that covers the range without asking for points so
@@ -172,7 +172,7 @@ impl Source for YahooSource {
         interval: Interval,
         window: Range<Timestamp>,
     ) -> Result<Fetched<AssetInfo>, String> {
-        let now = Utc::now().timestamp().max(0) as Timestamp;
+        let now = Timestamp::from_secs(Utc::now().timestamp().max(0) as u64);
 
         // Bars settle when they close and are revised until they do, so the
         // one still forming is left outside coverage and fetched again next
@@ -247,14 +247,15 @@ fn servable(
     };
 
     // A bar of margin: the cut-off moves while the request is in flight.
-    let oldest = now.saturating_sub(max_age) + interval.seconds();
+    let oldest =
+        now.saturating_sub_secs(max_age) + std::time::Duration::from_secs(interval.seconds());
     let asked = window.start.max(oldest)..window.end;
 
     (asked.start < asked.end).then_some(asked)
 }
 
 fn stamp(ts: Timestamp) -> DateTime<Utc> {
-    DateTime::from_timestamp(ts as i64, 0).unwrap_or_default()
+    DateTime::from_timestamp(ts.as_secs() as i64, 0).unwrap_or_default()
 }
 
 fn yahoo_interval(interval: Interval) -> YInterval {
@@ -329,8 +330,8 @@ fn info(block: &YQuoteBlock) -> AssetInfo {
         .as_ref()
         .and_then(|period| period.regular.as_ref())
         .map(|regular| {
-            regular.start.timestamp().max(0) as Timestamp
-                ..regular.end.timestamp().max(0) as Timestamp
+            Timestamp::from_secs(regular.start.timestamp().max(0) as u64)
+                ..Timestamp::from_secs(regular.end.timestamp().max(0) as u64)
         });
 
     AssetInfo {
@@ -400,7 +401,12 @@ fn key_stats(block: &YQuoteBlock, open: Option<Price>) -> Vec<(String, String)> 
 mod tests {
     use super::*;
 
-    const NOW: Timestamp = 1_786_000_000;
+    const NOW: Timestamp = Timestamp::from_secs(1_786_000_000);
+
+    /// `days_ago(7)` — the tests below are all written relative to `NOW`.
+    fn days_ago(days: u64) -> Timestamp {
+        NOW.saturating_sub_secs(days * DAY)
+    }
 
     /// A window ends at the last bar to have *closed*, not at this instant —
     /// see `window`. `NOW` is not minute-aligned, so the end is a little
@@ -410,33 +416,36 @@ mod tests {
     fn windows_end_at_the_last_closed_bar_and_reach_back() {
         let day = ChartRange::Day.window(NOW);
 
-        assert_eq!(day.start, NOW - DAY);
+        assert_eq!(day.start, days_ago(1));
         assert_eq!(day.end, ChartRange::Day.interval().last_closed(NOW));
         assert!(day.end <= NOW);
 
-        assert_eq!(ChartRange::Max.window(NOW).start, 0);
+        assert_eq!(ChartRange::Max.window(NOW).start, Timestamp::EPOCH);
     }
 
     /// A window reaching past what Yahoo will serve is trimmed rather than
     /// refused outright.
     #[test]
     fn trims_an_ask_to_what_is_still_served() {
-        let asked = servable(&(0..NOW), Interval::Min1, NOW).unwrap();
+        let asked = servable(&(Timestamp::EPOCH..NOW), Interval::Min1, NOW).unwrap();
 
-        assert!(asked.start >= NOW - 7 * DAY);
+        assert!(asked.start >= days_ago(7));
         assert_eq!(asked.end, NOW);
     }
 
     #[test]
     fn asks_for_nothing_once_bars_are_too_old_to_serve() {
-        let window = NOW - 90 * DAY..NOW - 80 * DAY;
+        let window = days_ago(90)..days_ago(80);
 
         assert_eq!(servable(&window, Interval::Min5, NOW), None);
     }
 
     #[test]
     fn daily_bars_are_served_however_far_back() {
-        assert_eq!(servable(&(0..NOW), Interval::Day1, NOW), Some(0..NOW));
+        assert_eq!(
+            servable(&(Timestamp::EPOCH..NOW), Interval::Day1, NOW),
+            Some(Timestamp::EPOCH..NOW)
+        );
     }
 
     /// Every interval the cache knows has to name itself the way Yahoo does,

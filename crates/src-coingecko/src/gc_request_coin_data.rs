@@ -5,8 +5,7 @@ use crate::CoinId;
 use crate::Currency;
 use crate::GcRequest;
 
-// API Details
-// -----------
+// API details.
 //
 //  You may leave the interval params as empty for automatic granularity:
 //      1 day from current time = 5-minutely data

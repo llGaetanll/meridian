@@ -21,11 +21,11 @@ mkdir -p $OUT
 [ -f "$JNA" ] || curl -sL -o "$JNA" \
     "https://repo1.maven.org/maven2/net/java/dev/jna/jna/$JNA_VERSION/jna-$JNA_VERSION.jar"
 
-cargo build -p api-core
-cp target/debug/libapi_core.so $OUT/
+cargo build -p phone-state
+cp target/debug/libphone_state.so $OUT/
 
 kotlinc -classpath "$JNA" \
-    kotlin/src/main/kotlin/uniffi/api_core/api_core.kt \
+    kotlin/src/main/kotlin/uniffi/phone_state/phone_state.kt \
     -d $OUT/bindings.jar
 
 kotlinc -classpath "$JNA:$OUT/bindings.jar" \

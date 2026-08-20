@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 
 mod app;
-mod io;
-mod runtime;
+mod runtime_app;
+mod runtime_io;
 mod screens;
 mod ui;
 

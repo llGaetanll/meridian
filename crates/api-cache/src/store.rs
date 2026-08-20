@@ -175,7 +175,13 @@ impl<S: Source> Store<S> {
 
             // The other fetch may or may not have covered what this one wants,
             // so the loop asks again rather than assuming either way.
-            let _ = waiter.expect("a waiter or the slot").await;
+            // The branch above sets one or the other; this arm is the
+            // "someone else is already fetching" case, so a waiter exists.
+            let Some(waiter) = waiter else {
+                unreachable!("the occupied branch always leaves a waiter")
+            };
+
+            let _ = waiter.await;
         };
 
         let result = self.fetch(&key, window).await;
@@ -278,7 +284,7 @@ fn plan(missing: Vec<Range<Timestamp>>, interval: Interval) -> Vec<Range<Timesta
 
     for span in missing {
         match spans.last_mut() {
-            Some(last) if span.start.saturating_sub(last.end) <= slack => last.end = span.end,
+            Some(last) if span.start.since(last.end).as_secs() <= slack => last.end = span.end,
             _ => spans.push(span),
         }
     }
@@ -354,8 +360,9 @@ mod tests {
             let mut at = interval.floor(window.start);
 
             while at < window.end {
-                bars.push(at, at as f64, at as f64, 1.0);
-                at += interval.seconds();
+                let px = at.as_secs() as f64;
+                bars.push(at, px, px, 1.0);
+                at += std::time::Duration::from_secs(interval.seconds());
             }
 
             Ok(Fetched {
@@ -378,7 +385,11 @@ mod tests {
         futures::executor::block_on(future)
     }
 
-    const MIN: u64 = 60;
+    /// Windows below are written in minutes; this turns one into a timestamp
+    /// so the ranges stay readable.
+    fn min(n: u64) -> Timestamp {
+        Timestamp::from_secs(n * 60)
+    }
 
     /// The case the whole design is for: two windows fetched, then the window
     /// spanning them both, which goes nowhere near the source.
@@ -386,12 +397,12 @@ mod tests {
     fn a_spanning_window_asks_for_nothing() {
         let (store, calls) = store();
 
-        block_on(store.bars("SPY", Interval::Min1, 0..10 * MIN)).unwrap();
-        block_on(store.bars("SPY", Interval::Min1, 10 * MIN..20 * MIN)).unwrap();
+        block_on(store.bars("SPY", Interval::Min1, min(0)..min(10))).unwrap();
+        block_on(store.bars("SPY", Interval::Min1, min(10)..min(20))).unwrap();
 
         assert_eq!(calls.borrow().len(), 2);
 
-        let bars = block_on(store.bars("SPY", Interval::Min1, 0..20 * MIN)).unwrap();
+        let bars = block_on(store.bars("SPY", Interval::Min1, min(0)..min(20))).unwrap();
 
         assert_eq!(calls.borrow().len(), 2);
         assert_eq!(bars.len(), 20);
@@ -401,18 +412,18 @@ mod tests {
     fn asks_only_for_the_part_it_lacks() {
         let (store, calls) = store();
 
-        block_on(store.bars("SPY", Interval::Min1, 0..10 * MIN)).unwrap();
-        block_on(store.bars("SPY", Interval::Min1, 0..15 * MIN)).unwrap();
+        block_on(store.bars("SPY", Interval::Min1, min(0)..min(10))).unwrap();
+        block_on(store.bars("SPY", Interval::Min1, min(0)..min(15))).unwrap();
 
-        assert_eq!(calls.borrow()[1], (Interval::Min1, 10 * MIN..15 * MIN));
+        assert_eq!(calls.borrow()[1], (Interval::Min1, min(10)..min(15)));
     }
 
     #[test]
     fn a_narrower_window_is_free() {
         let (store, calls) = store();
 
-        block_on(store.bars("SPY", Interval::Min1, 0..20 * MIN)).unwrap();
-        let bars = block_on(store.bars("SPY", Interval::Min1, 5 * MIN..10 * MIN)).unwrap();
+        block_on(store.bars("SPY", Interval::Min1, min(0)..min(20))).unwrap();
+        let bars = block_on(store.bars("SPY", Interval::Min1, min(5)..min(10))).unwrap();
 
         assert_eq!(calls.borrow().len(), 1);
         assert_eq!(bars.len(), 5);
@@ -423,8 +434,8 @@ mod tests {
     fn intervals_do_not_answer_for_each_other() {
         let (store, calls) = store();
 
-        block_on(store.bars("SPY", Interval::Min1, 0..20 * MIN)).unwrap();
-        block_on(store.bars("SPY", Interval::Min5, 0..20 * MIN)).unwrap();
+        block_on(store.bars("SPY", Interval::Min1, min(0)..min(20))).unwrap();
+        block_on(store.bars("SPY", Interval::Min5, min(0)..min(20))).unwrap();
 
         assert_eq!(calls.borrow().len(), 2);
     }
@@ -433,8 +444,8 @@ mod tests {
     fn symbols_are_held_apart() {
         let (store, calls) = store();
 
-        block_on(store.bars("SPY", Interval::Min1, 0..MIN)).unwrap();
-        block_on(store.bars("QQQ", Interval::Min1, 0..MIN)).unwrap();
+        block_on(store.bars("SPY", Interval::Min1, min(0)..min(1))).unwrap();
+        block_on(store.bars("QQQ", Interval::Min1, min(0)..min(1))).unwrap();
 
         assert_eq!(calls.borrow().len(), 2);
     }
@@ -447,15 +458,18 @@ mod tests {
         let calls = source.calls.clone();
         let store = Store::new(source);
 
-        block_on(store.bars("BTC", Interval::Min1, 0..3_600)).unwrap();
-        let bars = block_on(store.bars("BTC", Interval::Min1, 0..3_600)).unwrap();
+        block_on(store.bars("BTC", Interval::Min1, min(0)..min(60))).unwrap();
+        let bars = block_on(store.bars("BTC", Interval::Min1, min(0)..min(60))).unwrap();
 
         assert_eq!(calls.borrow().len(), 1);
         assert_eq!(calls.borrow()[0].0, Interval::Min1);
         assert_eq!(bars.len(), 1);
 
         // And the bars are found under the interval that came back.
-        assert_eq!(store.held("BTC", Interval::Hour1, &(0..3_600)).len(), 1);
+        assert_eq!(
+            store.held("BTC", Interval::Hour1, &(min(0)..min(60))).len(),
+            1
+        );
     }
 
     #[test]
@@ -464,30 +478,43 @@ mod tests {
 
         assert_eq!(store.snapshot("SPY"), None);
 
-        block_on(store.bars("SPY", Interval::Min1, 0..MIN)).unwrap();
+        block_on(store.bars("SPY", Interval::Min1, min(0)..min(1))).unwrap();
 
         assert_eq!(store.snapshot("SPY").as_deref(), Some("SPY"));
     }
 
+    /// Holes are written as raw seconds; this plans over them and unwraps the
+    /// answer so the tables below stay readable.
+    fn planned(holes: &[Range<u64>], interval: Interval) -> Vec<Range<u64>> {
+        let holes = holes
+            .iter()
+            .map(|h| Timestamp::from_secs(h.start)..Timestamp::from_secs(h.end))
+            .collect();
+
+        plan(holes, interval)
+            .into_iter()
+            .map(|h| h.start.as_secs()..h.end.as_secs())
+            .collect()
+    }
+
     #[test]
     fn merges_holes_too_close_to_be_worth_a_request() {
-        let plan = plan(vec![0..60, 120..180], Interval::Min1);
-
-        assert_eq!(plan, [0..180]);
+        assert_eq!(planned(&[0..60, 120..180], Interval::Min1), [0..180]);
     }
 
     #[test]
     fn keeps_holes_far_apart_apart() {
-        let plan = plan(vec![0..60, 6_000..6_060], Interval::Min1);
-
-        assert_eq!(plan, [0..60, 6_000..6_060]);
+        assert_eq!(
+            planned(&[0..60, 6_000..6_060], Interval::Min1),
+            [0..60, 6_000..6_060],
+        );
     }
 
     /// Past a few holes, one request over the lot beats a request each.
     #[test]
     fn folds_many_holes_into_one_request() {
-        let holes = (0..10).map(|i| i * 6_000..i * 6_000 + 60).collect();
+        let holes: Vec<Range<u64>> = (0..10).map(|i| i * 6_000..i * 6_000 + 60).collect();
 
-        assert_eq!(plan(holes, Interval::Min1), [0..54_060]);
+        assert_eq!(planned(&holes, Interval::Min1), [0..54_060]);
     }
 }

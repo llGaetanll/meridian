@@ -145,7 +145,7 @@ pub fn fmt_year(ts: Timestamp) -> String {
 
 /// `"9:30"`
 pub fn fmt_time_of_day(ts: Timestamp) -> String {
-    let secs = ts % 86_400;
+    let secs = ts.as_secs() % 86_400;
     format!("{}:{:02}", secs / 3600, (secs % 3600) / 60)
 }
 
@@ -157,7 +157,7 @@ fn money_decimals(px: Price) -> usize {
 /// Days-to-civil-date, after Howard Hinnant's `chrono` algorithms. Keeps
 /// `api-common` dependency free.
 fn civil_from_ts(ts: Timestamp) -> (i64, u32, u32) {
-    let days = (ts / 86_400) as i64;
+    let days = ts.day_index() as i64;
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);
@@ -192,7 +192,9 @@ mod tests {
     #[test]
     fn formats_dates() {
         // 2026-08-02 00:00:00 UTC
-        assert_eq!(fmt_date(1_785_628_800), "Aug 02 2026");
-        assert_eq!(fmt_month_year(1_785_628_800), "Aug 2026");
+        let ts = Timestamp::from_secs(1_785_628_800);
+
+        assert_eq!(fmt_date(ts), "Aug 02 2026");
+        assert_eq!(fmt_month_year(ts), "Aug 2026");
     }
 }

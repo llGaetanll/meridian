@@ -77,6 +77,65 @@ A `FromCli` arm and the rest follow the same pattern if we need them. Grouping
 by origin keeps a match on `Event` readable as the app grows, and makes the
 recorded log read as a story rather than a flat list.
 
+### The rules a machine follows
+
+These are settled. A new state machine — and there will be more, one per
+program — follows all of them.
+
+1. **`handle_events` is the only entry point, and the only way state changes.**
+   The fields are private. A `pub` field is a way to mutate state without an
+   event, which is the one thing this design exists to prevent.
+
+2. **Time is an argument, not a call.** `handle_events(now, events, actions)`.
+   The clock is read once per batch, at the edge, by the runtime. Nothing
+   inside reads one, which is what makes a replay land where it did the first
+   time. The same goes for randomness and IO.
+
+3. **Nothing derived is stored.** Filtering, grouping and totals are computed
+   on the way out. A field that could be recomputed is a field that can
+   disagree with itself.
+
+4. **Derive as little as possible on events and actions.** `Debug` for logging
+   and snapshots; `Clone` only where something must own one. Not `PartialEq` —
+   tests use `insta` snapshots, and that derive spreads a bound through every
+   type it touches.
+
+5. **No panics.** `debug_assert!` for invariants, `unreachable!` where a case
+   is provably impossible, `Result` for anything depending on input or IO. See
+   [STYLE.md](STYLE.md).
+
+6. **Anything that is a *rule* belongs in the machine, even if it looks like
+   IO's business.** Rate limiting is the example: "may I send this?" is
+   arithmetic over what we have already sent, so it lives in the machine
+   (`api-ratelimit`, with the per-API limiter in that API's crate) rather than
+   being guessed at by the runtime.
+
+### The runtime on the other side
+
+Every program is two pieces: a machine that decides and a runtime that acts.
+The runtime mirrors the machine's shape, so an action and the thing carrying it
+out sit at the same depth:
+
+```rust
+impl RuntimeExample {
+    pub fn run() { … }                                   // the only public fn
+
+    fn perform_actions(&self, actions: &[Action]) { … }
+    fn perform_action(&self, action: &Action) { … }      // dispatch only
+    fn perform_action_source(&self, action: &ActionSource) { … }
+}
+```
+
+One turn is: collect events, hand them to the machine, carry out the actions,
+log both. Whatever the IO produces re-enters as the next event, which is what
+closes the loop. Only `run` is public — everything else is reachable solely by
+carrying out an action, so nothing can do IO without an action asking for it.
+
+`server-main` writes this out as a real loop over requests;
+`crates/phone-main/src/runtime_app.rs` is the same thing driven by user
+interaction rather than by a `loop`, because a browser app is woken rather than
+polling.
+
 ### The shape of the machine
 
 The machine owns its state and mutates it in place. Actions are not returned;
@@ -106,16 +165,36 @@ impl State {
 `handle_events` is the only public entry point; everything under it is one
 function per event group, mirroring the enums. `handle_event` itself does
 nothing but dispatch, so the arms stay small and each group's rules sit in one
-place. A test is a slice of events in, a `Vec<Action>` and a `State` to assert
-on out — no runtime, no await, no mocks.
+place. A test is a slice of events in, a `Vec<Action>` and a state to assert on
+out — no runtime, no await, no mocks.
+
+In practice a test is written with `eval!` (`crates/api-eval`), which is that
+shape with the boilerplate removed:
+
+```rust
+eval!(&mut state,
+    < EventClient::SnapshotRequested { force: false },
+    > ActionSource::FetchPlaid { cursor: None },
+);
+```
+
+`<` is an event in, `>` is an action out, adjacent events form one batch, and
+the assertion is an `insta` snapshot — which is why the types need no
+`PartialEq`. See [STYLE.md](STYLE.md).
 
 ### Where it lives
 
-Both enums, and the machine itself, want to be platform-agnostic: the same
-decisions run on the desktop, the web and the phone. That points at an `api-*`
-crate rather than `web-state`. `api-common` is meant to stay a
-dependency-free bag of value types, so the machine belongs next to it in its
-own crate — `api-core` — depending on `api-common` and on nothing else.
+A state machine is a *program's* logic, not a shared type, so it lives with the
+program: `phone-state` for the app, `server-main` for the server. The `api-*`
+crates stay what they are — types and pure functions with no program in them.
+
+The split falls differently for the two because their IO does:
+
+- The **server** owns its machine and its runtime in one crate, because it owns
+  both halves.
+- The **phone** keeps its machine in `phone-state` alone, because the runtime
+  is Swift and Kotlin. `phone-main` is a third runtime — a Leptos one — that
+  exists so the design can be run and judged without a Mac.
 
 ### What this looks like once it is built
 
@@ -126,7 +205,7 @@ actually buys:
 - **The whole screen crosses, not a diff.** `UiAction::Render` carries the
   finished screen, so the view is a pure function of the last action it saw and
   holds no state to apply a diff against.
-- **The clock is an event field.** Nothing in `api-core` reads one, so `"in 3
+- **The clock is an event field.** Nothing in a machine reads one, so `"in 3
   days"` is a function of two timestamps and a replay lands where it did the
   first time.
 
@@ -143,18 +222,19 @@ signal graph becomes plumbing, not the place where behaviour is decided.
 
 | Crate | What it is |
 | --- | --- |
-| `api-common` | Shared types: `Asset`, `Price`, `Quantity`, `Timestamp`, `ChartData`, and formatting helpers. No dependencies. |
-| `api-core` | Events, actions, and the state machine that turns one into the other. Holds every phone screen's logic and every string it prints. Synchronous, no IO. Reached from Swift and Kotlin over UniFFI — see [FFI.md](FFI.md). |
+| `api-common` | Shared types: `Asset`, `Price`, `Quantity`, `Timestamp`, `ChartData`, and formatting helpers. |
 | `api-ledger` | Entries, positions, accounts, recurring streams, the ledger itself. |
-| `api-wire` | The JSON the server and the front ends share. One definition rather than two that drift. |
+| `api-eval` | The `eval!` macro every state machine is tested with. |
+| `api-ratelimit` | The `RateLimiter` trait and a sliding window. IO-free, so a machine can consult it. |
+| `phone-state` | The phone app's state machine: events, actions, every screen's logic and every string it prints. Synchronous, no IO. Reached from Swift and Kotlin over UniFFI — see [FFI.md](FFI.md). |
 | `src-yahoo`, `src-coingecko` | Price sources. Requests, responses, and pure projections onto `api-common` types. |
-| `src-plaid` | The bank connection, same shape as the price sources: sync, balances, recurring. |
-| `srv-main` | The server. Holds the Plaid secret, which is why it exists; events and actions like everything else. Sandbox only. |
+| `src-plaid` | The bank connection, same shape as the price sources: sync, balances, recurring, and Plaid's rate limits. |
+| `server-main` | The server. Holds the Plaid secret, which is why it exists; owns its machine, its runtime, and its wire types. Sandbox only. |
 | `web-ui` | Design-system pieces: buttons, pills, cards, segmented controls, icons. No domain knowledge. |
 | `web-components` | Domain components: the shell, charts, and the markets page's blocks. |
 | `web-state` | State shared across pages. |
 | `web-main` | The web front-end: `io`, `state`, `pages`, and the styles. |
-| `phone-main` | The phone front-end. Renders what `api-core` decides and holds one signal; a runnable specification for the Swift and Kotlin views. |
+| `phone-main` | A Leptos runtime over `phone-state`. Renders what the machine decides and holds one signal; a runnable specification for the Swift and Kotlin views. |
 
 ## Talking to price sources
 

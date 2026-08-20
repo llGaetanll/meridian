@@ -101,7 +101,15 @@ pub fn init(config: Config) {
             sinks.push(Box::new(file));
             None
         }
-        Some(Err(e)) => Some(format!("{}: {e}", config.file.as_ref().unwrap().display())),
+        Some(Err(e)) => {
+            // `Some(Err(_))` only arises when `config.file` was `Some`, so the
+            // path is always there.
+            let Some(path) = config.file.as_ref() else {
+                unreachable!("the error came from opening this very path")
+            };
+
+            Some(format!("{}: {e}", path.display()))
+        }
         None => None,
     };
 

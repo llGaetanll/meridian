@@ -224,7 +224,9 @@ mod tests {
             id: "i".into(),
             name: "First Platypus Bank".into(),
             initials: "FP".into(),
-            status: ConnectionStatus::Ok { synced_at: 0 },
+            status: ConnectionStatus::Ok {
+                synced_at: api_common::Timestamp::EPOCH,
+            },
             accounts: vec![
                 account(AccountGroup::Depository, 110.0),
                 account(AccountGroup::Investment, 890.0),

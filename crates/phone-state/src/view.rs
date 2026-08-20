@@ -1,0 +1,48 @@
+//! What a screen shows, already decided.
+//!
+//! Every type in the `view_*` modules carries finished values. A `ViewTxRow`
+//! holds the date as the string the row prints and the amount as the text
+//! `"−$5.40"`, not a timestamp and an `f64` for three platforms to format the
+//! same way three times. `docs/FFI.md` is explicit about why: the type surface
+//! gets a little larger, and the *logic* surface — the part that can disagree
+//! between platforms — stays at zero.
+//!
+//! The rule to hold onto when adding one: if a view layer would have to write
+//! an `if`, a `switch`, or a `format!` to use a field, the field is wrong.
+//! Send the answer, not the ingredients.
+
+/// `Clone` on the view types, but not on events or actions.
+///
+/// A view value is *data the UI owns*: a Leptos signal stores one, and SwiftUI
+/// and Compose will each hold their own copy too. Events and actions are
+/// messages that are passed by reference all the way down, so they need
+/// nothing but `Debug`.
+use crate::ViewBalances;
+use crate::ViewHome;
+use crate::ViewLedger;
+use crate::ViewRecurring;
+
+/// Which screen the app is on.
+///
+/// The dock's four tabs. Search is deliberately absent — the sketch draws the
+/// button but never the screen, so there is nothing to be faithful to yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Enum)]
+pub enum Screen {
+    #[default]
+    Home,
+    Ledger,
+    Recurring,
+    Balances,
+}
+
+/// Everything on screen, in one value.
+///
+/// One type rather than four optional ones: the view renders whichever arm it
+/// is handed and holds no "which screen am I on" state of its own.
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum ViewScreen {
+    Home { view: ViewHome },
+    Ledger { view: ViewLedger },
+    Recurring { view: ViewRecurring },
+    Balances { view: ViewBalances },
+}

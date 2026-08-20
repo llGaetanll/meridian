@@ -1,0 +1,174 @@
+{
+    "outflow_streams": [
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "average_amount": {
+                "amount": 2078.5
+            },
+            "description": "AUTOMATIC PAYMENT - THANK",
+            "frequency": "MONTHLY",
+            "is_active": true,
+            "last_amount": {
+                "amount": 2078.5
+            },
+            "last_date": "2026-07-22",
+            "merchant_name": "",
+            "personal_finance_category": {
+                "detailed": "TRANSFER_OUT_ACCOUNT_TRANSFER",
+                "primary": "TRANSFER_OUT"
+            },
+            "predicted_next_date": "2026-08-22",
+            "status": "MATURE",
+            "stream_id": "4eQ4Zl7VLXh8lvZqq4r7hmyg7PV1KvTdAgjrZ"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "average_amount": {
+                "amount": 500
+            },
+            "description": "Madison Bicycle Shop",
+            "frequency": "MONTHLY",
+            "is_active": true,
+            "last_amount": {
+                "amount": 500
+            },
+            "last_date": "2026-07-22",
+            "merchant_name": "",
+            "personal_finance_category": {
+                "detailed": "GENERAL_MERCHANDISE_SPORTING_GOODS",
+                "primary": "GENERAL_MERCHANDISE"
+            },
+            "predicted_next_date": "2026-08-22",
+            "status": "MATURE",
+            "stream_id": "dnPKZQWJEquvRBnqq1GbU9pjy3znqoiZQPLMv"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "average_amount": {
+                "amount": 500
+            },
+            "description": "Tectra Inc",
+            "frequency": "MONTHLY",
+            "is_active": true,
+            "last_amount": {
+                "amount": 500
+            },
+            "last_date": "2026-07-23",
+            "merchant_name": "",
+            "personal_finance_category": {
+                "detailed": "FOOD_AND_DRINK_RESTAURANT",
+                "primary": "FOOD_AND_DRINK"
+            },
+            "predicted_next_date": "2026-08-23",
+            "status": "MATURE",
+            "stream_id": "NxQdPWznKpcoqdxmmXeVU7gqDlVKnpSW5rPjq"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "average_amount": {
+                "amount": 500
+            },
+            "description": "United Airlines",
+            "frequency": "MONTHLY",
+            "is_active": true,
+            "last_amount": {
+                "amount": 500
+            },
+            "last_date": "2026-07-28",
+            "merchant_name": "United Airlines",
+            "personal_finance_category": {
+                "detailed": "TRAVEL_FLIGHTS",
+                "primary": "TRAVEL"
+            },
+            "predicted_next_date": "2026-08-28",
+            "status": "MATURE",
+            "stream_id": "PaM47G3Ezgfn7Ra88zoXclr9j3LqKpu7WwpkZ"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "average_amount": {
+                "amount": 89.40000000000002
+            },
+            "description": "SparkFun",
+            "frequency": "MONTHLY",
+            "is_active": true,
+            "last_amount": {
+                "amount": 89.4
+            },
+            "last_date": "2026-08-08",
+            "merchant_name": "FUN",
+            "personal_finance_category": {
+                "detailed": "FOOD_AND_DRINK_RESTAURANT",
+                "primary": "FOOD_AND_DRINK"
+            },
+            "predicted_next_date": "2026-09-08",
+            "status": "MATURE",
+            "stream_id": "zZd8z3P5KguXK6V44N8gseyAg1MkVjsoLE4y4"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "average_amount": {
+                "amount": 78.5
+            },
+            "description": "Touchstone Climbing",
+            "frequency": "MONTHLY",
+            "is_active": true,
+            "last_amount": {
+                "amount": 78.5
+            },
+            "last_date": "2026-08-10",
+            "merchant_name": "",
+            "personal_finance_category": {
+                "detailed": "PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS",
+                "primary": "PERSONAL_CARE"
+            },
+            "predicted_next_date": "2026-09-10",
+            "status": "MATURE",
+            "stream_id": "jqMd7oygExTbXWeJJLGNuy8VPKJBNAS1LyrML"
+        },
+        {
+            "account_id": "w7Bpqra5ELIQeq144LpbsKon8VAKrjHPqn7re",
+            "average_amount": {
+                "amount": 25
+            },
+            "description": "CREDIT CARD 3333 PAYMENT *//",
+            "frequency": "MONTHLY",
+            "is_active": true,
+            "last_amount": {
+                "amount": 25
+            },
+            "last_date": "2026-08-12",
+            "merchant_name": "",
+            "personal_finance_category": {
+                "detailed": "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT",
+                "primary": "LOAN_PAYMENTS"
+            },
+            "predicted_next_date": "2026-09-12",
+            "status": "MATURE",
+            "stream_id": "xe3oKz4XlphmEDJAANo5IMpem1GVy6FnV9d7D"
+        }
+    ],
+    "inflow_streams": [
+        {
+            "account_id": "w7Bpqra5ELIQeq144LpbsKon8VAKrjHPqn7re",
+            "average_amount": {
+                "amount": -4.22
+            },
+            "description": "INTRST PYMNT",
+            "frequency": "MONTHLY",
+            "is_active": true,
+            "last_amount": {
+                "amount": -4.22
+            },
+            "last_date": "2026-08-07",
+            "merchant_name": "",
+            "personal_finance_category": {
+                "detailed": "TRANSFER_IN_ACCOUNT_TRANSFER",
+                "primary": "TRANSFER_IN"
+            },
+            "predicted_next_date": "2026-09-07",
+            "status": "MATURE",
+            "stream_id": "kK1aAg9mEdHeyax77J9LHQklJZg8rESWdxyja"
+        }
+    ]
+}

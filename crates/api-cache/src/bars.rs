@@ -139,21 +139,30 @@ impl Bars {
 mod tests {
     use super::*;
 
-    fn bars(points: &[(Timestamp, Price)]) -> Bars {
+    /// Points are written as raw seconds so the tables below stay readable;
+    /// the helpers wrap them.
+    fn bars(points: &[(u64, Price)]) -> Bars {
         let mut bars = Bars::default();
 
-        for &(ts, px) in points {
-            bars.push(ts, px, px, px);
+        for &(secs, px) in points {
+            bars.push(Timestamp::from_secs(secs), px, px, px);
         }
 
         bars
     }
 
-    fn closes(bars: &Bars) -> Vec<(Timestamp, Price)> {
-        bars.closes().iter().collect()
+    fn closes(bars: &Bars) -> Vec<(u64, Price)> {
+        bars.closes()
+            .iter()
+            .map(|(ts, px)| (ts.as_secs(), px))
+            .collect()
     }
 
-    fn merged(left: &[(Timestamp, Price)], right: &[(Timestamp, Price)]) -> Bars {
+    fn window(range: std::ops::Range<u64>) -> std::ops::Range<Timestamp> {
+        Timestamp::from_secs(range.start)..Timestamp::from_secs(range.end)
+    }
+
+    fn merged(left: &[(u64, Price)], right: &[(u64, Price)]) -> Bars {
         let mut out = bars(left);
         out.merge(bars(right));
 
@@ -192,9 +201,9 @@ mod tests {
     fn takes_the_bars_inside_the_window() {
         let out = bars(&[(10, 1.0), (20, 2.0), (30, 3.0), (40, 4.0)]);
 
-        assert_eq!(closes(&out.window(&(20..40))), [(20, 2.0), (30, 3.0)]);
-        assert_eq!(closes(&out.window(&(0..100))), closes(&out));
-        assert!(out.window(&(50..60)).is_empty());
+        assert_eq!(closes(&out.window(&window(20..40))), [(20, 2.0), (30, 3.0)]);
+        assert_eq!(closes(&out.window(&window(0..100))), closes(&out));
+        assert!(out.window(&window(50..60)).is_empty());
     }
 
     /// The charts pair a volume bar with its price point by index.

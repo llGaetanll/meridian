@@ -1,6 +1,7 @@
 //! Stand-in data for the ledger side of the page: what the user holds and
 //! traded. Prices come from Yahoo — see `crate::io`.
 
+use api_common::Timestamp;
 use web_components::AssetPosition;
 use web_components::AssetTrade;
 use web_components::PortfolioHolding;
@@ -50,7 +51,7 @@ pub fn holdings() -> Vec<PortfolioHolding> {
 pub fn trades() -> Vec<AssetTrade> {
     vec![
         AssetTrade {
-            ts: 1_781_222_400, // 2026-06-12
+            ts: Timestamp::from_secs(1_781_222_400), // 2026-06-12
             side: TradeSide::Buy,
             portfolio: "Play money".to_string(),
             qty: 10.0,
@@ -59,7 +60,7 @@ pub fn trades() -> Vec<AssetTrade> {
             result: TradeResult::Unrealized(373.40),
         },
         AssetTrade {
-            ts: 1_772_668_800, // 2026-03-05
+            ts: Timestamp::from_secs(1_772_668_800), // 2026-03-05
             side: TradeSide::Buy,
             portfolio: "Retirement".to_string(),
             qty: 8.0,
@@ -68,7 +69,7 @@ pub fn trades() -> Vec<AssetTrade> {
             result: TradeResult::Unrealized(492.72),
         },
         AssetTrade {
-            ts: 1_769_040_000, // 2026-01-22
+            ts: Timestamp::from_secs(1_769_040_000), // 2026-01-22
             side: TradeSide::Sell,
             portfolio: "Core".to_string(),
             qty: 6.0,
@@ -77,7 +78,7 @@ pub fn trades() -> Vec<AssetTrade> {
             result: TradeResult::Realized(233.46),
         },
         AssetTrade {
-            ts: 1_763_078_400, // 2025-11-14
+            ts: Timestamp::from_secs(1_763_078_400), // 2025-11-14
             side: TradeSide::Buy,
             portfolio: "Core".to_string(),
             qty: 12.0,
@@ -86,7 +87,7 @@ pub fn trades() -> Vec<AssetTrade> {
             result: TradeResult::Unrealized(1_285.68),
         },
         AssetTrade {
-            ts: 1_754_611_200, // 2025-08-08
+            ts: Timestamp::from_secs(1_754_611_200), // 2025-08-08
             side: TradeSide::Buy,
             portfolio: "Core".to_string(),
             qty: 14.0,

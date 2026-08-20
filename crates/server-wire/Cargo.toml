@@ -1,0 +1,16 @@
+[package]
+name = "server-wire"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Only the value types the protocol carries. Deliberately nothing else: this
+# crate is linked into the phone's cdylib as well as the server, so anything
+# heavier would end up on both sides of the wire.
+api-common = { path = "../api-common" }
+api-ledger = { path = "../api-ledger" }
+
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -1,9 +1,9 @@
 use api_trace::ApiCall;
 use serde_json::Value;
 
-use crate::PEnv;
-use crate::PError;
-use crate::PRequest;
+use crate::PlaidEnv;
+use crate::PlaidError;
+use crate::PlaidRequest;
 
 /// What this client is called in the logs.
 const SOURCE: &str = "plaid";
@@ -16,22 +16,22 @@ const SOURCE: &str = "plaid";
 pub struct PlaidCredentials {
     pub client_id: String,
     pub secret: String,
-    pub env: PEnv,
+    pub env: PlaidEnv,
 }
 
 impl PlaidCredentials {
     /// Credentials from `PLAID_CLIENT_ID`, `PLAID_SECRET` and `PLAID_ENV`.
     ///
     /// `PLAID_ENV` is the only optional one, and leaving it out means Sandbox.
-    pub fn from_env() -> Result<Self, PError> {
+    pub fn from_env() -> Result<Self, PlaidError> {
         let var = |key: &str| {
-            std::env::var(key).map_err(|_| PError::InvalidUrl(format!("{key} is not set")))
+            std::env::var(key).map_err(|_| PlaidError::InvalidUrl(format!("{key} is not set")))
         };
 
         Ok(Self {
             client_id: var("PLAID_CLIENT_ID")?,
             secret: var("PLAID_SECRET")?,
-            env: PEnv::from_env(),
+            env: PlaidEnv::from_env(),
         })
     }
 }
@@ -45,7 +45,7 @@ pub struct PlaidClient {
 
 impl PlaidClient {
     /// A client for the environment the credentials name.
-    pub fn new(credentials: PlaidCredentials) -> Result<Self, PError> {
+    pub fn new(credentials: PlaidCredentials) -> Result<Self, PlaidError> {
         let base_url = credentials.env.base_url();
 
         // Which environment a session ran against is the first thing worth
@@ -68,9 +68,12 @@ impl PlaidClient {
     /// This is for tests pointing at a local server. Unlike the price sources
     /// there is no proxy case to serve: Plaid is only ever called from the
     /// server, which can reach it directly.
-    pub fn with_base_url(base_url: &str, credentials: PlaidCredentials) -> Result<Self, PError> {
+    pub fn with_base_url(
+        base_url: &str,
+        credentials: PlaidCredentials,
+    ) -> Result<Self, PlaidError> {
         let base_url =
-            reqwest::Url::parse(base_url).map_err(|e| PError::InvalidUrl(e.to_string()))?;
+            reqwest::Url::parse(base_url).map_err(|e| PlaidError::InvalidUrl(e.to_string()))?;
 
         let builder = reqwest::Client::builder();
 
@@ -85,18 +88,18 @@ impl PlaidClient {
         })
     }
 
-    /// `&(dyn PRequest + Sync)` rather than `&dyn PRequest`: without the
+    /// `&(dyn PlaidRequest + Sync)` rather than `&dyn PlaidRequest`: without the
     /// `Sync` bound the returned future is not `Send`, and a multi-threaded
     /// runtime (the server's) cannot hold it across an await. Still dynamic,
     /// so this stays one function rather than one per request type.
     pub async fn send_request<Response: serde::de::DeserializeOwned>(
         &self,
-        req: &(dyn PRequest + Sync),
-    ) -> Result<Response, PError> {
+        req: &(dyn PlaidRequest + Sync),
+    ) -> Result<Response, PlaidError> {
         let url = self
             .base_url
             .join(&req.path())
-            .map_err(|e| PError::InvalidUrl(e.to_string()))?;
+            .map_err(|e| PlaidError::InvalidUrl(e.to_string()))?;
 
         let body = self.authenticated_body(req)?;
 
@@ -125,7 +128,7 @@ impl PlaidClient {
         let logged = call.response(status.as_u16(), &body);
 
         if status == 429 {
-            return Err(PError::TooManyRequests);
+            return Err(PlaidError::TooManyRequests);
         }
 
         // Plaid puts the reason in the body, so an error is parsed rather than
@@ -150,12 +153,12 @@ impl PlaidClient {
     /// Credentials are put in here, at the last moment, rather than held on
     /// the request types — so nothing that could be logged or cloned around
     /// ever carries the secret.
-    fn authenticated_body(&self, req: &dyn PRequest) -> Result<Value, PError> {
+    fn authenticated_body(&self, req: &dyn PlaidRequest) -> Result<Value, PlaidError> {
         let mut body = req.body();
 
         let map = body
             .as_object_mut()
-            .ok_or_else(|| PError::InvalidUrl("request body is not a JSON object".into()))?;
+            .ok_or_else(|| PlaidError::InvalidUrl("request body is not a JSON object".into()))?;
 
         map.insert("client_id".into(), Value::String(self.client_id.clone()));
         map.insert("secret".into(), Value::String(self.secret.clone()));
@@ -165,11 +168,11 @@ impl PlaidClient {
 }
 
 /// Plaid's error body, as far as we care about it.
-fn parse_error_body(body: &str) -> PError {
+fn parse_error_body(body: &str) -> PlaidError {
     let value: Value = match serde_json::from_str(body) {
         Ok(value) => value,
         // A non-JSON error body is a gateway or a proxy talking, not Plaid.
-        Err(e) => return PError::JsonError(e),
+        Err(e) => return PlaidError::JsonError(e),
     };
 
     let field = |key: &str| {
@@ -180,7 +183,7 @@ fn parse_error_body(body: &str) -> PError {
             .to_string()
     };
 
-    PError::Plaid {
+    PlaidError::Plaid {
         error_code: field("error_code"),
         error_message: field("error_message"),
     }
@@ -192,7 +195,7 @@ mod tests {
 
     struct Sync;
 
-    impl PRequest for Sync {
+    impl PlaidRequest for Sync {
         fn path(&self) -> String {
             String::from("transactions/sync")
         }
@@ -208,7 +211,7 @@ mod tests {
             PlaidCredentials {
                 client_id: "test-id".into(),
                 secret: "test-secret".into(),
-                env: PEnv::Sandbox,
+                env: PlaidEnv::Sandbox,
             },
         )
         .unwrap()
@@ -259,7 +262,7 @@ mod tests {
         );
 
         match err {
-            PError::Plaid {
+            PlaidError::Plaid {
                 error_code,
                 error_message,
             } => {

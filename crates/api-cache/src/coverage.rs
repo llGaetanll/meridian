@@ -98,14 +98,45 @@ impl Coverage {
 mod tests {
     use super::*;
 
-    fn coverage(spans: &[Range<Timestamp>]) -> Coverage {
+    /// Ranges are written as raw seconds so the tables stay readable.
+    fn r(range: std::ops::Range<u64>) -> std::ops::Range<Timestamp> {
+        Timestamp::from_secs(range.start)..Timestamp::from_secs(range.end)
+    }
+
+    fn coverage(spans: &[Range<u64>]) -> Cover {
         let mut coverage = Coverage::default();
 
         for span in spans {
-            coverage.add(span.clone());
+            coverage.add(r(span.clone()));
         }
 
-        coverage
+        Cover(coverage)
+    }
+
+    /// Wraps `Coverage` so the assertions below can stay written in raw
+    /// seconds; every method just unwraps the timestamps on the way out.
+    struct Cover(Coverage);
+
+    impl Cover {
+        fn spans(&self) -> Vec<Range<u64>> {
+            self.0
+                .spans()
+                .iter()
+                .map(|s| s.start.as_secs()..s.end.as_secs())
+                .collect()
+        }
+
+        fn missing(&self, want: &Range<u64>) -> Vec<Range<u64>> {
+            self.0
+                .missing(&r(want.clone()))
+                .into_iter()
+                .map(|s| s.start.as_secs()..s.end.as_secs())
+                .collect()
+        }
+
+        fn covers(&self, want: &Range<u64>) -> bool {
+            self.0.covers(&r(want.clone()))
+        }
     }
 
     /// The whole point: two windows fetched back to back answer the window

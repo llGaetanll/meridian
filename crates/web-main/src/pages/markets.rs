@@ -32,7 +32,7 @@ use crate::io::ChartRange;
 use crate::state::MarketsState;
 
 /// 2026-08-02 — "today" for the parts still on stand-in data.
-const TODAY: Timestamp = 1_785_628_800;
+const TODAY: Timestamp = Timestamp::from_secs(1_785_628_800);
 
 const DAY: u64 = 86_400;
 const YEAR: u64 = 365 * DAY;
@@ -250,7 +250,7 @@ fn local(ts: Timestamp, utc_offset: i64) -> Timestamp {
 /// on the axis, not clock times.
 fn label_format(data: &ChartData) -> fn(Timestamp) -> String {
     let rng = data.range_time();
-    let span = rng.end.saturating_sub(rng.start);
+    let span = rng.end.since(rng.start).as_secs();
 
     if span <= 2 * DAY {
         fmt_time_of_day
@@ -268,7 +268,7 @@ fn label_format(data: &ChartData) -> fn(Timestamp) -> String {
 /// even when the axis only has room for the day.
 fn cursor_format(data: &ChartData) -> fn(Timestamp) -> String {
     let rng = data.range_time();
-    let span = rng.end.saturating_sub(rng.start);
+    let span = rng.end.since(rng.start).as_secs();
 
     if span <= 2 * DAY {
         fmt_time_of_day

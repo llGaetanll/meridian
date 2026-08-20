@@ -2,8 +2,7 @@ use crate::GcRequest;
 
 pub struct GcRequestCoinList;
 
-// API Details
-// -----------
+// API details.
 //
 //  There is no pagination required for this endpoint.
 //  Access to inactive coins via the Public API (Demo plan) is restricted. To access them, please

@@ -112,5 +112,5 @@ impl Default for Markets {
 }
 
 fn now() -> Timestamp {
-    Utc::now().timestamp().max(0) as Timestamp
+    Timestamp::from_secs(Utc::now().timestamp().max(0) as u64)
 }

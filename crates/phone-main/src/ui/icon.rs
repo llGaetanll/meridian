@@ -3,7 +3,7 @@
 //! Inline rather than a sprite sheet: the phone app is one page, the icons are
 //! few, and a `<use>` reference costs a document-wide id namespace that the
 //! sketch had to work around. The names match the `icon` field the core puts
-//! on a `DockItem`, so the mapping from core to glyph is a lookup rather than
+//! on a `ViewDockItem`, so the mapping from core to glyph is a lookup rather than
 //! a decision.
 
 use leptos::prelude::*;
