@@ -1,73 +1,58 @@
 //! `eval!` — the way state machines are tested.
 //!
-//! A state machine test is a conversation: events go in, actions come out,
-//! more events go in. Written by hand that is a wall of `Vec::new()`,
+//! A state machine test is a conversation: events go in, actions come out, more
+//! events go in. Written by hand that is a wall of `Vec::new()`,
 //! `handle_events` and index arithmetic, and the shape of the conversation is
 //! the thing that gets lost.
 //!
 //! ```ignore
 //! eval!(&mut state,
-//!     < EventUi::Started;
+//!     < EventUi::Started,
+//!     > Action::ToSource { action: ActionSource::LoadSnapshot { force: false } },
+//!     > Action::ToUi { action: ActionUi::Render { .. } },
 //!
 //!     < EventUi::ScreenOpened { screen: Screen::Ledger },
-//!     < EventUi::CategoryToggled { id: "FoodAndDrink".into() },
-//!     @r"
-//!     [1] ToSource { action: LoadSnapshot { force: false } }
-//!     [2] ToUi { action: Render { … } }
-//!     ",
+//!     < EventUi::CategoryToggled { id },
+//!     > Action::ToUi { action: ActionUi::Render { .. } },
 //! );
 //! ```
 //!
-//! `;` ends a batch: everything before it goes into `handle_events` together,
-//! and the next `<` starts a fresh call. It has to be written out rather than
-//! inferred from a blank line, because a proc macro sees tokens and not
-//! whitespace — `proc_macro2`'s span line numbers are only real when it parses
-//! source itself, and under a real compiler they are all zero.
+//! `<` is an event going in, `>` is an action expected out. A run of adjacent
+//! events goes into one `handle_events` call, and the `>` lines after them are
+//! exactly what that call must produce — in order, with nothing extra and
+//! nothing missing. A `>` line after an action starts the next batch.
 //!
-//! The numbers in the snapshot say which batch each action came from.
+//! The `>` lines are **patterns**, not values, so `..` and `_` work wherever a
+//! part does not matter:
 //!
-//! `<` is an event going in. A run of adjacent events is one batch; the whole
-//! conversation is asserted by the single `@"…"` at the end — an **inline**
-//! `insta` snapshot, written by `cargo insta test --accept` and reviewed in the
-//! diff like any other code.
+//! ```ignore
+//! > Action::ToUi { action: ActionUi::Render { .. } }
+//! ```
 //!
-//! One snapshot per `eval!` rather than one per batch, because `cargo insta`
-//! rewrites source by span and every assertion a proc macro expands to shares
-//! the macro's call site. Two inline assertions in one expansion means it can
-//! only ever fill in one of them. The batches are labelled inside the snapshot
-//! instead, which reads better anyway — the whole exchange is one block.
-//!
-//! Inline rather than a snapshot file, per `docs/STYLE.md`: the expected output
-//! sits beside the events that produced it, so a test reads top to bottom
-//! without opening a second file, and a reviewer sees a behaviour change in the
-//! same hunk as the code change.
-//!
-//! Snapshots also mean events and actions need no `PartialEq`, which keeps that
-//! derive from spreading through every type they touch.
-//!
-//! Time is not part of this syntax. A machine takes `now` as an argument to
-//! `handle_events`, and a test that cares about time sets it with the machine's
-//! own test-only setter before calling `eval!`.
+//! That is what keeps this honest without `PartialEq`: the macro expands to
+//! `matches!`, which is pattern matching and needs no trait at all. Keeping
+//! that derive off the events and actions is the point — it spreads through
+//! every type they touch.
 
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::Expr;
-use syn::LitStr;
+use syn::Pat;
 use syn::Token;
 use syn::parse::Parse;
 use syn::parse::ParseStream;
 use syn::parse_macro_input;
 
+/// A run of events and the actions they must produce.
+struct Batch {
+    events: Vec<Expr>,
+    actions: Vec<Pat>,
+}
+
 struct Eval {
     /// The machine, as `&mut something`.
     state: Expr,
-
-    /// One `Vec<Expr>` per batch.
-    batches: Vec<Vec<Expr>>,
-
-    /// The one `@"…"` for the whole conversation. Absent until `cargo insta`
-    /// fills it in.
-    snapshot: Option<LitStr>,
+    batches: Vec<Batch>,
 }
 
 impl Parse for Eval {
@@ -75,46 +60,41 @@ impl Parse for Eval {
         let state: Expr = input.parse()?;
         input.parse::<Token![,]>()?;
 
-        let mut batches: Vec<Vec<Expr>> = Vec::new();
-        let mut snapshot = None;
-
-        // Set once a batch is closed; the next event opens a fresh one.
-        let mut open_batch = false;
+        let mut batches: Vec<Batch> = Vec::new();
 
         while !input.is_empty() {
             if input.peek(Token![<]) {
                 input.parse::<Token![<]>()?;
                 let event: Expr = input.parse()?;
 
-                if open_batch {
-                    match batches.last_mut() {
-                        Some(batch) => batch.push(event),
-                        None => unreachable!("open_batch implies a batch exists"),
+                // An event after an action starts the next batch.
+                let open = matches!(batches.last(), Some(batch) if batch.actions.is_empty());
+
+                if !open {
+                    batches.push(Batch {
+                        events: Vec::new(),
+                        actions: Vec::new(),
+                    });
+                }
+
+                match batches.last_mut() {
+                    Some(batch) => batch.events.push(event),
+                    None => unreachable!("a batch was just pushed"),
+                }
+            } else if input.peek(Token![>]) {
+                input.parse::<Token![>]>()?;
+
+                // A pattern rather than an expression, so `..` and `_` work.
+                let action = Pat::parse_multi_with_leading_vert(input)?;
+
+                match batches.last_mut() {
+                    Some(batch) => batch.actions.push(action),
+                    None => {
+                        return Err(input.error("an action needs at least one `<` event first"));
                     }
-                } else {
-                    batches.push(vec![event]);
-                    open_batch = true;
                 }
-
-                // `< event;` — the semicolon closes the batch and terminates
-                // the item, so no comma follows it.
-                if input.peek(Token![;]) {
-                    input.parse::<Token![;]>()?;
-                    open_batch = false;
-                    continue;
-                }
-            } else if input.peek(Token![@]) {
-                input.parse::<Token![@]>()?;
-
-                if snapshot.is_some() {
-                    return Err(input.error("only one snapshot per eval!"));
-                }
-
-                snapshot = Some(input.parse::<LitStr>()?);
             } else {
-                return Err(
-                    input.error("expected `<` for an event, `;` to end a batch, or `@\"…\"`")
-                );
+                return Err(input.error("expected `<` for an event or `>` for an action"));
             }
 
             if input.is_empty() {
@@ -124,29 +104,48 @@ impl Parse for Eval {
             input.parse::<Token![,]>()?;
         }
 
-        Ok(Eval {
-            state,
-            batches,
-            snapshot,
-        })
+        Ok(Eval { state, batches })
     }
 }
 
-/// Drive a state machine and snapshot what it does. See the module docs.
+/// Drive a state machine and check what it does. See the module docs.
 #[proc_macro]
 pub fn eval(input: TokenStream) -> TokenStream {
-    let Eval {
-        state,
-        batches,
-        snapshot,
-    } = parse_macro_input!(input as Eval);
+    let Eval { state, batches } = parse_macro_input!(input as Eval);
 
-    // An empty literal is what a new test is written with; `cargo insta test
-    // --accept` replaces it in the source.
-    let snapshot = snapshot.unwrap_or_else(|| LitStr::new("", proc_macro2::Span::call_site()));
+    let steps = batches.iter().enumerate().map(|(i, batch)| {
+        let events = &batch.events;
+        let batch_number = i + 1;
+        let expected = batch.actions.len();
 
-    let steps = batches.iter().enumerate().map(|(i, events)| {
-        let batch = i + 1;
+        // One check per action, in order. Written out rather than looped so a
+        // failure names the position and prints the pattern that did not match.
+        let checks = batch.actions.iter().enumerate().map(|(j, action)| {
+            let position = j + 1;
+            // `quote` puts a space around every token, so the pattern in a
+            // failure message would read `Action :: ToUi { action : … }`.
+            // Tightening the punctuation costs nothing and the message is the
+            // only thing anyone sees when a test breaks.
+            let pattern = quote!(#action)
+                .to_string()
+                .replace(" :: ", "::")
+                .replace(" : ", ": ")
+                .replace(" , ", ", ");
+
+            quote! {
+                match __actions.get(#j) {
+                    Some(__action) => assert!(
+                        ::std::matches!(__action, #action),
+                        "batch {}, action {}: expected `{}`, got {:#?}",
+                        #batch_number,
+                        #position,
+                        #pattern,
+                        __action,
+                    ),
+                    None => unreachable!("the count was checked first"),
+                }
+            }
+        });
 
         quote! {
             {
@@ -155,9 +154,19 @@ pub fn eval(input: TokenStream) -> TokenStream {
                 let mut __actions = ::std::vec::Vec::new();
                 __eval_state.handle_events(__eval_now, &__events, &mut __actions);
 
-                for __action in &__actions {
-                    __eval_log.push(format!("[{}] {:#?}", #batch, __action));
-                }
+                // Checked before the patterns so that a missing or extra action
+                // reports as that, rather than as a mismatch three lines down.
+                assert_eq!(
+                    __actions.len(),
+                    #expected,
+                    "batch {} produced {} actions, expected {}: {:#?}",
+                    #batch_number,
+                    __actions.len(),
+                    #expected,
+                    __actions,
+                );
+
+                #(#checks)*
             }
         }
     });
@@ -170,11 +179,7 @@ pub fn eval(input: TokenStream) -> TokenStream {
             // sets it beforehand, which keeps the clock out of this syntax.
             let __eval_now = __eval_state.now();
 
-            let mut __eval_log: ::std::vec::Vec<::std::string::String> = ::std::vec::Vec::new();
-
             #(#steps)*
-
-            ::insta::assert_snapshot!(__eval_log.join("\n"), @#snapshot);
         }
     };
 

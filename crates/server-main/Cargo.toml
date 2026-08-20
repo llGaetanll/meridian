@@ -23,7 +23,6 @@ tracing = { workspace = true }
 api-common = { path = "../api-common" }
 api-ledger = { path = "../api-ledger" }
 api-eval = { path = "../api-eval" }
-insta = { workspace = true }
 
 [lib]
 name = "server_main"

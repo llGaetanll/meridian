@@ -189,7 +189,11 @@ impl StateServer {
 
     fn handle_event_terminal(&mut self, event: &EventTerminal, actions: &mut Vec<Action>) {
         match event {
-            EventTerminal::ShutdownRequested => {
+            // Both mean stop, and they mean it the same way here — the
+            // difference matters to whoever sent it, not to us. They are
+            // separate variants so the log says which arrived, and so a future
+            // arm (SIGTERM draining longer, say) does not need a rename.
+            EventTerminal::SigInt | EventTerminal::SigTerm => {
                 // Idempotent: a second ^C while the first is still draining
                 // should not queue a second shutdown.
                 if self.shutting_down {
@@ -268,7 +272,7 @@ impl StateServer {
 
     /// Move the clock, for tests that are *about* time — staleness, backoff.
     ///
-    /// Not `pub` outside tests: in a running program time only ever arrives
+    /// Only compiled for tests: in a running program time arrives solely
     /// through `handle_events`, from the runtime that read it.
     #[cfg(test)]
     pub fn set_now(&mut self, now: Timestamp) {
@@ -293,6 +297,12 @@ mod tests {
     use super::*;
 
     const T0: Timestamp = Timestamp::from_secs(1_787_097_600);
+
+    fn state() -> StateServer {
+        let mut state = StateServer::new();
+        state.set_now(T0);
+        state
+    }
 
     fn entry(id: &str) -> Entry {
         Entry::from_tx(
@@ -320,6 +330,12 @@ mod tests {
         }
     }
 
+    fn failed(code: &str) -> Event {
+        Event::FromSource {
+            event: EventSource::PlaidFailed { code: code.into() },
+        }
+    }
+
     fn requested(force: bool) -> Event {
         Event::FromClient {
             event: EventClient::SnapshotRequested { force },
@@ -328,109 +344,71 @@ mod tests {
 
     #[test]
     fn the_first_request_goes_to_plaid() {
-        let mut state = StateServer::new();
+        let mut state = state();
 
         eval!(&mut state,
             < requested(false),
-            @"
-        [1] ToSource {
-            action: FetchPlaid {
-                cursor: None,
-            },
-        }
-        ",
+            > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None } },
         );
     }
 
     #[test]
     fn a_fresh_snapshot_is_served_without_asking_plaid_again() {
-        let mut state = StateServer::new();
+        let mut state = state();
 
         eval!(&mut state,
-            < loaded(vec![]);
+            < loaded(vec![]),
+            > Action::ToClient { action: ActionClient::Serve },
 
             < requested(false),
-            @"
-        [1] ToClient {
-            action: Serve,
-        }
-        [2] ToClient {
-            action: Serve,
-        }
-        ",
+            > Action::ToClient { action: ActionClient::Serve },
         );
     }
 
     #[test]
     fn a_stale_snapshot_is_refetched() {
-        let mut state = StateServer::new();
+        let mut state = state();
 
-        eval!(&mut state, < loaded(vec![]), @"
-        [1] ToClient {
-            action: Serve,
-        }
-        ",);
+        eval!(&mut state,
+            < loaded(vec![]),
+            > Action::ToClient { action: ActionClient::Serve },
+        );
 
         // The point of the test: enough time has passed that the held snapshot
         // is stale, so the next request goes back to Plaid.
         state.set_now(T0 + std::time::Duration::from_secs(FRESH_FOR_SECS));
 
-        eval!(&mut state, < requested(false), @r#"
-        [1] ToSource {
-            action: FetchPlaid {
-                cursor: Some(
-                    "cursor-1",
-                ),
-            },
-        }
-        "#,);
+        eval!(&mut state,
+            < requested(false),
+            > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_) } },
+        );
     }
 
     #[test]
     fn a_forced_request_refetches_however_fresh() {
-        let mut state = StateServer::new();
+        let mut state = state();
 
         eval!(&mut state,
-            < loaded(vec![]);
+            < loaded(vec![]),
+            > Action::ToClient { action: ActionClient::Serve },
 
             < requested(true),
-            @r#"
-        [1] ToClient {
-            action: Serve,
-        }
-        [2] ToSource {
-            action: FetchPlaid {
-                cursor: Some(
-                    "cursor-1",
-                ),
-            },
-        }
-        "#,
+            > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_) } },
         );
     }
 
     /// Retrying a login-required Item cannot help, and Plaid counts the call.
     #[test]
     fn a_login_required_item_is_not_retried_even_when_forced() {
-        let mut state = StateServer::new();
+        let mut state = state();
 
         eval!(&mut state,
-            < Event::FromSource {
-                event: EventSource::PlaidFailed { code: "ITEM_LOGIN_REQUIRED".into() },
-            };
+            < failed("ITEM_LOGIN_REQUIRED"),
+            > Action::ToProcess { action: ActionProcess::ReportLoginRequired },
+            > Action::ToClient { action: ActionClient::Serve },
 
             < requested(true),
-            @"
-        [1] ToProcess {
-            action: ReportLoginRequired,
-        }
-        [1] ToClient {
-            action: Serve,
-        }
-        [2] ToClient {
-            action: Serve,
-        }
-        ",
+            > Action::ToClient { action: ActionClient::Serve },
         );
 
         assert!(state.login_required());
@@ -438,24 +416,15 @@ mod tests {
 
     #[test]
     fn a_successful_fetch_clears_login_required() {
-        let mut state = StateServer::new();
+        let mut state = state();
 
         eval!(&mut state,
-            < Event::FromSource {
-                event: EventSource::PlaidFailed { code: "ITEM_LOGIN_REQUIRED".into() },
-            },
+            < failed("ITEM_LOGIN_REQUIRED"),
+            > Action::ToProcess { action: ActionProcess::ReportLoginRequired },
+            > Action::ToClient { action: ActionClient::Serve },
+
             < loaded(vec![]),
-            @"
-        [1] ToProcess {
-            action: ReportLoginRequired,
-        }
-        [1] ToClient {
-            action: Serve,
-        }
-        [1] ToClient {
-            action: Serve,
-        }
-        ",
+            > Action::ToClient { action: ActionClient::Serve },
         );
 
         assert!(!state.login_required());
@@ -464,22 +433,14 @@ mod tests {
     /// An outage must not turn into a hot loop against Plaid.
     #[test]
     fn a_transient_failure_still_counts_as_an_attempt() {
-        let mut state = StateServer::new();
+        let mut state = state();
 
         eval!(&mut state,
-            < Event::FromSource {
-                event: EventSource::PlaidFailed { code: "INTERNAL_SERVER_ERROR".into() },
-            };
+            < failed("INTERNAL_SERVER_ERROR"),
+            > Action::ToClient { action: ActionClient::Serve },
 
             < requested(false),
-            @"
-        [1] ToClient {
-            action: Serve,
-        }
-        [2] ToClient {
-            action: Serve,
-        }
-        ",
+            > Action::ToClient { action: ActionClient::Serve },
         );
 
         assert!(!state.login_required(), "only a login error is sticky");
@@ -489,30 +450,27 @@ mod tests {
     /// is a diff, so a later call legitimately answers with nothing new.
     #[test]
     fn a_second_sync_with_nothing_new_keeps_the_ledger() {
-        let mut state = StateServer::new();
+        let mut state = state();
 
         eval!(&mut state,
             < loaded(vec![entry("a"), entry("b")]),
+            > Action::ToClient { action: ActionClient::Serve },
+
             < loaded(vec![]),
-            @"
-        [1] ToClient {
-            action: Serve,
-        }
-        [1] ToClient {
-            action: Serve,
-        }
-        ",
+            > Action::ToClient { action: ActionClient::Serve },
         );
 
-        assert_eq!(state.entries().len(), 2, "the ledger must not empty itself",);
+        assert_eq!(state.entries().len(), 2, "the ledger must not empty itself");
     }
 
     #[test]
     fn a_later_sync_adds_to_what_is_held() {
-        let mut state = StateServer::new();
+        let mut state = state();
 
         eval!(&mut state,
             < loaded(vec![entry("a")]),
+            > Action::ToClient { action: ActionClient::Serve },
+
             < Event::FromSource {
                 event: EventSource::PlaidLoaded {
                     added: vec![entry("b")],
@@ -523,14 +481,7 @@ mod tests {
                     cursor: "c2".into(),
                 },
             },
-            @"
-        [1] ToClient {
-            action: Serve,
-        }
-        [1] ToClient {
-            action: Serve,
-        }
-        ",
+            > Action::ToClient { action: ActionClient::Serve },
         );
 
         let ids: Vec<&str> = state.entries().iter().map(|e| e.id.as_str()).collect();
@@ -542,7 +493,7 @@ mod tests {
     /// and rejected, because a rejected call still counts against the budget.
     #[test]
     fn a_burst_of_forced_refreshes_is_rate_limited() {
-        let mut state = StateServer::new();
+        let mut state = state();
         let mut actions = Vec::new();
 
         // BalanceGet allows 10/min, so the 11th forced refresh has no budget.
@@ -562,20 +513,14 @@ mod tests {
 
     #[test]
     fn shutting_down_stops_new_work() {
-        let mut state = StateServer::new();
+        let mut state = state();
 
         eval!(&mut state,
-            < Event::FromTerminal { event: EventTerminal::ShutdownRequested };
+            < Event::FromTerminal { event: EventTerminal::SigInt },
+            > Action::ToProcess { action: ActionProcess::Shutdown },
 
             < requested(true),
-            @"
-        [1] ToProcess {
-            action: Shutdown,
-        }
-        [2] ToClient {
-            action: Serve,
-        }
-        ",
+            > Action::ToClient { action: ActionClient::Serve },
         );
 
         assert!(state.shutting_down());
@@ -584,16 +529,12 @@ mod tests {
     /// A second ^C while the first is draining should not queue another.
     #[test]
     fn shutdown_is_idempotent() {
-        let mut state = StateServer::new();
+        let mut state = state();
 
         eval!(&mut state,
-            < Event::FromTerminal { event: EventTerminal::ShutdownRequested },
-            < Event::FromTerminal { event: EventTerminal::ShutdownRequested },
-            @"
-        [1] ToProcess {
-            action: Shutdown,
-        }
-        ",
+            < Event::FromTerminal { event: EventTerminal::SigInt },
+            < Event::FromTerminal { event: EventTerminal::SigTerm },
+            > Action::ToProcess { action: ActionProcess::Shutdown },
         );
     }
 }

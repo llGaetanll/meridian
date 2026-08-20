@@ -116,37 +116,37 @@ state machine.
 
 ```rust
 eval!(&mut state,
-    < EventClient::SnapshotRequested { force: false };
+    < EventClient::SnapshotRequested { force: false },
+    > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None } },
 
     < EventClient::SnapshotRequested { force: true },
-    @r"
-    [1] ToClient { action: Serve }
-    [2] ToSource { action: FetchPlaid { cursor: None } }
-    ",
+    > Action::ToClient { action: ActionClient::Serve },
 );
 ```
 
-`<` is an event going in and `;` ends a batch — everything before it goes into
-one `handle_events` call. The `@"…"` is the whole conversation, with `[n]`
-marking which batch each action came from.
+`<` is an event going in, `>` is an action expected out. Adjacent events go into
+one `handle_events` call, and the `>` lines after them are exactly what it must
+produce — in order, nothing extra, nothing missing. A `<` after a `>` starts the
+next batch.
+
+The `>` lines are **patterns**, so `..` and `_` cover the parts that do not
+matter:
+
+```rust
+> Action::ToUi { action: ActionUi::Render { .. } }
+```
+
+The macro expands to `matches!`, which is why events and actions need no
+`PartialEq` — pattern matching requires no trait at all, and keeping that derive
+off them is what stops it spreading through every type they touch.
 
 Time is not part of the syntax: `eval!` reads the clock off the machine, so a
 test that is *about* time calls the machine's `set_now` first.
 
-### Snapshots are always inline
-
-`@"…"` in the source, never a `.snap` file beside it. Write `@""` and let
-`cargo insta test --accept` fill it in.
-
-The expected output belongs next to the events that produced it: a test reads
-top to bottom without opening a second file, and a reviewer sees a behaviour
-change in the same hunk as the code change that caused it. A snapshot in another
-file is a diff nobody looks at.
-
-```sh
-cargo insta test --accept     # write them
-cargo insta test              # check them
-```
+**No snapshot testing.** Not inline, not in files. A snapshot asserts on a
+string, which means it passes or fails on formatting and `Debug` output that
+nobody chose deliberately; a pattern says what the test actually cares about and
+ignores the rest.
 
 ## JSON
 
