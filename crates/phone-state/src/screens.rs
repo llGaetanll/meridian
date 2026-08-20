@@ -117,7 +117,7 @@ fn empty_message(state: &StateApp, shown: usize) -> Option<String> {
         return Some("Loading…".to_string());
     }
 
-    if state.filter().is_active() && !state.entries().is_empty() {
+    if state.ledger().is_active() && !state.entries().is_empty() {
         return Some("Nothing matches this filter.".to_string());
     }
 
@@ -208,7 +208,7 @@ fn filter_view(state: &StateApp) -> ViewFilter {
             label: category.label().to_string(),
             token: category.token().to_string(),
             count: count.to_string(),
-            selected: state.filter().categories.contains(category),
+            selected: state.ledger().categories().contains(category),
             empty: *count == 0,
         })
         .collect();
@@ -219,23 +219,23 @@ fn filter_view(state: &StateApp) -> ViewFilter {
     let overflow = selected.len().saturating_sub(SUMMARY_CHIPS);
 
     ViewFilter {
-        open: state.filter().open,
-        categories_open: state.filter().categories_open,
-        range_open: state.filter().range_open,
+        open: state.ledger().is_open(),
+        categories_open: state.ledger().categories_open(),
+        range_open: state.ledger().range_open(),
         categories,
         categories_summary: selected.iter().take(SUMMARY_CHIPS).cloned().collect(),
         categories_overflow: (overflow > 0).then(|| format!("+{overflow}")),
         range: range_view(state),
-        range_summary: range_summary(&state.filter().range),
-        active: state.filter().is_active(),
+        range_summary: range_summary(&state.ledger().range()),
+        active: state.ledger().is_active(),
     }
 }
 
 fn range_view(state: &StateApp) -> ViewRange {
-    let (this_unit, last_count, last_unit) = state.range_units();
+    let (this_unit, last_count, last_unit) = state.ledger().range_units();
 
-    let (between_start, between_end) = match state.filter().range {
-        RangeSelection::Between { .. } => match state.filter().range.window_bounds() {
+    let (between_start, between_end) = match state.ledger().range() {
+        RangeSelection::Between { .. } => match state.ledger().range().window_bounds() {
             Some((start, end)) => (fmt::short_date(start), fmt::short_date(end)),
             None => (String::new(), String::new()),
         },
@@ -248,7 +248,7 @@ fn range_view(state: &StateApp) -> ViewRange {
     };
 
     ViewRange {
-        kind: match state.filter().range {
+        kind: match state.ledger().range() {
             RangeSelection::This { .. } => ViewRangeKind::This,
             RangeSelection::Last { .. } => ViewRangeKind::Last,
             RangeSelection::Between { .. } => ViewRangeKind::Between,
