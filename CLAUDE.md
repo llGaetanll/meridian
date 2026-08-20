@@ -7,6 +7,19 @@
   build is broken you can kill the user's instance and start it yourself, but
   otherwise you shouldn't need to.
 
+## Style
+
+`docs/STYLE.md` holds the house rules a formatter cannot enforce: no banner
+comments, no panics in production code, how state machines are named and laid
+out, and how JSON is formatted. **Read it before writing code.** If you find
+yourself making a style decision it does not cover, add it there.
+
+Two that catch people most often:
+
+- **No `assert!`/`unwrap()`/`expect()` in production paths.** `debug_assert!`
+  is encouraged in state machines instead.
+- **No banner comments** (`// ─── section ───`). Split the file instead.
+
 ## Logging
 
 How logging works is in `docs/LOGGING.md`. It ends with a list of every log

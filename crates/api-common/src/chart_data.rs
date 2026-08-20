@@ -93,7 +93,12 @@ impl ChartData {
             if last_of_bucket {
                 let (ts, px) = (&self.ts[start..=i], &self.px[start..=i]);
 
-                out.ts.push(*ts.last().unwrap());
+                // `start <= i` always holds, so the slice is never empty.
+                let Some(&last) = ts.last() else {
+                    unreachable!("start <= i, so the bucket holds a point")
+                };
+
+                out.ts.push(last);
                 out.px.push(fold(ts, px));
 
                 start = i + 1;
@@ -146,7 +151,13 @@ mod tests {
     use super::*;
 
     fn series(n: usize) -> ChartData {
-        (0..n).map(|i| (i as Timestamp, i as Price)).collect()
+        (0..n)
+            .map(|i| (Timestamp::from_secs(i as u64), i as Price))
+            .collect()
+    }
+
+    fn secs(values: &[u64]) -> Vec<Timestamp> {
+        values.iter().copied().map(Timestamp::from_secs).collect()
     }
 
     #[test]
@@ -167,7 +178,7 @@ mod tests {
         let out = series(10).resample_last(5);
 
         assert_eq!(out.px, vec![1.0, 3.0, 5.0, 7.0, 9.0]);
-        assert_eq!(out.ts, vec![1, 3, 5, 7, 9]);
+        assert_eq!(out.ts, secs(&[1, 3, 5, 7, 9]));
     }
 
     #[test]
@@ -192,7 +203,7 @@ mod tests {
     fn always_ends_on_the_last_point() {
         let out = series(1879).resample_last(900);
 
-        assert_eq!(out.ts.last(), Some(&1878));
+        assert_eq!(out.ts.last(), Some(&Timestamp::from_secs(1878)));
         assert_eq!(out.px.last(), Some(&1878.0));
     }
 }

@@ -4,12 +4,12 @@
 //! the dock is right there, and the block's title already says where this
 //! lives.
 
-use api_core::HomeView;
-use api_core::Screen;
-use api_core::UiEvent;
 use leptos::prelude::*;
+use phone_state::EventUi;
+use phone_state::Screen;
+use phone_state::ViewHome;
 
-use crate::runtime::use_runtime;
+use crate::runtime_app::use_runtime;
 use crate::ui::Breakdown;
 use crate::ui::ConnectionBlock;
 use crate::ui::Masked;
@@ -18,7 +18,7 @@ use crate::ui::StreamRowView;
 use crate::ui::TxRowView;
 
 #[component]
-pub fn HomeScreen(view: HomeView) -> impl IntoView {
+pub fn HomeScreen(view: ViewHome) -> impl IntoView {
     let ledger = view.ledger.clone();
     let upcoming = view.recurring.upcoming.clone();
     let attention = view.attention.clone();
@@ -94,7 +94,7 @@ fn Block(#[prop(into)] title: String, screen: Screen, children: Children) -> imp
         <div class="hi">
             <div
                 class="hi-head"
-                on:click=move |_| runtime.ui(UiEvent::ScreenOpened { screen })
+                on:click=move |_| runtime.ui(EventUi::ScreenOpened { screen })
             >
                 <span class="hi-title">{title}</span>
             </div>

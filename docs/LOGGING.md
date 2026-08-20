@@ -76,7 +76,7 @@ means adding, changing or removing its example here.
   — the connection needs the user to sign in again, and no retry will fix it.
 - `INFO app snapshot asked for force=false`
   — the phone asking the server for everything. `force=true` is pull-to-refresh.
-- `WARN app load failed message="could not reach the server at http://127.0.0.1:8082 — is `cargo run -p srv-main` running?"`
+- `WARN app load failed message="could not reach the server at http://127.0.0.1:8082 — is `cargo run -p server-main` running?"`
 - `INFO api quote{symbol=SPY range=1D} -> request id=2 source=yahoo method=GET url="/v8/finance/chart/SPY?period1=1785542400&period2=1785628800&interval=1m"`
 - `INFO api quote{symbol=SPY range=1D} <- response id=2 source=yahoo status=200 ms=412 body="{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"USD\",\"symbol\":\"SPY\"…"`
   — the body as it arrived, cut at 400 characters.
@@ -91,5 +91,11 @@ means adding, changing or removing its example here.
   mid-fetch looks like from here.
 - `WARN trace log file unavailable error="logs/meridian.log: permission denied"`
 - `ERROR panic panicked at=crates/web-main/src/pages/markets.rs:112 message="…"`
+- `INFO app shutting down` / `INFO app server stopped`
+  — SIGINT becomes a `FromTerminal` event, so shutdown is a decision the state
+  machine makes rather than something a signal handler does behind its back.
+- `WARN app a connection needs the user to sign in again; syncs will fail until they do`
+- `ERROR app a compiled-in fixture failed to parse fixture=sync error="…"`
+  — a build-time mistake, logged rather than panicked on.
 
 `cargo run -p api-trace --example lines` prints these for real.

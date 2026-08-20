@@ -1,6 +1,10 @@
 /target
 /**/dist
-/logs
+
+# Logs, at any depth. `/logs` alone only matched the root, which let
+# crates/src-plaid/logs/meridian.log into the tree.
+logs/
+*.log
 
 # Secrets. Sandbox only — see docs/PLAID.md.
 .env

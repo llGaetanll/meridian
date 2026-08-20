@@ -5,15 +5,15 @@
 //! a net figure is structurally too red — opening the app should not read as
 //! "you are $77k in the hole". Debts get their own blocks below.
 
-use api_core::BalancesView;
 use leptos::prelude::*;
+use phone_state::ViewBalances;
 
 use crate::ui::ConnectionBlock;
 use crate::ui::Masked;
 use crate::ui::PhoneShell;
 
 #[component]
-pub fn BalancesScreen(view: BalancesView) -> impl IntoView {
+pub fn BalancesScreen(view: ViewBalances) -> impl IntoView {
     let connections = view.connections.clone();
 
     view! {

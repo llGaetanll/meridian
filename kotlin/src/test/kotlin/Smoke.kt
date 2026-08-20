@@ -6,14 +6,14 @@
 // boundary breaking.
 //
 // The `when` blocks below deliberately have no `else`. That is the guarantee
-// worth protecting: add a variant to Action or ScreenView in Rust, regenerate,
+// worth protecting: add a variant to Action or ViewScreen in Rust, regenerate,
 // and this stops compiling until the new case is handled. See docs/FFI.md.
 //
 // It doubles as the shortest worked example of what an Android view layer has
 // to do, which is very little: send an event, match the action, draw the
 // strings it was handed. Every number below arrives already formatted.
 
-import uniffi.api_core.*
+import uniffi.phone_state.*
 import java.io.File
 
 fun main() {
@@ -25,7 +25,7 @@ fun main() {
 
     // ── starting up ────────────────────────────────────────────────────────
 
-    val started = core.handleEvents(listOf(Event.FromUi(UiEvent.Started(now))))
+    val started = core.handleEvents(now, listOf(Event.FromUi(EventUi.Started)))
 
     for (action in started) {
         println("action: ${describe(action)}")
@@ -33,28 +33,26 @@ fun main() {
 
     // Starting must ask for data, or the app sits empty forever.
     check(
-        started.any { it is Action.ToSource && it.action is SourceAction.LoadSnapshot },
+        started.any { it is Action.ToSource && it.action is ActionSource.LoadSnapshot },
     ) { "starting should ask for a snapshot" }
 
     // ── feeding a snapshot back in ─────────────────────────────────────────
 
     // The same fixture api-core's own tests use: the real captured Plaid
     // Sandbox feed, so this exercises the shapes the app will actually see.
-    val snapshot = File("crates/api-core/tests/snapshot.json")
+    val snapshot = File("crates/phone-state/tests/snapshot.json")
         .readText()
-        .replace("\"now\":0", "\"now\":$now")
+        .replace("\"now\": 0", "\"now\": $now")
 
-    val loaded = core.handleEvents(
-        listOf(Event.FromSource(SourceEvent.SnapshotLoaded(snapshot, now))),
-    )
+    val loaded = core.handleEvents(now, listOf(Event.FromSource(EventSource.SnapshotLoaded(snapshot))))
 
     val home = loaded.filterIsInstance<Action.ToUi>()
         .map { it.action }
-        .filterIsInstance<UiAction.Render>()
+        .filterIsInstance<ActionUi.Render>()
         .last()
 
     val homeView = home.screen
-    check(homeView is ScreenView.Home) { "the app opens on Home" }
+    check(homeView is ViewScreen.Home) { "the app opens on Home" }
 
     // Every figure arrives as text. Kotlin formats nothing.
     println("home balances: ${homeView.view.balances.headline} (${homeView.view.balances.detail})")
@@ -69,14 +67,15 @@ fun main() {
 
     // ── revealing, and switching screens ───────────────────────────────────
 
-    core.handleEvents(listOf(Event.FromUi(UiEvent.MaskToggled)))
+    core.handleEvents(now, listOf(Event.FromUi(EventUi.MaskToggled)))
 
     val balances = core.handleEvents(
-        listOf(Event.FromUi(UiEvent.ScreenOpened(Screen.BALANCES))),
+        now,
+        listOf(Event.FromUi(EventUi.ScreenOpened(Screen.BALANCES))),
     ).render()
 
     val balancesView = balances.screen
-    check(balancesView is ScreenView.Balances)
+    check(balancesView is ViewScreen.Balances)
 
     println("held: ${balancesView.view.headline} — ${balancesView.view.subtitle}")
     check(balancesView.view.headline == "$86,541.74") {
@@ -96,14 +95,15 @@ fun main() {
     // ── filtering ──────────────────────────────────────────────────────────
 
     val filtered = core.handleEvents(
+        now,
         listOf(
-            Event.FromUi(UiEvent.ScreenOpened(Screen.LEDGER)),
-            Event.FromUi(UiEvent.CategoryToggled("FoodAndDrink")),
+            Event.FromUi(EventUi.ScreenOpened(Screen.LEDGER)),
+            Event.FromUi(EventUi.CategoryToggled("FoodAndDrink")),
         ),
     ).render()
 
     val ledgerView = filtered.screen
-    check(ledgerView is ScreenView.Ledger)
+    check(ledgerView is ViewScreen.Ledger)
 
     val rows = ledgerView.view.months.flatMap { it.days }.flatMap { it.rows }
     println("food & drink: ${rows.size} rows, first is ${rows.first().title} ${rows.first().amount}")
@@ -127,10 +127,10 @@ fun main() {
 ///
 /// A real view layer does exactly this: the core sends the whole screen on
 /// every event, so the newest render is all there is to draw.
-private fun List<Action>.render(): UiAction.Render =
+private fun List<Action>.render(): ActionUi.Render =
     filterIsInstance<Action.ToUi>()
         .map { it.action }
-        .filterIsInstance<UiAction.Render>()
+        .filterIsInstance<ActionUi.Render>()
         .last()
 
 /// Exhaustive `when` with no `else` — the guarantee that matters. Add a
@@ -138,18 +138,18 @@ private fun List<Action>.render(): UiAction.Render =
 /// new case is handled.
 private fun describe(action: Action): String = when (action) {
     is Action.ToUi -> when (val a = action.action) {
-        is UiAction.Render -> "render ${describeScreen(a.screen)}"
-        is UiAction.ShowError -> "error: ${a.message}"
+        is ActionUi.Render -> "render ${describeScreen(a.screen)}"
+        is ActionUi.ShowError -> "error: ${a.message}"
     }
 
     is Action.ToSource -> when (val a = action.action) {
-        is SourceAction.LoadSnapshot -> "load snapshot (force=${a.force})"
+        is ActionSource.LoadSnapshot -> "load snapshot (force=${a.force})"
     }
 }
 
-private fun describeScreen(screen: ScreenView): String = when (screen) {
-    is ScreenView.Home -> "home"
-    is ScreenView.Ledger -> "ledger"
-    is ScreenView.Recurring -> "recurring"
-    is ScreenView.Balances -> "balances"
+private fun describeScreen(screen: ViewScreen): String = when (screen) {
+    is ViewScreen.Home -> "home"
+    is ViewScreen.Ledger -> "ledger"
+    is ViewScreen.Recurring -> "recurring"
+    is ViewScreen.Balances -> "balances"
 }

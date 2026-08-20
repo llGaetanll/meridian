@@ -6,20 +6,20 @@
 //! is what keeps this crate a faithful preview of what SwiftUI and Compose
 //! will do.
 
-use api_core::AccountRow;
-use api_core::BreakdownSlice;
-use api_core::ConnectionView;
-use api_core::StreamRow;
-use api_core::TxRow;
-use api_core::UiEvent;
 use leptos::prelude::*;
+use phone_state::EventUi;
+use phone_state::ViewAccountRow;
+use phone_state::ViewBreakdownSlice;
+use phone_state::ViewConnection;
+use phone_state::ViewStreamRow;
+use phone_state::ViewTxRow;
 
-use crate::runtime::use_runtime;
+use crate::runtime_app::use_runtime;
 use crate::ui::Icon;
 
 /// One transaction. The same row on Home and in the ledger, at two sizes.
 #[component]
-pub fn TxRowView(row: TxRow, #[prop(optional)] compact: bool) -> impl IntoView {
+pub fn TxRowView(row: ViewTxRow, #[prop(optional)] compact: bool) -> impl IntoView {
     let runtime = use_runtime();
     let id = row.id.clone();
 
@@ -40,7 +40,7 @@ pub fn TxRowView(row: TxRow, #[prop(optional)] compact: bool) -> impl IntoView {
         <div
             class=class
             on:click=move |_| {
-                runtime.ui(UiEvent::TxSelected { id: id.clone() });
+                runtime.ui(EventUi::TxSelected { id: id.clone() });
             }
         >
             <Logo url=row.logo_url compact=compact />
@@ -113,7 +113,7 @@ pub fn Logo(url: Option<String>, #[prop(optional)] compact: bool) -> impl IntoVi
 
 /// One account on the balances screen.
 #[component]
-pub fn AccountRowView(row: AccountRow) -> impl IntoView {
+pub fn AccountRowView(row: ViewAccountRow) -> impl IntoView {
     let amount_class = if row.owed {
         "acct-amt num owed"
     } else {
@@ -134,7 +134,7 @@ pub fn AccountRowView(row: AccountRow) -> impl IntoView {
 
 /// One connection: its accounts, its total, and its state.
 #[component]
-pub fn ConnectionBlock(connection: ConnectionView) -> impl IntoView {
+pub fn ConnectionBlock(connection: ViewConnection) -> impl IntoView {
     let class = if connection.is_debts {
         "conn debts"
     } else {
@@ -194,7 +194,7 @@ pub fn ReconnectButton() -> impl IntoView {
 
 /// One recurring stream.
 #[component]
-pub fn StreamRowView(row: StreamRow) -> impl IntoView {
+pub fn StreamRowView(row: ViewStreamRow) -> impl IntoView {
     let when_class = if row.soon {
         "rec-when soon"
     } else {
@@ -221,7 +221,7 @@ pub fn StreamRowView(row: StreamRow) -> impl IntoView {
 /// The breakdown bar and its legend — two views of one split, so they are
 /// drawn from one list.
 #[component]
-pub fn Breakdown(slices: Vec<BreakdownSlice>, #[prop(optional)] legend: bool) -> impl IntoView {
+pub fn Breakdown(slices: Vec<ViewBreakdownSlice>, #[prop(optional)] legend: bool) -> impl IntoView {
     let bar = slices.clone();
 
     view! {
@@ -279,7 +279,7 @@ pub fn Masked(
             class=class
             on:click=move |_| {
                 if tappable {
-                    runtime.ui(UiEvent::MaskToggled);
+                    runtime.ui(EventUi::MaskToggled);
                 }
             }
         >

@@ -1,8 +1,8 @@
 //! What comes back: the monthly commitment, split by category, then every
 //! stream grouped the same way.
 
-use api_core::RecurringView;
 use leptos::prelude::*;
+use phone_state::ViewRecurring;
 
 use crate::ui::Breakdown;
 use crate::ui::Masked;
@@ -10,7 +10,7 @@ use crate::ui::PhoneShell;
 use crate::ui::StreamRowView;
 
 #[component]
-pub fn RecurringScreen(view: RecurringView) -> impl IntoView {
+pub fn RecurringScreen(view: ViewRecurring) -> impl IntoView {
     let groups = view.groups.clone();
 
     view! {

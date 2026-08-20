@@ -1,0 +1,32 @@
+[package]
+name = "phone-state"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+# cdylib for the phone apps to link against, lib so the Rust front-end can
+# depend on it directly.
+crate-type = ["cdylib", "lib"]
+name = "phone_state"
+
+[dependencies]
+# Core types the machine decides over. Nothing here does IO, which is what
+# keeps the machine synchronous and testable.
+api-common = { path = "../api-common" }
+api-ledger = { path = "../api-ledger" }
+server-wire = { path = "../server-wire" }
+
+serde = { workspace = true }
+tracing = { workspace = true }
+serde_json = { workspace = true }
+uniffi = { workspace = true, features = ["cli"] }
+
+[dev-dependencies]
+api-eval = { path = "../api-eval" }
+insta = { workspace = true }
+
+[[bin]]
+# The bindings generator, so `cargo run -p phone-state --bin uniffi-bindgen`
+# needs no separately installed tool at a matching version.
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"

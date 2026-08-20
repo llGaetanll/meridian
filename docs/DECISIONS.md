@@ -1,286 +1,266 @@
 # Decisions
 
-Everything I chose while turning `sketches/mobile/transactions.html` into a
-running app, and why. Written for you to disagree with over coffee — where a
-call is close, I have said so and said what the alternative costs.
-
-Branch: `phone-app`. Four commits, each one runnable.
+What was chosen while building the phone app, and why. Two rounds: the original
+build, and the changes that came out of your review of it.
 
 ## Run it
 
 ```sh
-cargo run -p srv-main                  # terminal 1 — talks to Plaid Sandbox
+cargo run -p server-main               # terminal 1 — talks to Plaid Sandbox
 cd crates/phone-main && trunk serve    # terminal 2 — the app, on :8081
 ```
 
 The server answers on `:8082`. With no `.env` it serves the captured Sandbox
-fixtures instead of calling out, so the app works from a clean checkout — but
-your `.env` is filled in, so you will get live Sandbox data.
+fixtures instead of calling out, so the app works from a clean checkout.
 
-Widen the browser window past 460×880 and the app draws itself in a phone-shaped
-frame; narrower than that it fills the viewport, which is what a real phone
-does.
+Widen the browser window past 460x880 and the app draws itself in a
+phone-shaped frame; narrower than that it fills the viewport.
 
-**One thing I changed in your `.env`:** the `PLAID_ACCESS_TOKEN` that was in
-there had gone stale — Plaid answered `ITEM_LOGIN_REQUIRED` for it. I minted a
-fresh Sandbox Item with `/sandbox/public_token/create` + `/item/public_token/exchange`
-and swapped the token in. Sandbox only, so no Production Item was consumed.
-`.env` is gitignored, so this is not in the diff.
+**Your `.env` was changed once:** the `PLAID_ACCESS_TOKEN` in it had gone stale
+(Plaid answered `ITEM_LOGIN_REQUIRED`). A fresh **Sandbox** Item was minted with
+`/sandbox/public_token/create` + `/item/public_token/exchange` and the token
+swapped in. No Production Item was consumed. `.env` is gitignored.
 
-## What works
+## From the review
 
-All four screens the sketch draws, against real Plaid Sandbox data:
+### Panics
 
-| | |
-| --- | --- |
-| **Home** | the highlight of each tab, tapping through to it |
-| **Ledger** | 48 transactions grouped into 30 days across 4 months |
-| **Recurring** | 8 streams, the monthly commitment, the breakdown bar |
-| **Balances** | 14 accounts, held and owed split into their own blocks |
+`docs/STYLE.md` now says production code does not panic, and the code follows
+it. No `assert!` outside tests anywhere in the workspace, and the `unwrap`s and
+`expect`s in the app, the server and the shared crates are gone.
 
-Working interactions: dock navigation, tap-to-reveal masking, the category
-filter with live counts, three of the four time-range forms, pull-to-refresh,
-and the empty and error states.
+Three patterns replaced them, in order of preference:
 
-Every figure matches the sketch exactly — $86,541.74 held, −$163,705.89 owed,
-−$3,771.40/mo recurring — because the sketch was drawn from this same Sandbox
-feed and the arithmetic now agrees with it.
+- **`Result`** for anything depending on input or IO. The Sandbox guard in
+  `runtime_plaid::fetch_all` used to be an `assert_eq!`; it returns an error
+  now, with the same practical effect — the caller has no way past it.
+- **`unreachable!` with a reason** where the case is provably impossible from
+  the lines just above, which is the pattern you suggested and reads much better
+  than the alternatives:
+  ```rust
+  let Some(month) = months.last_mut() else {
+      unreachable!("a month was just pushed")
+  };
+  ```
+- **A logged fallback** where continuing is genuinely better than stopping.
+  `fetch_fixtures` used to `expect("fixture parses")` on data compiled into the
+  binary; it now logs an error and returns empty. A broken fixture is a build
+  mistake, and a test covers the happy path so it cannot reach a release
+  unnoticed.
 
-## The big calls
+`debug_assert!` went in liberally, as you suggested, and **one of them
+immediately earned its keep**: `"the ledger should arrive newest first"` in
+`StateApp` failed the moment the tests ran, because `examples/snapshot.rs` was
+serialising `fetched.added` (Plaid's order) rather than the applied ledger
+(newest first). The fixture the app's tests read disagreed with what the running
+server serves, and nothing else would have noticed.
 
-### 1. `srv-main` is an axum server, and it has its own state machine
+### `Timestamp` is a real type
 
-You said actix was fine and asked for Rust; I went with **axum** because the
-workspace is already on `reqwest`, `tokio` and `http`, and axum sits on that
-same tower/hyper stack. It adds far less to the tree than actix would. Both are
-good; this one was just cheaper here.
+`type Timestamp = u64` is gone. It is now `Timestamp { t: u64 }` with:
 
-You also asked for the events/actions model on the server, and it earned its
-keep immediately. `srv-main/src/core.rs` holds `ServerState` with the same
-shape as `api-core`: events in, actions out, no IO. The rules it owns are
-"should I go back to Plaid?" and "what do I do with an `ITEM_LOGIN_REQUIRED`?",
-and both are now pure functions of state and a clock handed in — so the
-30-second freshness window is testable without a stopwatch, and the
-login-required case is provably not retried (Plaid counts every call).
+- `Add`/`Sub<Duration>` — shifting by a duration gives a timestamp.
+- `Sub<Timestamp> = Duration` — **the gap between two points is a duration, not
+  a third point.** This is most of the value: `end - start` used to typecheck as
+  a `Timestamp` and mean nothing.
+- `days_until`, `day_index`, `start_of_day` — the operations date grouping and
+  "how many days apart" actually wanted, in one place instead of re-derived per
+  caller.
+- `saturating_add_signed`, for timezone offsets.
+- No `now()`. Reading a clock is IO.
 
-### 2. The server answers with one document, not four endpoints
+The field is `pub` for one reason: `uniffi::custom_newtype!` needs to reach it.
+That macro turned out not to be usable anyway (orphan rule — `Timestamp` is not
+local to `phone-state`), so the one place a timestamp crosses FFI —
+`RangeSelection::Between`, a date the user picked — carries a `u64` and converts
+at the boundary via `window_bounds()`. Worth revisiting if a second one appears.
 
-`GET /snapshot` returns transactions, accounts, streams and the server's clock
-in one JSON body. The alternative — an endpoint per screen — would have put
-"which of my four fetches has landed?" state into the client, and that is the
-exact state the architecture doc asks us to remove.
+### Time moved into `handle_events`
 
-It also makes tab switching free: there is nothing to fetch when you tap
-Ledger, because the data is already there. That is most of why the dock feels
-instant.
+`handle_events(now, &events, &mut actions)`. You were right that this is
+cleaner: a batch happens at one instant, and `EventUi::Started { now }` was
+asking the runtime to invent a reading it had no business inventing.
 
-### 3. `api-core` decides everything, including every string
+One wrinkle worth knowing: the app needs the *server's* clock rather than the
+device's, so a phone with a wrong date does not render a confidently wrong "in
+3 days". The machine keeps the server's reading paired with the device reading
+it arrived at, and `now()` returns the former advanced by however much the
+latter says has passed. Trusting the device outright renders wrong dates;
+trusting the server outright freezes "in 3 days" until the next fetch. There is
+a test.
 
-This is the part I would most want you to look at. `api_core::view` holds the
-finished screens: a `TxRow` carries `"−$5.40"` and a `DaySection` carries
-`"Wed, Aug 12"`. No timestamps, no `f64`s, no category enums.
+### `eval!`
 
-It makes the type surface bigger, which `docs/FFI.md` already predicted and
-accepted. What it buys is that **the Swift and Kotlin views cannot disagree
-with each other**, because neither is given anything to decide. The rewritten
-`kotlin/src/test/kotlin/Smoke.kt` is the proof: it drives all five screens and
-does not contain a single `format!`-equivalent.
+Built as `crates/api-eval`, exactly the shape you described:
 
-The rule I worked to, and would suggest keeping: *if a view layer would need an
-`if`, a `switch` or a format call to use a field, the field is wrong.*
+```rust
+eval!(&mut state,
+    < EventClient::SnapshotRequested { force: false },
+    > ActionSource::FetchPlaid { cursor: None },
+);
+```
 
-### 4. `UiAction::Render` hands over the whole screen
+Adjacent events batch; adjacent actions are what that batch produced. Assertion
+is an `insta` snapshot, so **`PartialEq` came off every event and action** — you
+were right that it spreads, and the snapshot output is more readable than an
+equality failure anyway.
 
-Not `ShowTxs`, `SelectTab`, `OpenFilter`. One action carrying everything.
+Two details that came up building it:
 
-A view that applies a fine-grained diff has to hold the state the diff applies
-to — and that is precisely the state we are trying not to have above the
-boundary. Sending the whole screen means the view is a pure function of the
-last action it saw. The phone app has **one signal** in it as a result.
+- A test calling `eval!` twice would have both calls start their step counter at
+  zero and overwrite each other's snapshot. Rather than keying on the source
+  line — which renames every snapshot when anything above it moves — the second
+  call labels itself: `eval!(&mut state, as "later", at T0 + ..., ...)`.
+- `at <timestamp>,` sets the clock for a batch. Left out, every test runs at
+  2026-08-19, so snapshots do not change with the wall clock.
 
-The cost is rebuilding the view value on every event. For 48 transactions that
-is nothing. If a ledger of 50,000 rows ever makes it matter, the fix is
-windowing inside the core (send the visible slice), not a diff protocol.
+The `>` lines are documentation of intent rather than the assertion. The macro
+could check them structurally, but that means parsing patterns and the snapshot
+already covers it — say the word if you want it stricter.
 
-### 5. The clock is an event field, never a call
+### Derives
 
-Nothing in `api-core` reads a clock. `"in 3 days"` is a function of two
-timestamps, one of which arrived in `UiEvent::Started { now }` or in the
-snapshot. This is what makes a replay of an event log land where it did the
-first time — the whole point of the design.
+`Debug` only on events and actions. `Clone` stayed on the **view** types, and
+that split looks right: a view value is data the UI owns (a Leptos signal stores
+one, SwiftUI and Compose will each hold their own), while events and actions are
+messages passed by reference all the way down. Written down in `docs/STYLE.md`.
 
-Related: **the snapshot carries the server's clock, and it wins over the
-phone's.** A device with a wrong date would otherwise render a confidently
-wrong "in 3 days", and phones do have wrong dates.
+### Crates and naming
 
-### 6. The mask is one switch, and covering happens in the core
+- The app's machine moved out of `api-core` into **`phone-state`**. `api-*` is
+  shared types; a state machine means a program, and a program owns its machine.
+  `api-core` is gone.
+- `srv-main` becomes **`server-main`**.
+- `State*` / `state_*.rs`, `Runtime*` / `runtime_*.rs`, `View*` / `view_*.rs`,
+  `Wire*` / `wire_*.rs`. One event or action per file.
+- State machine fields are private everywhere.
 
-Figures start **covered** — that is why `State` writes its own `Default` rather
-than deriving one, which would have silently started the app revealed.
+### `api-wire`, and the one place the review was not followed exactly
 
-The core substitutes the dots before the value crosses the boundary, so a
-covered figure is not in the DOM at all. The sketch kept the real value
-underneath at zero opacity to stop the layout shifting; I preferred not having
-the number in the page, and matched the layout with a `min-width` instead.
+You asked for the wire types to move into `server-main` and for `api-wire` to
+stop existing. `api-wire` is gone, and `server-main` owns `wire.rs`.
 
-Revealing is app-wide rather than per-screen. Revealing on Balances and staying
-covered on Home would be a strange thing to have to explain.
+But **both ends need them**, and `phone-state` cannot depend on `server-main`:
+it is a `cdylib` linked into iOS and Android, and `server-main` pulls in axum,
+tokio and reqwest. So each side owns its half — `server-main` serialises,
+`phone-state` deserialises. They are separate types.
 
-Ledger rows are never covered. The sketch made this call and it is right: a
-list of grey bars says nothing, and the figure worth hiding from someone
-glancing over is the total, not a $4.33 coffee.
+That is a real duplication and it can drift. What catches it:
+`crates/phone-state/tests/snapshot.json` is generated by the server
+(`cargo run -p server-main --example snapshot`) and parsed by the app's tests, so
+a field renamed on one side fails the other side's suite. Worth a look — if you
+would rather have a shared `api-wire` back after all, the argument for it is
+exactly this drift, and the argument against is the dependency direction.
 
-### 7. The ledger grew, rather than being bypassed
+### Rate limiting
 
-`docs/ABOUT.md` argues hard for one ledger rather than two models. A Plaid
-transaction has a merchant, a category and a pending flag, and `Tx` has nowhere
-to put any of them.
+`api-ratelimit` holds the trait and a sliding `Window`; `src-plaid` holds
+`PlaidRateLimiter`, keyed per endpoint per Item, which is how Plaid actually
+meters. `StateServer` owns one and consults it in `should_fetch`.
 
-I added `api_ledger::Entry` — a `Tx` plus what is known about it — rather than
-letting the phone read Plaid's types directly. `Tx` stays the arithmetic;
-`Entry` is the row. Accounts and recurring streams went into `api-ledger` too,
-beside the entries, because the screens that show them read the same feed.
+Sliding rather than fixed: a fixed window lets twice the limit through across a
+boundary, which is exactly when a burst happens. The trait takes `now` as an
+argument, so it is IO-free and the machine can use it. There is a test asserting
+a burst of 12 forced refreshes produces exactly 10 fetches.
 
-### 8. Category is an enum, not a string
+The limits are set a little under Plaid's published numbers — being throttled
+costs a user-visible failure and the headroom costs nothing at this scale.
 
-The app groups, filters and colours by category everywhere. A typo in a string
-would have been a silently empty filter rather than a compile error.
-`Category::from_plaid` maps all sixteen of Plaid's primaries and degrades
-anything unknown to `Unknown` — one bad row rather than a failed sync.
+### `FromTerminal`
 
-The colour token (`"c-food"`) is decided in `api-ledger` and crosses the
-boundary as a string. Swift and Kotlin map that token to their own palettes;
-they never derive a colour from a category name.
+Added, and it works: SIGINT becomes `EventTerminal::ShutdownRequested`, the
+machine decides, and `ActionProcess::Shutdown` is what actually stops the
+server. Verified by sending a real SIGINT — it drains and exits with
+`INFO app shutting down` / `INFO app server stopped`. Shutdown is idempotent, so
+a second ^C while draining does nothing, and `should_fetch` refuses new work
+once it is set.
 
-## The two Plaid traps
+### Interior mutability
 
-`docs/PLAID.md` names both, and both are handled once and pinned by tests
-against the real captured Sandbox responses.
+`StateServer` sits behind an `RwLock` rather than a `Mutex` now. Reads are the
+common case — a request that finds fresh data only projects a snapshot — and
+they proceed concurrently; writes are the fetch path, which is rare.
 
-**Sign.** Flipped in `srv-main::project::entry`, and nowhere else. A second
-negation downstream would cancel this one and turn every expense into income —
-which is why there is a test asserting the Uber ride comes out negative *and*
-one asserting the United Airlines refund comes out positive.
+`handle_events` was **not** changed to take `&self`. Doing that means moving the
+mutability inside the machine — a `RefCell` or per-field locks — and that trades
+one contended lock for a machine that can no longer be reasoned about as a plain
+`&mut self` function. Since the fetch is what actually blocks and there is
+already a separate `fetching` mutex making that one-at-a-time, the `RwLock` gets
+most of the win at none of that cost. **If you still want `&self`, say so and it
+is a small change** — this is the one place the review was not followed and it is
+worth a conversation.
 
-**Pending duplicates.** `Entry::supersedes` carries Plaid's
-`pending_transaction_id`, and `Ledger::apply` drops the superseded row. The
-Sandbox feed has no pending transactions in it, so the test builds the case by
-hand — worth knowing, because it means this path is proven by construction
-rather than by observation.
+### axum routing macros
 
-### A third one I hit, which the docs do not mention
+There is no `#[get("/path")]` in axum. It ships `debug_handler`,
+`debug_middleware`, `FromRequest` and `TypedPath`, and that is all — routing is
+always a `Router`. Third-party crates exist but none is close to standard, and
+`RuntimeServer::run` has two routes in it, so it was left alone.
 
-**`/transactions/sync` is a diff, and the second call returns nothing.**
+### JSON fixtures
 
-The first sync returned all 48 transactions; the second, with the saved cursor,
-correctly returned three empty lists — and the server was *assigning* that over
-the ledger instead of applying it. The app went blank on refresh while every
-log line still said the sync succeeded.
+All committed JSON is 4-space indented now, and it is written down in the style
+guide. `examples/snapshot.rs` writes it that way too, rather than needing a
+reformat after every regeneration.
 
-I only found this by driving the real app in a browser; no unit test I had
-written would have caught it, because each one started from a fresh state. It
-is now `ServerState::ledger` with `Ledger::apply`, and two tests named after
-the failure. **Worth adding to `docs/PLAID.md` as a third way to be quietly
-wrong** — I have left that to you since it is your document's voice.
+### Logs
 
-## What I did not build, and why
+`crates/src-plaid/logs/meridian.log` was tracked — `/logs` in `.gitignore` only
+matched the root. Untracked, and the pattern is `logs/` + `*.log` now.
 
-**Search.** You said everything except search, and the sketch draws the dock
-button but never the screen behind it. The button is present and disabled, with
-a tooltip saying so. Inventing a search screen would have meant inventing a
-design you had not made.
+**No history rewrite.** The file was 3 lines from one failed Sandbox call, and
+the only thing resembling a credential in it is the *phrase* `client_id` inside
+a Plaid error message ("client_id must be a properly formatted, non-empty
+string"). Nothing secret ever landed in the tree. Say the word if you would like
+it purged anyway.
 
-**The `Between` date range.** The other three range forms work. This one needs
-a date picker, which is a screen of its own that the sketch does not draw. The
-row is rendered and dimmed so the sentence still reads as the sketch has it.
+## Still open
 
-**Reconnect.** The button is drawn and disabled. Clearing `ITEM_LOGIN_REQUIRED`
-takes Plaid Link in update mode — a hosted page plus a server round trip that
-do not exist yet. A live-looking button that did nothing would be worse than
-one that says what it is waiting for. The Sandbox Item is healthy right now, so
-you will not see this state unless you break it deliberately.
+**FFI bindings.** You asked whether they need committing. They are fully
+generated — 8,100 lines from `./scripts/bindings.sh`. `docs/FFI.md` argues for
+committing them, and the argument holds: nothing forces regeneration, no lint
+can see stale bindings, and a dirty `git status` after running the script is the
+only check that exists. The cost is real (that 2,800-line diff in an earlier
+commit reviews as garbage). **CI regenerating and failing on a diff would close
+it properly**, at which point they could be gitignored. Left committed for now.
 
-**A transaction detail screen.** `UiEvent::TxSelected` is dispatched on every
-row tap and the core ignores it. The event exists so the view can already send
-it and so the log records the taps — when a detail screen arrives, nothing in
-the view layer changes.
+**One big fetch, and all logic in the machine.** You said this is fine for now
+and worth revisiting. Noted, not changed. When it does get revisited, the thing
+to look at first is `ActionUi::Render` carrying the whole screen — that is what
+forces every string through the machine, and relaxing it is how a little state
+gets to live on the Swift/Kotlin side.
 
-**Three connections.** The sketch shows First Platypus, Houndstooth and Tartan.
-One Sandbox Item gives all 14 accounts under First Platypus, so the app shows
-one connection with everything under it. Multi-Item is a server change (a list
-of access tokens rather than one), not an app change — every screen already
-renders a `Vec<Connection>`.
+## What the app does
 
-## Things you might want to change
+All four screens the sketch draws, against real Plaid Sandbox data: Home, Ledger
+(48 transactions across 30 days and 4 months), Recurring (8 streams), and
+Balances (14 accounts split into held and owed). Dock navigation, tap-to-reveal
+masking, the category filter with live counts, three of the four time-range
+forms, pull-to-refresh, and the empty and error states.
 
-- **`FRESH_FOR_SECS = 30`** in `srv-main/src/core.rs`. Plaid rate-limits
-  `/accounts/balance/get` hard, and a phone refetching per page load would hit
-  it. Thirty seconds felt right for development; it is one constant.
-- **The server URL is a constant** in `phone-main/src/io.rs`. Fine for a sketch
-  crate that runs beside the server; the native apps will need real config.
-- **CORS is wide open** (`allow_origin(Any)`). It is a localhost dev server, but
-  it should name an origin before it is ever deployed.
-- **`Stream::monthly_amount`** normalises weekly to 52/12 rather than 4. That is
-  the arithmetic-correct choice and it makes the total differ slightly from a
-  naive one. The Sandbox feed is all monthly, so it does not bite here.
-- **Home previews the category as plain text**, not a chip. At preview scale a
-  column of pills read as noise. The sketch has text there too, so I think this
-  is right, but it is a look-at-it call.
-
-## Unrelated fix
-
-`web-main`'s `windows_end_now_and_reach_back` test was failing on `master`
-before I started — it asserted a window ends at `now`, but `window()`
-deliberately ends at the last *closed* bar, and `NOW` in the test is not
-minute-aligned. The test was wrong, not the code. Renamed and corrected, so
-`cargo test --workspace` is green.
+Not built, all deliberate and all visible-but-disabled rather than missing:
+search (you asked for everything except), the `Between` date picker (a screen
+the sketch does not draw), and Reconnect (needs Plaid Link update mode, which
+does not exist yet).
 
 ## Where things are
 
 ```
 crates/
-  api-ledger/   Entry, Category, Account, Connection, Stream, Ledger
-  api-core/     the state machine: events, actions, the five screens' logic
-  api-wire/     the JSON both ends share
-  srv-main/     axum + Plaid Sandbox, with its own events/actions core
-  phone-main/   Leptos: runtime, four screens, one signal
+  api-common/     types, incl. the Timestamp newtype
+  api-ledger/     Entry, Category, Account, Connection, Stream, Ledger
+  api-eval/       the eval! macro
+  api-ratelimit/  the RateLimiter trait and a sliding window
+  phone-state/    the app's state machine: events, actions, views, screens
+  phone-main/     a Leptos runtime over it — the runnable specification
+  server-main/    axum + Plaid Sandbox: its own machine, runtime, and wire types
+  src-plaid/      Plaid's types as Plaid reports them, plus its rate limits
 ```
 
-Tests: 51 over the state machine (`api-core/tests/machine.rs`), 20 in
-`srv-main`, 26 in `api-ledger`. All against the real captured Sandbox feed in
-`crates/srv-main/fixtures/`, which doubles as the offline fallback.
+Tests: 51 over the app's machine, 24 over the server's, plus the crates' own.
+All against the real captured Sandbox feed in `crates/server-main/fixtures/`,
+which doubles as the offline fallback. `cargo clippy --workspace --all-targets`
+is silent.
 
-`./scripts/kotlin-smoke.sh` compiles the regenerated Kotlin bindings against the
-real library and drives all five screens through the FFI boundary. It passes.
-That is the best evidence that the Swift and Kotlin work will be transcription
-rather than reimplementation.
-
-## One thing I left for you
-
-Per `CLAUDE.md` I should tick off the work in the GitHub issues, and this
-finishes most of **#10 (Route all app behaviour through an event/action state
-machine)**. I have not posted to the tracker — that is outward-facing and you
-were not around to okay it — so here is the comment, ready to paste:
-
-> The phone app now runs entirely on this. `api-core` holds all four screens'
-> logic — filtering, grouping, totals, masking, and every string the screens
-> print — and `phone-main` renders what it is handed.
->
-> Done:
-> - [x] Events and actions as enums, grouped by origin
-> - [x] A synchronous machine, no clock and no IO
-> - [x] A runtime that performs actions and feeds results back as events
-> - [x] The same shape on the server (`srv-main/src/core.rs`)
-> - [x] 51 tests, including one asserting the same events give the same actions
->
-> Two calls worth knowing, both in `docs/DECISIONS.md`:
-> - `UiAction::Render` sends the whole screen, not a diff, so the view holds no
->   state to apply a diff against. The phone app has one signal in it.
-> - The clock arrives in an event rather than being read, so a replay lands
->   where it did the first time.
->
-> Not done: the assistant as an event source, and event-log recording/replay as
-> an actual tool rather than a property the design has.
-
-**#9 (implement search)** is untouched and is the natural next screen, since
-the dock button is already sitting there disabled.
+`./scripts/kotlin-smoke.sh` compiles the regenerated Kotlin against the real
+library and drives all five screens through the FFI boundary. It passes.

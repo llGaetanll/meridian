@@ -1,21 +1,21 @@
 //! The ledger: everything that has happened, newest first, and the filter
 //! that narrows it.
 
-use api_core::FilterGroup;
-use api_core::LedgerView;
-use api_core::RangeKind;
-use api_core::RangeSelection;
-use api_core::RangeUnit;
-use api_core::UiEvent;
 use leptos::prelude::*;
+use phone_state::EventUi;
+use phone_state::FilterGroup;
+use phone_state::RangeSelection;
+use phone_state::RangeUnit;
+use phone_state::ViewLedger;
+use phone_state::ViewRangeKind;
 
-use crate::runtime::use_runtime;
+use crate::runtime_app::use_runtime;
 use crate::ui::Icon;
 use crate::ui::PhoneShell;
 use crate::ui::TxRowView;
 
 #[component]
-pub fn LedgerScreen(view: LedgerView) -> impl IntoView {
+pub fn LedgerScreen(view: ViewLedger) -> impl IntoView {
     let filter = view.filter.clone();
 
     // The panel is drawn only when the core says it is open, and the core is
@@ -72,7 +72,7 @@ fn FilterBar(active: bool, open: bool) -> impl IntoView {
                 class="filter-btn"
                 class:on=open
                 class:active=active
-                on:click=move |_| runtime.ui(UiEvent::FilterToggled)
+                on:click=move |_| runtime.ui(EventUi::FilterToggled)
             >
                 <Icon name="filter" />
                 "Filter"
@@ -84,7 +84,7 @@ fn FilterBar(active: bool, open: bool) -> impl IntoView {
                     view! {
                         <button
                             class="filter-clear"
-                            on:click=move |_| runtime.ui(UiEvent::CategoriesCleared)
+                            on:click=move |_| runtime.ui(EventUi::CategoriesCleared)
                         >
                             "Clear categories"
                         </button>
@@ -95,7 +95,7 @@ fn FilterBar(active: bool, open: bool) -> impl IntoView {
 }
 
 #[component]
-fn FilterPanel(filter: api_core::FilterView) -> impl IntoView {
+fn FilterPanel(filter: phone_state::ViewFilter) -> impl IntoView {
     let runtime = use_runtime();
 
     let categories = filter.categories.clone();
@@ -110,7 +110,7 @@ fn FilterPanel(filter: api_core::FilterView) -> impl IntoView {
                     class="filter-head"
                     on:click=move |_| {
                         runtime
-                            .ui(UiEvent::FilterGroupToggled {
+                            .ui(EventUi::FilterGroupToggled {
                                 group: FilterGroup::Categories,
                             })
                     }
@@ -153,7 +153,7 @@ fn FilterPanel(filter: api_core::FilterView) -> impl IntoView {
                                     class:on=chip.selected
                                     class:empty=chip.empty
                                     on:click=move |_| {
-                                        runtime.ui(UiEvent::CategoryToggled { id: id.clone() })
+                                        runtime.ui(EventUi::CategoryToggled { id: id.clone() })
                                     }
                                 >
                                     <span class="n">{chip.count.clone()}</span>
@@ -169,7 +169,7 @@ fn FilterPanel(filter: api_core::FilterView) -> impl IntoView {
                 <div
                     class="filter-head"
                     on:click=move |_| {
-                        runtime.ui(UiEvent::FilterGroupToggled { group: FilterGroup::Range })
+                        runtime.ui(EventUi::FilterGroupToggled { group: FilterGroup::Range })
                     }
                 >
                     <Icon name="clock" />
@@ -192,7 +192,7 @@ fn FilterPanel(filter: api_core::FilterView) -> impl IntoView {
 /// The range, as the sentence the sketch draws. Each row is one of the four
 /// forms; tapping one makes it live.
 #[component]
-fn RangeRows(range: api_core::RangeView) -> impl IntoView {
+fn RangeRows(range: phone_state::ViewRange) -> impl IntoView {
     let runtime = use_runtime();
 
     // The tokens keep their last value even when another form is live, so
@@ -204,10 +204,10 @@ fn RangeRows(range: api_core::RangeView) -> impl IntoView {
         <div class="range">
             <div
                 class="range-row"
-                class:on=range.kind == RangeKind::This
+                class:on=range.kind == ViewRangeKind::This
                 on:click=move |_| {
                     runtime
-                        .ui(UiEvent::RangeSelected {
+                        .ui(EventUi::RangeSelected {
                             kind: RangeSelection::This { unit: this_unit },
                         })
                 }
@@ -221,10 +221,10 @@ fn RangeRows(range: api_core::RangeView) -> impl IntoView {
 
             <div
                 class="range-row"
-                class:on=range.kind == RangeKind::Last
+                class:on=range.kind == ViewRangeKind::Last
                 on:click=move |_| {
                     runtime
-                        .ui(UiEvent::RangeSelected {
+                        .ui(EventUi::RangeSelected {
                             kind: RangeSelection::Last {
                                 count: last_count,
                                 unit: RangeUnit::Month,
@@ -246,7 +246,7 @@ fn RangeRows(range: api_core::RangeView) -> impl IntoView {
             // Drawn because the sketch has it, and inert because picking a day
             // needs a date picker that is a screen of its own. See
             // docs/DECISIONS.md.
-            <div class="range-row disabled" class:on=range.kind == RangeKind::Between>
+            <div class="range-row disabled" class:on=range.kind == ViewRangeKind::Between>
                 "Between "
                 <button class="sel" disabled>
                     {range.between_start.clone()}
@@ -261,9 +261,9 @@ fn RangeRows(range: api_core::RangeView) -> impl IntoView {
 
             <div
                 class="range-row"
-                class:on=range.kind == RangeKind::All
+                class:on=range.kind == ViewRangeKind::All
                 on:click=move |_| {
-                    runtime.ui(UiEvent::RangeSelected { kind: RangeSelection::All })
+                    runtime.ui(EventUi::RangeSelected { kind: RangeSelection::All })
                 }
             >
                 <span class="plain">"All time"</span>

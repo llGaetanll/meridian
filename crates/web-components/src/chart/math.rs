@@ -220,7 +220,7 @@ mod tests {
     /// Three sessions of two points each, with a long night between them —
     /// the shape that made a time-proportional axis unreadable.
     fn gapped() -> ChartData {
-        const DAY: Timestamp = 86_400;
+        const DAY: u64 = 86_400;
 
         [
             (0, 10.0),
@@ -231,6 +231,7 @@ mod tests {
             (2 * DAY + 3_600, 15.0),
         ]
         .into_iter()
+        .map(|(secs, px)| (Timestamp::from_secs(secs), px))
         .collect()
     }
 
@@ -253,6 +254,8 @@ mod tests {
         let stops = axis_stops(&data, 3);
 
         // First, middle and last point — not first, midnight and last.
+        let stops: Vec<u64> = stops.iter().map(|ts| ts.as_secs()).collect();
+
         assert_eq!(stops, vec![0, 86_400 + 3_600, 2 * 86_400 + 3_600]);
     }
 
@@ -260,11 +263,14 @@ mod tests {
     fn locates_a_timestamp_by_slot() {
         let data = gapped();
 
-        assert_eq!(slot_fraction(&data, 0), 0.0);
-        assert_eq!(slot_fraction(&data, 86_400), 0.4);
-        assert_eq!(slot_fraction(&data, 2 * 86_400 + 3_600), 1.0);
+        assert_eq!(slot_fraction(&data, Timestamp::from_secs(0)), 0.0);
+        assert_eq!(slot_fraction(&data, Timestamp::from_secs(86_400)), 0.4);
+        assert_eq!(
+            slot_fraction(&data, Timestamp::from_secs(2 * 86_400 + 3_600)),
+            1.0
+        );
         // Anything past the end pins to the end.
-        assert_eq!(slot_fraction(&data, 10 * 86_400), 1.0);
+        assert_eq!(slot_fraction(&data, Timestamp::from_secs(10 * 86_400)), 1.0);
     }
 
     #[test]

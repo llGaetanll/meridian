@@ -1,7 +1,7 @@
 #!/bin/sh
 # Regenerates the Swift and Kotlin bindings from the Rust core.
 #
-# Run this after any change to api-core's public types. The generated files are
+# Run this after any change to phone-state's public types. The generated files are
 # committed, so `git status` after running is the check that they were current:
 # a dirty tree means someone changed the core and did not regenerate.
 #
@@ -12,15 +12,15 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-cargo build -p api-core
+cargo build -p phone-state
 
-cargo run -q -p api-core --bin uniffi-bindgen -- generate \
-    --library target/debug/libapi_core.so \
+cargo run -q -p phone-state --bin uniffi-bindgen -- generate \
+    --library target/debug/libphone_state.so \
     --language swift \
     --out-dir swift/Sources/Meridian
 
-cargo run -q -p api-core --bin uniffi-bindgen -- generate \
-    --library target/debug/libapi_core.so \
+cargo run -q -p phone-state --bin uniffi-bindgen -- generate \
+    --library target/debug/libphone_state.so \
     --language kotlin \
     --out-dir kotlin/src/main/kotlin
 

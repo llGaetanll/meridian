@@ -3,11 +3,11 @@
 //!
 //! Deliberately not `web_components::Shell` — that one is a desktop sidebar.
 
-use api_core::DockView;
-use api_core::UiEvent;
 use leptos::prelude::*;
+use phone_state::EventUi;
+use phone_state::ViewDock;
 
-use crate::runtime::use_runtime;
+use crate::runtime_app::use_runtime;
 use crate::ui::BrandMark;
 use crate::ui::Icon;
 
@@ -63,7 +63,7 @@ pub fn PhoneShell(
                     class="refresh"
                     class:spinning=move || loading.get()
                     aria-label="Refresh"
-                    on:click=move |_| runtime.ui(UiEvent::RefreshRequested)
+                    on:click=move |_| runtime.ui(EventUi::RefreshRequested)
                 >
                     <Icon name="refresh" />
                 </button>
@@ -79,7 +79,7 @@ pub fn PhoneShell(
                         view! {
                             <div class="banner">
                                 <span>{message}</span>
-                                <button on:click=move |_| runtime.ui(UiEvent::RefreshRequested)>
+                                <button on:click=move |_| runtime.ui(EventUi::RefreshRequested)>
                                     "Retry"
                                 </button>
                             </div>
@@ -107,7 +107,7 @@ fn Dock() -> impl IntoView {
             <nav class="dock glass">
                 {move || {
                     dock.get()
-                        .map(|dock: DockView| {
+                        .map(|dock: ViewDock| {
                             dock.items
                                 .into_iter()
                                 .map(|item| {
@@ -117,7 +117,7 @@ fn Dock() -> impl IntoView {
                                             class="dock-item"
                                             class:on=item.selected
                                             on:click=move |_| {
-                                                runtime.ui(UiEvent::ScreenOpened { screen })
+                                                runtime.ui(EventUi::ScreenOpened { screen })
                                             }
                                         >
                                             <Icon name=item.icon />

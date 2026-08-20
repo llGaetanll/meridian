@@ -1,5 +1,5 @@
 //! One module per screen. Each takes the view value the core built and draws
-//! it — see `api_core::ScreenView`.
+//! it — see `phone_state::ViewScreen`.
 
 mod balances;
 mod home;

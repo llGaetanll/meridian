@@ -1,7 +1,7 @@
 //! The view layer. Components take finished values and print them.
 //!
 //! Nothing here decides anything: no formatting, no sorting, no working out
-//! what a row says. That is all in `api-core`, which is what makes this crate
+//! what a row says. That is all in `phone-state`, which is what makes this crate
 //! a transcription target for SwiftUI and Compose rather than a thing to be
 //! reimplemented.
 

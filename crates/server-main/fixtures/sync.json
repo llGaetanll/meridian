@@ -1,0 +1,824 @@
+{
+    "added": [
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 5.4,
+            "authorized_date": "2026-08-11",
+            "date": "2026-08-12",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/uber_1060.png",
+            "merchant_name": "Uber",
+            "name": "Uber 063015 SF**POOL**",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSPORTATION_TAXIS_AND_RIDE_SHARES",
+                "primary": "TRANSPORTATION"
+            },
+            "transaction_id": "mzpNAER9y4FbgWa33dN4u6JRZKpmADFgaGr4r"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": -500,
+            "authorized_date": "2026-08-10",
+            "date": "2026-08-10",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/united_airlines_1065.png",
+            "merchant_name": "United Airlines",
+            "name": "United Airlines",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRAVEL_FLIGHTS",
+                "primary": "TRAVEL"
+            },
+            "transaction_id": "yQxgrBNbqocpoKnMMPGDiPjawpN3gzc4BJgKM"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 12,
+            "authorized_date": "2026-08-09",
+            "date": "2026-08-09",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/mcdonalds_619.png",
+            "merchant_name": "McDonald's",
+            "name": "McDonald's",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "FOOD_AND_DRINK_FAST_FOOD",
+                "primary": "FOOD_AND_DRINK"
+            },
+            "transaction_id": "9Lpe6B1wrliqBKgppVkGhAXz8PJVGyh467KqM"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 4.33,
+            "authorized_date": "2026-08-09",
+            "date": "2026-08-09",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/starbucks_956.png",
+            "merchant_name": "Starbucks",
+            "name": "Starbucks",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "FOOD_AND_DRINK_COFFEE",
+                "primary": "FOOD_AND_DRINK"
+            },
+            "transaction_id": "vjzLlKdRX1c78WeZZNmrUb85Q4RzVMCqdLwv7"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 89.4,
+            "authorized_date": "2026-08-07",
+            "date": "2026-08-08",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": "FUN",
+            "name": "SparkFun",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "GENERAL_MERCHANDISE_GIFTS_AND_NOVELTIES",
+                "primary": "GENERAL_MERCHANDISE"
+            },
+            "transaction_id": "RNLPGbd13EcrMXNEE3BeT5GZlk9EejsaE6ZPr"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 6.33,
+            "authorized_date": "2026-07-25",
+            "date": "2026-07-26",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/uber_1060.png",
+            "merchant_name": "Uber",
+            "name": "Uber 072515 SF**POOL**",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSPORTATION_TAXIS_AND_RIDE_SHARES",
+                "primary": "TRANSPORTATION"
+            },
+            "transaction_id": "6ZMPvKQBlVu8Kg6vvLeRhbQq5zVD97C85Ez1E"
+        },
+        {
+            "account_id": "w7Bpqra5ELIQeq144LpbsKon8VAKrjHPqn7re",
+            "amount": 25,
+            "authorized_date": "2026-08-11",
+            "date": "2026-08-12",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "CREDIT CARD 3333 PAYMENT *//",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT",
+                "primary": "LOAN_PAYMENTS"
+            },
+            "transaction_id": "XZlMrk7wPmum1oZqqNjPI6K3WADPGgFba7D1w"
+        },
+        {
+            "account_id": "w7Bpqra5ELIQeq144LpbsKon8VAKrjHPqn7re",
+            "amount": -4.22,
+            "authorized_date": "2026-08-07",
+            "date": "2026-08-07",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "INTRST PYMNT",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSFER_IN_OTHER_TRANSFER_IN",
+                "primary": "TRANSFER_IN"
+            },
+            "transaction_id": "Dm3WBQbw7NcPQGeRRZD7UvdAw14W5et3MAZ4j"
+        },
+        {
+            "account_id": "5QZN5qeVpDckqGnKKewXUqrBz84qlRc53kP5N",
+            "amount": 1000,
+            "authorized_date": null,
+            "date": "2026-08-11",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "CD DEPOSIT .INITIAL.",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSFER_OUT_ACCOUNT_TRANSFER",
+                "primary": "TRANSFER_OUT"
+            },
+            "transaction_id": "81L7ZzMRK5clzD9aa4vMUdNVLKak1JuWBPNZd"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 78.5,
+            "authorized_date": "2026-08-09",
+            "date": "2026-08-10",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "Touchstone Climbing",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS",
+                "primary": "PERSONAL_CARE"
+            },
+            "transaction_id": "EyxA3ZmrePijr6AppybLuyQARgXmGBc4Na69o"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 500,
+            "authorized_date": null,
+            "date": "2026-07-28",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/united_airlines_1065.png",
+            "merchant_name": "United Airlines",
+            "name": "United Airlines",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRAVEL_FLIGHTS",
+                "primary": "TRAVEL"
+            },
+            "transaction_id": "WQEZkrj4NbcdwpQ33RBbcBej9wRVoAt6VdBwn"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 500,
+            "authorized_date": null,
+            "date": "2026-07-23",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "Tectra Inc",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "RENT_AND_UTILITIES_INTERNET_AND_CABLE",
+                "primary": "RENT_AND_UTILITIES"
+            },
+            "transaction_id": "AGrgKjA9NdcajBJ886ymU8dPnaMljwF9mbB6z"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 500,
+            "authorized_date": null,
+            "date": "2026-07-22",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "Madison Bicycle Shop",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSPORTATION_BIKES_AND_SCOOTERS",
+                "primary": "TRANSPORTATION"
+            },
+            "transaction_id": "Glaqd19kZ7ie3AljjZX8H8k6By9MeaF6dVZAQ"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 500,
+            "authorized_date": null,
+            "date": "2026-07-22",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/kfc_546.png",
+            "merchant_name": "KFC",
+            "name": "KFC",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "FOOD_AND_DRINK_FAST_FOOD",
+                "primary": "FOOD_AND_DRINK"
+            },
+            "transaction_id": "nkoPAWlJENCbwp4VVgPQuGQvq7VeRjiA4aJKN"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 2078.5,
+            "authorized_date": null,
+            "date": "2026-07-22",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "AUTOMATIC PAYMENT - THANK",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "LOAN_PAYMENTS_OTHER_PAYMENT",
+                "primary": "LOAN_PAYMENTS"
+            },
+            "transaction_id": "bA4ly7kjE5c1DqA66nlrHxM6b9EejZfmeRBNQ"
+        },
+        {
+            "account_id": "xe3oKz4XlphmEDJAANo5IMprjjarWvu6JrG68",
+            "amount": 5850,
+            "authorized_date": null,
+            "date": "2026-08-11",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "ACH Electronic CreditGUSTO PAY 123456",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSFER_OUT_ACCOUNT_TRANSFER",
+                "primary": "TRANSFER_OUT"
+            },
+            "transaction_id": "mzpNAER9y4FbgWa33dN4u6JRZKpmADFgaGrMd"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 5.4,
+            "authorized_date": "2026-07-12",
+            "date": "2026-07-13",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/uber_1060.png",
+            "merchant_name": "Uber",
+            "name": "Uber 063015 SF**POOL**",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSPORTATION_TAXIS_AND_RIDE_SHARES",
+                "primary": "TRANSPORTATION"
+            },
+            "transaction_id": "aWaA7jg3pws57GWjj1QoSoadGzBJvzuZZJleK"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": -500,
+            "authorized_date": "2026-07-11",
+            "date": "2026-07-11",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/united_airlines_1065.png",
+            "merchant_name": "United Airlines",
+            "name": "United Airlines",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRAVEL_FLIGHTS",
+                "primary": "TRAVEL"
+            },
+            "transaction_id": "4eQ4Zl7VLXh8lvZqq4r7hmyEregW8esJJVN3p"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 12,
+            "authorized_date": "2026-07-10",
+            "date": "2026-07-10",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/mcdonalds_619.png",
+            "merchant_name": "McDonald's",
+            "name": "McDonald's",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "FOOD_AND_DRINK_FAST_FOOD",
+                "primary": "FOOD_AND_DRINK"
+            },
+            "transaction_id": "NxQdPWznKpcoqdxmmXeVU7gkN3q5L3tyypB7p"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 4.33,
+            "authorized_date": "2026-07-10",
+            "date": "2026-07-10",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/starbucks_956.png",
+            "merchant_name": "Starbucks",
+            "name": "Starbucks",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "FOOD_AND_DRINK_COFFEE",
+                "primary": "FOOD_AND_DRINK"
+            },
+            "transaction_id": "PaM47G3Ezgfn7Ra88zoXclrvmZ95WZcoo5BN6"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 89.4,
+            "authorized_date": "2026-07-08",
+            "date": "2026-07-09",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": "FUN",
+            "name": "SparkFun",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "GENERAL_MERCHANDISE_GIFTS_AND_NOVELTIES",
+                "primary": "GENERAL_MERCHANDISE"
+            },
+            "transaction_id": "jqMd7oygExTbXWeJJLGNuy8Gg9Vmz9T66mzGg"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 6.33,
+            "authorized_date": "2026-06-25",
+            "date": "2026-06-26",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/uber_1060.png",
+            "merchant_name": "Uber",
+            "name": "Uber 072515 SF**POOL**",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSPORTATION_TAXIS_AND_RIDE_SHARES",
+                "primary": "TRANSPORTATION"
+            },
+            "transaction_id": "7M1jXrZVqwh8rJgWWVlRh9kabWJ8eWTddyA1o"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 5.4,
+            "authorized_date": "2026-06-12",
+            "date": "2026-06-13",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/uber_1060.png",
+            "merchant_name": "Uber",
+            "name": "Uber 063015 SF**POOL**",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSPORTATION_TAXIS_AND_RIDE_SHARES",
+                "primary": "TRANSPORTATION"
+            },
+            "transaction_id": "ekjrwZAJEKComEJKKzrAUd6rnm4qWmurrBRVw"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": -500,
+            "authorized_date": "2026-06-11",
+            "date": "2026-06-11",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/united_airlines_1065.png",
+            "merchant_name": "United Airlines",
+            "name": "United Airlines",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRAVEL_FLIGHTS",
+                "primary": "TRAVEL"
+            },
+            "transaction_id": "Q41NZnxWB8cnpVvyyo7Jc943AV5DJVTww64a8"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 12,
+            "authorized_date": "2026-06-10",
+            "date": "2026-06-10",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/mcdonalds_619.png",
+            "merchant_name": "McDonald's",
+            "name": "McDonald's",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "FOOD_AND_DRINK_FAST_FOOD",
+                "primary": "FOOD_AND_DRINK"
+            },
+            "transaction_id": "Z1KLB3Qj79cnqBvMMmzXcR1dkaBpWaueemAb5"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 4.33,
+            "authorized_date": "2026-06-10",
+            "date": "2026-06-10",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/starbucks_956.png",
+            "merchant_name": "Starbucks",
+            "name": "Starbucks",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "FOOD_AND_DRINK_COFFEE",
+                "primary": "FOOD_AND_DRINK"
+            },
+            "transaction_id": "M3exPkrZqLfpR83xxq7ZiwjyZz18mztLLpw7K"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 89.4,
+            "authorized_date": "2026-06-08",
+            "date": "2026-06-09",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": "FUN",
+            "name": "SparkFun",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "GENERAL_MERCHANDISE_GIFTS_AND_NOVELTIES",
+                "primary": "GENERAL_MERCHANDISE"
+            },
+            "transaction_id": "1kjxWnNwZvCQAxLnnprvsXEA7xQgaxCppXLmk"
+        },
+        {
+            "account_id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
+            "amount": 6.33,
+            "authorized_date": "2026-05-26",
+            "date": "2026-05-27",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/uber_1060.png",
+            "merchant_name": "Uber",
+            "name": "Uber 072515 SF**POOL**",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSPORTATION_TAXIS_AND_RIDE_SHARES",
+                "primary": "TRANSPORTATION"
+            },
+            "transaction_id": "LB73P8Kbl1FLo7BvvlywikRaz1GgE1IkkKv9Q"
+        },
+        {
+            "account_id": "w7Bpqra5ELIQeq144LpbsKon8VAKrjHPqn7re",
+            "amount": 25,
+            "authorized_date": "2026-07-12",
+            "date": "2026-07-13",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "CREDIT CARD 3333 PAYMENT *//",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT",
+                "primary": "LOAN_PAYMENTS"
+            },
+            "transaction_id": "gyeB71nJ9ziwJoAggvBdIVQGkPvRePCEERaMJ"
+        },
+        {
+            "account_id": "w7Bpqra5ELIQeq144LpbsKon8VAKrjHPqn7re",
+            "amount": -4.22,
+            "authorized_date": "2026-07-08",
+            "date": "2026-07-08",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "INTRST PYMNT",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSFER_IN_OTHER_TRANSFER_IN",
+                "primary": "TRANSFER_IN"
+            },
+            "transaction_id": "81L7ZzMRK5clzD9aa4vMUdNbDA9wXAuWWp4rR"
+        },
+        {
+            "account_id": "w7Bpqra5ELIQeq144LpbsKon8VAKrjHPqn7re",
+            "amount": 25,
+            "authorized_date": "2026-06-12",
+            "date": "2026-06-13",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "CREDIT CARD 3333 PAYMENT *//",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "LOAN_PAYMENTS_CREDIT_CARD_PAYMENT",
+                "primary": "LOAN_PAYMENTS"
+            },
+            "transaction_id": "EyxA3ZmrePijr6AppybLuyQadr15jrT44evEA"
+        },
+        {
+            "account_id": "w7Bpqra5ELIQeq144LpbsKon8VAKrjHPqn7re",
+            "amount": -4.22,
+            "authorized_date": "2026-06-08",
+            "date": "2026-06-08",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "INTRST PYMNT",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSFER_IN_OTHER_TRANSFER_IN",
+                "primary": "TRANSFER_IN"
+            },
+            "transaction_id": "WQEZkrj4NbcdwpQ33RBbcBeKa37NX3t66yA4o"
+        },
+        {
+            "account_id": "5QZN5qeVpDckqGnKKewXUqrBz84qlRc53kP5N",
+            "amount": 1000,
+            "authorized_date": null,
+            "date": "2026-07-12",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "CD DEPOSIT .INITIAL.",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSFER_OUT_ACCOUNT_TRANSFER",
+                "primary": "TRANSFER_OUT"
+            },
+            "transaction_id": "Glaqd19kZ7ie3AljjZX8H8k3jPoDXPi66xrn1"
+        },
+        {
+            "account_id": "5QZN5qeVpDckqGnKKewXUqrBz84qlRc53kP5N",
+            "amount": 1000,
+            "authorized_date": null,
+            "date": "2026-06-12",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "CD DEPOSIT .INITIAL.",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSFER_OUT_ACCOUNT_TRANSFER",
+                "primary": "TRANSFER_OUT"
+            },
+            "transaction_id": "nkoPAWlJENCbwp4VVgPQuGQPNElJ9EiAAVpGA"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 78.5,
+            "authorized_date": "2026-07-10",
+            "date": "2026-07-11",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "Touchstone Climbing",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS",
+                "primary": "PERSONAL_CARE"
+            },
+            "transaction_id": "6ZMPvKQBlVu8Kg6vvLeRhbQwJWnlkWC88KMxk"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 500,
+            "authorized_date": null,
+            "date": "2026-06-28",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/united_airlines_1065.png",
+            "merchant_name": "United Airlines",
+            "name": "United Airlines",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRAVEL_FLIGHTS",
+                "primary": "TRAVEL"
+            },
+            "transaction_id": "XZlMrk7wPmum1oZqqNjPI6Kvl8QJL8ubbjzx8"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 500,
+            "authorized_date": null,
+            "date": "2026-06-23",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "Tectra Inc",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "RENT_AND_UTILITIES_INTERNET_AND_CABLE",
+                "primary": "RENT_AND_UTILITIES"
+            },
+            "transaction_id": "Dm3WBQbw7NcPQGeRRZD7UvdLpgVDXgf33R9Xp"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 500,
+            "authorized_date": null,
+            "date": "2026-06-22",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "Madison Bicycle Shop",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSPORTATION_BIKES_AND_SCOOTERS",
+                "primary": "TRANSPORTATION"
+            },
+            "transaction_id": "Ve8QqKPg4nhnlre99GL6cXNKAQL8WQC99yLnL"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 500,
+            "authorized_date": null,
+            "date": "2026-06-22",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/kfc_546.png",
+            "merchant_name": "KFC",
+            "name": "KFC",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "FOOD_AND_DRINK_FAST_FOOD",
+                "primary": "FOOD_AND_DRINK"
+            },
+            "transaction_id": "w7Bpqra5ELIQeq144LpbsKopW4Z3v4SPPRDl4"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 2078.5,
+            "authorized_date": null,
+            "date": "2026-06-22",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "AUTOMATIC PAYMENT - THANK",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "LOAN_PAYMENTS_OTHER_PAYMENT",
+                "primary": "LOAN_PAYMENTS"
+            },
+            "transaction_id": "5QZN5qeVpDckqGnKKewXUqrAyoVQboU55yepq"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 78.5,
+            "authorized_date": "2026-06-10",
+            "date": "2026-06-11",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "Touchstone Climbing",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "PERSONAL_CARE_GYMS_AND_FITNESS_CENTERS",
+                "primary": "PERSONAL_CARE"
+            },
+            "transaction_id": "JrPzVolbLZtMGJrQQnd1hAR5ND9LkDuBBMW5z"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 500,
+            "authorized_date": null,
+            "date": "2026-05-29",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/united_airlines_1065.png",
+            "merchant_name": "United Airlines",
+            "name": "United Airlines",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRAVEL_FLIGHTS",
+                "primary": "TRAVEL"
+            },
+            "transaction_id": "kK1aAg9mEdHeyax77J9LHQk9zelA7ehLLDg8P"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 500,
+            "authorized_date": null,
+            "date": "2026-05-24",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "Tectra Inc",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "RENT_AND_UTILITIES_INTERNET_AND_CABLE",
+                "primary": "RENT_AND_UTILITIES"
+            },
+            "transaction_id": "lrL4A8v1Eat9X1dNNJ4RSlJ4jvVmBvcppgGJb"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 500,
+            "authorized_date": null,
+            "date": "2026-05-23",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "Madison Bicycle Shop",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSPORTATION_BIKES_AND_SCOOTERS",
+                "primary": "TRANSPORTATION"
+            },
+            "transaction_id": "qdEeAnrjw7CN1mJzzKejTe7EZm1pjmcggPAo9"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 500,
+            "authorized_date": null,
+            "date": "2026-05-23",
+            "iso_currency_code": "USD",
+            "logo_url": "https://plaid-merchant-logos.plaid.com/kfc_546.png",
+            "merchant_name": "KFC",
+            "name": "KFC",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "FOOD_AND_DRINK_FAST_FOOD",
+                "primary": "FOOD_AND_DRINK"
+            },
+            "transaction_id": "KzjBPgqVkMF14KzGG3a7Hyn631D5G1TRRkWnM"
+        },
+        {
+            "account_id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
+            "amount": 2078.5,
+            "authorized_date": null,
+            "date": "2026-05-23",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "AUTOMATIC PAYMENT - THANK",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "LOAN_PAYMENTS_OTHER_PAYMENT",
+                "primary": "LOAN_PAYMENTS"
+            },
+            "transaction_id": "ralQwbz5Eef7wgjMMrQXUbDQnjEJljC779qon"
+        },
+        {
+            "account_id": "xe3oKz4XlphmEDJAANo5IMprjjarWvu6JrG68",
+            "amount": 5850,
+            "authorized_date": null,
+            "date": "2026-07-12",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "ACH Electronic CreditGUSTO PAY 123456",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSFER_OUT_ACCOUNT_TRANSFER",
+                "primary": "TRANSFER_OUT"
+            },
+            "transaction_id": "Bnz8k7G5Pau47gM55pW1hBWb3PNL4Pt4456Zn"
+        },
+        {
+            "account_id": "xe3oKz4XlphmEDJAANo5IMprjjarWvu6JrG68",
+            "amount": 5850,
+            "authorized_date": null,
+            "date": "2026-06-12",
+            "iso_currency_code": "USD",
+            "logo_url": null,
+            "merchant_name": null,
+            "name": "ACH Electronic CreditGUSTO PAY 123456",
+            "pending": false,
+            "pending_transaction_id": null,
+            "personal_finance_category": {
+                "detailed": "TRANSFER_OUT_ACCOUNT_TRANSFER",
+                "primary": "TRANSFER_OUT"
+            },
+            "transaction_id": "37eaJmjv16I8QVXWWLwnh3yJx5wQo5FZZbKPn"
+        }
+    ],
+    "modified": [],
+    "removed": [],
+    "next_cursor": "CAESJTM3ZWFKbWp2MTZJOFFWWFdXTHduaDN5Sng1d1FvNUZaWmJLUG4aDAidqpXUBhCAhaehAyIMCJ2qldQGEICFp6EDKgwInaqV1AYQgIWnoQM=",
+    "has_more": false
+}

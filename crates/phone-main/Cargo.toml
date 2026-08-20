@@ -5,7 +5,8 @@ edition = "2024"
 
 [dependencies]
 # The decisions. Everything this crate does is render what the core hands it.
-api-core = { path = "../api-core" }
+api-common = { path = "../api-common" }
+phone-state = { path = "../phone-state" }
 api-trace = { path = "../api-trace" }
 
 leptos = { workspace = true }
