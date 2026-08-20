@@ -104,7 +104,13 @@ program — follows all of them.
    is provably impossible, `Result` for anything depending on input or IO. See
    [STYLE.md](STYLE.md).
 
-6. **Anything that is a *rule* belongs in the machine, even if it looks like
+6. **Split by ownership, not by screen.** A sub-machine (`StateLedger`) is
+   worth it when a screen owns state nothing else reads. Shared data stays on
+   the parent — two copies of the ledger are two copies that can disagree — and
+   sub-machines never handle events themselves; the parent routes to them, so
+   `handle_events` remains the only way anything changes.
+
+7. **Anything that is a *rule* belongs in the machine, even if it looks like
    IO's business.** Rate limiting is the example: "may I send this?" is
    arithmetic over what we have already sent, so it lives in the machine
    (`api-ratelimit`, with the per-API limiter in that API's crate) rather than
@@ -225,10 +231,10 @@ signal graph becomes plumbing, not the place where behaviour is decided.
 | `api-common` | Shared types: `Asset`, `Price`, `Quantity`, `Timestamp`, `ChartData`, and formatting helpers. |
 | `api-ledger` | Entries, positions, accounts, recurring streams, the ledger itself. |
 | `api-eval` | The `eval!` macro every state machine is tested with. |
-| `api-ratelimit` | The `RateLimiter` trait and a sliding window. IO-free, so a machine can consult it. |
 | `phone-state` | The phone app's state machine: events, actions, every screen's logic and every string it prints. Synchronous, no IO. Reached from Swift and Kotlin over UniFFI — see [FFI.md](FFI.md). |
 | `src-yahoo`, `src-coingecko` | Price sources. Requests, responses, and pure projections onto `api-common` types. |
 | `src-plaid` | The bank connection, same shape as the price sources: sync, balances, recurring, and Plaid's rate limits. |
+| `server-wire` | The JSON the server and the app share. One definition; its dependencies are only the value types the protocol carries. |
 | `server-main` | The server. Holds the Plaid secret, which is why it exists; owns its machine, its runtime, and its wire types. Sandbox only. |
 | `web-ui` | Design-system pieces: buttons, pills, cards, segmented controls, icons. No domain knowledge. |
 | `web-components` | Domain components: the shell, charts, and the markets page's blocks. |

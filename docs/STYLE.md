@@ -86,6 +86,16 @@ listing sorts by kind and says what it is at a glance.
 field is a way to mutate state without an event, which is the one thing the
 whole design is trying to prevent.
 
+**Split a machine when a screen owns state nothing else reads**, and not
+before. `StateLedger` exists because the filter belongs to the Ledger alone;
+the entries, connections, streams and mask stayed on `StateApp` because more
+than one screen reads each of them and Home reads all four. A sub-machine owns
+a screen's *choices*, never its data — two copies of the ledger are two copies
+that can disagree.
+
+Sub-machines do not handle events themselves. The app's `handle_events` routes
+the ones that are theirs, so there is still exactly one way anything changes.
+
 **Derive as little as possible on events and actions.** `Debug` is needed for
 logging and snapshots. `Clone` only if something genuinely needs to own one —
 they are passed by reference all the way down. **`PartialEq` in particular is

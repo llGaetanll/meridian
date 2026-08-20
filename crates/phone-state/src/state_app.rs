@@ -15,11 +15,8 @@ use crate::ActionUi;
 use crate::Event;
 use crate::EventSource;
 use crate::EventUi;
-use crate::FilterGroup;
-use crate::RangeSelection;
-use crate::RangeUnit;
 use crate::Screen;
-use crate::fmt;
+use crate::StateLedger;
 use crate::screens;
 
 /// Everything the app is, at one moment.
@@ -63,7 +60,13 @@ pub struct StateApp {
     /// opened in public without a decision.
     masked: bool,
 
-    filter: Filter,
+    /// The Ledger screen's own state.
+    ///
+    /// A sub-machine, because the filter is the one piece of state that belongs
+    /// to a single screen. Everything else here — the entries, the connections,
+    /// the streams, the mask — is read by more than one, and Home reads all of
+    /// them. See `docs/DECISIONS.md` on why the split stops here.
+    ledger: StateLedger,
 
     /// Set once a load fails, cleared when one succeeds. Drives the empty
     /// state's wording — "nothing yet" and "we could not reach the server" are
@@ -73,93 +76,6 @@ pub struct StateApp {
     /// Whether a snapshot has ever arrived. Distinguishes "still loading" from
     /// "loaded, and there is nothing".
     loaded: bool,
-}
-
-/// What the ledger is filtered by.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Filter {
-    pub open: bool,
-    pub categories_open: bool,
-    pub range_open: bool,
-
-    /// Empty means everything, rather than nothing. That is the only reading
-    /// that makes an unused filter invisible.
-    pub categories: Vec<Category>,
-
-    pub range: RangeSelection,
-}
-
-impl Default for Filter {
-    fn default() -> Self {
-        Self {
-            open: false,
-            // Both groups start open, because a panel that opens showing two
-            // collapsed headings has told the user nothing.
-            categories_open: true,
-            range_open: true,
-            categories: Vec::new(),
-            range: RangeSelection::All,
-        }
-    }
-}
-
-impl Filter {
-    /// Whether this filter is actually narrowing anything.
-    pub fn is_active(&self) -> bool {
-        !self.categories.is_empty() || self.range != RangeSelection::All
-    }
-
-    /// The window this range covers. `None` at either end means unbounded.
-    pub fn window(&self, now: Timestamp) -> (Option<Timestamp>, Option<Timestamp>) {
-        match self.range {
-            RangeSelection::All => (None, None),
-
-            // Exact: "this month" is from the first of the month.
-            RangeSelection::This { unit } => (Some(fmt::start_of(unit, now)), None),
-
-            // Approximate, and meant to be: "last 3 months" is about three
-            // months back, not a calendar boundary.
-            RangeSelection::Last { count, unit } => {
-                let span = unit.seconds().saturating_mul(count.max(1) as u64);
-                (Some(now.saturating_sub_secs(span)), None)
-            }
-
-            RangeSelection::Between { .. } => {
-                let Some((start, end)) = self.range.window_bounds() else {
-                    return (None, None);
-                };
-
-                // The end is a day, and a day includes its own transactions,
-                // so the window runs to the end of it rather than to midnight
-                // at its start.
-                (Some(start), Some(end.saturating_add_secs(86_400)))
-            }
-        }
-    }
-
-    /// Whether an entry survives this filter.
-    pub fn matches(&self, entry: &Entry, now: Timestamp) -> bool {
-        if !self.categories.is_empty() && !self.categories.contains(&entry.category) {
-            return false;
-        }
-
-        let (start, end) = self.window(now);
-        let ts = entry.ts();
-
-        if let Some(start) = start
-            && ts < start
-        {
-            return false;
-        }
-
-        if let Some(end) = end
-            && ts >= end
-        {
-            return false;
-        }
-
-        true
-    }
 }
 
 impl Default for StateApp {
@@ -178,7 +94,7 @@ impl Default for StateApp {
             device_now: Timestamp::EPOCH,
             server_clock: None,
             masked: true,
-            filter: Filter::default(),
+            ledger: StateLedger::default(),
             load_failed: None,
             loaded: false,
         }
@@ -250,41 +166,19 @@ impl StateApp {
 
             EventUi::MaskToggled => self.masked = !self.masked,
 
-            EventUi::FilterToggled => self.filter.open = !self.filter.open,
+            // Everything the Ledger owns is routed to its own machine, which
+            // keeps the app's arms free of what a category chip is.
+            EventUi::FilterToggled => self.ledger.toggle_panel(),
 
-            EventUi::FilterGroupToggled { group } => match group {
-                FilterGroup::Categories => {
-                    self.filter.categories_open = !self.filter.categories_open
-                }
-                FilterGroup::Range => self.filter.range_open = !self.filter.range_open,
-            },
+            EventUi::FilterGroupToggled { group } => self.ledger.toggle_group(*group),
 
             EventUi::CategoryToggled { id } => {
-                let category = screens::category_from_id(id);
-
-                // An id the view made up is ignored rather than filed under
-                // Unknown: a typo should narrow nothing, not silently filter to
-                // a category nothing is in.
-                if category == Category::Unknown {
-                    return;
-                }
-
-                match self.filter.categories.iter().position(|c| *c == category) {
-                    Some(at) => {
-                        self.filter.categories.remove(at);
-                    }
-                    None => self.filter.categories.push(category),
-                }
-
-                debug_assert!(
-                    self.filter.categories.len() <= Category::ALL.len(),
-                    "a category was selected twice",
-                );
+                self.ledger.toggle_category(screens::category_from_id(id))
             }
 
-            EventUi::CategoriesCleared => self.filter.categories.clear(),
+            EventUi::CategoriesCleared => self.ledger.clear_categories(),
 
-            EventUi::RangeSelected { kind } => self.filter.range = *kind,
+            EventUi::RangeSelected { kind } => self.ledger.set_range(*kind),
 
             EventUi::TxSelected { .. } => {
                 // There is no detail screen yet. The event exists so the view
@@ -402,8 +296,8 @@ impl StateApp {
         self.masked
     }
 
-    pub(crate) fn filter(&self) -> &Filter {
-        &self.filter
+    pub(crate) fn ledger(&self) -> &StateLedger {
+        &self.ledger
     }
 
     pub(crate) fn load_failed(&self) -> Option<&str> {
@@ -416,9 +310,11 @@ impl StateApp {
 
     /// The entries this filter lets through, newest first.
     pub(crate) fn filtered(&self) -> Vec<&Entry> {
+        let now = self.now();
+
         self.entries
             .iter()
-            .filter(|e| self.filter.matches(e, self.now()))
+            .filter(|e| self.ledger.matches(e, now))
             .collect()
     }
 
@@ -430,10 +326,7 @@ impl StateApp {
     /// current category selection would read zero for everything unselected.
     /// The time range still applies, because that filter is independent.
     pub(crate) fn category_counts(&self) -> Vec<(Category, usize)> {
-        let range_only = Filter {
-            categories: Vec::new(),
-            ..self.filter.clone()
-        };
+        let now = self.now();
 
         Category::ALL
             .iter()
@@ -441,23 +334,12 @@ impl StateApp {
                 let count = self
                     .entries
                     .iter()
-                    .filter(|e| e.category == *category && range_only.matches(e, self.now()))
+                    .filter(|e| e.category == *category && self.ledger.matches_range(e, now))
                     .count();
 
                 (*category, count)
             })
             .collect()
-    }
-
-    /// Which range unit is currently chosen, for drawing the sentence's
-    /// tokens. The tokens keep their last value even when another form is
-    /// live, so switching back does not reset the sentence.
-    pub(crate) fn range_units(&self) -> (RangeUnit, u32, RangeUnit) {
-        match self.filter.range {
-            RangeSelection::This { unit } => (unit, 3, RangeUnit::Month),
-            RangeSelection::Last { count, unit } => (RangeUnit::Month, count, unit),
-            _ => (RangeUnit::Month, 3, RangeUnit::Month),
-        }
     }
 }
 
