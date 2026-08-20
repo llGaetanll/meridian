@@ -131,8 +131,7 @@ fn Dock() -> impl IntoView {
             </nav>
 
             // The sketch draws this button but never the screen behind it, so
-            // it stays inert rather than opening something invented. See
-            // docs/DECISIONS.md.
+            // it stays inert rather than opening something invented.
             <button
                 class="dock-search glass"
                 aria-label="Search"

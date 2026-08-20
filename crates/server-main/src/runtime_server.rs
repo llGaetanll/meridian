@@ -52,9 +52,14 @@ pub struct RuntimeServer {
     /// happen concurrently. Writes are the fetch path, which is rare.
     ///
     /// `handle_events` needs `&mut`, so a write is still exclusive. What this
-    /// buys over a `Mutex` is that the many requests served from fresh state
-    /// no longer queue behind each other. See the note in `docs/DECISIONS.md`
-    /// about where this goes next.
+    /// buys over a `Mutex` is that the many requests served from fresh state no
+    /// longer queue behind each other.
+    ///
+    /// If write contention ever becomes the bottleneck, the next step is
+    /// interior mutability inside the machine rather than a bigger lock out
+    /// here — but that trades one contended lock for a machine that can no
+    /// longer be read as a plain `&mut self` function, and the blocking work is
+    /// the Plaid fetch, which `fetching` already serialises.
     state: RwLock<StateServer>,
 
     /// Credentials, if there are any. Absent means the fixtures stand in.

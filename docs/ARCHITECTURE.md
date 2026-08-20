@@ -204,9 +204,8 @@ The split falls differently for the two because their IO does:
 
 ### What this looks like once it is built
 
-`crates/phone-main` is the worked example, and `docs/DECISIONS.md` explains the
-calls it makes. Two are worth repeating here because they are what the design
-actually buys:
+`crates/phone-main` is the worked example. Two of its properties are worth
+stating here, because they are what the design actually buys:
 
 - **The whole screen crosses, not a diff.** `UiAction::Render` carries the
   finished screen, so the view is a pure function of the last action it saw and
