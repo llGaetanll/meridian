@@ -19,8 +19,10 @@ const SERVER: &str = "http://127.0.0.1:8082";
 
 /// The snapshot, as JSON.
 ///
-/// Handed to the core as a string rather than parsed here: the core owns the
-/// parse so that all three platforms get the same one. See `docs/DECISIONS.md`.
+/// Handed to the machine as a string rather than parsed here, so that all three
+/// platforms get the same parse. Doing it in the runtime would mean Swift and
+/// Kotlin each writing their own, which is three chances to disagree about what
+/// a missing field means.
 pub async fn fetch_snapshot(force: bool) -> Result<String, String> {
     let url = if force {
         format!("{SERVER}/snapshot?refresh=true")

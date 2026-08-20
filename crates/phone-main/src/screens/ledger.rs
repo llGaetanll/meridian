@@ -244,8 +244,7 @@ fn RangeRows(range: phone_state::ViewRange) -> impl IntoView {
             </div>
 
             // Drawn because the sketch has it, and inert because picking a day
-            // needs a date picker that is a screen of its own. See
-            // docs/DECISIONS.md.
+            // needs a date picker that is a screen of its own.
             <div class="range-row disabled" class:on=range.kind == ViewRangeKind::Between>
                 "Between "
                 <button class="sel" disabled>

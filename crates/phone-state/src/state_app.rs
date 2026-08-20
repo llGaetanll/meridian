@@ -65,7 +65,14 @@ pub struct StateApp {
     /// A sub-machine, because the filter is the one piece of state that belongs
     /// to a single screen. Everything else here — the entries, the connections,
     /// the streams, the mask — is read by more than one, and Home reads all of
-    /// them. See `docs/DECISIONS.md` on why the split stops here.
+    /// them.
+    ///
+    /// That is why there is no `StateBalances` or `StateRecurring`: neither
+    /// screen owns any state, both being projections of data the app holds. A
+    /// machine per screen would mean several copies of the ledger that can
+    /// disagree, which is the failure `docs/ABOUT.md`'s one-ledger stance
+    /// exists to prevent. `docs/STYLE.md` states the rule: split when a screen
+    /// owns state nothing else reads.
     ledger: StateLedger,
 
     /// Set once a load fails, cleared when one succeeds. Drives the empty
