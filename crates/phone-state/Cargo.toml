@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [lib]
-# cdylib for the phone apps to link against, lib so the Rust front-end can
+# staticlib for iOS, which links the core into the app binary rather than
+# loading one beside it; cdylib for Android and for uniffi-bindgen, which reads
+# the built library rather than the source; lib so the Rust front-end can
 # depend on it directly.
-crate-type = ["cdylib", "lib"]
+crate-type = ["staticlib", "cdylib", "lib"]
 name = "phone_state"
 
 [dependencies]

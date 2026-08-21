@@ -99,6 +99,56 @@ Swift here, pointless otherwise:
 paru -S swiftly-bin && swiftly init    # gives swiftc, sourcekit-lsp, swift-format
 ```
 
+#### On a Mac
+
+Xcode, but only for its command line tools — there is no `.xcodeproj` in the
+tree and nothing here asks you to open the app. `swiftc`, `xcodebuild`,
+`xcrun` and `simctl` are the whole toolchain, so the work happens in whatever
+editor you already use.
+
+Xcode 26 ships without a simulator runtime, and it is a large download rather
+than a quick one:
+```
+xcodebuild -downloadPlatform iOS
+```
+
+The Rust core cross-compiles to the phone, which needs the targets. The
+simulator's architecture is the Mac's, so an Intel Mac wants `x86_64-apple-ios`
+and an Apple Silicon one wants `aarch64-apple-ios-sim`; `aarch64-apple-ios` is
+the device either way:
+```
+rustup target add aarch64-apple-ios x86_64-apple-ios aarch64-apple-ios-sim
+```
+
+#### Running the app
+
+Two commands, like the web front-end: the server that holds the Plaid secret,
+and the app.
+
+```
+cargo run -p server-main       # :8082
+./scripts/ios-run.sh           # builds, installs, launches
+```
+
+The simulator reaches the server over the Mac's own loopback, so both of these
+are the same `127.0.0.1:8082` the web app uses. A different simulator is an
+argument — any name from `xcrun simctl list devices`:
+
+```
+./scripts/ios-run.sh "iPhone 16e"
+```
+
+The Simulator is an ordinary macOS window. Put it on whichever screen you want
+it on and leave it there: a re-run installs into the device that is already
+booted rather than starting a new one, so the window neither moves nor
+reopens — the app just becomes the new build. **Window → Stay On Top** keeps it
+above whatever you are editing in.
+
+Nothing above opens Xcode, and there is no project file to open. `swiftc`
+compiles, `simctl` installs and launches, and `compile_commands.json` is
+rewritten on every run from the flags that built the app, so sourcekit-lsp sees
+exactly what the compiler saw.
+
 ### Regenerating the bindings
 
 After any change to `phone-state`'s public types:

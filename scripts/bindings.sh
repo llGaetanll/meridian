@@ -14,13 +14,21 @@ cd "$(dirname "$0")/.."
 
 cargo build -p phone-state
 
+# The name of the built library is the platform's, not ours: a cdylib is
+# `.dylib` on macOS and `.so` everywhere else this is run. uniffi-bindgen reads
+# the built library rather than the source, so it has to be given the real one.
+case "$(uname -s)" in
+    Darwin) LIB=target/debug/libphone_state.dylib ;;
+    *) LIB=target/debug/libphone_state.so ;;
+esac
+
 cargo run -q -p phone-state --bin uniffi-bindgen -- generate \
-    --library target/debug/libphone_state.so \
+    --library "$LIB" \
     --language swift \
     --out-dir swift/Sources/Meridian
 
 cargo run -q -p phone-state --bin uniffi-bindgen -- generate \
-    --library target/debug/libphone_state.so \
+    --library "$LIB" \
     --language kotlin \
     --out-dir kotlin/src/main/kotlin
 
