@@ -127,6 +127,15 @@ Generated output is committed:
 - `swift/Sources/Meridian/` — `phone_state.swift`, the C header, the modulemap
 - `kotlin/src/main/kotlin/uniffi/phone_state/phone_state.kt`
 
+The core is built in three shapes, which is what `crate-type` in
+`crates/phone-state/Cargo.toml` says: a **staticlib** for iOS, which links the
+core into the app binary rather than loading one beside it; a **cdylib** for
+Android, and for `uniffi-bindgen`, which reads the built library rather than
+the source; and a plain **lib** so the Rust front-ends can depend on it
+directly. The cdylib is the platform's own file — `.dylib` on macOS, `.so`
+everywhere else — which is why `bindings.sh` works out the name rather than
+spelling one.
+
 ## Proving it works
 
 ```
@@ -147,7 +156,21 @@ Two things it demonstrates on purpose:
   (`SourceAction.LOAD_TXS`), while one with fields comes out as a sealed class
   matched with `is`. Worth knowing before writing a `when` against either.
 
-There is no equivalent for Swift, and cannot be on Linux.
+Swift has no equivalent script, and does not need one: the iOS app is the
+proof. `./scripts/ios-run.sh` compiles the generated Swift, links the core and
+runs it in the simulator against real data, which is everything the smoke test
+would check and a screen to look at as well. Android has no app yet, which is
+why Kotlin still has the script.
+
+Two things the Swift side settled that were open questions before it was
+written:
+
+- A nested Rust enum arrives as a nested Swift one, so matching an action is
+  `case .toUi(let action)` and then a second `switch`. Whether that would be
+  pleasant to write against was a real doubt; it is fine, and `if case` covers
+  the one-armed checks in a line.
+- `Option<T>` is a Swift optional and the compiler enforces it — `logoUrl`
+  cannot be read without saying what happens when there is none.
 
 ## What is deliberately not done yet
 
@@ -156,11 +179,5 @@ There is no equivalent for Swift, and cannot be on Linux.
   a lint cannot see. Revisit when the tree drifting becomes a real problem
   rather than a hypothetical one.
 - **No app on either side.** Only the generated bindings and a smoke test.
-- **The Swift bindings have never been compiled.** iOS cannot be built on
-  Linux at all (see the README), so the generated Swift has been read and
-  diffed but never fed to a compiler. **First person on a Mac should build it
-  before trusting it.**
-- **Ergonomics unreviewed.** `Event::FromUi { event: EventUi }` generates a
-  nested Swift enum, so matching is a two-level `switch`. It works; whether it
-  is pleasant to write against is a pass #2 question, once there is a real
-  screen to judge it by.
+- **No SwiftUI or Compose yet.** The bindings compile and run on both sides,
+  and nothing draws with them.
