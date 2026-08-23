@@ -1,11 +1,13 @@
 /// The whole app: one value, matched on.
 ///
-/// There is no router and no page state. The core says which screen it is on
-/// and hands over everything that screen shows, so this is a `switch` over the
-/// last thing it rendered — the same shape as `crates/phone-main/src/app.rs`.
+/// There is no router and no page state. The core says which screen it is on,
+/// so this is a `switch` over the last thing it rendered — the same shape as
+/// `crates/phone-main/src/app.rs`.
 ///
-/// The switch is exhaustive with no `default:`. Add a `ViewScreen` variant in
-/// Rust, regenerate, and this stops compiling until the new screen is drawn.
+/// Every screen is empty for now, so nothing here reads the view the core
+/// hands over. The switch is still exhaustive with no `default:`: add a
+/// `ViewScreen` variant in Rust, regenerate, and this stops compiling until
+/// the new screen is drawn.
 
 import SwiftUI
 
@@ -18,10 +20,10 @@ struct AppView: View {
 
             if let screen = runtime.screen {
                 switch screen {
-                case .home(let view): HomeScreen(view: view)
-                case .ledger(let view): LedgerScreen(view: view)
-                case .recurring(let view): RecurringScreen(view: view)
-                case .balances(let view): BalancesScreen(view: view)
+                case .home: EmptyScreen()
+                case .ledger: EmptyScreen(title: "Ledger")
+                case .recurring: EmptyScreen(title: "Recurring")
+                case .balances: EmptyScreen(title: "Balances")
                 }
             } else {
                 Text("Starting…")
