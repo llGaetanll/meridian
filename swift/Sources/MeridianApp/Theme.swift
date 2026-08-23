@@ -32,6 +32,12 @@ enum Theme {
     static let accentBright = Color(hex: 0xC4B5FD)
     static let accentTint = Color(hex: 0x8B5CF6).opacity(0.14)
 
+    /// Named directly rather than through a role, as `--amber-300` and
+    /// `--slate-300` are in the stylesheet: the pending tag and the "due soon"
+    /// date are amber, and a connection's initials are slate.
+    static let amber300 = Color(hex: 0xFCD34D)
+    static let slate300 = Color(hex: 0xCBD5E1)
+
     static let up = Color(hex: 0xA3E635)
     static let down = Color(hex: 0xFB7185)
     static let downTint = Color(hex: 0xFB7185).opacity(0.14)
@@ -80,16 +86,3 @@ extension Color {
     }
 }
 
-extension Theme {
-    /// Temporary: the dock's icons as SF Symbols, until the app draws the same
-    /// icons the web does.
-    static func icon(_ name: String) -> String {
-        switch name {
-        case "home": return "house"
-        case "ledger": return "list.bullet"
-        case "recurring": return "arrow.trianglehead.2.clockwise"
-        case "balances": return "building.columns"
-        default: return "circle"
-        }
-    }
-}
