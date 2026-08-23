@@ -1,0 +1,174 @@
+/// The icon set, drawn from the same path data the web draws.
+///
+/// The geometry below is copied verbatim out of
+/// `crates/phone-main/src/ui/icon.rs` — the same `d` strings, the same 24-unit
+/// box, the same 1.8 stroke. That is deliberate: the core sends an icon *name*
+/// (`ViewDockItem.icon`) and each platform resolves it, so the only way the
+/// two apps can show the same glyph is for them to share the drawing rather
+/// than each pick something that looks close. SF Symbols would have been less
+/// code and a different icon set.
+///
+/// Which means a little SVG path evaluation, since SwiftUI has none. It
+/// handles the subset these icons use; `Svg.append` says what that is.
+
+import SwiftUI
+
+/// One icon, sized in points. Stroke width scales with it, so a 14pt icon is
+/// the 20pt one shrunk rather than a heavier line.
+struct Icon: View {
+    let name: String
+
+    var size: CGFloat = 20
+
+    /// The stylesheet's `.icon { stroke-width: 1.8 }`, in the 24-unit box.
+    var weight: CGFloat = 1.8
+
+    var body: some View {
+        let glyph = Glyph(name: name)
+
+        Group {
+            if Glyph.filled.contains(name) {
+                glyph.fill(.foreground)
+            } else {
+                glyph.stroke(
+                    .foreground,
+                    style: StrokeStyle(
+                        lineWidth: weight * size / 24,
+                        lineCap: .round,
+                        lineJoin: .round
+                    )
+                )
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// The paths themselves, in the 24-unit box the web draws them in.
+struct Glyph: Shape {
+    let name: String
+
+    /// Drawn filled rather than stroked, as `fill="currentColor"` in the SVG.
+    static let filled: Set<String> = ["caret"]
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+
+        switch name {
+        case "home":
+            Svg.append("M3 10.2 12 3l9 7.2", to: &path)
+            Svg.append("M5.5 9.2V20a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1V9.2", to: &path)
+
+        case "ledger":
+            for y in [6.0, 12.0, 18.0] {
+                Svg.line(9, y, 21, y, to: &path)
+                Svg.circle(4, y, 1, to: &path)
+            }
+
+        case "recurring":
+            Svg.append("M3 11a9 9 0 0 1 15-6.7L21 7", to: &path)
+            Svg.polyline([21, 3, 21, 7, 17, 7], to: &path)
+            Svg.append("M21 13a9 9 0 0 1-15 6.7L3 17", to: &path)
+            Svg.polyline([3, 21, 3, 17, 7, 17], to: &path)
+
+        case "balances":
+            Svg.append("M21.21 15.89A10 10 0 1 1 8 2.83", to: &path)
+            Svg.append("M22 12A10 10 0 0 0 12 2v10z", to: &path)
+
+        case "search":
+            Svg.circle(11, 11, 7, to: &path)
+            Svg.line(16.5, 16.5, 21, 21, to: &path)
+
+        case "filter":
+            Svg.line(4, 7, 20, 7, to: &path)
+            Svg.line(7, 12, 17, 12, to: &path)
+            Svg.line(10, 17, 14, 17, to: &path)
+
+        case "chevron":
+            Svg.polyline([6, 9, 12, 15, 18, 9], to: &path)
+
+        case "caret":
+            Svg.polygon([6, 9, 18, 9, 12, 16], to: &path)
+
+        case "eye":
+            Svg.append("M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z", to: &path)
+            Svg.circle(12, 12, 3, to: &path)
+
+        case "eye-off":
+            Svg.append("M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z", to: &path)
+            Svg.circle(12, 12, 3, to: &path)
+            Svg.line(3, 21, 21, 3, to: &path)
+
+        case "tag":
+            Svg.append(
+                "M20.6 13.4 12 4.8H4.8V12l8.6 8.6a1.7 1.7 0 0 0 2.4 0l4.8-4.8a1.7 1.7 0 0 0 0-2.4Z",
+                to: &path
+            )
+            Svg.circle(8.4, 8.4, 1.2, to: &path)
+
+        case "clock":
+            Svg.circle(12, 12, 9, to: &path)
+            Svg.polyline([12, 7, 12, 12, 15.5, 14], to: &path)
+
+        case "refresh":
+            Svg.append("M3 12a9 9 0 0 1 15-6.7L21 8", to: &path)
+            Svg.polyline([21, 3, 21, 8, 16, 8], to: &path)
+
+        // An unknown name draws nothing rather than a "missing" glyph: a gap is
+        // easier to spot in review than a box that looks deliberate.
+        default:
+            break
+        }
+
+        let scale = min(rect.width, rect.height) / 24
+
+        return path.applying(CGAffineTransform(scaleX: scale, y: scale))
+    }
+}
+
+/// The mark, from `sketches/brand/meridian-mark.svg`.
+///
+/// A globe of five strokes inside a circle, with the strokes clipped to a
+/// slightly smaller circle so they stop at the rim rather than crossing it —
+/// which is what the SVG's `clipPath` does.
+struct BrandMark: View {
+    var size: CGFloat = 30
+
+    var body: some View {
+        let weight = 14 * size / 200
+
+        ZStack {
+            Meridians()
+                .stroke(
+                    .foreground,
+                    style: StrokeStyle(lineWidth: weight, lineCap: .round, lineJoin: .round)
+                )
+                .clipShape(Circle().inset(by: size * 7 / 200))
+
+            Circle()
+                .inset(by: size * 14 / 200)
+                .stroke(.foreground, lineWidth: weight)
+        }
+        .frame(width: size, height: size)
+    }
+
+    private struct Meridians: Shape {
+        func path(in rect: CGRect) -> Path {
+            var path = Path()
+
+            for d in [
+                "M 181.753,73.308 C 171.596,42.2,126.76,28.932,81.61,43.674 C 36.459,58.415,8.09,95.584,18.247,126.692",
+                "M 118.172,15.942 C 108.574,13.867,92.658,49.819,82.622,96.243 C 72.586,142.667,72.23,181.983,81.828,184.058",
+                "M 14,100 C 14,133.585,52.504,160.811,100,160.811 C 147.496,160.811,186,133.585,186,100",
+                "M 100,14 C 66.415,14,39.189,33.252,39.189,57 C 39.189,80.748,66.415,100,100,100 C 133.585,100,160.811,80.748,160.811,57 C 160.811,33.252,133.585,14,100,14",
+                "M 147.342,171.797 C 166.464,159.188,160.77,116.822,134.624,77.17 C 108.477,37.517,71.78,15.595,52.658,28.203",
+            ] {
+                Svg.append(d, to: &path)
+            }
+
+            let scale = min(rect.width, rect.height) / 200
+
+            return path.applying(CGAffineTransform(scaleX: scale, y: scale))
+        }
+    }
+}

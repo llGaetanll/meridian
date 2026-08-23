@@ -76,7 +76,7 @@ swiftc \
     target/$RUST_TARGET/debug/libphone_state.a \
     -o $APP/Meridian \
     $BINDINGS/phone_state.swift \
-    swift/Sources/MeridianApp/*.swift
+    $(find swift/Sources/MeridianApp -name '*.swift')
 
 # What the editor needs to understand the same files, written from the same
 # flags that just built them so the two cannot drift. sourcekit-lsp reads it
@@ -91,8 +91,10 @@ bindings = pathlib.Path("swift/Sources/Meridian")
 
 files = sorted(
     str(path)
-    for directory in (bindings, pathlib.Path("swift/Sources/MeridianApp"))
-    for path in directory.glob("*.swift")
+    for path in [
+        *bindings.glob("*.swift"),
+        *pathlib.Path("swift/Sources/MeridianApp").rglob("*.swift"),
+    ]
 )
 
 arguments = [
