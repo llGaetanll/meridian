@@ -42,11 +42,20 @@ impl Ledger {
     ///
     /// A sync is a diff, not a snapshot, so all three lists matter: `removed`
     /// has to actually remove, or a transaction the bank retracted stays on
-    /// screen forever. Modified entries replace by id rather than joining the
-    /// list a second time.
+    /// screen forever.
+    ///
+    /// Both incoming lists replace by id rather than joining the list a second
+    /// time, which is what makes this idempotent: applying the same sync twice
+    /// leaves the same ledger. `added` needs that as much as `modified` does —
+    /// a cursor that is reset, or a fixture server that never advances one,
+    /// re-sends entries already held, and appending them puts the same
+    /// transaction on screen twice.
     pub fn apply(&mut self, added: Vec<Entry>, modified: Vec<Entry>, removed: &[String]) {
-        self.entries
-            .retain(|e| !removed.contains(&e.id) && !modified.iter().any(|m| m.id == e.id));
+        self.entries.retain(|e| {
+            !removed.contains(&e.id)
+                && !modified.iter().any(|m| m.id == e.id)
+                && !added.iter().any(|a| a.id == e.id)
+        });
 
         self.entries.extend(modified);
         self.entries.extend(added);

@@ -463,6 +463,24 @@ mod tests {
         assert_eq!(state.entries().len(), 2, "the ledger must not empty itself");
     }
 
+    /// The mirror of the trap above. A sync that answers with an entry the
+    /// ledger already holds must land on the one it holds, not beside it —
+    /// otherwise the same transaction is on screen twice.
+    #[test]
+    fn a_resent_entry_lands_on_the_one_already_held() {
+        let mut state = state();
+
+        eval!(&mut state,
+            < loaded(vec![entry("a"), entry("b")]),
+            > Action::ToClient { action: ActionClient::Serve },
+
+            < loaded(vec![entry("a")]),
+            > Action::ToClient { action: ActionClient::Serve },
+        );
+
+        assert_eq!(state.entries().len(), 2, "a transaction must appear once");
+    }
+
     #[test]
     fn a_later_sync_adds_to_what_is_held() {
         let mut state = state();
