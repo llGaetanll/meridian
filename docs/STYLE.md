@@ -97,10 +97,10 @@ Sub-machines do not handle events themselves. The app's `handle_events` routes
 the ones that are theirs, so there is still exactly one way anything changes.
 
 **Derive as little as possible on events and actions.** `Debug` is needed for
-logging and snapshots. `Clone` only if something genuinely needs to own one —
-they are passed by reference all the way down. **`PartialEq` in particular is
-not needed**: tests use `insta` snapshots rather than equality assertions, and
-a derive on a top-level enum spreads a bound through every type it touches.
+logging. `Clone` only if something genuinely needs to own one — they are passed
+by reference all the way down. **`PartialEq` in particular is not needed**:
+`eval!` matches actions as patterns rather than comparing them, and a derive on
+a top-level enum spreads a bound through every type it touches.
 
 **No clock, no IO, no randomness inside the machine.** Time comes in as an
 argument to `handle_events`. This is what makes a log of events a recording of
@@ -142,6 +142,47 @@ off them is what stops it spreading through every type they touch.
 
 Time is not part of the syntax: `eval!` reads the clock off the machine, so a
 test that is *about* time calls the machine's `set_now` first.
+
+**A bug is reproduced before it is fixed.** Write the test first, run it, and
+watch it fail for the reason you think it fails. Only then change the code. A
+test written after the fix proves the code does what it now does; a test written
+before it proves the bug was real and is gone.
+
+This is not a discipline the architecture asks you to supply. Everything that
+decides anything lives in a state machine, and a state machine is events in and
+actions out with no clock and no IO — so every logical bug in this codebase is
+some sequence of events producing the wrong actions, and that sequence is an
+`eval!` test. If a bug seems not to be reproducible that way, the behaviour is
+in a runtime that should not be deciding it.
+
+The bug where the same transaction appeared three times was two `PlaidLoaded`
+events carrying an entry the ledger already held:
+
+```rust
+eval!(&mut state,
+    < loaded(vec![entry("a"), entry("b")]),
+    > Action::ToClient { action: ActionClient::Serve },
+
+    < loaded(vec![entry("a")]),
+    > Action::ToClient { action: ActionClient::Serve },
+);
+
+assert_eq!(state.entries().len(), 2, "a transaction must appear once");
+```
+
+Six lines, no fixture and no server. Reproducing it that small is also what
+located it: the phone's machine assigns a snapshot wholesale and could never
+have doubled anything, which left one caller of `Ledger::apply` to look at.
+
+**`eval!` tests live in the crate's `tests/` directory**, not in a
+`#[cfg(test)] mod tests` at the foot of the file they test. A machine's tests
+grow with every event it learns to handle, and a state machine is a file people
+have to read end to end — the two do not belong in one file. One file per
+machine, named after it: `crates/phone-state/tests/state_app.rs`.
+
+Unit tests on a value stay where they are, in a module beside the thing they
+test. The rule is about machines, whose tests are conversations rather than
+assertions on a return value.
 
 **No snapshot testing.** Not inline, not in files. A snapshot asserts on a
 string, which means it passes or fails on formatting and `Debug` output that

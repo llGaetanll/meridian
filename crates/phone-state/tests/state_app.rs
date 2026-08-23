@@ -1,5 +1,5 @@
 //! The app's state machine, tested the way `docs/STYLE.md` says: events in
-//! with `<`, actions out with `>`, and an `insta` snapshot per batch.
+//! with `<`, actions out with `>`.
 //!
 //! The snapshot these run against is the real captured Plaid Sandbox feed, so
 //! what they pin is the app's behaviour on data it will actually see — the same
