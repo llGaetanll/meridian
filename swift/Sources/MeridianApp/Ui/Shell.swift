@@ -154,7 +154,10 @@ private struct Dock: View {
     var body: some View {
         GlassGroup(spacing: 10) {
             HStack(spacing: 2) {
-                ForEach(runtime.dock?.items ?? [], id: \.self) { item in
+                // Keyed on the tab, not on the whole item — `selected`
+                // changes on every tab, and keying on it would make each
+                // button a new button whenever the selection moved.
+                ForEach(runtime.dock?.items ?? [], id: \.screen) { item in
                     Button {
                         runtime.ui(.screenOpened(screen: item.screen))
                     } label: {
