@@ -32,6 +32,10 @@
          simulator's answer, which is the Mac's own loopback; the device script
          overwrites this with the Mac's address on the LAN, because that is the
          only way a phone can reach it. -->
+    <!-- The icon lives in Assets.car, which the build compiles out of
+         swift/Support/Assets.xcassets. iOS finds it by name from here. -->
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>MeridianServer</key>
     <string>http://127.0.0.1:8082</string>
     <!-- The app talks to server-main over plain HTTP, which iOS blocks by

@@ -21,21 +21,28 @@ import SwiftUI
 struct AppView: View {
     @EnvironmentObject private var runtime: RuntimeApp
 
+    /// Whether the opening screen has had its moment. Presentation rather than
+    /// a decision, so it is the view's and not the machine's.
+    @State private var opened = false
+
     var body: some View {
         ZStack {
             Theme.bg.ignoresSafeArea()
 
-            if let screen = runtime.screen {
+            if let screen = runtime.screen, opened {
                 PhoneShell(
                     title: Self.title(of: screen),
                     panel: { Self.panel(of: screen) },
                     content: { Self.content(of: screen) }
                 )
             } else {
-                Text("Starting…")
-                    .font(.system(size: 13.5))
-                    .foregroundStyle(Theme.textFaint)
+                BootScreen()
+                    .transition(.opacity)
             }
+        }
+        .task {
+            try? await Task.sleep(for: .milliseconds(BootScreen.hold))
+            withAnimation(.easeInOut(duration: 0.3)) { opened = true }
         }
         .preferredColorScheme(.dark)
         .foregroundStyle(Theme.text)
