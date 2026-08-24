@@ -69,7 +69,7 @@ impl Markets {
         // What was asked for, in the terms it was asked in. Everything below
         // is in seconds and intervals; this is the last line that says which
         // button was pressed. The span already carries the symbol and range.
-        tracing::info!(target: "app", "quote asked for");
+        tracing::info!("quote asked for");
 
         let bars = self.store.bars(symbol, interval, window.clone()).await?;
 

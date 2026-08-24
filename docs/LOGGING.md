@@ -26,9 +26,11 @@ first thing in `main`, before anything worth logging happens.
 Timestamp (UTC), the commit the build came from, level, target, the spans the
 event happened in, the message, then `key=value` fields.
 
-Targets are `api` for anything crossing the network, `cache` for what the store
-decides, `app` for the app itself, `panic` and `trace` for logging's own
-problems.
+A line's target is the module it came from — `server_main::runtime_server`,
+`web_main::io::markets` — unless it names one of the few that cut across
+modules: `api` for anything crossing the network, `cache` for what the store
+decides, `panic` and `trace` for logging's own problems. Do not invent others;
+a module name is what tells you where to go and look.
 
 Requests and responses come in pairs sharing an `id`, so they can be matched up
 when several are in flight. `->` and `<-` mean only that: what left and what
@@ -41,6 +43,10 @@ Native builds write `logs/meridian.log`, flushed line by line. The browser has
 no file to append to, so the web build keeps the last 4096 lines in memory;
 `wasmBindings.meridian_logs()` in the devtools console saves them.
 
+Only the terminal gets colour, and only when stdout is a terminal that has not
+set `NO_COLOR`. The file and the buffer are read back as text long afterwards,
+and escape codes in them are noise.
+
 Level is INFO by default. `DEBUG` adds cancelled requests.
 
 ## Every line we log
@@ -48,35 +54,35 @@ Level is INFO by default. `DEBUG` adds cancelled requests.
 Keep this list in step with the code. Adding, changing or removing a log line
 means adding, changing or removing its example here.
 
-- `INFO app meridian starting version=0.1.0`
-- `INFO app meridian server starting version=0.1.0`
-- `INFO app meridian phone starting version=0.1.0`
+- `INFO web_main meridian starting version=0.1.0`
+- `INFO server_main meridian server starting version=0.1.0`
+- `INFO phone_main meridian phone starting version=0.1.0`
   — one per binary, each first thing in its own `main`.
-- `INFO app serving live sandbox data source=plaid`
-- `INFO app no PLAID_ACCESS_TOKEN, serving captured sandbox fixtures source=fixtures`
+- `INFO server_main::runtime_server serving live sandbox data source=plaid`
+- `INFO server_main::runtime_server no PLAID_ACCESS_TOKEN, serving captured sandbox fixtures source=fixtures`
   — which of the two the server is answering from, logged once at startup.
   Only ever Sandbox; see [PLAID.md](PLAID.md).
-- `INFO app server listening port=8082`
-- `INFO app quote{symbol=SPY range=1D} quote asked for`
-- `INFO app plaid client env=sandbox base_url="https://sandbox.plaid.com/"`
+- `INFO server_main::runtime_server server listening port=8082`
+- `INFO web_main::io::markets quote{symbol=SPY range=1D} quote asked for`
+- `INFO src_plaid::plaid_client plaid client env=sandbox base_url=https://sandbox.plaid.com/`
   — which environment a session ran against, logged once when the client is
   built. See [PLAID.md](PLAID.md).
-- `INFO api -> request id=1 source=plaid method=POST url="https://sandbox.plaid.com/transactions/sync"`
+- `INFO api -> request id=1 source=plaid method=POST url=https://sandbox.plaid.com/transactions/sync`
   — the body is never logged: it carries the Plaid secret.
 - `INFO api <- response id=1 source=plaid status=200 ms=284 body="{\"added\":[{\"account_id\":\"6Pd…"`
-- `INFO api -> request id=2 source=plaid method=POST url="https://sandbox.plaid.com/accounts/balance/get"`
-- `INFO api -> request id=3 source=plaid method=POST url="https://sandbox.plaid.com/transactions/recurring/get"`
-- `INFO app transactions synced added=18 modified=0 removed=1`
+- `INFO api -> request id=2 source=plaid method=POST url=https://sandbox.plaid.com/accounts/balance/get`
+- `INFO api -> request id=3 source=plaid method=POST url=https://sandbox.plaid.com/transactions/recurring/get`
+- `INFO src_plaid transactions synced added=18 modified=0 removed=1`
   — a *diff*, not a total. A later sync answering `added=0` is normal and
   means nothing changed, not that the ledger is empty.
-- `WARN app recurring unavailable, continuing without it error="Plaid error PRODUCT_NOT_READY: …"`
+- `WARN server_main::runtime_plaid recurring unavailable, continuing without it error="Plaid error PRODUCT_NOT_READY: …"`
   — recurring is derived from transactions, so a fresh Item has none yet. One
   thin screen rather than a failed sync.
-- `WARN app plaid fetch failed code=ITEM_LOGIN_REQUIRED error="Plaid error ITEM_LOGIN_REQUIRED: …"`
+- `WARN server_main::runtime_server plaid fetch failed code=ITEM_LOGIN_REQUIRED error="Plaid error ITEM_LOGIN_REQUIRED: …"`
   — the connection needs the user to sign in again, and no retry will fix it.
-- `INFO app snapshot asked for force=false`
+- `INFO phone_main::runtime_app snapshot asked for force=false`
   — the phone asking the server for everything. `force=true` is pull-to-refresh.
-- `WARN app load failed message="could not reach the server at http://127.0.0.1:8082 — is `cargo run -p server-main` running?"`
+- `WARN phone_main::runtime_app load failed message="could not reach the server at http://127.0.0.1:8082 — is `cargo run -p server-main` running?"`
 - `INFO api quote{symbol=SPY range=1D} -> request id=2 source=yahoo method=GET url="/v8/finance/chart/SPY?period1=1785542400&period2=1785628800&interval=1m"`
 - `INFO api quote{symbol=SPY range=1D} <- response id=2 source=yahoo status=200 ms=412 body="{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"USD\",\"symbol\":\"SPY\"…"`
   — the body as it arrived, cut at 400 characters.
@@ -91,11 +97,11 @@ means adding, changing or removing its example here.
   mid-fetch looks like from here.
 - `WARN trace log file unavailable error="logs/meridian.log: permission denied"`
 - `ERROR panic panicked at=crates/web-main/src/pages/markets.rs:112 message="…"`
-- `INFO app shutting down` / `INFO app server stopped`
+- `INFO server_main::runtime_server shutting down` / `INFO server_main::runtime_server server stopped`
   — SIGINT becomes a `FromTerminal` event, so shutdown is a decision the state
   machine makes rather than something a signal handler does behind its back.
-- `WARN app a connection needs the user to sign in again; syncs will fail until they do`
-- `ERROR app a compiled-in fixture failed to parse fixture=sync error="…"`
+- `WARN server_main::runtime_server a connection needs the user to sign in again; syncs will fail until they do`
+- `ERROR server_main::runtime_plaid a compiled-in fixture failed to parse fixture=sync error="…"`
   — a build-time mistake, logged rather than panicked on.
 
 `cargo run -p api-trace --example lines` prints these for real.

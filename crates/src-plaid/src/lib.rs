@@ -78,7 +78,6 @@ pub async fn sync_transactions(
     }
 
     tracing::info!(
-        target: "app",
         added = sync.added.len(),
         modified = sync.modified.len(),
         removed = sync.removed.len(),

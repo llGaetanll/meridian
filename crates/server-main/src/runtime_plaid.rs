@@ -79,7 +79,6 @@ pub async fn fetch_all(
     // effect is the same, because the caller has no way to proceed past it.
     if config.credentials.env != PlaidEnv::Sandbox {
         tracing::error!(
-            target: "app",
             env = config.credentials.env.as_str(),
             "refusing to call anything but the Plaid Sandbox — see docs/PLAID.md",
         );
@@ -108,7 +107,6 @@ pub async fn fetch_all(
         Ok(recurring) => project::streams(&recurring),
         Err(e) => {
             tracing::warn!(
-                target: "app",
                 error = %e,
                 "recurring unavailable, continuing without it",
             );
@@ -142,7 +140,6 @@ pub fn fetch_fixtures(now: api_common::Timestamp) -> Fetched {
             Ok(value) => value,
             Err(e) => {
                 tracing::error!(
-                    target: "app",
                     fixture = name,
                     error = %e,
                     "a compiled-in fixture failed to parse",
