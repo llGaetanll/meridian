@@ -15,7 +15,12 @@ body {
   padding: 44px 40px 60px;
 }
 
-.num { font-variant-numeric: tabular-nums; }
+/* Money, set in a monospaced face: a column of figures lines up on the
+   decimal without the reader having to look for it. */
+.num {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
 .up { color: var(--up); }
 .down { color: var(--down); }
 .muted { color: var(--text-muted); }
@@ -68,7 +73,6 @@ body {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
 }
 .page-title { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; }
-.page-sub { font-size: 13px; color: var(--text-faint); margin-top: 2px; }
 
 /* Filter panel — one box per filter, in the same style the collapsed
    filter bar used to have. Two independent filters, two boxes. */
@@ -277,19 +281,6 @@ body {
 }
 .day + .tx, .month + .tx { border-top: 0; }
 
-/* Icon. Shown only where Plaid gives a real merchant `logo_url` — no
-   stand-in glyph. The slot is reserved either way, so every row's text
-   starts on the same line whether or not a logo exists. */
-.tx-logo {
-  width: 40px; height: 40px; flex: none;
-  border-radius: var(--r-md);
-  background: var(--bg-input);
-  overflow: hidden;
-}
-.tx-logo img { width: 100%; height: 100%; object-fit: cover; display: block; }
-/* the empty slot: keeps the column, shows nothing */
-.tx-logo.none { background: none; }
-
 .tx-id { flex: 1; min-width: 0; }
 .tx-name {
   font-size: 15px; font-weight: 600;
@@ -337,7 +328,7 @@ body {
 .dock {
   flex: 1; min-width: 0;
   height: 62px;
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(3, 1fr);
   align-items: center;
   gap: 2px;
   padding: 0 6px;
@@ -567,98 +558,15 @@ body {
   border-top: 1px solid var(--divider);
 }
 .rec-head + .rec { border-top: 0; }
-.rec-id { flex: 1; min-width: 0; }
 .rec-name {
+  flex: 1; min-width: 0;
   font-size: 15px; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.rec-meta { display: flex; align-items: center; gap: 7px; margin-top: 4px; }
-.rec-when { font-size: 11.5px; color: var(--text-faint); }
-/* due within the week reads as a heads-up, not an alarm */
-.rec-when.soon { color: var(--amber-300); font-weight: 600; }
+.rec-amt { flex: none; font-size: 15px; font-weight: 600; }
 
-.rec-right { flex: none; text-align: right; }
 .rec-amt { font-size: 15px; font-weight: 600; }
-.rec-freq { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
-
-/* Home — the highlight of each tab, nothing more. Every block is a door to
-   the page that owns the detail. */
-
-.home { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 20px 132px; scrollbar-width: none; }
-.home::-webkit-scrollbar { display: none; }
-
-/* Each block is a box named for the tab it previews. No "see all" link —
-   the dock is right there, and the title already says where this lives. */
-.hi {
-  margin-top: 12px;
-  padding: 14px;
-  border-radius: var(--r-lg);
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-}
-.hi:first-child { margin-top: 4px; }
-
-.hi-head {
-  display: flex; align-items: baseline; gap: 9px;
-  margin-bottom: 10px;
-}
-.hi-title {
-  font-size: 11px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--text-faint);
-}
-
-/* the one figure a block leads with */
-.hi-lead { font-size: 27px; font-weight: 700; letter-spacing: -0.03em; }
-.hi-lead .per {
-  font-size: 14px; font-weight: 500;
-  color: var(--text-faint); margin-left: 3px;
-}
-/* the unit stays legible when the figure beside it is covered */
-.hi-lead .masked + .per { margin-left: 5px; }
-.hi-sub { font-size: 12.5px; color: var(--text-faint); margin-top: 3px; }
-
-/* a compact row — smaller than a ledger row, since this is a preview */
-.hi-row {
-  display: flex; align-items: center; gap: 11px;
-  padding: 9px 0;
-  border-top: 1px solid var(--divider);
-}
-.hi-row:first-of-type { border-top: 0; }
-.hi-row .tx-logo { width: 32px; height: 32px; }
-.hi-id { flex: 1; min-width: 0; }
-.hi-name {
-  font-size: 14px; font-weight: 600;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.hi-meta { font-size: 11.5px; color: var(--text-faint); margin-top: 1px; }
-.hi-amt { flex: none; font-size: 14px; font-weight: 600; }
-
-/* the recurring breakdown, reused on Home at preview scale */
-.hi .rec-bar { margin: 12px 0 9px; height: 7px; }
-.hi .rec-legend { padding: 0; gap: 6px 14px; font-size: 11px; }
-
-/* the reconnect action: a real button, since "reconnect" alone does not
-   tell the user how. Opens Link in update mode, which is the only thing
-   that clears ITEM_LOGIN_REQUIRED. */
-.fix {
-  flex: none;
-  border: 0;
-  background: var(--accent);
-  color: #fff;
-  font: inherit; font-size: 12.5px; font-weight: 600;
-  padding: 7px 13px; border-radius: var(--r-pill);
-  cursor: pointer;
-}
-.fix:hover { background: var(--accent-strong); }
 
 /* same button on the balances page, where the connection block heads it */
 .conn-head .fix { padding: 5px 11px; font-size: 11.5px; }
 
-/* Home header — the mark, not a greeting */
-.brandline { display: flex; align-items: center; gap: 11px; }
-.brandline .brand-mark { width: 30px; height: 30px; flex: none; color: var(--violet-300); }
-.brandline .brand-name {
-  font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
-  color: var(--violet-300);
-}

@@ -1,0 +1,350 @@
+/* First run and the account tab.
+
+   Loaded after phone.css, which already owns the phone frame, the dock, and
+   the `.hi` card the account tab is built out of. Only what those two do not
+   have lives here. */
+
+/* A first-run screen is one column: a line saying where you are, the body,
+   and the actions pinned to the bottom where the thumb is. Nothing scrolls —
+   if a step needs a scrollbar it is asking too much at once. */
+
+.onb {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+  padding: 6px 26px 30px;
+}
+/* eats the slack, so the buttons sit on the bottom edge whatever is above */
+.onb-fill { flex: 1; min-height: 12px; }
+
+.onb-mark { width: 52px; height: 52px; color: var(--violet-300); margin-bottom: 22px; }
+
+.onb-title {
+  font-size: 28px; font-weight: 700; letter-spacing: -0.03em;
+  line-height: 1.18;
+}
+.onb-body {
+  font-size: 14.5px; color: var(--text-muted);
+  margin-top: 10px; max-width: 30ch;
+}
+.onb-body b { color: var(--text); font-weight: 600; }
+
+/* Where you are in the flow. Three steps, named — a bare dot row tells you
+   there is more without saying what, which is the part people want. */
+.steps {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 0 26px;
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--text-faint);
+}
+.steps i {
+  width: 18px; height: 2px; border-radius: 2px;
+  background: var(--border-strong); display: block;
+}
+.steps i.on { background: var(--accent); }
+.steps i.done { background: var(--violet-700); }
+
+/* Back sits in the status bar's shadow rather than a title bar of its own:
+   these screens have no title bar, and one chevron does not earn one. */
+.onb-back {
+  flex: none;
+  padding: 4px 20px 0;
+}
+.onb-back button {
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  border: 0; background: none; padding: 0;
+  color: var(--text-muted); cursor: pointer;
+}
+.onb-back svg { width: 20px; height: 20px; }
+
+/* Buttons. Full width, stacked, primary last-read at the bottom. */
+
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  width: 100%;
+  height: 52px;
+  border: 0; border-radius: var(--r-pill);
+  font: inherit; font-size: 16px; font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+}
+.btn + .btn { margin-top: 10px; }
+.btn svg { width: 19px; height: 19px; }
+
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.primary:hover { background: var(--accent-strong); }
+/* nothing typed yet: still readable, plainly not ready */
+.btn.primary[disabled] { background: var(--bg-input); color: var(--text-faint); cursor: default; }
+
+.btn.ghost { background: none; color: var(--text-muted); font-weight: 500; }
+.btn.line { background: var(--bg-panel); border: 1px solid var(--border-strong); color: var(--text); }
+
+/* Apple's button is Apple's: black on white, their mark, their wording. It
+   is a system control on iOS (`SignInWithAppleButton`), so this is a
+   placeholder for one rather than something to build. */
+.btn.apple { background: #fff; color: #000; }
+.btn.apple svg { width: 17px; height: 17px; }
+
+.or {
+  display: flex; align-items: center; gap: 12px;
+  margin: 16px 0;
+  font-size: 11.5px; color: var(--text-faint);
+}
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+/* One text field, focused. */
+
+.field { margin-top: 4px; }
+.field-label {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-faint);
+  margin-bottom: 8px;
+}
+.field-box {
+  display: flex; align-items: center; gap: 10px;
+  height: 52px; padding: 0 15px;
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  font-size: 16px;
+}
+.field-box.focus { border-color: var(--accent); background: var(--bg-input); }
+.field-box svg { width: 18px; height: 18px; flex: none; color: var(--text-faint); }
+.field-box .ph { color: var(--text-faint); }
+/* the text caret, drawn rather than blinking — a still frame of a live field */
+.caret {
+  width: 2px; height: 21px; border-radius: 1px;
+  background: var(--accent-soft);
+  display: inline-block; vertical-align: -4px;
+}
+
+/* The six-digit code. Boxes rather than one long field: the length is part
+   of the instruction, and a box each says how many are left without a count. */
+
+.code {
+  display: flex; gap: 9px;
+  margin-top: 6px;
+}
+.code i {
+  flex: 1; height: 60px;
+  display: grid; place-items: center;
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  font-size: 24px; font-weight: 600; font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+.code i.next { border-color: var(--accent); background: var(--bg-input); }
+.code.bad i { border-color: var(--rose-500); color: var(--rose-400); }
+
+.resend {
+  margin-top: 18px;
+  font-size: 13px; color: var(--text-faint);
+}
+.resend b { color: var(--text-muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+.resend a { color: var(--accent-soft); text-decoration: none; font-weight: 600; }
+
+/* An error under a field: the sentence says what to do next, not just what
+   went wrong. */
+.err {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 14px;
+  font-size: 13px; color: var(--rose-400);
+}
+.err svg { width: 15px; height: 15px; flex: none; }
+
+/* What connecting a bank actually does. Two columns of one word would be a
+   marketing block; these are the four facts a reasonable person wants before
+   handing over a bank login, and the fourth one is the one nobody says. */
+
+.points { margin-top: 26px; display: flex; flex-direction: column; gap: 15px; }
+.point { display: flex; gap: 12px; align-items: flex-start; }
+.point > svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+.point.yes > svg { color: var(--lime-400); }
+.point.no > svg { color: var(--text-faint); }
+.point .t { font-size: 14px; font-weight: 600; }
+.point .d { font-size: 12.5px; color: var(--text-faint); margin-top: 2px; }
+
+/* Plaid's own page, which we do not draw. Deliberately unstyled: anything
+   prettier here reads as a screen somebody has to build. */
+
+.plaid {
+  flex: 1; min-height: 0;
+  margin: 0 10px 10px;
+  border-radius: 26px;
+  background: #f7f8fa;
+  color: #1a1d21;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.plaid-bar {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 12px;
+  background: #e9ecf0;
+  font-size: 12.5px; color: #5a6470;
+}
+.plaid-bar svg { width: 12px; height: 12px; }
+.plaid-body { padding: 22px 20px; }
+.plaid-body .h { font-size: 19px; font-weight: 700; }
+.plaid-body .p { font-size: 13px; color: #5a6470; margin-top: 6px; }
+.plaid-search {
+  margin-top: 18px; padding: 12px 14px;
+  border-radius: 10px; background: #fff; border: 1px solid #d8dde4;
+  font-size: 14px; color: #8b95a1;
+}
+.plaid-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 2px;
+  border-bottom: 1px solid #e4e8ed;
+  font-size: 14.5px; font-weight: 500;
+}
+.plaid-row i {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: #dfe4ea; display: block; flex: none;
+}
+.plaid-note {
+  margin-top: auto;
+  padding: 14px 20px 20px;
+  font-size: 11.5px; color: #8b95a1; text-align: center;
+}
+
+/* The first sync. It is slow — a full history, then recurring on top — so it
+   gets a screen that says what is arriving instead of a spinner that says
+   nothing. Counts climb because `/transactions/sync` pages. */
+
+.sync-steps { margin-top: 30px; display: flex; flex-direction: column; gap: 3px; }
+.sync-step {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 0;
+  font-size: 14.5px;
+}
+.sync-step > svg { width: 17px; height: 17px; flex: none; }
+.sync-step.done > svg { color: var(--lime-400); }
+.sync-step.now > svg { color: var(--accent-soft); }
+.sync-step.wait { color: var(--text-faint); }
+.sync-step.wait > svg { color: var(--bars); }
+.sync-step .n {
+  margin-left: auto;
+  font-size: 13px; font-weight: 600; color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.sync-step.wait .n { color: var(--text-faint); font-weight: 500; }
+
+.bar {
+  height: 4px; border-radius: 2px;
+  background: var(--bg-input);
+  overflow: hidden;
+  margin-top: 4px;
+}
+.bar > i { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+
+/* What arrived, on the last screen of the flow. */
+.tally { margin-top: 26px; }
+.tally .r {
+  display: flex; align-items: baseline; gap: 12px;
+  padding: 13px 0;
+  border-top: 1px solid var(--divider);
+}
+.tally .r:first-child { border-top: 0; }
+.tally .v {
+  font-size: 22px; font-weight: 700; letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  min-width: 52px;
+}
+.tally .k { font-size: 13.5px; color: var(--text-muted); }
+
+/* Small print. Present at the point of consent, not buried in the account
+   tab: Plaid's own end-user policy has to be reachable from the flow that
+   uses it. */
+.legal {
+  margin-top: 18px;
+  font-size: 11.5px; line-height: 1.55;
+  color: var(--text-faint); text-align: center;
+}
+.legal a { color: var(--text-muted); text-decoration: underline; text-underline-offset: 2px; }
+
+/* Account tab. Built out of phone.css's `.hi` card so it looks like the rest
+   of the app rather than a settings screen bolted on. */
+
+.me { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 20px 132px; scrollbar-width: none; }
+.me::-webkit-scrollbar { display: none; }
+
+.me-who {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 2px 18px;
+}
+.me-face {
+  width: 52px; height: 52px; flex: none;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent-tint); color: var(--violet-300);
+  font-size: 20px; font-weight: 700;
+}
+.me-mail { font-size: 16px; font-weight: 600; }
+.me-since { font-size: 12.5px; color: var(--text-faint); margin-top: 2px; }
+
+/* a tappable row inside a card: label, optional value, chevron */
+.row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--divider);
+  cursor: pointer;
+}
+.row:first-of-type { border-top: 0; }
+.row .rt { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 500; }
+.row .rs { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
+.row .rv { font-size: 13px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.row > .go { width: 16px; height: 16px; flex: none; color: var(--text-faint); }
+.row .conn-logo { width: 34px; height: 34px; }
+.row.warn .rs { color: var(--amber-300); }
+.row.act { justify-content: center; color: var(--accent-soft); font-weight: 600; font-size: 14px; }
+.row.danger .rt { color: var(--rose-400); }
+
+/* A sheet over the tab it came from, iOS style: the page stays visible and
+   dimmed so the sheet reads as on top of somewhere rather than as a place. */
+
+.sheet-wrap { position: absolute; inset: 0; }
+.sheet-dim { position: absolute; inset: 0; background: rgba(0,0,0,0.55); }
+.sheet {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border-strong);
+  border-radius: 26px 26px 0 0;
+  padding: 10px 22px 30px;
+}
+.sheet-grip {
+  width: 38px; height: 4px; border-radius: 2px;
+  background: var(--border-strong);
+  margin: 0 auto 18px;
+}
+.sheet-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+.sheet-body { font-size: 13.5px; color: var(--text-muted); margin-top: 8px; }
+.sheet .btn { height: 48px; font-size: 15px; }
+.sheet .btn.bad { background: var(--down-tint); color: var(--rose-400); }
+.sheet .facts { margin: 18px 0 22px; }
+.sheet .facts .f {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--divider);
+  font-size: 13.5px;
+}
+.sheet .facts .f:first-child { border-top: 0; }
+.sheet .facts .k { color: var(--text-faint); }
+.sheet .facts .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* The empty app: connected to nothing, with the one thing to do about it.
+   Distinct from "no transactions matched", which is a different nothing. */
+.blank {
+  margin-top: 40px;
+  padding: 26px 22px;
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  text-align: center;
+}
+.blank > svg { width: 30px; height: 30px; color: var(--text-faint); margin-bottom: 14px; }
+.blank .t { font-size: 17px; font-weight: 600; }
+.blank .d { font-size: 13px; color: var(--text-faint); margin-top: 7px; }
+.blank .btn { margin-top: 20px; height: 46px; font-size: 15px; }
