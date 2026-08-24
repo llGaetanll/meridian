@@ -97,6 +97,7 @@ private struct Header: View {
                     .foregroundStyle(runtime.loading ? Theme.accentSoft : Theme.textFaint)
                     .rotationEffect(.degrees(angle))
                     .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel("Refresh")
         }
@@ -176,6 +177,12 @@ private struct Dock: View {
                                     .fill(Theme.accentSoft.opacity(0.16))
                             }
                         }
+                        // The whole tab, not the ink in it. An `Icon` is a
+                        // stroked path, and SwiftUI hit-tests a stroke on the
+                        // stroke — so without this the target is a few 1.5pt
+                        // lines, and only the selected tab, which has a filled
+                        // background, is comfortably tappable.
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
