@@ -1,6 +1,11 @@
 //! Every line the app writes, printed once, in the order a session produces
 //! them. This is what the list at the end of `docs/LOGGING.md` is taken from.
 //!
+//! Lines that carry no `target:` of their own are logged under the module they
+//! came from, and this example is one module. Where a line is a stand-in for
+//! one the app writes elsewhere, the module it really comes from is named, so
+//! that what prints here is what a real session prints.
+//!
 //! `cargo run -p api-trace --example lines`
 
 use api_trace::ApiCall;
@@ -14,11 +19,11 @@ fn main() {
         file: None,
     });
 
-    tracing::info!(target: "app", version = "0.1.0", "meridian starting");
+    tracing::info!(target: "web_main", version = "0.1.0", "meridian starting");
 
     // Plaid, which is POST and whose body is never logged: it holds the secret.
     tracing::info!(
-        target: "app",
+        target: "src_plaid::plaid_client",
         env = "sandbox",
         base_url = "https://sandbox.plaid.com/",
         "plaid client",
@@ -28,7 +33,7 @@ fn main() {
         .response(200, "{\"added\":[{\"account_id\":\"6Pd…");
 
     tracing::info!(
-        target: "app",
+        target: "src_plaid",
         added = 18,
         modified = 0,
         removed = 1,
@@ -38,7 +43,7 @@ fn main() {
     let span = tracing::info_span!("quote", symbol = "SPY", range = "1D");
     let _entered = span.enter();
 
-    tracing::info!(target: "app", "quote asked for");
+    tracing::info!(target: "web_main::io::markets", "quote asked for");
 
     ApiCall::get(
         "yahoo",

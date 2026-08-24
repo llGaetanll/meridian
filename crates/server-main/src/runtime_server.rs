@@ -93,10 +93,9 @@ impl RuntimeServer {
 
         match &plaid {
             Some(_) => {
-                tracing::info!(target: "app", source = "plaid", "serving live sandbox data")
+                tracing::info!(source = "plaid", "serving live sandbox data")
             }
             None => tracing::info!(
-                target: "app",
                 source = "fixtures",
                 "no PLAID_ACCESS_TOKEN, serving captured sandbox fixtures",
             ),
@@ -120,7 +119,7 @@ impl RuntimeServer {
 
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", PORT)).await?;
 
-        tracing::info!(target: "app", port = PORT, "server listening");
+        tracing::info!(port = PORT, "server listening");
 
         let signals = Arc::clone(&runtime);
 
@@ -128,7 +127,7 @@ impl RuntimeServer {
             .with_graceful_shutdown(async move { signals.await_shutdown().await })
             .await?;
 
-        tracing::info!(target: "app", "server stopped");
+        tracing::info!("server stopped");
 
         Ok(())
     }
@@ -151,7 +150,7 @@ impl RuntimeServer {
             state.handle_events(now, &events, &mut actions);
         }
 
-        tracing::debug!(target: "app", ?events, ?actions, "handled");
+        tracing::debug!(?events, ?actions, "handled");
 
         self.perform_actions(&actions).await;
     }
@@ -195,7 +194,6 @@ impl RuntimeServer {
             ActionProcess::Shutdown => self.shutdown.notify_waiters(),
 
             ActionProcess::ReportLoginRequired => tracing::warn!(
-                target: "app",
                 "a connection needs the user to sign in again; syncs will fail until they do",
             ),
         }
@@ -209,7 +207,7 @@ impl RuntimeServer {
         // One fetch at a time. A burst of cold requests would otherwise all
         // miss and all call out.
         let Ok(_guard) = self.fetching.try_lock() else {
-            tracing::debug!(target: "app", "a fetch is already in flight");
+            tracing::debug!("a fetch is already in flight");
             return;
         };
 
@@ -230,7 +228,7 @@ impl RuntimeServer {
                         _ => "REQUEST_FAILED".to_string(),
                     };
 
-                    tracing::warn!(target: "app", error = %e, code, "plaid fetch failed");
+                    tracing::warn!(error = %e, code, "plaid fetch failed");
 
                     EventSource::PlaidFailed { code }
                 }
@@ -310,7 +308,7 @@ impl RuntimeServer {
             _ = notified => {}
         }
 
-        tracing::info!(target: "app", "shutting down");
+        tracing::info!("shutting down");
     }
 
     /// A poisoned lock means another thread panicked while holding it.
@@ -325,7 +323,6 @@ impl RuntimeServer {
             Ok(state) => state,
             Err(poisoned) => {
                 tracing::error!(
-                    target: "app",
                     "server state lock is poisoned — a thread panicked while holding it; \
                      carrying on with the held data",
                 );
@@ -340,7 +337,6 @@ impl RuntimeServer {
             Ok(state) => state,
             Err(poisoned) => {
                 tracing::error!(
-                    target: "app",
                     "server state lock is poisoned — a thread panicked while holding it; \
                      carrying on with the held data",
                 );
@@ -386,7 +382,7 @@ async fn signal_received() -> EventTerminal {
             }
             // Without a handler there is nothing to wait for; ^C still works.
             Err(e) => {
-                tracing::warn!(target: "app", error = %e, "could not listen for SIGTERM");
+                tracing::warn!(error = %e, "could not listen for SIGTERM");
                 std::future::pending::<()>().await;
             }
         }

@@ -14,7 +14,6 @@ fn main() {
     api_trace::init(api_trace::Config::default());
 
     tracing::info!(
-        target: "app",
         version = env!("CARGO_PKG_VERSION"),
         "meridian phone starting",
     );

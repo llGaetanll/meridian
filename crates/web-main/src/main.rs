@@ -13,11 +13,7 @@ fn main() {
     // missing the request that broke.
     api_trace::init(api_trace::Config::default());
 
-    tracing::info!(
-        target: "app",
-        version = env!("CARGO_PKG_VERSION"),
-        "meridian starting",
-    );
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "meridian starting");
 
     mount_to_body(App)
 }

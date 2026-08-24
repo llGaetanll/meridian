@@ -33,6 +33,7 @@ mod clock;
 mod layer;
 mod line;
 mod sink;
+mod style;
 
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -85,7 +86,7 @@ impl Default for Config {
 /// would be ignored anyway, and losing the app to a logging mistake is not a
 /// trade worth making.
 pub fn init(config: Config) {
-    let mut sinks: Vec<Box<dyn Sink>> = vec![Box::new(Console)];
+    let mut sinks: Vec<Box<dyn Sink>> = vec![Box::new(Console::new())];
 
     if config.buffer > 0 {
         let buffer = BUFFER

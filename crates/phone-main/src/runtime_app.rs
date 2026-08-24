@@ -113,7 +113,7 @@ impl RuntimeApp {
         self.state
             .update_value(|state| state.handle_events(now, &events, &mut actions));
 
-        tracing::debug!(target: "app", ?events, ?actions, "handled");
+        tracing::debug!(?events, ?actions, "handled");
 
         self.perform_actions(&actions);
     }
@@ -144,7 +144,7 @@ impl RuntimeApp {
             }
 
             ActionUi::ShowError { message } => {
-                tracing::warn!(target: "app", message, "load failed");
+                tracing::warn!(message, "load failed");
                 self.error.set(Some(message.clone()));
             }
         }
@@ -173,7 +173,7 @@ impl RuntimeApp {
         let runtime = *self;
 
         spawn_local(async move {
-            tracing::info!(target: "app", force, "snapshot asked for");
+            tracing::info!(force, "snapshot asked for");
 
             let event = match runtime_io::fetch_snapshot(force).await {
                 Ok(json) => EventSource::SnapshotLoaded { json },

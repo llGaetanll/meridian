@@ -109,7 +109,6 @@ impl Core {
             Ok(state) => state,
             Err(poisoned) => {
                 tracing::error!(
-                    target: "app",
                     "core state lock is poisoned — a thread panicked while holding it; \
                      carrying on with the held state",
                 );

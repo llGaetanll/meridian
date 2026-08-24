@@ -6,12 +6,32 @@
 use std::collections::VecDeque;
 use std::sync::Mutex;
 
+use crate::style::Paint;
+
 pub trait Sink: Send + Sync + 'static {
     fn write(&self, line: &str);
+
+    /// Whether this sink wants colour. Anything that will be read back as
+    /// text later — a file, the buffer we ask users to send us — does not.
+    fn paint(&self) -> Paint {
+        Paint::Off
+    }
 }
 
 /// The developer console: stdout on native, the browser console on the web.
-pub struct Console;
+///
+/// The only sink a human watches live, and so the only one that is coloured.
+pub struct Console {
+    paint: Paint,
+}
+
+impl Console {
+    pub fn new() -> Self {
+        Self {
+            paint: Paint::console(),
+        }
+    }
+}
 
 impl Sink for Console {
     #[cfg(target_arch = "wasm32")]
@@ -22,6 +42,10 @@ impl Sink for Console {
     #[cfg(not(target_arch = "wasm32"))]
     fn write(&self, line: &str) {
         println!("{line}");
+    }
+
+    fn paint(&self) -> Paint {
+        self.paint
     }
 }
 

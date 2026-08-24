@@ -10,10 +10,12 @@ use tracing_subscriber::registry::LookupSpan;
 
 use crate::line::Line;
 use crate::sink::Sink;
+use crate::style;
+use crate::style::Paint;
 
-/// A span's own fields, rendered once when it opens rather than on every event
-/// inside it.
-struct SpanFields(String);
+/// A span's own fields, kept as they were recorded when it opened rather than
+/// re-recorded on every event inside it.
+struct SpanFields(Line);
 
 pub struct OneLine {
     sinks: Vec<Box<dyn Sink>>,
@@ -37,7 +39,7 @@ where
         let mut line = Line::default();
         attrs.record(&mut line);
 
-        span.extensions_mut().insert(SpanFields(line.finish()));
+        span.extensions_mut().insert(SpanFields(line));
     }
 
     fn on_event(&self, event: &Event<'_>, ctx: Context<'_, S>) {
@@ -48,7 +50,7 @@ where
 
         // Spans, outermost first, so a line reads as "what we were doing" then
         // "what happened": `quote{symbol=SPY} → GET url=…`.
-        let mut scope = String::new();
+        let mut scopes = Vec::new();
 
         if let Some(spans) = ctx.event_scope(event) {
             for span in spans.from_root() {
@@ -58,30 +60,68 @@ where
                     .map(|f| f.0.clone())
                     .unwrap_or_default();
 
-                scope.push_str(span.name());
-
-                if !fields.is_empty() {
-                    scope.push('{');
-                    scope.push_str(&fields);
-                    scope.push('}');
-                }
-
-                scope.push(' ');
+                scopes.push((span.name(), fields));
             }
         }
 
-        let rendered = format!(
-            "{} {} {:<5} {} {}{}",
-            crate::clock::now(),
-            crate::SHA,
-            meta.level(),
-            meta.target(),
-            scope,
-            line.finish(),
-        );
+        // Colour is per sink, but two sinks wanting the same thing render it
+        // once: the console and the file do not pay for each other.
+        let mut plain = None;
+        let mut coloured = None;
 
         for sink in &self.sinks {
-            sink.write(&rendered);
+            let paint = sink.paint();
+
+            let cached = match paint {
+                Paint::Off => &mut plain,
+                Paint::Ansi => &mut coloured,
+            };
+
+            let rendered = cached.get_or_insert_with(|| render(meta, &scopes, &line, paint));
+
+            sink.write(rendered);
         }
     }
+}
+
+fn render(
+    meta: &tracing::Metadata<'_>,
+    scopes: &[(&str, Line)],
+    line: &Line,
+    paint: Paint,
+) -> String {
+    let mut out = String::new();
+
+    paint.write(&mut out, style::DIM, &crate::clock::now());
+    out.push(' ');
+    paint.write(&mut out, style::DIM, crate::SHA);
+    out.push(' ');
+
+    paint.write(&mut out, style::level(meta.level()), meta.level().as_str());
+
+    // `as_str` is the level without padding, and the column has to stay put.
+    for _ in meta.level().as_str().len()..5 {
+        out.push(' ');
+    }
+
+    out.push(' ');
+    paint.write(&mut out, style::TARGET, meta.target());
+
+    for (name, fields) in scopes {
+        out.push(' ');
+        paint.write(&mut out, style::BOLD, name);
+
+        if !fields.is_empty() {
+            paint.write(&mut out, style::DIM, "{");
+            out.push_str(&fields.render(paint));
+            paint.write(&mut out, style::DIM, "}");
+        }
+    }
+
+    if !line.is_empty() {
+        out.push(' ');
+        out.push_str(&line.render(paint));
+    }
+
+    out
 }

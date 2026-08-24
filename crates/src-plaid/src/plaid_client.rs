@@ -51,12 +51,7 @@ impl PlaidClient {
         // Which environment a session ran against is the first thing worth
         // knowing when a number looks wrong, and the last thing anyone
         // remembers to write down.
-        tracing::info!(
-            target: "app",
-            env = credentials.env.as_str(),
-            base_url,
-            "plaid client",
-        );
+        tracing::info!(env = credentials.env.as_str(), base_url, "plaid client");
 
         Self::with_base_url(base_url, credentials)
     }
