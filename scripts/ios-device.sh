@@ -133,6 +133,38 @@ mkdir -p $APP
 
 cp swift/Support/Info.plist $APP/Info.plist
 
+# The app icon. `swift scripts/gen-icon.swift` redraws the PNG the catalogue
+# holds; actool turns the catalogue into the Assets.car iOS reads.
+xcrun actool swift/Support/Assets.xcassets \
+    --compile $APP \
+    --platform iphoneos \
+    --minimum-deployment-target $DEPLOYMENT \
+    --app-icon AppIcon \
+    --output-partial-info-plist $APP/icon.plist \
+    --output-format human-readable-text >/dev/null
+
+# actool writes the keys that say which sizes ended up in there; they belong
+# beside the rest rather than in a file of their own.
+python3 - "$APP" <<'PLIST'
+import plistlib
+import pathlib
+import sys
+
+app = pathlib.Path(sys.argv[1])
+partial = app / "icon.plist"
+
+with open(app / "Info.plist", "rb") as f:
+    info = plistlib.load(f)
+
+with open(partial, "rb") as f:
+    info.update(plistlib.load(f))
+
+with open(app / "Info.plist", "wb") as f:
+    plistlib.dump(info, f)
+
+partial.unlink()
+PLIST
+
 # The one thing about the bundle that is not the same on every machine. It goes
 # into the copy under target/ rather than the source, so a build never leaves
 # this Mac's address in the tree.
