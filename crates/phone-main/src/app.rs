@@ -9,7 +9,6 @@ use phone_state::ViewScreen;
 
 use crate::runtime_app::RuntimeApp;
 use crate::screens::BalancesScreen;
-use crate::screens::HomeScreen;
 use crate::screens::LedgerScreen;
 use crate::screens::RecurringScreen;
 
@@ -22,7 +21,6 @@ pub fn App() -> impl IntoView {
     view! {
         {move || match screen.get() {
             None => view! { <div class="boot">"Starting…"</div> }.into_any(),
-            Some(ViewScreen::Home { view }) => view! { <HomeScreen view=view /> }.into_any(),
             Some(ViewScreen::Ledger { view }) => view! { <LedgerScreen view=view /> }.into_any(),
             Some(ViewScreen::Recurring { view }) => {
                 view! { <RecurringScreen view=view /> }.into_any()

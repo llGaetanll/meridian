@@ -30,8 +30,7 @@ struct Masked: View {
                 bar
             } else {
                 Text(value)
-                    .font(.system(size: size, weight: .bold))
-                    .monospacedDigit()
+                    .font(.system(size: size, weight: .bold, design: .monospaced))
             }
         }
         .contentShape(Rectangle())

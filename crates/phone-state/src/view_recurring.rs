@@ -3,7 +3,6 @@
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewRecurring {
     /// `"8 streams · 7 out, 1 in"`.
-    pub subtitle: String,
 
     /// `"−$3,771.40"`, the monthly commitment.
     pub headline: String,

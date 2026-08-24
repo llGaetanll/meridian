@@ -17,7 +17,7 @@ pub fn BalancesScreen(view: ViewBalances) -> impl IntoView {
     let connections = view.connections.clone();
 
     view! {
-        <PhoneShell title="Balances" subtitle=view.subtitle>
+        <PhoneShell title="Balances">
             <div class="networth">
                 <div class="k">{view.headline_label}</div>
                 <div class="v num">

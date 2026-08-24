@@ -7,23 +7,17 @@
 
 import SwiftUI
 
-/// One transaction. The same row in the ledger and on Home, at two sizes.
+/// One transaction.
 struct TxRow: View {
     let row: ViewTxRow
-
-    /// Home previews the row smaller, and shows the category as plain text: at
-    /// preview scale a column of pills reads as noise.
-    var compact = false
 
     @EnvironmentObject private var runtime: RuntimeApp
 
     var body: some View {
-        HStack(spacing: compact ? 11 : 13) {
-            Logo(url: row.logoUrl, size: compact ? 32 : 40)
-
-            VStack(alignment: .leading, spacing: compact ? 1 : 3) {
+        HStack(spacing: 13) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(row.title)
-                    .font(.system(size: compact ? 14 : 15, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
 
@@ -35,25 +29,18 @@ struct TxRow: View {
                             .foregroundStyle(Theme.amber300)
                     }
 
-                    if compact {
-                        Text(row.category)
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(Theme.textFaint)
-                    } else {
-                        CategoryTag(label: row.category, token: row.categoryToken)
-                    }
+                    CategoryTag(label: row.category, token: row.categoryToken)
                 }
             }
 
             Spacer(minLength: 8)
 
             Text(row.amount)
-                .font(.system(size: compact ? 14 : 15, weight: .semibold))
-                .monospacedDigit()
+                .font(.system(size: 15, weight: .semibold, design: .monospaced))
                 .foregroundStyle(row.isInflow ? Theme.up : Theme.text)
         }
         .padding(.vertical, 9)
-        .padding(.horizontal, compact ? 0 : 4)
+        .padding(.horizontal, 4)
         .frame(minHeight: 44)
         // Pending — the whole row recedes, chip included, so it reads as one
         // provisional thing rather than a row with some grey parts.
@@ -63,42 +50,28 @@ struct TxRow: View {
     }
 }
 
-/// One recurring stream.
+/// One recurring stream: what it is called and what it costs.
+///
+/// When it lands and how often used to sit under each, which made a list of
+/// eight streams a wall of small grey text. The screen already says how many
+/// are due this week.
 struct StreamRow: View {
     let row: ViewStreamRow
 
-    var compact = false
-
     var body: some View {
         HStack(spacing: 13) {
-            Logo(url: row.logoUrl)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(row.title)
-                    .font(.system(size: compact ? 14 : 15, weight: .semibold))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-
-                Text(row.when)
-                    .font(.system(size: 11.5, weight: row.soon ? .semibold : .regular))
-                    // Due within the week reads as a heads-up, not an alarm.
-                    .foregroundStyle(row.soon ? Theme.amber300 : Theme.textFaint)
-            }
+            Text(row.title)
+                .font(.system(size: 15, weight: .semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
 
             Spacer(minLength: 8)
 
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(row.amount)
-                    .font(.system(size: compact ? 14 : 15, weight: .semibold))
-                    .monospacedDigit()
-
-                Text(row.frequency)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.textFaint)
-            }
+            Text(row.amount)
+                .font(.system(size: 15, weight: .semibold, design: .monospaced))
         }
-        .padding(.vertical, compact ? 9 : 12)
-        .padding(.horizontal, compact ? 0 : 4)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 4)
     }
 }
 
@@ -129,8 +102,7 @@ struct AccountRow: View {
             Spacer(minLength: 8)
 
             Text(row.amount)
-                .font(.system(size: 14, weight: .semibold))
-                .monospacedDigit()
+                .font(.system(size: 14, weight: .semibold, design: .monospaced))
                 .foregroundStyle(row.owed ? Theme.down : Theme.text)
         }
         .padding(.vertical, 10)
@@ -196,8 +168,7 @@ struct ConnectionBlock: View {
                     Spacer()
 
                     Text(connection.total)
-                        .font(.system(size: 15, weight: .bold))
-                        .monospacedDigit()
+                        .font(.system(size: 15, weight: .bold, design: .monospaced))
                         .foregroundStyle(connection.isDebts ? Theme.down : Theme.text)
                 }
                 .padding(.top, 11)
@@ -223,5 +194,19 @@ struct ReconnectButton: View {
             .background(Theme.accent, in: Capsule())
             .disabled(true)
             .opacity(0.5)
+    }
+}
+
+/// The hairline between rows inside a block. The first row does not get one —
+/// it would read as a line under whatever heading is above it.
+struct Rule: View {
+    var first = false
+
+    var body: some View {
+        if !first {
+            Rectangle()
+                .fill(Theme.divider)
+                .frame(height: 1)
+        }
     }
 }

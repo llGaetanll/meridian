@@ -18,22 +18,18 @@ use crate::ui::TxRowView;
 pub fn LedgerScreen(view: ViewLedger) -> impl IntoView {
     let filter = view.filter.clone();
 
-    // The panel is drawn only when the core says it is open, and the core is
-    // what the filter button toggles. Nothing here tracks whether it is
-    // showing.
+    // Always drawn: the two groups are the filter, and a button to reveal
+    // them was a door in front of a door.
     let panel = move || {
         let filter = filter.clone();
-        view! {
-            <FilterBar active=filter.active open=filter.open />
-            {filter.open.then(|| view! { <FilterPanel filter=filter.clone() /> })}
-        }
+        view! { <FilterPanel filter=filter.clone() /> }
     };
 
     let months = view.months.clone();
     let empty = view.empty.clone();
 
     view! {
-        <PhoneShell title="Ledger" subtitle=view.subtitle panel=panel>
+        <PhoneShell title="Ledger" panel=panel>
             <div class="list">
                 {empty
                     .map(|message| {
@@ -57,40 +53,6 @@ pub fn LedgerScreen(view: ViewLedger) -> impl IntoView {
                 </For>
             </div>
         </PhoneShell>
-    }
-}
-
-/// The control that opens the panel. A dot rather than a count: whether
-/// anything is filtering is the useful bit, and the panel says what.
-#[component]
-fn FilterBar(active: bool, open: bool) -> impl IntoView {
-    let runtime = use_runtime();
-
-    view! {
-        <div class="filterbar">
-            <button
-                class="filter-btn"
-                class:on=open
-                class:active=active
-                on:click=move |_| runtime.ui(EventUi::FilterToggled)
-            >
-                <Icon name="filter" />
-                "Filter"
-                {active.then(|| view! { <i class="dot"></i> })}
-            </button>
-
-            {(active && open)
-                .then(|| {
-                    view! {
-                        <button
-                            class="filter-clear"
-                            on:click=move |_| runtime.ui(EventUi::CategoriesCleared)
-                        >
-                            "Clear categories"
-                        </button>
-                    }
-                })}
-        </div>
     }
 }
 
