@@ -11,11 +11,18 @@ import Foundation
 enum RuntimeIo {
     /// Where `server-main` listens.
     ///
-    /// The simulator shares the Mac's network, so loopback is the Mac's
-    /// loopback and this is the same address the web front-end uses. A real
-    /// phone will need somewhere else entirely, which is a problem for the day
-    /// there is somewhere else to point at.
-    static let server = "http://127.0.0.1:8082"
+    /// Read out of the bundle rather than written here, because the answer
+    /// differs by where the app is running and neither answer belongs to the
+    /// code. The simulator shares the Mac's network, so loopback is the Mac's
+    /// loopback and the plist carries the same `127.0.0.1:8082` the web
+    /// front-end uses. A real phone has to name the Mac's address on the LAN,
+    /// which changes with the network it is on, so `scripts/ios-device.sh`
+    /// writes that address into the plist at build time.
+    ///
+    /// The fallback is the simulator's, because a bundle built without the key
+    /// is a bundle built by the simulator script.
+    static let server = Bundle.main.object(forInfoDictionaryKey: "MeridianServer") as? String
+        ?? "http://127.0.0.1:8082"
 
     /// The snapshot, as JSON.
     ///
