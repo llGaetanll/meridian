@@ -1719,9 +1719,6 @@ public object FfiConverterTypeViewAccountRow : FfiConverterRustBuffer<ViewAccoun
 data class ViewBalances(
     /**
      * `"3 connections · 14 accounts"`.
-     */
-    var `subtitle`: kotlin.String,
-    /**
      * `"Held"`. The headline is what you hold, not net worth: Plaid reports
      * the mortgage but never the house behind it, so a net figure is
      * structurally too red.
@@ -1749,15 +1746,13 @@ public object FfiConverterTypeViewBalances : FfiConverterRustBuffer<ViewBalances
         ViewBalances(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
-            FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterSequenceTypeViewConnection.read(buf),
         )
 
     override fun allocationSize(value: ViewBalances) =
         (
-            FfiConverterString.allocationSize(value.`subtitle`) +
-                FfiConverterString.allocationSize(value.`headlineLabel`) +
+            FfiConverterString.allocationSize(value.`headlineLabel`) +
                 FfiConverterString.allocationSize(value.`headline`) +
                 FfiConverterBoolean.allocationSize(value.`masked`) +
                 FfiConverterSequenceTypeViewConnection.allocationSize(value.`connections`)
@@ -1767,7 +1762,6 @@ public object FfiConverterTypeViewBalances : FfiConverterRustBuffer<ViewBalances
         value: ViewBalances,
         buf: ByteBuffer,
     ) {
-        FfiConverterString.write(value.`subtitle`, buf)
         FfiConverterString.write(value.`headlineLabel`, buf)
         FfiConverterString.write(value.`headline`, buf)
         FfiConverterBoolean.write(value.`masked`, buf)
@@ -2083,7 +2077,6 @@ public object FfiConverterTypeViewDockItem : FfiConverterRustBuffer<ViewDockItem
 }
 
 data class ViewFilter(
-    var `open`: kotlin.Boolean,
     var `categoriesOpen`: kotlin.Boolean,
     var `rangeOpen`: kotlin.Boolean,
     /**
@@ -2101,10 +2094,6 @@ data class ViewFilter(
      * `"Last 3 months"` — what a shut range group shows.
      */
     var `rangeSummary`: kotlin.String,
-    /**
-     * Whether anything is filtering at all. Drives the dot on the button.
-     */
-    var `active`: kotlin.Boolean,
 ) {
     companion object
 }
@@ -2117,33 +2106,28 @@ public object FfiConverterTypeViewFilter : FfiConverterRustBuffer<ViewFilter> {
         ViewFilter(
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
-            FfiConverterBoolean.read(buf),
             FfiConverterSequenceTypeViewCategoryChip.read(buf),
             FfiConverterSequenceTypeViewCategoryChip.read(buf),
             FfiConverterOptionalString.read(buf),
             FfiConverterTypeViewRange.read(buf),
             FfiConverterString.read(buf),
-            FfiConverterBoolean.read(buf),
         )
 
     override fun allocationSize(value: ViewFilter) =
         (
-            FfiConverterBoolean.allocationSize(value.`open`) +
-                FfiConverterBoolean.allocationSize(value.`categoriesOpen`) +
+            FfiConverterBoolean.allocationSize(value.`categoriesOpen`) +
                 FfiConverterBoolean.allocationSize(value.`rangeOpen`) +
                 FfiConverterSequenceTypeViewCategoryChip.allocationSize(value.`categories`) +
                 FfiConverterSequenceTypeViewCategoryChip.allocationSize(value.`categoriesSummary`) +
                 FfiConverterOptionalString.allocationSize(value.`categoriesOverflow`) +
                 FfiConverterTypeViewRange.allocationSize(value.`range`) +
-                FfiConverterString.allocationSize(value.`rangeSummary`) +
-                FfiConverterBoolean.allocationSize(value.`active`)
+                FfiConverterString.allocationSize(value.`rangeSummary`)
         )
 
     override fun write(
         value: ViewFilter,
         buf: ByteBuffer,
     ) {
-        FfiConverterBoolean.write(value.`open`, buf)
         FfiConverterBoolean.write(value.`categoriesOpen`, buf)
         FfiConverterBoolean.write(value.`rangeOpen`, buf)
         FfiConverterSequenceTypeViewCategoryChip.write(value.`categories`, buf)
@@ -2151,149 +2135,6 @@ public object FfiConverterTypeViewFilter : FfiConverterRustBuffer<ViewFilter> {
         FfiConverterOptionalString.write(value.`categoriesOverflow`, buf)
         FfiConverterTypeViewRange.write(value.`range`, buf)
         FfiConverterString.write(value.`rangeSummary`, buf)
-        FfiConverterBoolean.write(value.`active`, buf)
-    }
-}
-
-data class ViewHome(
-    var `balances`: ViewHomeBalances,
-    var `recurring`: ViewHomeRecurring,
-    /**
-     * The latest few ledger rows.
-     */
-    var `ledger`: List<ViewTxRow>,
-    /**
-     * Connections needing attention. Empty when everything is syncing, and
-     * the block is not drawn at all then.
-     */
-    var `attention`: List<ViewConnection>,
-) {
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeViewHome : FfiConverterRustBuffer<ViewHome> {
-    override fun read(buf: ByteBuffer): ViewHome =
-        ViewHome(
-            FfiConverterTypeViewHomeBalances.read(buf),
-            FfiConverterTypeViewHomeRecurring.read(buf),
-            FfiConverterSequenceTypeViewTxRow.read(buf),
-            FfiConverterSequenceTypeViewConnection.read(buf),
-        )
-
-    override fun allocationSize(value: ViewHome) =
-        (
-            FfiConverterTypeViewHomeBalances.allocationSize(value.`balances`) +
-                FfiConverterTypeViewHomeRecurring.allocationSize(value.`recurring`) +
-                FfiConverterSequenceTypeViewTxRow.allocationSize(value.`ledger`) +
-                FfiConverterSequenceTypeViewConnection.allocationSize(value.`attention`)
-        )
-
-    override fun write(
-        value: ViewHome,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterTypeViewHomeBalances.write(value.`balances`, buf)
-        FfiConverterTypeViewHomeRecurring.write(value.`recurring`, buf)
-        FfiConverterSequenceTypeViewTxRow.write(value.`ledger`, buf)
-        FfiConverterSequenceTypeViewConnection.write(value.`attention`, buf)
-    }
-}
-
-data class ViewHomeBalances(
-    /**
-     * `"$86,541.74"`.
-     */
-    var `headline`: kotlin.String,
-    var `masked`: kotlin.Boolean,
-    /**
-     * `"held across 14 accounts"`.
-     */
-    var `detail`: kotlin.String,
-) {
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeViewHomeBalances : FfiConverterRustBuffer<ViewHomeBalances> {
-    override fun read(buf: ByteBuffer): ViewHomeBalances =
-        ViewHomeBalances(
-            FfiConverterString.read(buf),
-            FfiConverterBoolean.read(buf),
-            FfiConverterString.read(buf),
-        )
-
-    override fun allocationSize(value: ViewHomeBalances) =
-        (
-            FfiConverterString.allocationSize(value.`headline`) +
-                FfiConverterBoolean.allocationSize(value.`masked`) +
-                FfiConverterString.allocationSize(value.`detail`)
-        )
-
-    override fun write(
-        value: ViewHomeBalances,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`headline`, buf)
-        FfiConverterBoolean.write(value.`masked`, buf)
-        FfiConverterString.write(value.`detail`, buf)
-    }
-}
-
-data class ViewHomeRecurring(
-    /**
-     * `"−$3,771.40"`.
-     */
-    var `headline`: kotlin.String,
-    var `masked`: kotlin.Boolean,
-    /**
-     * `"3 due within the week"`.
-     */
-    var `detail`: kotlin.String,
-    var `breakdown`: List<ViewBreakdownSlice>,
-    /**
-     * Only what lands next.
-     */
-    var `upcoming`: List<ViewStreamRow>,
-) {
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeViewHomeRecurring : FfiConverterRustBuffer<ViewHomeRecurring> {
-    override fun read(buf: ByteBuffer): ViewHomeRecurring =
-        ViewHomeRecurring(
-            FfiConverterString.read(buf),
-            FfiConverterBoolean.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterSequenceTypeViewBreakdownSlice.read(buf),
-            FfiConverterSequenceTypeViewStreamRow.read(buf),
-        )
-
-    override fun allocationSize(value: ViewHomeRecurring) =
-        (
-            FfiConverterString.allocationSize(value.`headline`) +
-                FfiConverterBoolean.allocationSize(value.`masked`) +
-                FfiConverterString.allocationSize(value.`detail`) +
-                FfiConverterSequenceTypeViewBreakdownSlice.allocationSize(value.`breakdown`) +
-                FfiConverterSequenceTypeViewStreamRow.allocationSize(value.`upcoming`)
-        )
-
-    override fun write(
-        value: ViewHomeRecurring,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`headline`, buf)
-        FfiConverterBoolean.write(value.`masked`, buf)
-        FfiConverterString.write(value.`detail`, buf)
-        FfiConverterSequenceTypeViewBreakdownSlice.write(value.`breakdown`, buf)
-        FfiConverterSequenceTypeViewStreamRow.write(value.`upcoming`, buf)
     }
 }
 
@@ -2301,7 +2142,6 @@ data class ViewLedger(
     /**
      * `"3 connections · synced 2m ago"`.
      */
-    var `subtitle`: kotlin.String,
     var `months`: List<ViewMonthSection>,
     /**
      * The filter panel, whose state travels with the screen it filters.
@@ -2322,7 +2162,6 @@ data class ViewLedger(
 public object FfiConverterTypeViewLedger : FfiConverterRustBuffer<ViewLedger> {
     override fun read(buf: ByteBuffer): ViewLedger =
         ViewLedger(
-            FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewMonthSection.read(buf),
             FfiConverterTypeViewFilter.read(buf),
             FfiConverterOptionalString.read(buf),
@@ -2330,8 +2169,7 @@ public object FfiConverterTypeViewLedger : FfiConverterRustBuffer<ViewLedger> {
 
     override fun allocationSize(value: ViewLedger) =
         (
-            FfiConverterString.allocationSize(value.`subtitle`) +
-                FfiConverterSequenceTypeViewMonthSection.allocationSize(value.`months`) +
+            FfiConverterSequenceTypeViewMonthSection.allocationSize(value.`months`) +
                 FfiConverterTypeViewFilter.allocationSize(value.`filter`) +
                 FfiConverterOptionalString.allocationSize(value.`empty`)
         )
@@ -2340,7 +2178,6 @@ public object FfiConverterTypeViewLedger : FfiConverterRustBuffer<ViewLedger> {
         value: ViewLedger,
         buf: ByteBuffer,
     ) {
-        FfiConverterString.write(value.`subtitle`, buf)
         FfiConverterSequenceTypeViewMonthSection.write(value.`months`, buf)
         FfiConverterTypeViewFilter.write(value.`filter`, buf)
         FfiConverterOptionalString.write(value.`empty`, buf)
@@ -2458,9 +2295,6 @@ public object FfiConverterTypeViewRange : FfiConverterRustBuffer<ViewRange> {
 data class ViewRecurring(
     /**
      * `"8 streams · 7 out, 1 in"`.
-     */
-    var `subtitle`: kotlin.String,
-    /**
      * `"−$3,771.40"`, the monthly commitment.
      */
     var `headline`: kotlin.String,
@@ -2487,7 +2321,6 @@ public object FfiConverterTypeViewRecurring : FfiConverterRustBuffer<ViewRecurri
         ViewRecurring(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
-            FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterSequenceTypeViewBreakdownSlice.read(buf),
             FfiConverterSequenceTypeViewStreamGroup.read(buf),
@@ -2495,8 +2328,7 @@ public object FfiConverterTypeViewRecurring : FfiConverterRustBuffer<ViewRecurri
 
     override fun allocationSize(value: ViewRecurring) =
         (
-            FfiConverterString.allocationSize(value.`subtitle`) +
-                FfiConverterString.allocationSize(value.`headline`) +
+            FfiConverterString.allocationSize(value.`headline`) +
                 FfiConverterString.allocationSize(value.`detail`) +
                 FfiConverterBoolean.allocationSize(value.`masked`) +
                 FfiConverterSequenceTypeViewBreakdownSlice.allocationSize(value.`breakdown`) +
@@ -2507,7 +2339,6 @@ public object FfiConverterTypeViewRecurring : FfiConverterRustBuffer<ViewRecurri
         value: ViewRecurring,
         buf: ByteBuffer,
     ) {
-        FfiConverterString.write(value.`subtitle`, buf)
         FfiConverterString.write(value.`headline`, buf)
         FfiConverterString.write(value.`detail`, buf)
         FfiConverterBoolean.write(value.`masked`, buf)
@@ -3155,17 +2986,12 @@ sealed class EventUi {
      * The eye on a covered figure.
      *
      * One switch for the whole app: revealing on Balances and staying covered
-     * on Home would be a strange thing to have to explain.
+     * on Recurring would be a strange thing to have to explain.
      */
     object MaskToggled : EventUi()
 
     /**
-     * The filter panel as a whole.
-     */
-    object FilterToggled : EventUi()
-
-    /**
-     * One of the two groups inside it.
+     * One of the two groups inside the filter panel.
      */
     data class FilterGroupToggled(
         val `group`: uniffi.phone_state.FilterGroup,
@@ -3233,32 +3059,28 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
             }
 
             5 -> {
-                EventUi.FilterToggled
-            }
-
-            6 -> {
                 EventUi.FilterGroupToggled(
                     FfiConverterTypeFilterGroup.read(buf),
                 )
             }
 
-            7 -> {
+            6 -> {
                 EventUi.CategoryToggled(
                     FfiConverterString.read(buf),
                 )
             }
 
-            8 -> {
+            7 -> {
                 EventUi.CategoriesCleared
             }
 
-            9 -> {
+            8 -> {
                 EventUi.RangeSelected(
                     FfiConverterTypeRangeSelection.read(buf),
                 )
             }
 
-            10 -> {
+            9 -> {
                 EventUi.TxSelected(
                     FfiConverterString.read(buf),
                 )
@@ -3294,13 +3116,6 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
             }
 
             is EventUi.MaskToggled -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventUi.FilterToggled -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
                     4UL
@@ -3373,36 +3188,31 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
                 Unit
             }
 
-            is EventUi.FilterToggled -> {
-                buf.putInt(5)
-                Unit
-            }
-
             is EventUi.FilterGroupToggled -> {
-                buf.putInt(6)
+                buf.putInt(5)
                 FfiConverterTypeFilterGroup.write(value.`group`, buf)
                 Unit
             }
 
             is EventUi.CategoryToggled -> {
-                buf.putInt(7)
+                buf.putInt(6)
                 FfiConverterString.write(value.`id`, buf)
                 Unit
             }
 
             is EventUi.CategoriesCleared -> {
-                buf.putInt(8)
+                buf.putInt(7)
                 Unit
             }
 
             is EventUi.RangeSelected -> {
-                buf.putInt(9)
+                buf.putInt(8)
                 FfiConverterTypeRangeSelection.write(value.`kind`, buf)
                 Unit
             }
 
             is EventUi.TxSelected -> {
-                buf.putInt(10)
+                buf.putInt(9)
                 FfiConverterString.write(value.`id`, buf)
                 Unit
             }
@@ -3630,12 +3440,11 @@ public object FfiConverterTypeRangeUnit : FfiConverterRustBuffer<RangeUnit> {
 /**
  * Which screen the app is on.
  *
- * The dock's four tabs. Search is deliberately absent — the sketch draws the
+ * The dock's three tabs. Search is deliberately absent — the sketch draws the
  * button but never the screen, so there is nothing to be faithful to yet.
  */
 
 enum class Screen {
-    HOME,
     LEDGER,
     RECURRING,
     BALANCES,
@@ -3699,16 +3508,10 @@ public object FfiConverterTypeViewRangeKind : FfiConverterRustBuffer<ViewRangeKi
 /**
  * Everything on screen, in one value.
  *
- * One type rather than four optional ones: the view renders whichever arm it
+ * One type rather than three optional ones: the view renders whichever arm it
  * is handed and holds no "which screen am I on" state of its own.
  */
 sealed class ViewScreen {
-    data class Home(
-        val `view`: uniffi.phone_state.ViewHome,
-    ) : ViewScreen() {
-        companion object
-    }
-
     data class Ledger(
         val `view`: uniffi.phone_state.ViewLedger,
     ) : ViewScreen() {
@@ -3737,24 +3540,18 @@ public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen> {
     override fun read(buf: ByteBuffer): ViewScreen =
         when (buf.getInt()) {
             1 -> {
-                ViewScreen.Home(
-                    FfiConverterTypeViewHome.read(buf),
-                )
-            }
-
-            2 -> {
                 ViewScreen.Ledger(
                     FfiConverterTypeViewLedger.read(buf),
                 )
             }
 
-            3 -> {
+            2 -> {
                 ViewScreen.Recurring(
                     FfiConverterTypeViewRecurring.read(buf),
                 )
             }
 
-            4 -> {
+            3 -> {
                 ViewScreen.Balances(
                     FfiConverterTypeViewBalances.read(buf),
                 )
@@ -3767,14 +3564,6 @@ public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen> {
 
     override fun allocationSize(value: ViewScreen): ULong =
         when (value) {
-            is ViewScreen.Home -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeViewHome.allocationSize(value.`view`)
-                )
-            }
-
             is ViewScreen.Ledger -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
@@ -3805,26 +3594,20 @@ public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen> {
         buf: ByteBuffer,
     ) {
         when (value) {
-            is ViewScreen.Home -> {
-                buf.putInt(1)
-                FfiConverterTypeViewHome.write(value.`view`, buf)
-                Unit
-            }
-
             is ViewScreen.Ledger -> {
-                buf.putInt(2)
+                buf.putInt(1)
                 FfiConverterTypeViewLedger.write(value.`view`, buf)
                 Unit
             }
 
             is ViewScreen.Recurring -> {
-                buf.putInt(3)
+                buf.putInt(2)
                 FfiConverterTypeViewRecurring.write(value.`view`, buf)
                 Unit
             }
 
             is ViewScreen.Balances -> {
-                buf.putInt(4)
+                buf.putInt(3)
                 FfiConverterTypeViewBalances.write(value.`view`, buf)
                 Unit
             }
