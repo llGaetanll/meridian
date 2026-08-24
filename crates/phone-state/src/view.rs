@@ -18,18 +18,16 @@
 /// messages that are passed by reference all the way down, so they need
 /// nothing but `Debug`.
 use crate::ViewBalances;
-use crate::ViewHome;
 use crate::ViewLedger;
 use crate::ViewRecurring;
 
 /// Which screen the app is on.
 ///
-/// The dock's four tabs. Search is deliberately absent — the sketch draws the
+/// The dock's three tabs. Search is deliberately absent — the sketch draws the
 /// button but never the screen, so there is nothing to be faithful to yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Enum)]
 pub enum Screen {
     #[default]
-    Home,
     Ledger,
     Recurring,
     Balances,
@@ -37,11 +35,10 @@ pub enum Screen {
 
 /// Everything on screen, in one value.
 ///
-/// One type rather than four optional ones: the view renders whichever arm it
+/// One type rather than three optional ones: the view renders whichever arm it
 /// is handed and holds no "which screen am I on" state of its own.
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum ViewScreen {
-    Home { view: ViewHome },
     Ledger { view: ViewLedger },
     Recurring { view: ViewRecurring },
     Balances { view: ViewBalances },

@@ -176,7 +176,7 @@ fn switching_tabs_asks_for_nothing() {
 
 #[test]
 fn a_loaded_snapshot_fills_every_screen() {
-    let (state, _) = loaded_on(Screen::Home);
+    let (state, _) = loaded_on(Screen::Ledger);
 
     assert_eq!(state.entry_count(), 48);
     assert_eq!(state.connection_count(), 1);
@@ -186,7 +186,6 @@ fn a_loaded_snapshot_fills_every_screen() {
 #[test]
 fn every_screen_renders() {
     for screen in [
-        Screen::Home,
         Screen::Ledger,
         Screen::Recurring,
         Screen::Balances,
@@ -195,8 +194,7 @@ fn every_screen_renders() {
 
         let matches = matches!(
             (screen, &view),
-            (Screen::Home, ViewScreen::Home { .. })
-                | (Screen::Ledger, ViewScreen::Ledger { .. })
+            (Screen::Ledger, ViewScreen::Ledger { .. })
                 | (Screen::Recurring, ViewScreen::Recurring { .. })
                 | (Screen::Balances, ViewScreen::Balances { .. })
         );
@@ -305,7 +303,6 @@ fn tapping_a_selected_category_deselects_it() {
     let ledger = filtered(vec![toggle("FoodAndDrink"), toggle("FoodAndDrink")]);
 
     assert_eq!(rows(&ledger).len(), 48, "back to everything");
-    assert!(!ledger.filter.active);
 }
 
 /// The counts on the chips have to say what selecting *that* chip would give.
@@ -390,7 +387,6 @@ fn an_unknown_category_id_is_ignored() {
     let ledger = filtered(vec![toggle("Crypto")]);
 
     assert_eq!(rows(&ledger).len(), 48);
-    assert!(!ledger.filter.active);
 }
 
 #[test]
@@ -449,7 +445,6 @@ fn all_time_is_the_default_and_filters_nothing() {
     let ledger = filtered(vec![]);
 
     assert_eq!(ledger.filter.range.kind, ViewRangeKind::All);
-    assert!(!ledger.filter.active);
     assert_eq!(rows(&ledger).len(), 48);
 }
 
@@ -525,15 +520,15 @@ fn revealing_shows_the_real_figure() {
 }
 
 /// One switch for the whole app: revealing on Balances and staying covered on
-/// Home would be a strange thing to have to explain.
+/// Recurring would be a strange thing to have to explain.
 #[test]
 fn the_mask_is_one_switch_across_screens() {
-    match revealed_on(Screen::Home) {
-        ViewScreen::Home { view } => {
-            assert!(!view.balances.masked);
-            assert_eq!(view.balances.headline, "$86,541.74");
+    match revealed_on(Screen::Recurring) {
+        ViewScreen::Recurring { view } => {
+            assert!(!view.masked);
+            assert_eq!(view.headline, "−$3,771.40");
         }
-        other => panic!("expected home, got {other:?}"),
+        other => panic!("expected recurring, got {other:?}"),
     }
 }
 
@@ -557,7 +552,6 @@ fn balances_lead_with_what_is_held() {
 
     assert_eq!(balances.headline_label, "Held");
     assert_eq!(balances.headline, "$86,541.74");
-    assert_eq!(balances.subtitle, "1 connection · 14 accounts");
 }
 
 /// A mortgage between a checking account and an HSA reads as something you
@@ -668,7 +662,6 @@ fn recurring_leads_with_the_monthly_commitment() {
     let recurring = recurring_of(&view);
 
     assert_eq!(recurring.headline, "−$3,771.40");
-    assert_eq!(recurring.subtitle, "8 streams · 7 out, 1 in");
     assert_eq!(recurring.detail, "+$4.22 in · net −$3,767.18");
 }
 
@@ -763,50 +756,6 @@ fn money_coming_in_is_grouped_after_everything_going_out() {
     assert_eq!(inflow, groups.len() - 1, "the inflow group comes last");
 }
 
-#[test]
-fn home_previews_each_tab() {
-    match revealed_on(Screen::Home) {
-        ViewScreen::Home { view } => {
-            assert_eq!(view.balances.headline, "$86,541.74");
-            assert_eq!(view.balances.detail, "held across 14 accounts");
-            assert_eq!(view.recurring.headline, "−$3,771.40");
-            assert_eq!(view.recurring.detail, "3 due within the week");
-
-            assert_eq!(view.ledger.len(), 4, "just the latest few");
-            assert!(!view.recurring.breakdown.is_empty());
-        }
-        other => panic!("expected home, got {other:?}"),
-    }
-}
-
-/// The preview is only useful if it shows what lands next.
-#[test]
-fn home_previews_the_soonest_streams_first() {
-    let (_, view) = loaded_on(Screen::Home);
-
-    match view {
-        ViewScreen::Home { view } => {
-            let upcoming = &view.recurring.upcoming;
-
-            assert_eq!(upcoming.len(), 2);
-            assert!(upcoming.iter().all(|s| s.soon), "both land within the week");
-            assert_eq!(upcoming[0].when, "next Aug 22 · in 3 days");
-        }
-        other => panic!("expected home, got {other:?}"),
-    }
-}
-
-/// A healthy connection is not something to put on the home screen.
-#[test]
-fn home_says_nothing_about_connections_that_are_fine() {
-    let (_, view) = loaded_on(Screen::Home);
-
-    match view {
-        ViewScreen::Home { view } => assert!(view.attention.is_empty()),
-        other => panic!("expected home, got {other:?}"),
-    }
-}
-
 /// Nothing is on screen until data arrives, and the wording has to say
 /// "loading" rather than "nothing here".
 #[test]
@@ -893,7 +842,7 @@ fn an_unreadable_snapshot_does_not_crash() {
     );
 
     assert_eq!(state.entry_count(), 0);
-    assert!(matches!(last_render(&actions), ViewScreen::Home { .. }));
+    assert!(matches!(last_render(&actions), ViewScreen::Ledger { .. }));
 }
 
 /// The reason for all of this: if every decision is a pure function of state
@@ -913,7 +862,6 @@ fn the_same_events_give_the_same_actions() {
             ui(EventUi::MaskToggled),
             open(Screen::Balances),
             open(Screen::Recurring),
-            ui(EventUi::FilterToggled),
         ]
     };
 
@@ -960,7 +908,6 @@ fn every_ui_event_produces_a_render() {
             screen: Screen::Ledger,
         },
         EventUi::MaskToggled,
-        EventUi::FilterToggled,
         EventUi::FilterGroupToggled {
             group: FilterGroup::Categories,
         },

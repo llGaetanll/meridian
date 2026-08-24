@@ -2,8 +2,6 @@
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewFilter {
-    pub open: bool,
-
     pub categories_open: bool,
     pub range_open: bool,
 
@@ -20,8 +18,6 @@ pub struct ViewFilter {
     /// `"Last 3 months"` — what a shut range group shows.
     pub range_summary: String,
 
-    /// Whether anything is filtering at all. Drives the dot on the button.
-    pub active: bool,
 }
 
 /// One category in the filter grid.

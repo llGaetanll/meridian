@@ -14,7 +14,7 @@ pub fn RecurringScreen(view: ViewRecurring) -> impl IntoView {
     let groups = view.groups.clone();
 
     view! {
-        <PhoneShell title="Recurring" subtitle=view.subtitle>
+        <PhoneShell title="Recurring">
             <div class="rec-hero">
                 <div class="v num">
                     <Masked value=view.headline masked=view.masked tappable=true />

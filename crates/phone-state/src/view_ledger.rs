@@ -6,7 +6,6 @@ use crate::ViewTxRow;
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewLedger {
     /// `"3 connections · synced 2m ago"`.
-    pub subtitle: String,
 
     pub months: Vec<ViewMonthSection>,
 

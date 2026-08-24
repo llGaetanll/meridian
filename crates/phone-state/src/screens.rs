@@ -27,9 +27,6 @@ use crate::ViewDaySection;
 use crate::ViewDock;
 use crate::ViewDockItem;
 use crate::ViewFilter;
-use crate::ViewHome;
-use crate::ViewHomeBalances;
-use crate::ViewHomeRecurring;
 use crate::ViewLedger;
 use crate::ViewMonthSection;
 use crate::ViewRange;
@@ -41,12 +38,6 @@ use crate::ViewStreamRow;
 use crate::ViewTxRow;
 use crate::fmt;
 
-/// How many ledger rows Home previews.
-const HOME_LEDGER_ROWS: usize = 4;
-
-/// How many upcoming streams Home previews.
-const HOME_UPCOMING_ROWS: usize = 2;
-
 /// A stream landing within this many days reads as a heads-up.
 const SOON_DAYS: u64 = 7;
 
@@ -55,7 +46,6 @@ const SUMMARY_CHIPS: usize = 2;
 
 pub fn screen(state: &StateApp) -> ViewScreen {
     match state.screen() {
-        Screen::Home => ViewScreen::Home { view: home(state) },
         Screen::Ledger => ViewScreen::Ledger {
             view: ledger(state),
         },
@@ -78,7 +68,6 @@ pub fn dock(current: Screen) -> ViewDock {
 
     ViewDock {
         items: vec![
-            item(Screen::Home, "Home", "home"),
             item(Screen::Ledger, "Ledger", "ledger"),
             item(Screen::Recurring, "Recurring", "recurring"),
             item(Screen::Balances, "Balances", "balances"),
@@ -90,7 +79,6 @@ fn ledger(state: &StateApp) -> ViewLedger {
     let entries = state.filtered();
 
     ViewLedger {
-        subtitle: sync_subtitle(state),
         months: group_by_month(&entries),
         filter: filter_view(state),
         empty: empty_message(state, entries.len()),
@@ -219,7 +207,6 @@ fn filter_view(state: &StateApp) -> ViewFilter {
     let overflow = selected.len().saturating_sub(SUMMARY_CHIPS);
 
     ViewFilter {
-        open: state.ledger().is_open(),
         categories_open: state.ledger().categories_open(),
         range_open: state.ledger().range_open(),
         categories,
@@ -227,7 +214,6 @@ fn filter_view(state: &StateApp) -> ViewFilter {
         categories_overflow: (overflow > 0).then(|| format!("+{overflow}")),
         range: range_view(state),
         range_summary: range_summary(&state.ledger().range()),
-        active: state.ledger().is_active(),
     }
 }
 
@@ -277,16 +263,9 @@ fn range_summary(range: &RangeSelection) -> String {
 }
 
 fn balances(state: &StateApp) -> ViewBalances {
-    let accounts: usize = state.connections().iter().map(|c| c.accounts.len()).sum();
-
     let held: f64 = state.connections().iter().map(|c| c.held()).sum();
 
     ViewBalances {
-        subtitle: format!(
-            "{} · {}",
-            fmt::plural(state.connections().len(), "connection", "connections"),
-            fmt::plural(accounts, "account", "accounts"),
-        ),
         headline_label: "Held".to_string(),
         headline: fmt::money(held, state.masked()),
         masked: state.masked(),
@@ -445,12 +424,6 @@ fn recurring(state: &StateApp) -> ViewRecurring {
     let due_soon = out.iter().filter(|s| is_soon(s, state.now())).count();
 
     ViewRecurring {
-        subtitle: format!(
-            "{} · {} out, {} in",
-            fmt::plural(active.len(), "stream", "streams"),
-            out.len(),
-            inflow.len(),
-        ),
         headline: fmt::money(monthly_out, state.masked()),
         detail: if state.masked() {
             fmt::plural(due_soon, "due within the week", "due within the week")
@@ -584,85 +557,6 @@ fn stream_row(stream: &Stream, now: Timestamp, masked: bool) -> ViewStreamRow {
         amount: fmt::money_signed(stream.amount, masked),
         frequency: stream.frequency.clone(),
     }
-}
-
-fn home(state: &StateApp) -> ViewHome {
-    let accounts: usize = state.connections().iter().map(|c| c.accounts.len()).sum();
-    let held: f64 = state.connections().iter().map(|c| c.held()).sum();
-
-    let active: Vec<&Stream> = state.streams().iter().filter(|s| s.is_active).collect();
-    let out: Vec<&Stream> = active.iter().copied().filter(|s| s.is_outflow()).collect();
-
-    let monthly_out: f64 = out.iter().map(|s| s.monthly_amount()).sum();
-
-    // What lands next, soonest first — the only ordering that makes a
-    // two-row preview useful.
-    let mut upcoming: Vec<&Stream> = out
-        .iter()
-        .copied()
-        .filter(|s| s.next_date.is_some())
-        .collect();
-
-    upcoming.sort_by_key(|s| s.next_date.unwrap_or(Timestamp::MAX));
-
-    let due_soon = out.iter().filter(|s| is_soon(s, state.now())).count();
-
-    ViewHome {
-        balances: ViewHomeBalances {
-            headline: fmt::money(held, state.masked()),
-            masked: state.masked(),
-            detail: format!(
-                "held across {}",
-                fmt::plural(accounts, "account", "accounts")
-            ),
-        },
-        recurring: ViewHomeRecurring {
-            headline: fmt::money(monthly_out, state.masked()),
-            masked: state.masked(),
-            detail: match due_soon {
-                0 => "nothing due this week".to_string(),
-                n => format!("{n} due within the week"),
-            },
-            breakdown: breakdown(&out, state.masked()),
-            upcoming: upcoming
-                .iter()
-                .take(HOME_UPCOMING_ROWS)
-                .map(|s| stream_row(s, state.now(), state.masked()))
-                .collect(),
-        },
-        ledger: state
-            .entries()
-            .iter()
-            .take(HOME_LEDGER_ROWS)
-            .map(|e| tx_row(e, false))
-            .collect(),
-        attention: state
-            .connections()
-            .iter()
-            .filter(|c| c.status == ConnectionStatus::LoginRequired)
-            .map(|c| {
-                let accounts: Vec<&Account> = c.accounts.iter().collect();
-                connection_view(c, &accounts, state.masked(), false, state.now())
-            })
-            .collect(),
-    }
-}
-
-/// `"3 connections · synced 2m ago"`.
-fn sync_subtitle(state: &StateApp) -> String {
-    let synced = state
-        .connections()
-        .iter()
-        .find_map(|c| match &c.status {
-            ConnectionStatus::Ok { synced_at } => Some(fmt::relative_time(*synced_at, state.now())),
-            ConnectionStatus::LoginRequired => None,
-        })
-        .unwrap_or_else(|| "not syncing".to_string());
-
-    format!(
-        "{} · {synced}",
-        fmt::plural(state.connections().len(), "connection", "connections"),
-    )
 }
 
 /// The stable id a category travels under.

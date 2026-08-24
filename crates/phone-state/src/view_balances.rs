@@ -3,7 +3,6 @@
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewBalances {
     /// `"3 connections · 14 accounts"`.
-    pub subtitle: String,
 
     /// `"Held"`. The headline is what you hold, not net worth: Plaid reports
     /// the mortgage but never the house behind it, so a net figure is

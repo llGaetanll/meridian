@@ -8,9 +8,7 @@
 import SwiftUI
 
 struct PhoneShell<Panel: View, Content: View>: View {
-    /// The big title. `nil` on Home, which shows the mark instead.
-    var title: String?
-    var subtitle: String?
+    var title: String
 
     /// Drawn above the body — the filter panel, on the one screen that has
     /// one.
@@ -22,7 +20,7 @@ struct PhoneShell<Panel: View, Content: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Header(title: title, subtitle: subtitle)
+            Header(title: title)
 
             // A banner rather than a screen: whatever was loaded before is
             // still worth looking at, so the failure sits above it instead of
@@ -51,71 +49,22 @@ struct PhoneShell<Panel: View, Content: View>: View {
 /// The shell with nothing between the header and the body, which is every
 /// screen but the Ledger.
 extension PhoneShell where Panel == EmptyView {
-    init(title: String? = nil, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
-        self.init(title: title, subtitle: subtitle, panel: { EmptyView() }, content: content)
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.init(title: title, panel: { EmptyView() }, content: content)
     }
 }
 
 private struct Header: View {
-    let title: String?
-    let subtitle: String?
-
-    @EnvironmentObject private var runtime: RuntimeApp
-
-    @State private var angle: Double = 0
+    let title: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            if let title {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 30, weight: .bold))
-                        .tracking(-0.9)
-
-                    if let subtitle {
-                        Text(subtitle)
-                            .font(.system(size: 13))
-                            .foregroundStyle(Theme.textFaint)
-                    }
-                }
-            } else {
-                HStack(spacing: 11) {
-                    BrandMark(size: 30)
-                    Text("Meridian")
-                        .font(.system(size: 22, weight: .semibold))
-                        .tracking(-0.44)
-                }
-                .foregroundStyle(Theme.accentBright)
-            }
-
-            Spacer(minLength: 0)
-
-            Button {
-                runtime.ui(.refreshRequested)
-            } label: {
-                Icon(name: "refresh", size: 17)
-                    .foregroundStyle(runtime.loading ? Theme.accentSoft : Theme.textFaint)
-                    .rotationEffect(.degrees(angle))
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
-            }
-            .accessibilityLabel("Refresh")
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 10)
-        .padding(.bottom, 2)
-        // A slow spin while a fetch is in flight — the one piece of state the
-        // runtime keeps rather than the core, because it is a fact about the
-        // request and not a decision.
-        .onChange(of: runtime.loading) { _, loading in
-            if loading {
-                withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {
-                    angle = 360
-                }
-            } else {
-                withAnimation(.linear(duration: 0.2)) { angle = 0 }
-            }
-        }
+        Text(title)
+            .font(.system(size: 30, weight: .bold))
+            .tracking(-0.9)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 20)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
     }
 }
 

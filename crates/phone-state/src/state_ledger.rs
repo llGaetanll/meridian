@@ -26,7 +26,6 @@ use crate::fmt;
 /// What the Ledger is filtered by, and what its panel is showing.
 #[derive(Debug)]
 pub struct StateLedger {
-    open: bool,
     categories_open: bool,
     range_open: bool,
 
@@ -40,11 +39,13 @@ pub struct StateLedger {
 impl Default for StateLedger {
     fn default() -> Self {
         Self {
-            open: false,
-            // Both groups start open, because a panel that opens showing two
-            // collapsed headings has told the user nothing.
-            categories_open: true,
-            range_open: true,
+            // Both groups start shut. They used to start open, because the
+            // panel was something you opened and two collapsed headings would
+            // have told you nothing — but the panel is always drawn now, and
+            // two open groups are a screen of filter in front of the list they
+            // filter. Shut, each still says what it is set to.
+            categories_open: false,
+            range_open: false,
             categories: Vec::new(),
             range: RangeSelection::All,
         }
@@ -52,10 +53,6 @@ impl Default for StateLedger {
 }
 
 impl StateLedger {
-    pub(crate) fn toggle_panel(&mut self) {
-        self.open = !self.open;
-    }
-
     pub(crate) fn toggle_group(&mut self, group: FilterGroup) {
         match group {
             FilterGroup::Categories => self.categories_open = !self.categories_open,
@@ -92,10 +89,6 @@ impl StateLedger {
 
     pub(crate) fn set_range(&mut self, range: RangeSelection) {
         self.range = range;
-    }
-
-    pub(crate) fn is_open(&self) -> bool {
-        self.open
     }
 
     pub(crate) fn categories_open(&self) -> bool {

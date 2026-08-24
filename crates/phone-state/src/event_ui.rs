@@ -17,13 +17,10 @@ pub enum EventUi {
     /// The eye on a covered figure.
     ///
     /// One switch for the whole app: revealing on Balances and staying covered
-    /// on Home would be a strange thing to have to explain.
+    /// on Recurring would be a strange thing to have to explain.
     MaskToggled,
 
-    /// The filter panel as a whole.
-    FilterToggled,
-
-    /// One of the two groups inside it.
+    /// One of the two groups inside the filter panel.
     FilterGroupToggled { group: FilterGroup },
 
     /// A category chip. Multi-select, so this toggles rather than sets.

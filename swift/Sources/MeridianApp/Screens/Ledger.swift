@@ -5,20 +5,14 @@ import SwiftUI
 
 /// The filter, which sits above the list rather than scrolling with it as
 /// part of it. `AppView` hands this to the shell's panel slot.
+///
+/// Always drawn: the two groups are the filter, and a button to reveal them
+/// was a door in front of a door.
 struct LedgerPanel: View {
     let filter: ViewFilter
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            FilterBar(filter: filter)
-
-            // Drawn only when the core says it is open, and the core is what
-            // the filter button toggles. Nothing here tracks whether it is
-            // showing.
-            if filter.open {
-                FilterPanel(filter: filter)
-            }
-        }
+        FilterPanel(filter: filter)
     }
 }
 
@@ -91,48 +85,15 @@ private extension ViewMonthSection {
     var key: String { name + year }
 }
 
-/// The control that opens the panel. A dot rather than a count: whether
-/// anything is filtering is the useful bit, and the panel says what.
-private struct FilterBar: View {
-    let filter: ViewFilter
-
+/// Drawn inside the group it clears, and only when something is selected.
+private struct ClearCategories: View {
     @EnvironmentObject private var runtime: RuntimeApp
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button {
-                runtime.ui(.filterToggled)
-            } label: {
-                HStack(spacing: 7) {
-                    Icon(name: "filter", size: 14)
-                    Text("Filter").font(.system(size: 12.5, weight: .semibold))
-
-                    if filter.active {
-                        Circle()
-                            .fill(Theme.accentSoft)
-                            .frame(width: 6, height: 6)
-                    }
-                }
-                .foregroundStyle(filter.open ? Theme.accentBright : Theme.textMuted)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 7)
-                .background(filter.open ? Theme.accentTint : Theme.bgPanel, in: Capsule())
-                .overlay(
-                    Capsule().stroke(filter.open ? .clear : Theme.border, lineWidth: 1)
-                )
-            }
-            .buttonStyle(.plain)
-
-            if filter.active && filter.open {
-                Button("Clear categories") { runtime.ui(.categoriesCleared) }
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.textFaint)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
+        Button("Clear categories") { runtime.ui(.categoriesCleared) }
+            .font(.system(size: 12))
+            .foregroundStyle(Theme.textFaint)
+            .padding(.top, 9)
     }
 }
 
@@ -170,6 +131,10 @@ private struct FilterPanel: View {
                         ForEach(filter.categories, id: \.id) { chip in
                             CategoryChip(chip: chip)
                         }
+                    }
+
+                    if !filter.categoriesSummary.isEmpty {
+                        ClearCategories()
                     }
                 }
             )

@@ -2,11 +2,9 @@
 //! it — see `phone_state::ViewScreen`.
 
 mod balances;
-mod home;
 mod ledger;
 mod recurring;
 
 pub use balances::BalancesScreen;
-pub use home::HomeScreen;
 pub use ledger::LedgerScreen;
 pub use recurring::RecurringScreen;

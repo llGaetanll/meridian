@@ -28,7 +28,6 @@ struct AppView: View {
             if let screen = runtime.screen {
                 PhoneShell(
                     title: Self.title(of: screen),
-                    subtitle: Self.subtitle(of: screen),
                     panel: { Self.panel(of: screen) },
                     content: { Self.content(of: screen) }
                 )
@@ -43,22 +42,11 @@ struct AppView: View {
         .tint(Theme.accentSoft)
     }
 
-    /// The big title. `nil` on Home, which shows the mark instead.
-    private static func title(of screen: ViewScreen) -> String? {
+    private static func title(of screen: ViewScreen) -> String {
         switch screen {
-        case .home: nil
         case .ledger: "Ledger"
         case .recurring: "Recurring"
         case .balances: "Balances"
-        }
-    }
-
-    private static func subtitle(of screen: ViewScreen) -> String? {
-        switch screen {
-        case .home: nil
-        case .ledger(let view): view.subtitle
-        case .recurring(let view): view.subtitle
-        case .balances(let view): view.subtitle
         }
     }
 
@@ -66,7 +54,6 @@ struct AppView: View {
     @ViewBuilder
     private static func panel(of screen: ViewScreen) -> some View {
         switch screen {
-        case .home: EmptyView()
         case .ledger(let view): LedgerPanel(filter: view.filter)
         case .recurring: EmptyView()
         case .balances: EmptyView()
@@ -76,7 +63,6 @@ struct AppView: View {
     @ViewBuilder
     private static func content(of screen: ViewScreen) -> some View {
         switch screen {
-        case .home(let view): HomeScreen(view: view)
         case .ledger(let view): LedgerScreen(view: view)
         case .recurring(let view): RecurringScreen(view: view)
         case .balances(let view): BalancesScreen(view: view)

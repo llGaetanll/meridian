@@ -13,8 +13,6 @@ struct Breakdown: View {
     var legend = false
 
     /// Home draws the same thing smaller, as a preview.
-    var compact = false
-
     var body: some View {
         GeometryReader { geometry in
             HStack(spacing: 2) {
@@ -24,16 +22,16 @@ struct Breakdown: View {
                 }
             }
         }
-        .frame(height: compact ? 7 : 8)
+        .frame(height: 8)
         .clipShape(Capsule())
 
         if legend {
             let columns = [
-                GridItem(.flexible(), spacing: compact ? 14 : 18),
-                GridItem(.flexible(), spacing: compact ? 14 : 18),
+                GridItem(.flexible(), spacing: 18),
+                GridItem(.flexible(), spacing: 18),
             ]
 
-            LazyVGrid(columns: columns, alignment: .leading, spacing: compact ? 6 : 7) {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 7) {
                 ForEach(slices, id: \.self) { slice in
                     HStack(spacing: 7) {
                         Circle()
@@ -53,7 +51,7 @@ struct Breakdown: View {
                     }
                 }
             }
-            .font(.system(size: compact ? 11 : 11.5))
+            .font(.system(size: 11.5))
         }
     }
 

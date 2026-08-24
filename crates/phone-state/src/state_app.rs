@@ -175,8 +175,6 @@ impl StateApp {
 
             // Everything the Ledger owns is routed to its own machine, which
             // keeps the app's arms free of what a category chip is.
-            EventUi::FilterToggled => self.ledger.toggle_panel(),
-
             EventUi::FilterGroupToggled { group } => self.ledger.toggle_group(*group),
 
             EventUi::CategoryToggled { id } => {
