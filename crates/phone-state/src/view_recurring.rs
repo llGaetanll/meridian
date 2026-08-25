@@ -1,9 +1,9 @@
 //! The Recurring screen: what comes back.
 
+use crate::ViewCalendar;
+
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewRecurring {
-    /// `"8 streams · 7 out, 1 in"`.
-
     /// `"−$3,771.40"`, the monthly commitment.
     pub headline: String,
 
@@ -15,6 +15,9 @@ pub struct ViewRecurring {
     /// The breakdown bar and its legend are two views of one split, so they
     /// come from one list.
     pub breakdown: Vec<ViewBreakdownSlice>,
+
+    /// When it all lands, under the breakdown.
+    pub calendar: ViewCalendar,
 
     pub groups: Vec<ViewStreamGroup>,
 }

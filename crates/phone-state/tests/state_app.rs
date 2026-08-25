@@ -665,6 +665,81 @@ fn recurring_leads_with_the_monthly_commitment() {
     assert_eq!(recurring.detail, "+$4.22 in · net −$3,767.18");
 }
 
+/// The grid is one shape whatever month it is: six rows of seven, with the
+/// days either side of the month drawn rather than left blank.
+#[test]
+fn the_calendar_is_always_six_full_weeks() {
+    let (_, view) = loaded_on(Screen::Recurring);
+    let calendar = &recurring_of(&view).calendar;
+
+    assert_eq!(calendar.month, "August 2026");
+    assert_eq!(calendar.weekdays, ["M", "T", "W", "T", "F", "S", "S"]);
+    assert_eq!(calendar.weeks.len(), 6);
+
+    for week in &calendar.weeks {
+        assert_eq!(week.len(), 7);
+        assert!(week.iter().all(|d| !d.label.is_empty()), "no blank cells");
+    }
+}
+
+/// August 2026 starts on a Saturday, so the row it starts in carries five days
+/// of July before it — and those are dimmed rather than dropped.
+#[test]
+fn the_calendar_starts_the_month_on_its_own_weekday() {
+    let (_, view) = loaded_on(Screen::Recurring);
+    let first = &recurring_of(&view).calendar.weeks[0];
+
+    let labels: Vec<&str> = first.iter().map(|d| d.label.as_str()).collect();
+    assert_eq!(labels, ["27", "28", "29", "30", "31", "1", "2"]);
+
+    let outside: Vec<bool> = first.iter().map(|d| d.outside).collect();
+    assert_eq!(outside, [true, true, true, true, true, false, false]);
+}
+
+/// Today is marked, and it is the only one.
+#[test]
+fn the_calendar_marks_today() {
+    let (_, view) = loaded_on(Screen::Recurring);
+    let calendar = &recurring_of(&view).calendar;
+
+    let today: Vec<&str> = calendar
+        .weeks
+        .iter()
+        .flatten()
+        .filter(|d| d.today)
+        .map(|d| d.label.as_str())
+        .collect();
+
+    assert_eq!(today, ["19"]);
+}
+
+/// Only dates the source predicts. Every stream with a next date contributes
+/// one mark and no more — nothing is projected forward from a frequency.
+#[test]
+fn the_calendar_marks_only_the_dates_plaid_gave_us() {
+    let (state, view) = loaded_on(Screen::Recurring);
+    let calendar = &recurring_of(&view).calendar;
+
+    let marks: usize = calendar.weeks.iter().flatten().map(|d| d.marks.len()).sum();
+
+    assert!(marks > 0, "the feed has streams with next dates");
+    assert!(
+        marks <= state.stream_count(),
+        "{marks} marks from {} streams",
+        state.stream_count(),
+    );
+
+    // A marked day carries the category token the breakdown above colours by.
+    let tokens: Vec<&str> = calendar
+        .weeks
+        .iter()
+        .flatten()
+        .flat_map(|d| d.marks.iter().map(|m| m.as_str()))
+        .collect();
+
+    assert!(tokens.iter().all(|t| t.starts_with("c-")), "{tokens:?}");
+}
+
 /// The bar and the legend are two views of one split, so the shares have to add
 /// up to the whole bar.
 #[test]

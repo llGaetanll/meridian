@@ -1822,6 +1822,110 @@ public object FfiConverterTypeViewBreakdownSlice : FfiConverterRustBuffer<ViewBr
 }
 
 /**
+ * A calendar of the month the app is in.
+ *
+ * Six rows always, and the days either side of the month drawn rather than
+ * left blank — a grid that changes height as the months turn moves everything
+ * under it, and a row of empty cells reads as a rendering fault.
+ */
+data class ViewCalendar(
+    /**
+     * `"August 2026"`.
+     */
+    var `month`: kotlin.String,
+    /**
+     * `["M", "T", "W", "T", "F", "S", "S"]` — the column headings, starting
+     * on Monday.
+     */
+    var `weekdays`: List<kotlin.String>,
+    var `weeks`: List<List<ViewCalendarDay>>,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewCalendar : FfiConverterRustBuffer<ViewCalendar> {
+    override fun read(buf: ByteBuffer): ViewCalendar =
+        ViewCalendar(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceSequenceTypeViewCalendarDay.read(buf),
+        )
+
+    override fun allocationSize(value: ViewCalendar) =
+        (
+            FfiConverterString.allocationSize(value.`month`) +
+                FfiConverterSequenceString.allocationSize(value.`weekdays`) +
+                FfiConverterSequenceSequenceTypeViewCalendarDay.allocationSize(value.`weeks`)
+        )
+
+    override fun write(
+        value: ViewCalendar,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`month`, buf)
+        FfiConverterSequenceString.write(value.`weekdays`, buf)
+        FfiConverterSequenceSequenceTypeViewCalendarDay.write(value.`weeks`, buf)
+    }
+}
+
+data class ViewCalendarDay(
+    /**
+     * `"12"`.
+     */
+    var `label`: kotlin.String,
+    /**
+     * A day belonging to the month either side. Drawn, and dimmed.
+     */
+    var `outside`: kotlin.Boolean,
+    var `today`: kotlin.Boolean,
+    /**
+     * One per stream landing that day, as category tokens — the same tokens
+     * the breakdown above colours its segments with.
+     *
+     * Only dates the source actually predicts. Nothing here is projected
+     * forward from a stream's frequency, so a month shows as many marks as
+     * there are streams and no more.
+     */
+    var `marks`: List<kotlin.String>,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewCalendarDay : FfiConverterRustBuffer<ViewCalendarDay> {
+    override fun read(buf: ByteBuffer): ViewCalendarDay =
+        ViewCalendarDay(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+
+    override fun allocationSize(value: ViewCalendarDay) =
+        (
+            FfiConverterString.allocationSize(value.`label`) +
+                FfiConverterBoolean.allocationSize(value.`outside`) +
+                FfiConverterBoolean.allocationSize(value.`today`) +
+                FfiConverterSequenceString.allocationSize(value.`marks`)
+        )
+
+    override fun write(
+        value: ViewCalendarDay,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`label`, buf)
+        FfiConverterBoolean.write(value.`outside`, buf)
+        FfiConverterBoolean.write(value.`today`, buf)
+        FfiConverterSequenceString.write(value.`marks`, buf)
+    }
+}
+
+/**
  * One category in the filter grid.
  */
 data class ViewCategoryChip(
@@ -2294,7 +2398,6 @@ public object FfiConverterTypeViewRange : FfiConverterRustBuffer<ViewRange> {
 
 data class ViewRecurring(
     /**
-     * `"8 streams · 7 out, 1 in"`.
      * `"−$3,771.40"`, the monthly commitment.
      */
     var `headline`: kotlin.String,
@@ -2308,6 +2411,10 @@ data class ViewRecurring(
      * come from one list.
      */
     var `breakdown`: List<ViewBreakdownSlice>,
+    /**
+     * When it all lands, under the breakdown.
+     */
+    var `calendar`: ViewCalendar,
     var `groups`: List<ViewStreamGroup>,
 ) {
     companion object
@@ -2323,6 +2430,7 @@ public object FfiConverterTypeViewRecurring : FfiConverterRustBuffer<ViewRecurri
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterSequenceTypeViewBreakdownSlice.read(buf),
+            FfiConverterTypeViewCalendar.read(buf),
             FfiConverterSequenceTypeViewStreamGroup.read(buf),
         )
 
@@ -2332,6 +2440,7 @@ public object FfiConverterTypeViewRecurring : FfiConverterRustBuffer<ViewRecurri
                 FfiConverterString.allocationSize(value.`detail`) +
                 FfiConverterBoolean.allocationSize(value.`masked`) +
                 FfiConverterSequenceTypeViewBreakdownSlice.allocationSize(value.`breakdown`) +
+                FfiConverterTypeViewCalendar.allocationSize(value.`calendar`) +
                 FfiConverterSequenceTypeViewStreamGroup.allocationSize(value.`groups`)
         )
 
@@ -2343,6 +2452,7 @@ public object FfiConverterTypeViewRecurring : FfiConverterRustBuffer<ViewRecurri
         FfiConverterString.write(value.`detail`, buf)
         FfiConverterBoolean.write(value.`masked`, buf)
         FfiConverterSequenceTypeViewBreakdownSlice.write(value.`breakdown`, buf)
+        FfiConverterTypeViewCalendar.write(value.`calendar`, buf)
         FfiConverterSequenceTypeViewStreamGroup.write(value.`groups`, buf)
     }
 }
@@ -3650,6 +3760,34 @@ public object FfiConverterOptionalString : FfiConverterRustBuffer<kotlin.String?
 /**
  * @suppress
  */
+public object FfiConverterSequenceString : FfiConverterRustBuffer<List<kotlin.String>> {
+    override fun read(buf: ByteBuffer): List<kotlin.String> {
+        val len = buf.getInt()
+        return List<kotlin.String>(len) {
+            FfiConverterString.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.String>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterString.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<kotlin.String>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterString.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeViewAccountRow : FfiConverterRustBuffer<List<ViewAccountRow>> {
     override fun read(buf: ByteBuffer): List<ViewAccountRow> {
         val len = buf.getInt()
@@ -3699,6 +3837,34 @@ public object FfiConverterSequenceTypeViewBreakdownSlice : FfiConverterRustBuffe
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewBreakdownSlice.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeViewCalendarDay : FfiConverterRustBuffer<List<ViewCalendarDay>> {
+    override fun read(buf: ByteBuffer): List<ViewCalendarDay> {
+        val len = buf.getInt()
+        return List<ViewCalendarDay>(len) {
+            FfiConverterTypeViewCalendarDay.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ViewCalendarDay>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeViewCalendarDay.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<ViewCalendarDay>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeViewCalendarDay.write(it, buf)
         }
     }
 }
@@ -3979,6 +4145,34 @@ public object FfiConverterSequenceTypeEvent : FfiConverterRustBuffer<List<Event>
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeEvent.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceSequenceTypeViewCalendarDay : FfiConverterRustBuffer<List<List<ViewCalendarDay>>> {
+    override fun read(buf: ByteBuffer): List<List<ViewCalendarDay>> {
+        val len = buf.getInt()
+        return List<List<ViewCalendarDay>>(len) {
+            FfiConverterSequenceTypeViewCalendarDay.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<List<ViewCalendarDay>>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterSequenceTypeViewCalendarDay.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<List<ViewCalendarDay>>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterSequenceTypeViewCalendarDay.write(it, buf)
         }
     }
 }

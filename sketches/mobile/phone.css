@@ -570,3 +570,43 @@ body {
 /* same button on the balances page, where the connection block heads it */
 .conn-head .fix { padding: 5px 11px; font-size: 11.5px; }
 
+
+/* The month, with a mark on every day a stream lands. Six rows always, and the
+   days either side of the month dimmed rather than dropped — a grid that
+   changes height as the months turn moves everything under it. */
+
+.cal { padding: 12px 20px; }
+.cal-month {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-faint);
+  margin-bottom: 8px;
+}
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 4px; }
+
+.cal-wd {
+  font-size: 10px; font-weight: 600;
+  color: color-mix(in srgb, var(--text-faint) 70%, transparent);
+  text-align: center;
+  padding-bottom: 6px;
+}
+
+.cal-day { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.cal-day .n {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 12.5px; color: var(--text-muted);
+  width: 24px; height: 24px; line-height: 24px; text-align: center;
+  border-radius: 50%;
+}
+.cal-day.outside .n { color: color-mix(in srgb, var(--text-faint) 45%, transparent); }
+.cal-day.today .n {
+  font-weight: 700; color: var(--violet-300);
+  background: color-mix(in srgb, var(--violet-400) 18%, transparent);
+}
+
+/* A row of marks rather than a count: which categories land that day is the
+   useful bit, and three dots is already a busy day. */
+.cal-day .marks { display: flex; gap: 2.5px; height: 4px; }
+.cal-day .marks i {
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--cat-color, var(--bars));
+}
