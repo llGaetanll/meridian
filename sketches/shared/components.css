@@ -1,0 +1,261 @@
+/* The design language.
+
+   Every control the app draws, in one place, so the phone, the web and the
+   desktop app draw the same thing. Colours come from theme.css; nothing here
+   picks one.
+
+   Everything is scoped to `.ui` so a page can put a new control beside an old
+   one without the two fighting. In the app there is no such scope — the class
+   names are the components.
+
+   Two ideas run through all of it:
+
+     A frame        Anything that can be selected is an outer hairline, three
+                    pixels of ground, and the fill inset inside that. The
+                    selected state is a thing sitting in a frame, not a thing
+                    whose border changed colour. Chips, ranges and segments are
+                    all this shape at different sizes.
+
+     An edge        Anything that does something stands on a solid line of its
+                    own darker shade and drops onto it when pressed. If it
+                    stands up it does something; if it lies flat it says
+                    something. That is the whole difference between a button
+                    and a chip. */
+
+.ui {
+  /* A blurred shadow at no offset is a halo: it rounds the corners off, so a
+     rectangle wearing one reads as a lozenge, dimmer at the corners than along
+     the edges. This falls downward and is barely there. Used sparingly — the
+     violet button and the split's bars — never on a row of things, where it
+     becomes a row of little lamps. */
+  --glow: 0 3px 9px -6px color-mix(in srgb, var(--violet-400) 80%, transparent);
+  --glow-lg: 0 4px 12px -8px color-mix(in srgb, var(--violet-400) 80%, transparent);
+}
+
+/* The chip.
+
+   One shape, everywhere: categories, filters, tags. Selected is the accent
+   tint with the label in violet-300 and the border warmed by the same amount,
+   so the frame does not fight the fill. */
+
+.ui .chip {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  font: inherit;
+  cursor: pointer;
+}
+.ui .chip .in {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  color: var(--text-muted);
+  font-size: 12.5px; font-weight: 500;
+  white-space: nowrap;
+}
+.ui .chip.on { border-color: color-mix(in srgb, var(--violet-400) 34%, transparent); }
+.ui .chip.on .in {
+  background: var(--accent-tint);
+  color: var(--violet-300);
+  font-weight: 600;
+}
+/* A count belongs at the left of the label and in the money face, so a column
+   of chips has one figure style with the rest of the app. */
+.ui .chip .n {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 11px; font-weight: 600;
+  color: var(--text-faint);
+}
+.ui .chip.on .n { color: color-mix(in srgb, var(--violet-300) 68%, transparent); }
+/* Drawn but not live: a control that is part of the sentence and not yet
+   built. Dimmed rather than hidden, so the shape of the thing is honest. */
+.ui .chip.dead { opacity: 0.45; cursor: default; }
+/* Smaller, for a band or a summary rather than a control you aim at. */
+.ui .chip.sm { padding: 2px; border-radius: 8px; }
+.ui .chip.sm .in { padding: 3px 8px; border-radius: 6px; font-size: 11.5px; }
+
+/* One editable word inside a chip or a range option — "This [month]". A span
+   and not a button: a button inside a button is not a thing. */
+.ui .tok {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  font-weight: 600; font-style: normal;
+}
+.ui .chip.on .tok,
+.ui .range .opt.on .tok {
+  background: color-mix(in srgb, var(--violet-400) 22%, transparent);
+  color: var(--violet-300);
+}
+.ui .tok svg { width: 10px; height: 10px; opacity: 0.75; }
+/* A number sits in a fixed slot so the sentence does not jump from 3 to 12. */
+.ui .tok.fix { min-width: 30px; justify-content: center; }
+
+/* A row of chips.
+
+   Where the order carries no meaning, it is chosen to fill the measure. The
+   partition is costed by the square of what each line wastes and the cheapest
+   taken — greedy packing gets close and then leaves one line short, which is a
+   ragged edge you can see from across the room. The chips keep their own
+   widths; the space between them takes up the remainder. */
+.ui .chip-rows { display: flex; flex-direction: column; gap: 8px; }
+.ui .chip-row { display: flex; gap: 8px; justify-content: space-between; }
+
+/* The range: one outline, the options inside it, the live one filled.
+
+   The web's 1D/1W/1M selector, and the same control stood on its end. Separate
+   outlines around each option made four controls sitting near each other; this
+   is one control with four settings. Every option the same height, because in
+   an enum no case is bigger than another. */
+
+.ui .range {
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+}
+.ui .range .opt {
+  display: flex; align-items: center; gap: 7px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 7px;
+  color: var(--text-faint);
+  font-size: 13px;
+  cursor: pointer;
+}
+.ui .range .opt.on {
+  background: var(--accent-tint);
+  color: var(--violet-300);
+  font-weight: 500;
+}
+.ui .range .opt.dead { opacity: 0.45; cursor: default; }
+
+/* The button.
+
+   The edge has to be darker than the button and lighter than the page, or it
+   is invisible on one of them — which is why the quiet button sits a step up
+   from the ground it stands on rather than flush with it. */
+
+.ui .btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: 1px solid var(--slate-800);
+  border-radius: var(--r-sm);
+  background: linear-gradient(to bottom, var(--border-strong), var(--bg-input));
+  color: var(--text);
+  font: inherit; font-size: 13px; font-weight: 600;
+  padding: 8px 14px;
+  box-shadow: 0 2px 0 var(--bg-raised);
+  cursor: pointer;
+  transition: transform 70ms ease, box-shadow 70ms ease;
+}
+/* Solid violet is one action per screen: the thing you are here to do. */
+.ui .btn.primary,
+.ui .btn-group .btn.on {
+  /* Two steps of the same violet — enough to catch a highlight across the top,
+     not enough to read as a gradient. */
+  background: linear-gradient(to bottom, var(--accent-soft), var(--accent));
+  border-color: var(--accent-strong);
+  color: #fff;
+  box-shadow:
+    0 2px 0 color-mix(in srgb, var(--accent) 48%, #000),
+    var(--glow-lg);
+}
+.ui .btn.sm { font-size: 11.5px; padding: 6px 11px; }
+.ui .btn:active { transform: translateY(2px); box-shadow: none; }
+.ui .btn svg { width: 14px; height: 14px; flex: none; }
+
+/* No frame and no edge, so it presses down a pixel of its own. For an action
+   that must be available without being the loudest thing in its row. */
+.ui .btn.plain {
+  border: 0; background: none; box-shadow: none;
+  color: var(--violet-300);
+  padding: 6px 4px;
+}
+.ui .btn.plain:active { transform: translateY(1px); opacity: 0.75; }
+
+/* Connected buttons: the same buttons with the gap taken out. They share their
+   side borders and their edges run into one line under the row, and the live
+   one is the violet button exactly — a group is a row of buttons with one of
+   them pressed, not a control of its own. */
+.ui .btn-group { display: inline-flex; }
+.ui .btn-group .btn { border-radius: 0; margin-left: -1px; }
+.ui .btn-group .btn:first-child { border-radius: var(--r-sm) 0 0 var(--r-sm); margin-left: 0; }
+.ui .btn-group .btn:last-child { border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+.ui .btn-group .btn.on { position: relative; z-index: 1; }
+
+/* Rules.
+
+   Two weights, and both run the full width of the screen — a rule that stops
+   short of the edge reads as a third kind of line. Strong between the parts of
+   a page; faint between rows and between groups of rows. Rows you read down
+   rather than compare across get space and a heading instead of either. */
+
+.ui .rule-sec { border-top: 1px solid var(--border-strong); }
+.ui .rule-row { border-top: 1px solid var(--divider); }
+
+/* A day in a calendar.
+
+   Today is the accent as a wash. A day you have tapped is filled in grey
+   rather than outlined — an outline reads as a different kind of control
+   sitting in the grid. Marks say something landed and never say what: the
+   thing above the calendar says what, in words. */
+
+.ui .cal-day { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.ui .cal-day .n {
+  width: 32px; height: 32px; line-height: 32px;
+  border-radius: 50%;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.ui .cal-day.outside .n { color: color-mix(in srgb, var(--text-faint) 45%, transparent); }
+.ui .cal-day.today .n {
+  background: color-mix(in srgb, var(--violet-400) 20%, transparent);
+  color: var(--violet-300);
+  font-weight: 700;
+  box-shadow: var(--glow);
+}
+/* `.picked` and not `.sel`: `.sel` is already the editable word in a range
+   sentence, and a `.cal-day.sel` inherits that token's padding and corner. */
+.ui .cal-day.picked .n {
+  background: var(--bg-input);
+  color: var(--text);
+  font-weight: 700;
+}
+.ui .cal-day .marks { display: flex; gap: 3px; height: 5px; margin-top: 1px; }
+.ui .cal-day .marks i {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: color-mix(in srgb, var(--violet-400) 55%, transparent);
+}
+
+/* A share, drawn on the rule under the thing it belongs to: square ends, no
+   inset, standing on the line rather than straddling it, and starting at the
+   measure the words are set to rather than at the edge of the glass. */
+
+.ui .track { height: 4px; }
+.ui .track i {
+  display: block; height: 100%; min-width: 3px;
+  background: var(--accent-soft);
+  /* No negative spread: on something four pixels tall it eats the whole glow. */
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-soft) 55%, transparent);
+}
+
+/* Money.
+
+   Every figure is set in the monospaced face with tabular figures, so a column
+   of them lines up on the decimal without the reader having to look for it. In
+   and out are the only two colours money takes, and they go on the figure —
+   never on the word beside it, which already says the direction. */
+
+.ui .money {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.ui .money.in { color: var(--up); }
+.ui .money.out { color: var(--down); }
