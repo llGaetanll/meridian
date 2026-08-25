@@ -160,7 +160,7 @@ pub fn start_of(unit: crate::RangeUnit, now: Timestamp) -> Timestamp {
 }
 
 /// Days-to-civil-date, after Howard Hinnant's `chrono` algorithms.
-fn civil(ts: Timestamp) -> (i64, u32, u32) {
+pub(crate) fn civil(ts: Timestamp) -> (i64, u32, u32) {
     let days = ts.day_index() as i64;
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
@@ -176,7 +176,7 @@ fn civil(ts: Timestamp) -> (i64, u32, u32) {
 }
 
 /// The inverse: a civil date to days since the epoch.
-fn days_from_civil(y: i64, m: u32, d: u32) -> u64 {
+pub(crate) fn days_from_civil(y: i64, m: u32, d: u32) -> u64 {
     let y = if m <= 2 { y - 1 } else { y };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;

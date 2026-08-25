@@ -31,6 +31,8 @@ struct RecurringScreen: View {
                 .padding(.top, 14)
                 .padding(.bottom, 6)
 
+            CalendarGrid(calendar: view.calendar)
+
             ForEach(view.groups, id: \.self) { group in
                 HStack(alignment: .firstTextBaseline, spacing: 9) {
                     Text(group.name)

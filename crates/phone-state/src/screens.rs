@@ -5,6 +5,8 @@
 //! argues for: the type surface grows a little, and the number of places that
 //! can format a date differently stays at one.
 
+use std::collections::BTreeMap;
+
 use api_common::format::fmt_money;
 use api_ledger::Account;
 use api_ledger::Category;
@@ -21,6 +23,8 @@ use crate::StateApp;
 use crate::ViewAccountRow;
 use crate::ViewBalances;
 use crate::ViewBreakdownSlice;
+use crate::ViewCalendar;
+use crate::ViewCalendarDay;
 use crate::ViewCategoryChip;
 use crate::ViewConnection;
 use crate::ViewDaySection;
@@ -37,6 +41,16 @@ use crate::ViewStreamGroup;
 use crate::ViewStreamRow;
 use crate::ViewTxRow;
 use crate::fmt;
+
+/// Seconds in a day, for stepping the calendar a cell at a time.
+const DAY: u64 = 86_400;
+
+/// Rows in the calendar. Six covers every month whatever day it starts on,
+/// which is what keeps the grid one height all year.
+const WEEKS: u64 = 6;
+
+/// The calendar's column headings, starting on Monday.
+const WEEKDAY_INITIALS: [&str; 7] = ["M", "T", "W", "T", "F", "S", "S"];
 
 /// A stream landing within this many days reads as a heads-up.
 const SOON_DAYS: u64 = 7;
@@ -436,6 +450,7 @@ fn recurring(state: &StateApp) -> ViewRecurring {
         },
         masked: state.masked(),
         breakdown: breakdown(&out, state.masked()),
+        calendar: calendar(state, &out),
         groups: stream_groups(&out, &inflow, state.now(), state.masked()),
     }
 }
@@ -591,4 +606,61 @@ pub fn category_from_id(id: &str) -> Category {
         .copied()
         .find(|c| category_id(*c) == id)
         .unwrap_or(Category::Unknown)
+}
+
+/// The month, with a mark on every day a stream lands.
+///
+/// Six rows, always, and the days either side of the month drawn rather than
+/// left blank: the grid then has one height, and the streams below it do not
+/// move when the month turns.
+fn calendar(state: &StateApp, out: &[&Stream]) -> ViewCalendar {
+    let now = state.now();
+    let (year, month, _) = fmt::civil(now);
+
+    let first = fmt::days_from_civil(year, month, 1);
+
+    // 1970-01-01 was a Thursday, and the weeks here start on Monday, so the
+    // column a day falls in is its index shifted by three.
+    let leading = (first + 3) % 7;
+
+    let start = first - leading;
+    let today = now.day_index();
+
+    // What lands when. Only the dates the source predicts — nothing is
+    // projected forward from a stream's frequency, so a stream contributes at
+    // most one mark.
+    let mut marks: BTreeMap<u64, Vec<String>> = BTreeMap::new();
+
+    for stream in out {
+        let Some(next) = stream.next_date else { continue };
+
+        marks
+            .entry(next.day_index())
+            .or_default()
+            .push(stream.category.token().to_string());
+    }
+
+    let weeks = (0..WEEKS)
+        .map(|week| {
+            (0..7)
+                .map(|column| {
+                    let day = start + week * 7 + column;
+                    let (_, its_month, its_day) = fmt::civil(Timestamp::from_secs(day * DAY));
+
+                    ViewCalendarDay {
+                        label: its_day.to_string(),
+                        outside: its_month != month,
+                        today: day == today,
+                        marks: marks.get(&day).cloned().unwrap_or_default(),
+                    }
+                })
+                .collect()
+        })
+        .collect();
+
+    ViewCalendar {
+        month: format!("{} {}", fmt::month_name(now), fmt::year(now)),
+        weekdays: WEEKDAY_INITIALS.iter().map(|d| d.to_string()).collect(),
+        weeks,
+    }
 }
