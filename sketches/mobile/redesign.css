@@ -1,0 +1,342 @@
+/* The proposal: how the three screens are laid out.
+
+   The controls themselves are in ../shared/components.css, which is the design
+   language and is where a new one goes. This file is what each screen does
+   with them — sections, rules, spacing — plus the scaffolding that puts phones
+   side by side on a page.
+
+   Screen styles are scoped to `.ui` along with the components, so a phone
+   drawn without that class is the app as it stands today. */
+
+/* Scaffolding — the pairs and their notes, not part of the app. */
+
+.canvas { gap: 64px; }
+
+.pair { display: flex; flex-direction: column; gap: 16px; }
+
+.pair-head { max-width: 1180px; }
+.pair-head h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.pair-head p { font-size: 14px; color: var(--text-muted); margin-top: 6px; max-width: 62ch; }
+.pair-head code { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 0.92em; }
+
+.pair-body { display: flex; align-items: flex-start; gap: 28px; }
+
+.col { display: flex; flex-direction: column; gap: 10px; }
+.col-label {
+  font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--violet-400);
+  padding-left: 4px;
+}
+
+.notes {
+  width: 330px; flex: none;
+  display: flex; flex-direction: column; gap: 14px;
+  padding-top: 26px;
+}
+.notes .n-item { display: flex; flex-direction: column; gap: 3px; }
+.notes .n-t { font-size: 13.5px; font-weight: 600; }
+.notes .n-d { font-size: 13px; color: var(--text-muted); line-height: 1.45; }
+.notes .n-item.drop .n-t::before { content: "− "; color: var(--rose-400); }
+.notes .n-item.add  .n-t::before { content: "+ "; color: var(--lime-400); }
+.notes .n-item.ask  .n-t::before { content: "? "; color: var(--violet-400); }
+
+/* The parts sheet. Until it has a page of its own this is where the app's
+   components live, drawn at the size they are drawn on the phone. */
+
+.spec {
+  width: 880px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+.spec-row { display: flex; align-items: flex-start; gap: 24px; padding: 22px 24px; }
+.spec-row + .spec-row { border-top: 1px solid var(--border); }
+.spec-demo { width: 320px; flex: none; }
+.spec-demo.wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.spec-t { font-size: 14px; font-weight: 600; }
+.spec-d { font-size: 13px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
+.spec-sw { display: flex; gap: 6px; }
+.spec-sw i {
+  width: 16px; height: 16px; border-radius: 4px;
+  box-shadow: 0 0 0 1px var(--border-strong) inset;
+}
+.spec-rules { display: flex; flex-direction: column; }
+.spec-rules span { font-size: 12px; color: var(--text-faint); padding: 9px 0; }
+.spec-rules .sec-rule { border-top: 1px solid var(--border-strong); }
+.spec-rules .row-rule { border-top: 1px solid var(--divider); }
+.spec-days { display: flex; gap: 14px; }
+.spec-days .cal-day { flex: none; }
+
+/* Ledger */
+
+.ui .filter { padding: 14px 20px 4px; display: flex; flex-direction: column; gap: 9px; }
+.ui .f-label {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+}
+.ui .f-label + .f-label { margin-top: 10px; }
+
+/* Once the filter has scrolled away, what it is set to comes back as a band.
+
+   No ground of its own: a rule under it is what separates it, the same as
+   every other boundary in the app. The chevron on the left says it opens, and
+   what is in it is the filter's own two halves in the filter's own order —
+   drawn as the app's chips rather than as pills invented for the band. */
+.ui .filterbar {
+  flex: none;
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 20px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-strong);
+}
+.ui .filterbar .caret { width: 14px; height: 14px; flex: none; color: var(--text-faint); }
+.ui .filterbar .cats { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ui .filterbar .when { margin-left: auto; }
+
+
+.ui .list-inner { padding: 0 20px; }
+
+/* The month marker is a section rule with the month under it. */
+.ui .month {
+  display: block;
+  border-top: 1px solid var(--border-strong);
+  margin: 24px -20px 0;
+  padding: 16px 20px 0;
+  font-size: 15px; font-weight: 700; letter-spacing: -0.015em;
+}
+.ui .list-inner > .month:first-child { margin-top: 8px; }
+
+/* Each day is a group, so each day gets the row rule — the list was one
+   undivided column while every other page had a shape to scroll by. The first
+   day of a month does not get one: the month rule is already above it. */
+.ui .day {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  border-top: 1px solid var(--divider);
+  margin: 0 -20px;
+  padding: 18px 20px 10px;
+}
+.ui .month + .day { border-top: 0; }
+.ui .day .sum {
+  font-size: 13.5px; font-weight: 500; color: var(--text-faint);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Baseline, so the figure sits with the merchant's name and not halfway down
+   the row. Same size as the day's net above it, and no inset of its own — the
+   4px it used to carry put the prices 4px in from the day's total, which is
+   exactly far enough to see and not far enough to explain. */
+.ui .tx { padding: 14px 0; border-top: 0; gap: 14px; align-items: baseline; }
+.ui .tx-amt { font-size: 13.5px; }
+.ui .tx-meta { gap: 7px; margin-top: 5px; font-size: 12.5px; color: var(--text-muted); }
+.ui .tx-meta .sep { color: var(--slate-700); }
+.ui .pending-tag {
+  font-size: 12.5px; font-weight: 500;
+  text-transform: none; letter-spacing: 0;
+  color: var(--text-faint);
+}
+
+/* The page: a hero, then sections divided by the strong rule. */
+
+.ui .scroll { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 132px; scrollbar-width: none; }
+.ui .scroll::-webkit-scrollbar { display: none; }
+
+/* A phone drawn part-way down the page: the content is pulled up and the
+   scroller clips it, which is what a scroll actually does. Scaffolding. */
+.scrolled .scroll > :first-child { margin-top: calc(-1 * var(--scrolled, 404px)); }
+
+.ui .hero { padding: 12px 20px 22px; }
+.ui .hero .k {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+}
+.ui .hero .v {
+  font-size: 34px; font-weight: 700; letter-spacing: -0.035em;
+  line-height: 1.1; margin-top: 4px;
+}
+
+/* In and out. The words are words and stay grey; only the figures are money,
+   and the sign is in the word already. */
+.ui .diff {
+  display: flex; gap: 16px;
+  margin-top: 8px;
+  font-size: 12.5px; color: var(--text-faint);
+}
+.ui .diff b {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-weight: 600; font-variant-numeric: tabular-nums;
+  margin-right: 5px;
+}
+.ui .diff .in b { color: var(--up); }
+.ui .diff .out b { color: var(--down); }
+
+.ui .sec { padding: 26px 20px 0; border-top: 1px solid var(--border-strong); }
+.ui .sec + .sec { margin-top: 24px; }
+.ui .sec-title {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+  margin-bottom: 14px;
+}
+.ui .sec-title .v {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 13px; font-weight: 700;
+  letter-spacing: 0; text-transform: none;
+}
+
+/* The split: a table you read down, with each row's share standing on the rule
+   under it — square ends, resting on the line rather than straddling it, and
+   starting where the words start rather than at the edge of the glass. */
+.ui .split-row {
+  position: relative;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 12px 20px;
+  margin: 0 -20px;
+  border-bottom: 1px solid var(--divider);
+}
+/* The track spans the measure the words are set to, so a share is a share of
+   the line you are reading rather than of the screen. */
+.ui .split-row .track {
+  position: absolute; left: 20px; right: 20px; bottom: 0;
+}
+.ui .split-row .nm {
+  min-width: 0; font-size: 13.5px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ui .split-row .amt {
+  font-size: 13.5px; font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The month you are looking at, with the months either side showing at the
+   edges and fading out. */
+.ui .months {
+  position: relative;
+  height: 26px;
+  margin: 0 -20px 24px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent 2%, #000 32%, #000 68%, transparent 98%);
+          mask-image: linear-gradient(90deg, transparent 2%, #000 32%, #000 68%, transparent 98%);
+}
+.ui .months .m {
+  position: absolute; top: 0;
+  font-size: 13px; line-height: 26px; color: var(--text-faint);
+  white-space: nowrap;
+}
+.ui .months .now {
+  left: 50%; transform: translateX(-50%);
+  font-size: 15px; font-weight: 600; color: var(--text);
+  letter-spacing: -0.01em;
+}
+.ui .months .prev { left: 10px; }
+.ui .months .next { right: 10px; }
+
+/* The calendar runs sideways, because months do. The month you are on fills
+   the measure and the columns either side of it show at the edges — the last
+   column of the month behind, the first of the month ahead — so the gesture is
+   the one the shape suggests. */
+/* The months are pages, not columns of one grid, so they are further apart
+   from each other than the days inside them are. */
+.ui .cal-strip {
+  display: flex; align-items: flex-start; justify-content: center;
+  column-gap: 14px;
+  margin: 0 -20px;
+  overflow: hidden;
+  /* The fade has to be narrower than the peek it is fading, or the columns
+     either side are gone rather than dim. */
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+}
+/* The month gives up a little of the measure so the columns either side have
+   somewhere to be: 310 across seven, which still leaves half a day's width
+   around each 32px disc. */
+.ui .cal { flex: none; width: 310px; padding: 0; }
+.ui .cal-edge {
+  flex: none; width: 40px;
+  display: flex; flex-direction: column; row-gap: 8px;
+  opacity: 0.6;
+}
+.ui .cal-edge .cal-wd { padding-bottom: 6px; }
+.ui .cal-grid { row-gap: 8px; }
+
+/* What landed on the day you tapped. */
+.ui .daycard { margin-top: 20px; }
+.ui .daycard-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 0 20px 8px; margin: 0 -20px;
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+}
+.ui .daycard-head .t {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 13px; font-weight: 700;
+  letter-spacing: 0; text-transform: none;
+  color: var(--text-muted);
+}
+.ui .dayrow {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 11px 20px; margin: 0 -20px;
+  border-top: 1px solid var(--divider);
+}
+.ui .dayrow .nm { font-size: 13.5px; font-weight: 500; }
+.ui .dayrow .amt {
+  font-size: 13.5px; font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+/* The streams, grouped the way the split groups them. */
+.ui .rec-head { padding: 20px 0 6px; align-items: center; }
+.ui .rec-head:first-of-type { padding-top: 0; }
+.ui .rec-head .nm {
+  font-size: 13px; font-weight: 600;
+  letter-spacing: -0.006em; text-transform: none;
+  color: var(--text);
+}
+.ui .rec-head .sum { font-size: 12px; font-weight: 500; color: var(--text-faint); }
+.ui .rec { padding: 12px 0; border-top: 0; align-items: flex-start; }
+.ui .rec-id { flex: 1; min-width: 0; }
+.ui .rec-sub { font-size: 12.5px; color: var(--text-faint); margin-top: 4px; }
+
+/* Balances */
+
+/* What you hold is the same section as the headline above it, so there is no
+   rule between them — but it needs floor under it, or the last block's total
+   ends flush against the rule that starts the next section. */
+.ui .accounts { padding: 0 20px 30px; }
+
+.ui .conn { margin-top: 30px; }
+.ui .conn:first-child { margin-top: 0; }
+.ui .conn-head { padding-bottom: 2px; }
+.ui .conn-name { font-size: 13.5px; font-weight: 600; color: var(--text-muted); }
+.ui .conn-logo {
+  width: 24px; height: 24px;
+  font-size: 10px;
+  background: none;
+  border: 1px solid var(--border-strong);
+  color: var(--text-faint);
+}
+.ui .acct { padding: 15px 0; border-top: 0; align-items: flex-start; }
+.ui .acct-name { font-size: 14.5px; font-weight: 600; }
+.ui .acct-sub { font-size: 12.5px; margin-top: 4px; }
+.ui .acct-amt { font-size: 14.5px; }
+.ui .acct-amt.owed { color: var(--text); }
+
+/* One rule per block, at row weight, with the same air above it as below —
+   the row above was ending 13px up and the total starting 11px down, which is
+   the sort of two-pixel wrongness you feel without being able to name. */
+.ui .conn-total {
+  padding: 15px 20px 0; margin: 0 -20px;
+  border-top: 1px solid var(--divider);
+}
+.ui .conn-total .k { font-size: 12px; color: var(--text-faint); }
+/* A block total is scaffolding, not a figure to read — the account rows above
+   it are the numbers. Grey, and the section heading is the only place on the
+   page that money still gets a colour. */
+.ui .conn-total .v { font-size: 13.5px; font-weight: 600; color: var(--text-muted); }
