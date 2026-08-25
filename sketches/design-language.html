@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridian — Design language</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared/theme.css">
+<link rel="stylesheet" href="shared/components.css">
+<style>
+/* Page chrome only. Every control below comes from shared/components.css and
+   nothing on this page restyles one — if a component looks wrong here, it is
+   wrong. */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, "Inter var", ui-sans-serif, -apple-system, system-ui, sans-serif;
+  font-size: 15px; line-height: 1.55; letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+  padding: 56px 32px 120px;
+}
+
+.page { max-width: 940px; margin: 0 auto; display: flex; flex-direction: column; gap: 52px; }
+
+.lede h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.03em; }
+.lede p { color: var(--text-muted); margin-top: 12px; max-width: 66ch; }
+.lede p + p { margin-top: 10px; }
+.lede code, .why code, .entry code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 0.9em;
+  color: var(--text);
+}
+
+.group { display: flex; flex-direction: column; gap: 18px; }
+.group > h2 {
+  font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-faint);
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.entry { display: flex; align-items: flex-start; gap: 32px; }
+.demo {
+  width: 340px; flex: none;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+}
+.demo.row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.entry .body { flex: 1; min-width: 0; padding-top: 2px; }
+.entry h3 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.entry p { color: var(--text-muted); font-size: 14px; margin-top: 6px; }
+.entry .why {
+  margin-top: 10px;
+  padding-left: 13px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-faint);
+  font-size: 13.5px;
+}
+.entry .use {
+  margin-top: 10px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+/* Swatches and rules are drawn here rather than being components. */
+.swatches { display: flex; flex-direction: column; gap: 12px; }
+.swatch { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.swatch i {
+  width: 22px; height: 22px; border-radius: 6px; flex: none;
+  box-shadow: 0 0 0 1px var(--border-strong) inset;
+}
+.swatch .name { color: var(--text); font-weight: 500; }
+.swatch .job { color: var(--text-faint); }
+
+.rules-demo span { display: block; font-size: 13px; color: var(--text-faint); padding: 11px 0; }
+
+.days { display: flex; gap: 16px; }
+.days .cal-day { flex: none; }
+
+.track-demo { position: relative; padding-bottom: 12px; border-bottom: 1px solid var(--divider); }
+.track-demo .track { position: absolute; left: 0; right: 0; bottom: -1px; }
+.track-demo .row { display: flex; justify-content: space-between; font-size: 13.5px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-caret" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 9 18 9 12 16"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4 12.5 11.5"/><path d="M18.5 14v5.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1H10"/></symbol>
+  </defs>
+</svg>
+
+<div class="page ui">
+
+  <div class="lede">
+    <h1>Design language</h1>
+    <p>
+      Every control Meridian draws, once, so the phone, the web and the desktop
+      app draw the same thing. The styles are in
+      <code>sketches/shared/components.css</code> and the colours in
+      <code>sketches/shared/theme.css</code>; nothing on this page restyles a
+      component, so if one looks wrong here it is wrong.
+    </p>
+    <p>
+      Two ideas run through all of it. Anything you can <em>select</em> is a
+      frame: an outer hairline, three pixels of ground, and the fill inset
+      inside that — so the selected state is a thing sitting in a frame, not a
+      thing whose border changed colour. Anything that <em>does</em> something
+      stands on a solid line of its own darker shade and drops onto it when
+      pressed. If it stands up it does something; if it lies flat it says
+      something.
+    </p>
+    <p>
+      Everything is scoped to <code>.ui</code> here so new controls can be
+      drawn beside old ones without the two fighting. In the app there is no
+      such scope — the class names are the components.
+    </p>
+  </div>
+
+  <div class="group" id="colour">
+    <h2>Colour</h2>
+
+    <div class="entry">
+      <div class="demo">
+        <div class="swatches">
+          <div class="swatch"><i style="background:var(--violet-400)"></i><span class="name">Violet</span><span class="job">— you</span></div>
+          <div class="swatch"><i style="background:var(--lime-400)"></i><span class="name">Lime</span><span class="job">— money in</span></div>
+          <div class="swatch"><i style="background:var(--rose-400)"></i><span class="name">Rose</span><span class="job">— money owed</span></div>
+          <div class="swatch"><i style="background:var(--text)"></i><span class="name">Text</span><span class="job">— what you read</span></div>
+          <div class="swatch"><i style="background:var(--text-muted)"></i><span class="name">Muted</span><span class="job">— context</span></div>
+          <div class="swatch"><i style="background:var(--text-faint)"></i><span class="name">Faint</span><span class="job">— labels, headings</span></div>
+        </div>
+      </div>
+      <div class="body">
+        <h3>Three jobs, and three greys</h3>
+        <p>
+          Violet is you: what you picked, where you are, what day it is. Lime
+          and rose are money in and money owed, and only ever on a figure —
+          never on the word beside it, which already says the direction. Every
+          other thing on the screen is one of three greys.
+        </p>
+        <div class="why">
+          The app used to carry sixteen category hues as well, one per Plaid
+          primary, in filled capsules down the left of the ledger. They came
+          out: every screen that used one says the category in words in the
+          same place the colour used to sit, and the palette above is what is
+          left. Categorical hues are for a chart where categories are being
+          compared, not for labelling a row.
+        </div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="demo row">
+        <button class="btn primary">Reconnect</button>
+        <span class="chip on"><span class="in">Travel</span></span>
+        <div class="cal-day today"><span class="n">19</span><span class="marks"></span></div>
+      </div>
+      <div class="body">
+        <h3>The glow</h3>
+        <p>
+          Anything holding the highlight colour sits in a little of it —
+          <code>--glow</code>, a short shadow falling downward. Small enough
+          that you would not name it if asked what changed.
+        </p>
+        <div class="why">
+          It falls downward rather than haloing because a blurred shadow at no
+          offset rounds the corners off: a rectangle wearing one reads as a
+          lozenge, dimmer at the corners than along the edges. And it goes on
+          single things, never on a row of them — nine glowing chips is nine
+          little lamps.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="group" id="rules">
+    <h2>Rules</h2>
+
+    <div class="entry">
+      <div class="demo">
+        <div class="rules-demo">
+          <span>a section of a page</span>
+          <span class="rule-sec">the next section of the page</span>
+          <span class="rule-row">a row, or a group of them</span>
+          <span class="rule-row">the next row, or group</span>
+        </div>
+      </div>
+      <div class="body">
+        <h3>Two weights, both full width</h3>
+        <p>
+          <code>.rule-sec</code> between the parts of a page,
+          <code>.rule-row</code> between rows and between groups of them. Both
+          run to the edge of the screen.
+        </p>
+        <div class="why">
+          A rule that stops short of the edge reads as a third kind of line,
+          which is how a page ends up looking like it has three systems in it.
+          Rows you read <em>down</em> rather than compare <em>across</em> —
+          transactions, accounts — get space and a heading instead of either.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="group" id="selecting">
+    <h2>Selecting</h2>
+
+    <div class="entry">
+      <div class="demo row" data-select="many">
+        <button class="chip"><span class="in"><span class="n">9</span>Transportation</span></button>
+        <button class="chip on"><span class="in"><span class="n">9</span>Food &amp; drink</span></button>
+        <button class="chip"><span class="in"><span class="n">3</span>Personal care</span></button>
+      </div>
+      <div class="body">
+        <h3>Chip</h3>
+        <p>
+          The frame, at its usual size. Selected is the accent tint with the
+          label in violet-300 and the border warmed by the same amount. A count
+          goes at the left of the label, in the money face.
+          <code>.sm</code> is the same thing smaller, for a summary rather than
+          a control you aim at; <code>.dead</code> is drawn but not built.
+        </p>
+        <div class="use">.chip &gt; .in &gt; (.n, label) · .on · .sm · .dead</div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="demo">
+        <div class="cat-grid" data-select="many" data-pack>
+          <button class="chip"><span class="in"><span class="n">9</span>Transportation</span></button>
+          <button class="chip on"><span class="in"><span class="n">9</span>Food &amp; drink</span></button>
+          <button class="chip on"><span class="in"><span class="n">6</span>Travel</span></button>
+          <button class="chip"><span class="in"><span class="n">6</span>Loan payments</span></button>
+          <button class="chip"><span class="in"><span class="n">6</span>Transfer out</span></button>
+          <button class="chip"><span class="in"><span class="n">3</span>Transfer in</span></button>
+          <button class="chip"><span class="in"><span class="n">3</span>Merchandise</span></button>
+          <button class="chip"><span class="in"><span class="n">3</span>Rent &amp; utilities</span></button>
+          <button class="chip"><span class="in"><span class="n">3</span>Personal care</span></button>
+        </div>
+      </div>
+      <div class="body">
+        <h3>Chip row</h3>
+        <p>
+          Where the order of a row of chips carries no meaning, it is chosen to
+          fill the measure, and the space between them takes up whatever is
+          left so each line is flush at both edges.
+        </p>
+        <div class="why">
+          Every partition of the chips into lines is costed by the square of
+          what each line wastes and the cheapest is taken. Greedy widest-first
+          gets close and then leaves one line short, which is a ragged edge you
+          can see from across the room. The chips keep their own widths —
+          stretching them makes “Travel” as wide as “Transportation”, and a
+          chip's width should say something about its label.
+          <br><br>
+          This is the core's job, not the view's: the platform receives the
+          order already packed, like every other finished value.
+        </div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="demo">
+        <div class="range" data-select="one">
+          <div class="opt">This <i class="tok">month <svg><use href="#i-caret"/></svg></i></div>
+          <div class="opt">Last <i class="tok fix">3 <svg><use href="#i-caret"/></svg></i> <i class="tok">months <svg><use href="#i-caret"/></svg></i></div>
+          <div class="opt dead">Between <i class="tok">Jun 1 <svg><use href="#i-caret"/></svg></i> and <i class="tok">Aug 19 <svg><use href="#i-caret"/></svg></i></div>
+          <div class="opt on">All time</div>
+        </div>
+      </div>
+      <div class="body">
+        <h3>Range</h3>
+        <p>
+          One outline, the options inside it, the live one filled — the web's
+          1D/1W/1M selector, and the same control stood on its end. Every
+          option the same height. <code>.tok</code> is an editable word inside
+          one.
+        </p>
+        <div class="why">
+          The UI of an enum. Outlining each option separately makes four
+          controls sitting near each other rather than one control with four
+          settings, and rows of different heights say one case is bigger than
+          another, which in an enum it is not.
+        </div>
+        <div class="use">.range &gt; .opt · .on · .dead · .opt &gt; .tok(.fix)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="group" id="acting">
+    <h2>Acting</h2>
+
+    <div class="entry">
+      <div class="demo row">
+        <button class="btn primary">Reconnect</button>
+        <button class="btn">Clear</button>
+        <button class="btn sm">Retry</button>
+      </div>
+      <div class="body">
+        <h3>Button</h3>
+        <p>
+          Raised on a solid line of its own darker shade, and it drops onto
+          that line when pressed. Solid violet is one action per screen: the
+          thing you are there to do. Everything else is the quiet one.
+        </p>
+        <div class="why">
+          The edge has to be darker than the button <em>and</em> lighter than
+          the page, or it disappears against one of them — which is why the
+          quiet button sits a step up from the ground it stands on rather than
+          flush with it. The violet one carries two steps of the same violet,
+          enough to catch a highlight across the top and not enough to read as
+          a gradient.
+        </div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="demo row">
+        <div class="btn-group" data-select="one">
+          <button class="btn">Week</button><button class="btn on">Month</button><button class="btn">Year</button>
+        </div>
+      </div>
+      <div class="body">
+        <h3>Button group</h3>
+        <p>
+          The same buttons with the gap taken out: shared side borders, and the
+          edges running into one line under the row. The live one is the violet
+          button exactly.
+        </p>
+        <div class="why">
+          A row of flat panels with one of them filled is a segment, which is a
+          different control that happens to look similar. This is a row of
+          buttons with one of them pressed, and it should keep saying so.
+        </div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="demo row">
+        <button class="btn plain"><svg><use href="#i-ext"/></svg>Reconnect</button>
+      </div>
+      <div class="body">
+        <h3>Plain button</h3>
+        <p>
+          No frame and no edge, so it presses down a pixel of its own. For an
+          action that has to be available without being the loudest thing in
+          its row — Reconnect, sitting in a list of bank names.
+        </p>
+        <div class="why">
+          An icon here is worth its space when it says something the label
+          cannot: “open in new” on Reconnect is true, because Plaid Link in
+          update mode is a hosted page and the tap leaves the app.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="group" id="figures">
+    <h2>Figures</h2>
+
+    <div class="entry">
+      <div class="demo">
+        <div class="track-demo">
+          <div class="row"><span>Transfer out</span><span class="money">$2,078.50</span></div>
+          <span class="track"><i style="width:55.1%"></i></span>
+        </div>
+      </div>
+      <div class="body">
+        <h3>Share</h3>
+        <p>
+          A proportion is drawn on the rule under the thing it belongs to:
+          square ends, standing on the line rather than straddling it, and
+          starting where the words start.
+        </p>
+        <div class="why">
+          Reading as part of the line rather than as a bar laid over it means a
+          list of shares costs no height at all beyond the rules it already
+          had. The smallest share still gets a visible nub — a share you cannot
+          see is a row that looks broken.
+        </div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="demo">
+        <div style="display:flex;flex-direction:column;gap:9px;font-size:14px">
+          <div style="display:flex;justify-content:space-between"><span>Held</span><span class="money">$238,845.06</span></div>
+          <div style="display:flex;justify-content:space-between"><span>Owed</span><span class="money out">−$3,090.95</span></div>
+          <div style="display:flex;gap:16px;font-size:12.5px;color:var(--text-faint)">
+            <span><b class="money in">$4.22</b> in</span>
+            <span><b class="money out">$3,771.40</b> out</span>
+          </div>
+        </div>
+      </div>
+      <div class="body">
+        <h3>Money</h3>
+        <p>
+          Every figure is monospaced with tabular numerals, so a column lines
+          up on the decimal without the reader having to look for it. Lime for
+          in, rose for owed, and both on the figure only.
+        </p>
+        <div class="why">
+          The word carries the direction, so the figure does not need a sign as
+          well: “<span class="money in">$4.22</span> in”, not
+          “+$4.22 in”. And a colour is worth having only where it is scarce —
+          six rose figures under a heading that already says Owed is the
+          heading said seven times, so the heading keeps the colour and the
+          rows go plain.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="group" id="calendar">
+    <h2>Calendar</h2>
+
+    <div class="entry">
+      <div class="demo">
+        <div class="days" data-select="one">
+          <div class="cal-day"><span class="n">4</span><span class="marks"></span></div>
+          <div class="cal-day"><span class="n">10</span><span class="marks"><i></i><i></i></span></div>
+          <div class="cal-day today"><span class="n">19</span><span class="marks"></span></div>
+          <div class="cal-day picked"><span class="n">22</span><span class="marks"><i></i></span></div>
+          <div class="cal-day outside"><span class="n">3</span><span class="marks"></span></div>
+        </div>
+      </div>
+      <div class="body">
+        <h3>Day</h3>
+        <p>
+          Plain, marked, today, tapped, outside the month. Today is the accent
+          as a wash; a tapped day is filled in grey. Marks say something landed
+          and never say what.
+        </p>
+        <div class="why">
+          A tapped day is filled rather than outlined because an outline reads
+          as a different kind of control sitting in the grid. The marks stay
+          neutral because whatever is above the calendar has already named the
+          categories, in those colours, a screenful higher up — the calendar's
+          question is <em>when</em>.
+          <br><br>
+          The class is <code>.picked</code> and not <code>.sel</code>:
+          <code>.sel</code> is already the editable word in a range sentence,
+          and a <code>.cal-day.sel</code> quietly inherits that token's padding
+          and corner.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* The same behaviour the sketch uses, so the controls on this page answer a
+   tap. None of it belongs in the app: the core decides what is selected and
+   hands a chip row over already packed. */
+
+(() => {
+  const GAP = 8;
+
+  /* Every way of cutting the chips into lines, costed by the square of what
+     each line wastes, cheapest taken. 3^n subset-of-subset steps, which for a
+     row of chips is nothing. */
+  function partition(widths, measure) {
+    const n = widths.length;
+    const full = (1 << n) - 1;
+
+    const span = new Array(full + 1).fill(-1);
+    for (let mask = 1; mask <= full; mask++) {
+      let total = -GAP;
+      for (let i = 0; i < n; i++) if (mask & (1 << i)) total += GAP + widths[i];
+      span[mask] = total <= measure ? total : -1;
+    }
+
+    const cost = new Array(full + 1).fill(Infinity);
+    const take = new Array(full + 1).fill(0);
+    cost[0] = 0;
+
+    for (let mask = 1; mask <= full; mask++) {
+      /* Pin the lowest chip to this line, so each partition is reached once
+         rather than once per ordering of its lines. */
+      const pinned = mask & -mask;
+      for (let line = mask; line > 0; line = (line - 1) & mask) {
+        if (!(line & pinned) || span[line] < 0) continue;
+        const slack = measure - span[line];
+        const total = cost[mask ^ line] + slack * slack;
+        if (total < cost[mask]) { cost[mask] = total; take[mask] = line; }
+      }
+    }
+
+    const lines = [];
+    for (let mask = full; mask; mask ^= take[mask]) {
+      const line = take[mask];
+      lines.push([...Array(n).keys()].filter((i) => line & (1 << i)));
+    }
+    return lines;
+  }
+
+  function pack(grid) {
+    const measure = grid.clientWidth;
+    const chips = [...grid.querySelectorAll(":scope > .chip")];
+    if (!measure || !chips.length) return;
+
+    const widths = chips.map((el) => Math.ceil(el.getBoundingClientRect().width));
+    /* Widest line first: a heavy line under a light one reads as a mistake. */
+    const lines = partition(widths, measure)
+      .map((line) => line.sort((a, b) => widths[b] - widths[a]))
+      .sort((a, b) => widths[b[0]] - widths[a[0]]);
+
+    const packed = document.createElement("div");
+    packed.className = "chip-rows";
+    for (const line of lines) {
+      const row = document.createElement("div");
+      row.className = "chip-row";
+      for (const i of line) row.appendChild(chips[i]);
+      packed.appendChild(row);
+    }
+    grid.replaceChildren(packed);
+  }
+
+  /* Measure once the webfont has landed: Inter is wider than the fallback, so
+     packing before it arrives lays out lines that then overflow. */
+  const layout = () => document.querySelectorAll("[data-pack]").forEach(pack);
+  document.fonts ? document.fonts.ready.then(layout) : addEventListener("load", layout);
+
+  document.addEventListener("click", (event) => {
+    const hit = event.target.closest(".chip, .range .opt, .btn-group .btn, .cal-day");
+    if (!hit || hit.classList.contains("dead") || hit.classList.contains("outside")) return;
+
+    const group = hit.closest("[data-select]");
+    if (!group) return;
+
+    if (group.dataset.select === "one") {
+      group.querySelectorAll(".on, .picked").forEach((one) => one.classList.remove("on", "picked"));
+      hit.classList.add(hit.classList.contains("cal-day") ? "picked" : "on");
+    } else {
+      hit.classList.toggle("on");
+    }
+  });
+})();
+</script>
+
+</body>
+</html>

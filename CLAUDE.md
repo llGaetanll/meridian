@@ -20,6 +20,19 @@ Two that catch people most often:
   is encouraged in state machines instead.
 - **No banner comments** (`// ─── section ───`). Split the file instead.
 
+## Design
+
+`sketches/design-language.html` is every control the app draws, in one place,
+with a note on why each one is the way it is. Open it before designing anything
+for the phone, the web or the desktop app, and build screens out of what is
+already there. The styles behind it are `sketches/shared/components.css`; the
+colours are `sketches/shared/theme.css`, which is where a colour is decided for
+every platform.
+
+If a screen needs a control the sheet does not have, add it to the sheet in the
+same pass — a component that exists only inside one screen is how three
+platforms end up with three design languages.
+
 ## Logging
 
 How logging works is in `docs/LOGGING.md`. It ends with a list of every log
