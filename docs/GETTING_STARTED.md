@@ -114,10 +114,12 @@ paru -S swiftly-bin && swiftly init    # gives swiftc, sourcekit-lsp, swift-form
 
 #### On a Mac
 
-Xcode, but only for its command line tools — there is no `.xcodeproj` in the
-tree and nothing here asks you to open the app. `swiftc`, `xcodebuild`,
-`xcrun` and `simctl` are the whole toolchain, so the work happens in whatever
-editor you already use.
+Xcode, but very nearly only for its command line tools — there is no
+`.xcodeproj` in the tree. `swiftc`, `xcodebuild`, `xcrun` and `simctl` are the
+whole toolchain, so the work happens in whatever editor you already use. The
+one exception is the development certificate a real phone needs, which only
+Xcode can mint; [On a real phone](#on-a-real-phone) has it, and it is once per
+machine.
 
 Xcode 26 ships without a simulator runtime, and it is a large download rather
 than a quick one:
@@ -161,6 +163,78 @@ Nothing above opens Xcode, and there is no project file to open. `swiftc`
 compiles, `simctl` installs and launches, and `compile_commands.json` is
 rewritten on every run from the flags that built the app, so sourcekit-lsp sees
 exactly what the compiler saw.
+
+#### On a real phone
+
+The simulator asks nothing of Apple. A real phone asks for three things, and
+only the last of them repeats.
+
+**Once on the phone.** Settings → Privacy & Security → Developer Mode, on. The
+phone restarts. Plug it in, unlock it, and trust the Mac when it asks.
+
+**Once on the Mac.** A development certificate, which is the one part of this
+that Xcode has to do. Apple issues certificates to a signed-in Apple ID and
+there is no `xcrun` that asks for one, so:
+
+1. Xcode → Settings → Accounts → **+** → Apple ID, and sign in
+2. Select the account, **Manage Certificates…**, then **+** → **Apple
+   Development**
+
+Step 2 matters. Signing in alone often mints nothing — Xcode creates the
+certificate the first time it signs something, and since there is no project
+here it never gets around to it. Doing it by hand is what makes it exist.
+
+A free Apple ID is enough. It issues the same "Apple Development" certificate a
+paid account does, and everything below treats the two the same.
+
+That is the last of Xcode. Close it.
+
+**Weekly.** The provisioning profile, which says which phones the build may run
+on. A free account's lasts seven days:
+
+```
+./scripts/ios-provision.sh
+```
+
+Apple issues a profile to a build rather than to a request, so that script
+writes a throwaway Xcode project under `target/`, builds it against the phone
+to collect the profile, and throws the build away. The real app never involves
+a project. Run it again whenever `ios-device.sh` says the profile has expired,
+and whenever a new phone needs adding — a profile names the phones it was cut
+for, and one that was not plugged in when it was issued will not run the app.
+
+Then the app itself, two commands like the simulator's:
+
+```
+cargo run -p server-main       # :8082
+./scripts/ios-device.sh        # builds, signs, installs, launches
+```
+
+A phone cannot reach the Mac's loopback, so `ios-device.sh` looks up the Mac's
+address on the LAN and writes it into the bundle it builds. Both machines have
+to be on the same network, and a network change means building again.
+`MERIDIAN_SERVER=http://host:8082` names the address yourself when the server
+is somewhere else. A second phone is an argument, as the simulator's is — any
+identifier from `xcrun devicectl list devices`.
+
+The very first launch is refused, with the phone saying the developer is not
+trusted. That is Apple asking you to vouch for your own certificate, and it is
+once per certificate rather than per build: Settings → General → VPN & Device
+Management → your Apple ID → Trust. Then run `ios-device.sh` again.
+
+**When something fails.** Three failures look alike from the phone, which
+reports every one of them as "Unable to Install" or a launch that is refused:
+
+- *the profile expired* — `ios-device.sh` checks the date before it builds and
+  says so; run `ios-provision.sh`
+- *the certificate cannot be chained* — `security find-identity -v -p
+  codesigning` reports "0 valid identities" even though the certificate is
+  right there. The intermediate that signed it is missing from the keychain.
+  Apple keeps the current ones at
+  [apple.com/certificateauthority](https://www.apple.com/certificateauthority/);
+  match your certificate's issuer (`security find-certificate -c "Apple
+  Development" -p | openssl x509 -noout -issuer`) and `security import` it
+- *the phone was never trusted* — the Settings path above
 
 ### Regenerating the bindings
 

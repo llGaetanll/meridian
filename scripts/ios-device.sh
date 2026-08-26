@@ -82,47 +82,19 @@ IDENTITY=$(security find-identity -v -p codesigning \
 
 if [ -z "$IDENTITY" ]; then
     echo "no Apple Development certificate in the keychain." >&2
-    echo "docs/GETTING_STARTED.md explains how to get one without Xcode." >&2
+    echo "docs/GETTING_STARTED.md explains how to get one — it is the one" >&2
+    echo "step that needs Xcode itself, and it is once per machine." >&2
     exit 1
 fi
 
 # The provisioning profile: which phones this build may run on, and which
-# entitlements it may claim. Profiles are stored by UUID rather than by what
-# they are for, so finding the right one means decoding each and looking at the
-# bundle id it names.
-#
-# `security cms -D` is what turns the signed profile back into a plist. The
-# newest match wins, because a re-issued profile lands beside the one it
-# replaces rather than on top of it — free accounts re-issue weekly, so there
-# are usually several.
-#
-# Two directories because Xcode 16 moved them. It reads both, and a Mac that
-# has had more than one Xcode on it has profiles in both, so both are searched
-# rather than picking one and being wrong on half the machines.
-PROFILES=$HOME/Library/MobileDevice/Provisioning\ Profiles
-PROFILES_XCODE=$HOME/Library/Developer/Xcode/UserData/Provisioning\ Profiles
-PROFILE=
-
-for candidate in "$PROFILES"/*.mobileprovision "$PROFILES_XCODE"/*.mobileprovision; do
-    [ -e "$candidate" ] || continue
-
-    plist=$(security cms -D -i "$candidate" 2>/dev/null) || continue
-
-    id=$(printf '%s' "$plist" \
-        | plutil -extract Entitlements.application-identifier raw - 2>/dev/null) || continue
-
-    case "$id" in
-        *".$BUNDLE_ID")
-            if [ -z "$PROFILE" ] || [ "$candidate" -nt "$PROFILE" ]; then
-                PROFILE=$candidate
-            fi
-            ;;
-    esac
-done
+# entitlements it may claim. Where it lives is ios-profile.sh's business,
+# because ios-provision.sh needs the same answer.
+PROFILE=$(scripts/ios-profile.sh "$BUNDLE_ID" || true)
 
 if [ -z "$PROFILE" ]; then
     echo "no provisioning profile for $BUNDLE_ID." >&2
-    echo "docs/GETTING_STARTED.md explains how to get one without Xcode." >&2
+    echo "run ./scripts/ios-provision.sh to get one." >&2
     exit 1
 fi
 
