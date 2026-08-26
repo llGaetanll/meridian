@@ -18,9 +18,15 @@ mod plaid_error;
 mod plaid_ratelimit;
 mod plaid_request;
 mod plaid_request_balances;
+mod plaid_request_exchange;
+mod plaid_request_link_session;
+mod plaid_request_link_token;
 mod plaid_request_recurring;
 mod plaid_request_sync;
 mod plaid_response_balances;
+mod plaid_response_exchange;
+mod plaid_response_link_session;
+mod plaid_response_link_token;
 mod plaid_response_recurring;
 mod plaid_response_sync;
 mod plaid_transaction;
@@ -31,12 +37,88 @@ pub use plaid_error::*;
 pub use plaid_ratelimit::*;
 pub use plaid_request::*;
 pub use plaid_request_balances::*;
+pub use plaid_request_exchange::*;
+pub use plaid_request_link_session::*;
+pub use plaid_request_link_token::*;
 pub use plaid_request_recurring::*;
 pub use plaid_request_sync::*;
 pub use plaid_response_balances::*;
+pub use plaid_response_exchange::*;
+pub use plaid_response_link_session::*;
+pub use plaid_response_link_token::*;
 pub use plaid_response_recurring::*;
 pub use plaid_response_sync::*;
 pub use plaid_transaction::*;
+
+/// Open a Link session, and get the URL that hosts it.
+///
+/// The first of the three calls that attach a bank. Nothing is created by this
+/// one — a link token is a session, and a session that nobody finishes costs
+/// nothing and expires on its own.
+pub async fn create_link_token(
+    client: &PlaidClient,
+    req: &LinkTokenRequest,
+) -> Result<LinkTokenResponse, PlaidError> {
+    let res: LinkTokenResponse = client.send_request(req).await?;
+
+    tracing::info!(
+        update = req.access_token.is_some(),
+        hosted = res.hosted_link_url.is_some(),
+        expires = res.expiration.as_deref().unwrap_or("unknown"),
+        "link session opened",
+    );
+
+    Ok(res)
+}
+
+/// What became of a Link session.
+///
+/// The second call, and the one that needs no public URL: the completion
+/// redirect closes the sheet but carries no token, so the token is either
+/// pushed to a webhook or pulled with this. Poll it until
+/// [`LinkSessionResponse::finished`], and read
+/// [`LinkSessionResponse::public_tokens`] for the result — which may be empty,
+/// because somebody closing the sheet is an outcome and not a failure.
+pub async fn link_session(
+    client: &PlaidClient,
+    link_token: &str,
+) -> Result<LinkSessionResponse, PlaidError> {
+    let res: LinkSessionResponse = client
+        .send_request(&LinkSessionRequest::new(link_token))
+        .await?;
+
+    tracing::debug!(
+        sessions = res.link_sessions.len(),
+        finished = res.finished(),
+        tokens = res.public_tokens().len(),
+        "link session polled",
+    );
+
+    Ok(res)
+}
+
+/// Trade a `public_token` for the permanent one.
+///
+/// **The call that spends a Production Item slot.** The account has ten and
+/// `/item/remove` does not give one back, so this is the only function in the
+/// crate whose effect cannot be undone. What it returns never expires and is
+/// stored; see `docs/PLAID.md`.
+///
+/// The access token is deliberately absent from the log line. It is a
+/// credential to somebody's bank, and a log is a file that gets pasted into
+/// issues.
+pub async fn exchange_public_token(
+    client: &PlaidClient,
+    public_token: &str,
+) -> Result<ExchangeResponse, PlaidError> {
+    let res: ExchangeResponse = client
+        .send_request(&ExchangeRequest::new(public_token))
+        .await?;
+
+    tracing::info!(item_id = res.item_id, "item created");
+
+    Ok(res)
+}
 
 /// Every transaction since `cursor`, following Plaid's paging to the end.
 ///
