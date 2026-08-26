@@ -32,6 +32,14 @@ pub enum EventUi {
     /// One of the four range forms.
     RangeSelected { kind: RangeSelection },
 
+    /// A day in the recurring calendar. Tapping the day already selected
+    /// clears it, so the card below can be put away the way it was opened.
+    CalendarDaySelected { id: String },
+
+    /// A swipe across the recurring calendar. `step` is months, so −1 is the
+    /// month behind and 1 the month ahead.
+    CalendarMonthStepped { step: i32 },
+
     /// The user picked a transaction out of the list.
     TxSelected { id: String },
 }

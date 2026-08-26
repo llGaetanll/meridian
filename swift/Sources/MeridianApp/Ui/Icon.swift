@@ -110,6 +110,16 @@ struct Glyph: Shape {
             Svg.circle(12, 12, 9, to: &path)
             Svg.polyline([12, 7, 12, 12, 15.5, 14], to: &path)
 
+        // Open in new, and it is telling the truth: Plaid Link in update mode
+        // is a hosted page, so the tap leaves the app.
+        case "ext":
+            Svg.append("M14 4h6v6", to: &path)
+            Svg.append("M20 4 12.5 11.5", to: &path)
+            Svg.append(
+                "M18.5 14v5.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1H10",
+                to: &path
+            )
+
         case "refresh":
             Svg.append("M3 12a9 9 0 0 1 15-6.7L21 8", to: &path)
             Svg.polyline([21, 3, 21, 8, 16, 8], to: &path)

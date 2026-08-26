@@ -25,8 +25,11 @@ use crate::ViewBalances;
 use crate::ViewBreakdownSlice;
 use crate::ViewCalendar;
 use crate::ViewCalendarDay;
+use crate::ViewCalendarMonth;
 use crate::ViewCategoryChip;
 use crate::ViewConnection;
+use crate::ViewDayCard;
+use crate::ViewDayRow;
 use crate::ViewDaySection;
 use crate::ViewDock;
 use crate::ViewDockItem;
@@ -44,10 +47,6 @@ use crate::fmt;
 
 /// Seconds in a day, for stepping the calendar a cell at a time.
 const DAY: u64 = 86_400;
-
-/// Rows in the calendar. Six covers every month whatever day it starts on,
-/// which is what keeps the grid one height all year.
-const WEEKS: u64 = 6;
 
 /// The calendar's column headings, starting on Monday.
 const WEEKDAY_INITIALS: [&str; 7] = ["M", "T", "W", "T", "F", "S", "S"];
@@ -128,57 +127,78 @@ fn empty_message(state: &StateApp, shown: usize) -> Option<String> {
 
 /// The rows, cut into months and then days.
 ///
-/// One pass: the entries arrive newest-first and stay in that order, so a
-/// change of day or month is simply a change of key from the row before.
+/// One pass, over entries rather than over finished rows: they arrive
+/// newest-first and stay in that order, so a change of day or month is a
+/// change of key from the row before. Grouping before formatting is what lets
+/// a day's net be summed from the amounts, rather than re-read out of the text
+/// the rows are already carrying.
 fn group_by_month(entries: &[&Entry]) -> Vec<ViewMonthSection> {
-    let mut months: Vec<ViewMonthSection> = Vec::new();
+    let mut months: Vec<Month<'_>> = Vec::new();
 
     for entry in entries {
         let ts = entry.ts();
         let (name, year, heading) = (fmt::month_name(ts), fmt::year(ts), fmt::day_heading(ts));
 
-        let month = match months.last_mut() {
-            Some(month) if month.name == name && month.year == year => month,
+        let days = match months.last_mut() {
+            Some((month, this_year, days)) if *month == name && *this_year == year => days,
             _ => {
-                months.push(ViewMonthSection {
-                    name,
-                    year,
-                    days: Vec::new(),
-                });
+                months.push((name, year, Vec::new()));
 
-                let Some(month) = months.last_mut() else {
+                let Some((_, _, days)) = months.last_mut() else {
                     unreachable!("a month was just pushed")
                 };
 
-                month
+                days
             }
         };
 
-        let day = match month.days.last_mut() {
-            Some(day) if day.heading == heading => day,
+        let rows = match days.last_mut() {
+            Some((day, rows)) if *day == heading => rows,
             _ => {
-                month.days.push(ViewDaySection {
-                    heading,
-                    rows: Vec::new(),
-                });
+                days.push((heading, Vec::new()));
 
-                let Some(day) = month.days.last_mut() else {
+                let Some((_, rows)) = days.last_mut() else {
                     unreachable!("a day was just pushed")
                 };
 
-                day
+                rows
             }
         };
 
-        day.rows.push(tx_row(entry, false));
+        rows.push(entry);
     }
 
     debug_assert!(
-        months.iter().all(|m| !m.days.is_empty()),
+        months.iter().all(|(_, _, days)| !days.is_empty()),
         "a month section with no days should not exist",
     );
 
     months
+        .into_iter()
+        .map(|(name, year, days)| ViewMonthSection {
+            label: format!("{name} {year}"),
+            name,
+            year,
+            days: days.into_iter().map(day_section).collect(),
+        })
+        .collect()
+}
+
+/// A month being filled: its name, its year, and its days.
+type Month<'a> = (String, String, Vec<Day<'a>>);
+
+/// A day being filled: its heading, and the entries that fall on it.
+type Day<'a> = (String, Vec<&'a Entry>);
+
+/// A day's rows, under a heading that carries the day's net.
+fn day_section((heading, entries): Day<'_>) -> ViewDaySection {
+    let net: f64 = entries.iter().map(|e| e.amount()).sum();
+
+    ViewDaySection {
+        heading,
+        total: fmt::money_signed(net, false),
+        rows: entries.iter().map(|e| tx_row(e, false)).collect(),
+    }
 }
 
 /// Money is never masked on a ledger row.
@@ -279,10 +299,23 @@ fn range_summary(range: &RangeSelection) -> String {
 fn balances(state: &StateApp) -> ViewBalances {
     let held: f64 = state.connections().iter().map(|c| c.held()).sum();
 
+    // The debt blocks sit under a heading of their own, and the heading
+    // carries what they come to — the one place on the page money still takes
+    // a colour, now that the block totals are grey.
+    let owed: f64 = state
+        .connections()
+        .iter()
+        .flat_map(|connection| connection.accounts.iter())
+        .filter(|account| account.is_debt())
+        .map(|account| -account.balance)
+        .sum();
+
     ViewBalances {
         headline_label: "Held".to_string(),
         headline: fmt::money(held, state.masked()),
         masked: state.masked(),
+        owed_label: "Owed".to_string(),
+        owed_total: fmt::money(owed, state.masked()),
         connections: connection_views(state),
     }
 }
@@ -437,9 +470,17 @@ fn recurring(state: &StateApp) -> ViewRecurring {
 
     let due_soon = out.iter().filter(|s| is_soon(s, state.now())).count();
 
+    let masked = state.masked();
+    let groups = stream_groups(&out, &inflow, state.now(), masked);
+    let streams: usize = groups.iter().map(|group| group.streams.len()).sum();
+
     ViewRecurring {
-        headline: fmt::money(monthly_out, state.masked()),
-        detail: if state.masked() {
+        // Not "so far this month": that would be a claim about what has
+        // already landed, and every figure on this screen is Plaid's
+        // prediction of what comes back. The label says which one it is.
+        headline_label: "Every month".to_string(),
+        headline: fmt::money(monthly_out + monthly_in, masked),
+        detail: if masked {
             fmt::plural(due_soon, "due within the week", "due within the week")
         } else {
             format!(
@@ -448,11 +489,60 @@ fn recurring(state: &StateApp) -> ViewRecurring {
                 fmt_money(monthly_out + monthly_in),
             )
         },
-        masked: state.masked(),
-        breakdown: breakdown(&out, state.masked()),
+        // Unsigned: the word beside each figure says which way the money
+        // goes, so a sign would be saying it twice.
+        flow_in: fmt::money(monthly_in.abs(), masked),
+        flow_out: fmt::money(monthly_out.abs(), masked),
+        flow_in_signed: fmt::money_signed(monthly_in, masked),
+        flow_out_signed: fmt::money_signed(monthly_out, masked),
+        masked,
+        breakdown_label: "Where it goes".to_string(),
+        breakdown_total: fmt::money(monthly_out, masked),
+        breakdown: breakdown(&out, masked),
         calendar: calendar(state, &out),
-        groups: stream_groups(&out, &inflow, state.now(), state.masked()),
+        day_card: day_card(state, &out),
+        streams_label: "Every stream".to_string(),
+        streams_count: streams.to_string(),
+        groups,
     }
+}
+
+/// What lands on the day the calendar has selected.
+///
+/// `None` covers both "nothing tapped" and "nothing lands there" — the day
+/// still fills in to acknowledge the tap, and an empty card would be a heading
+/// over nothing.
+fn day_card(state: &StateApp, out: &[&Stream]) -> Option<ViewDayCard> {
+    let picked = state.picked_day()?;
+    let masked = state.masked();
+
+    let landing: Vec<&&Stream> = out
+        .iter()
+        .filter(|stream| {
+            stream
+                .next_date
+                .is_some_and(|next| next.day_index() == picked)
+        })
+        .collect();
+
+    if landing.is_empty() {
+        return None;
+    }
+
+    let total: f64 = landing.iter().map(|stream| stream.amount).sum();
+
+    Some(ViewDayCard {
+        heading: fmt::day_heading(stamp(picked)),
+        total: fmt::money_signed(total, masked),
+        rows: landing
+            .iter()
+            .map(|stream| ViewDayRow {
+                id: stream.id.clone(),
+                name: stream.label.clone(),
+                amount: fmt::money_signed(stream.amount, masked),
+            })
+            .collect(),
+    })
 }
 
 /// Whether a stream lands within the week.
@@ -545,6 +635,7 @@ fn group_streams(streams: &[&Stream], now: Timestamp, masked: bool) -> Vec<ViewS
                 name: category.label().to_string(),
                 token: category.token().to_string(),
                 total: fmt::money(total.abs(), masked),
+                count_label: fmt::plural(list.len(), "stream", "streams"),
                 streams: list.iter().map(|s| stream_row(s, now, masked)).collect(),
             }
         })
@@ -563,11 +654,19 @@ fn stream_row(stream: &Stream, now: Timestamp, masked: bool) -> ViewStreamRow {
         None => "no next date".to_string(),
     };
 
+    // The frequency and the date read as one phrase, which is one line under
+    // the name rather than two things sitting near each other.
+    let sub = match stream.next_date {
+        Some(next) => format!("{} · next {}", stream.frequency, fmt::short_date(next)),
+        None => format!("{} · no next date", stream.frequency),
+    };
+
     ViewStreamRow {
         id: stream.id.clone(),
         title: stream.label.clone(),
         logo_url: stream.logo_url.clone(),
         when,
+        sub,
         soon: is_soon(stream, now),
         amount: fmt::money_signed(stream.amount, masked),
         frequency: stream.frequency.clone(),
@@ -608,23 +707,18 @@ pub fn category_from_id(id: &str) -> Category {
         .unwrap_or(Category::Unknown)
 }
 
-/// The month, with a mark on every day a stream lands.
+/// Three months, with a mark on every day a stream lands.
 ///
-/// Six rows, always, and the days either side of the month drawn rather than
-/// left blank: the grid then has one height, and the streams below it do not
-/// move when the month turns.
+/// The one the app is on until it is swiped away from, and the one either side
+/// of it in full — turning the calendar is a scroll, and a scroll needs
+/// somewhere to scroll to.
 fn calendar(state: &StateApp, out: &[&Stream]) -> ViewCalendar {
     let now = state.now();
-    let (year, month, _) = fmt::civil(now);
 
-    let first = fmt::days_from_civil(year, month, 1);
-
-    // 1970-01-01 was a Thursday, and the weeks here start on Monday, so the
-    // column a day falls in is its index shifted by three.
-    let leading = (first + 3) % 7;
-
-    let start = first - leading;
-    let today = now.day_index();
+    let (year, month) = {
+        let (year, month, _) = fmt::civil(now);
+        step_month(year, month, state.month_step() as i64)
+    };
 
     // What lands when. Only the dates the source predicts — nothing is
     // projected forward from a stream's frequency, so a stream contributes at
@@ -632,7 +726,9 @@ fn calendar(state: &StateApp, out: &[&Stream]) -> ViewCalendar {
     let mut marks: BTreeMap<u64, Vec<String>> = BTreeMap::new();
 
     for stream in out {
-        let Some(next) = stream.next_date else { continue };
+        let Some(next) = stream.next_date else {
+            continue;
+        };
 
         marks
             .entry(next.day_index())
@@ -640,27 +736,75 @@ fn calendar(state: &StateApp, out: &[&Stream]) -> ViewCalendar {
             .push(stream.category.token().to_string());
     }
 
-    let weeks = (0..WEEKS)
-        .map(|week| {
-            (0..7)
-                .map(|column| {
-                    let day = start + week * 7 + column;
-                    let (_, its_month, its_day) = fmt::civil(Timestamp::from_secs(day * DAY));
+    let today = now.day_index();
+    let picked = state.picked_day();
 
-                    ViewCalendarDay {
-                        label: its_day.to_string(),
-                        outside: its_month != month,
-                        today: day == today,
-                        marks: marks.get(&day).cloned().unwrap_or_default(),
-                    }
+    let month_view = |step: i64| {
+        let (year, month) = step_month(year, month, step);
+        let (start, rows) = month_grid(year, month);
+
+        ViewCalendarMonth {
+            label: format!(
+                "{} {}",
+                fmt::month_name(stamp(fmt::days_from_civil(year, month, 1))),
+                year,
+            ),
+            weeks: (0..rows)
+                .map(|week| {
+                    (0..7)
+                        .map(|column| {
+                            let day = start + week * 7 + column;
+                            let (_, its_month, its_day) = fmt::civil(stamp(day));
+
+                            ViewCalendarDay {
+                                id: day.to_string(),
+                                label: its_day.to_string(),
+                                outside: its_month != month,
+                                today: day == today,
+                                picked: picked == Some(day),
+                                marks: marks.get(&day).cloned().unwrap_or_default(),
+                            }
+                        })
+                        .collect()
                 })
-                .collect()
-        })
-        .collect();
+                .collect(),
+        }
+    };
 
     ViewCalendar {
-        month: format!("{} {}", fmt::month_name(now), fmt::year(now)),
         weekdays: WEEKDAY_INITIALS.iter().map(|d| d.to_string()).collect(),
-        weeks,
+        prev: month_view(-1),
+        current: month_view(0),
+        next: month_view(1),
     }
+}
+
+/// Where a month's grid starts, and how many rows it takes.
+///
+/// 1970-01-01 was a Thursday and the weeks here start on Monday, so the column
+/// a day falls in is its index shifted by three.
+fn month_grid(year: i64, month: u32) -> (u64, u64) {
+    let first = fmt::days_from_civil(year, month, 1);
+
+    let (next_year, next_month) = step_month(year, month, 1);
+    let length = fmt::days_from_civil(next_year, next_month, 1).saturating_sub(first);
+
+    let leading = (first + 3) % 7;
+
+    (
+        first.saturating_sub(leading),
+        (leading + length).div_ceil(7),
+    )
+}
+
+/// The month one step either side, carrying the year with it.
+fn step_month(year: i64, month: u32, step: i64) -> (i64, u32) {
+    let index = year * 12 + month as i64 - 1 + step;
+
+    (index.div_euclid(12), index.rem_euclid(12) as u32 + 1)
+}
+
+/// The day at a day index, which is what `fmt` takes.
+fn stamp(day: u64) -> Timestamp {
+    Timestamp::from_secs(day * DAY)
 }

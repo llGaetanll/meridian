@@ -27,10 +27,18 @@ enum Theme {
     static let textMuted = Color(hex: 0x94A3B8)
     static let textFaint = Color(hex: 0x64748B)
 
+    static let slate700 = Color(hex: 0x334155)
+    static let slate800 = Color(hex: 0x1E293B)
+
     static let accent = Color(hex: 0x8B5CF6)
     static let accentSoft = Color(hex: 0xA78BFA)
     static let accentBright = Color(hex: 0xC4B5FD)
+    static let accentStrong = Color(hex: 0x6D28D9)
     static let accentTint = Color(hex: 0x8B5CF6).opacity(0.14)
+
+    /// The edge a violet button stands on: the accent mixed halfway into
+    /// black, which is `color-mix(in srgb, var(--accent) 48%, #000)`.
+    static let accentEdge = Color(hex: 0x432C76)
 
     /// Named directly rather than through a role, as `--amber-300` and
     /// `--slate-300` are in the stylesheet: the pending tag and the "due soon"

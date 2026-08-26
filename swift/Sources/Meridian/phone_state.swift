@@ -481,6 +481,22 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterInt32: FfiConverterPrimitive {
+    typealias FfiType = Int32
+    typealias SwiftType = Int32
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Int32 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: Int32, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
     typealias FfiType = UInt64
     typealias SwiftType = UInt64
@@ -855,6 +871,12 @@ public struct ViewBalances: Equatable, Hashable {
      * value itself was already replaced, so nothing is hidden in the DOM.
      */
     public var masked: Bool
+    /**
+     * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks, and
+     * the only place on the page money still takes a colour.
+     */
+    public var owedLabel: String
+    public var owedTotal: String
     public var connections: [ViewConnection]
 
     // Default memberwise initializers are never public by default, so we
@@ -872,10 +894,16 @@ public struct ViewBalances: Equatable, Hashable {
         /**
          * Whether the figures are covered. The view draws a bar over them; the
          * value itself was already replaced, so nothing is hidden in the DOM.
-         */masked: Bool, connections: [ViewConnection]) {
+         */masked: Bool, 
+        /**
+         * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks, and
+         * the only place on the page money still takes a colour.
+         */owedLabel: String, owedTotal: String, connections: [ViewConnection]) {
         self.headlineLabel = headlineLabel
         self.headline = headline
         self.masked = masked
+        self.owedLabel = owedLabel
+        self.owedTotal = owedTotal
         self.connections = connections
     }
 
@@ -898,6 +926,8 @@ public struct FfiConverterTypeViewBalances: FfiConverterRustBuffer {
                 headlineLabel: FfiConverterString.read(from: &buf), 
                 headline: FfiConverterString.read(from: &buf), 
                 masked: FfiConverterBool.read(from: &buf), 
+                owedLabel: FfiConverterString.read(from: &buf), 
+                owedTotal: FfiConverterString.read(from: &buf), 
                 connections: FfiConverterSequenceTypeViewConnection.read(from: &buf)
         )
     }
@@ -906,6 +936,8 @@ public struct FfiConverterTypeViewBalances: FfiConverterRustBuffer {
         FfiConverterString.write(value.headlineLabel, into: &buf)
         FfiConverterString.write(value.headline, into: &buf)
         FfiConverterBool.write(value.masked, into: &buf)
+        FfiConverterString.write(value.owedLabel, into: &buf)
+        FfiConverterString.write(value.owedTotal, into: &buf)
         FfiConverterSequenceTypeViewConnection.write(value.connections, into: &buf)
     }
 }
@@ -1010,37 +1042,39 @@ public func FfiConverterTypeViewBreakdownSlice_lower(_ value: ViewBreakdownSlice
 
 
 /**
- * A calendar of the month the app is in.
+ * Three months side by side: the one you are looking at, and the one either
+ * side of it.
  *
- * Six rows always, and the days either side of the month drawn rather than
- * left blank — a grid that changes height as the months turn moves everything
- * under it, and a row of empty cells reads as a rendering fault.
+ * The calendar runs sideways, because months do, and turning it is a scroll
+ * rather than a redraw — so the months either side have to be here in full.
+ * Only a column of each shows at the edge, but that column is the real month's
+ * first or last, and a swipe brings the rest of it over.
+ *
+ * Drawn as a whole month each rather than as the one visible column, because a
+ * column that has to become a month when the finger moves is two drawings of
+ * the same thing that can disagree.
  */
 public struct ViewCalendar: Equatable, Hashable {
     /**
-     * `"August 2026"`.
-     */
-    public var month: String
-    /**
      * `["M", "T", "W", "T", "F", "S", "S"]` — the column headings, starting
-     * on Monday.
+     * on Monday. One set: all three months are laid out the same way.
      */
     public var weekdays: [String]
-    public var weeks: [[ViewCalendarDay]]
+    public var prev: ViewCalendarMonth
+    public var current: ViewCalendarMonth
+    public var next: ViewCalendarMonth
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(
         /**
-         * `"August 2026"`.
-         */month: String, 
-        /**
          * `["M", "T", "W", "T", "F", "S", "S"]` — the column headings, starting
-         * on Monday.
-         */weekdays: [String], weeks: [[ViewCalendarDay]]) {
-        self.month = month
+         * on Monday. One set: all three months are laid out the same way.
+         */weekdays: [String], prev: ViewCalendarMonth, current: ViewCalendarMonth, next: ViewCalendarMonth) {
         self.weekdays = weekdays
-        self.weeks = weeks
+        self.prev = prev
+        self.current = current
+        self.next = next
     }
 
     
@@ -1059,16 +1093,18 @@ public struct FfiConverterTypeViewCalendar: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewCalendar {
         return
             try ViewCalendar(
-                month: FfiConverterString.read(from: &buf), 
                 weekdays: FfiConverterSequenceString.read(from: &buf), 
-                weeks: FfiConverterSequenceSequenceTypeViewCalendarDay.read(from: &buf)
+                prev: FfiConverterTypeViewCalendarMonth.read(from: &buf), 
+                current: FfiConverterTypeViewCalendarMonth.read(from: &buf), 
+                next: FfiConverterTypeViewCalendarMonth.read(from: &buf)
         )
     }
 
     public static func write(_ value: ViewCalendar, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.month, into: &buf)
         FfiConverterSequenceString.write(value.weekdays, into: &buf)
-        FfiConverterSequenceSequenceTypeViewCalendarDay.write(value.weeks, into: &buf)
+        FfiConverterTypeViewCalendarMonth.write(value.prev, into: &buf)
+        FfiConverterTypeViewCalendarMonth.write(value.current, into: &buf)
+        FfiConverterTypeViewCalendarMonth.write(value.next, into: &buf)
     }
 }
 
@@ -1090,6 +1126,11 @@ public func FfiConverterTypeViewCalendar_lower(_ value: ViewCalendar) -> RustBuf
 
 public struct ViewCalendarDay: Equatable, Hashable {
     /**
+     * What a tap on this day sends back — the day itself, not where it sits
+     * in the grid, so the same day in two months' grids is one day.
+     */
+    public var id: String
+    /**
      * `"12"`.
      */
     public var label: String
@@ -1098,6 +1139,11 @@ public struct ViewCalendarDay: Equatable, Hashable {
      */
     public var outside: Bool
     public var today: Bool
+    /**
+     * The day the user tapped, filled in grey. Grey and not outlined: an
+     * outline reads as a different kind of control sitting in the grid.
+     */
+    public var picked: Bool
     /**
      * One per stream landing that day, as category tokens — the same tokens
      * the breakdown above colours its segments with.
@@ -1112,11 +1158,19 @@ public struct ViewCalendarDay: Equatable, Hashable {
     // declare one manually.
     public init(
         /**
+         * What a tap on this day sends back — the day itself, not where it sits
+         * in the grid, so the same day in two months' grids is one day.
+         */id: String, 
+        /**
          * `"12"`.
          */label: String, 
         /**
          * A day belonging to the month either side. Drawn, and dimmed.
          */outside: Bool, today: Bool, 
+        /**
+         * The day the user tapped, filled in grey. Grey and not outlined: an
+         * outline reads as a different kind of control sitting in the grid.
+         */picked: Bool, 
         /**
          * One per stream landing that day, as category tokens — the same tokens
          * the breakdown above colours its segments with.
@@ -1125,9 +1179,11 @@ public struct ViewCalendarDay: Equatable, Hashable {
          * forward from a stream's frequency, so a month shows as many marks as
          * there are streams and no more.
          */marks: [String]) {
+        self.id = id
         self.label = label
         self.outside = outside
         self.today = today
+        self.picked = picked
         self.marks = marks
     }
 
@@ -1147,17 +1203,21 @@ public struct FfiConverterTypeViewCalendarDay: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewCalendarDay {
         return
             try ViewCalendarDay(
+                id: FfiConverterString.read(from: &buf), 
                 label: FfiConverterString.read(from: &buf), 
                 outside: FfiConverterBool.read(from: &buf), 
                 today: FfiConverterBool.read(from: &buf), 
+                picked: FfiConverterBool.read(from: &buf), 
                 marks: FfiConverterSequenceString.read(from: &buf)
         )
     }
 
     public static func write(_ value: ViewCalendarDay, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
         FfiConverterString.write(value.label, into: &buf)
         FfiConverterBool.write(value.outside, into: &buf)
         FfiConverterBool.write(value.today, into: &buf)
+        FfiConverterBool.write(value.picked, into: &buf)
         FfiConverterSequenceString.write(value.marks, into: &buf)
     }
 }
@@ -1175,6 +1235,81 @@ public func FfiConverterTypeViewCalendarDay_lift(_ buf: RustBuffer) throws -> Vi
 #endif
 public func FfiConverterTypeViewCalendarDay_lower(_ value: ViewCalendarDay) -> RustBuffer {
     return FfiConverterTypeViewCalendarDay.lower(value)
+}
+
+
+/**
+ * One month's grid.
+ *
+ * As many rows as the month has weeks in it — five for July, six for August —
+ * rather than six always. A row that is entirely next month is a row of
+ * nothing, and the grid changing height as the months turn is the price.
+ */
+public struct ViewCalendarMonth: Equatable, Hashable {
+    /**
+     * `"August 2026"`.
+     *
+     * The year on all three and not just the middle one: the label travels
+     * from the edge to the centre as the month turns, and a label that gains a
+     * year on the way is a label that changes rather than moves.
+     */
+    public var label: String
+    public var weeks: [[ViewCalendarDay]]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"August 2026"`.
+         *
+         * The year on all three and not just the middle one: the label travels
+         * from the edge to the centre as the month turns, and a label that gains a
+         * year on the way is a label that changes rather than moves.
+         */label: String, weeks: [[ViewCalendarDay]]) {
+        self.label = label
+        self.weeks = weeks
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewCalendarMonth: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewCalendarMonth: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewCalendarMonth {
+        return
+            try ViewCalendarMonth(
+                label: FfiConverterString.read(from: &buf), 
+                weeks: FfiConverterSequenceSequenceTypeViewCalendarDay.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewCalendarMonth, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterSequenceSequenceTypeViewCalendarDay.write(value.weeks, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewCalendarMonth_lift(_ buf: RustBuffer) throws -> ViewCalendarMonth {
+    return try FfiConverterTypeViewCalendarMonth.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewCalendarMonth_lower(_ value: ViewCalendarMonth) -> RustBuffer {
+    return FfiConverterTypeViewCalendarMonth.lower(value)
 }
 
 
@@ -1396,6 +1531,149 @@ public func FfiConverterTypeViewConnection_lower(_ value: ViewConnection) -> Rus
 
 
 /**
+ * The streams landing on the day the calendar has selected.
+ */
+public struct ViewDayCard: Equatable, Hashable {
+    /**
+     * `"Fri, Jul 10"`.
+     */
+    public var heading: String
+    /**
+     * `"−$578.50"`, what the day comes to.
+     */
+    public var total: String
+    public var rows: [ViewDayRow]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"Fri, Jul 10"`.
+         */heading: String, 
+        /**
+         * `"−$578.50"`, what the day comes to.
+         */total: String, rows: [ViewDayRow]) {
+        self.heading = heading
+        self.total = total
+        self.rows = rows
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewDayCard: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewDayCard: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewDayCard {
+        return
+            try ViewDayCard(
+                heading: FfiConverterString.read(from: &buf), 
+                total: FfiConverterString.read(from: &buf), 
+                rows: FfiConverterSequenceTypeViewDayRow.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewDayCard, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.heading, into: &buf)
+        FfiConverterString.write(value.total, into: &buf)
+        FfiConverterSequenceTypeViewDayRow.write(value.rows, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewDayCard_lift(_ buf: RustBuffer) throws -> ViewDayCard {
+    return try FfiConverterTypeViewDayCard.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewDayCard_lower(_ value: ViewDayCard) -> RustBuffer {
+    return FfiConverterTypeViewDayCard.lower(value)
+}
+
+
+public struct ViewDayRow: Equatable, Hashable {
+    public var id: String
+    /**
+     * `"United Airlines"`.
+     */
+    public var name: String
+    /**
+     * `"−$500.00"`.
+     */
+    public var amount: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, 
+        /**
+         * `"United Airlines"`.
+         */name: String, 
+        /**
+         * `"−$500.00"`.
+         */amount: String) {
+        self.id = id
+        self.name = name
+        self.amount = amount
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewDayRow: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewDayRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewDayRow {
+        return
+            try ViewDayRow(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                amount: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewDayRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.amount, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewDayRow_lift(_ buf: RustBuffer) throws -> ViewDayRow {
+    return try FfiConverterTypeViewDayRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewDayRow_lower(_ value: ViewDayRow) -> RustBuffer {
+    return FfiConverterTypeViewDayRow.lower(value)
+}
+
+
+/**
  * A day's worth of rows, under its heading.
  *
  * Grouping is done in the machine rather than in the view because three view
@@ -1407,6 +1685,11 @@ public struct ViewDaySection: Equatable, Hashable {
      * `"Wed, Aug 12"`.
      */
     public var heading: String
+    /**
+     * `"−$30.40"`, the day's net. It sits on the heading's own line, so the
+     * two halves of the line say the same thing about the same day.
+     */
+    public var total: String
     public var rows: [ViewTxRow]
 
     // Default memberwise initializers are never public by default, so we
@@ -1414,8 +1697,13 @@ public struct ViewDaySection: Equatable, Hashable {
     public init(
         /**
          * `"Wed, Aug 12"`.
-         */heading: String, rows: [ViewTxRow]) {
+         */heading: String, 
+        /**
+         * `"−$30.40"`, the day's net. It sits on the heading's own line, so the
+         * two halves of the line say the same thing about the same day.
+         */total: String, rows: [ViewTxRow]) {
         self.heading = heading
+        self.total = total
         self.rows = rows
     }
 
@@ -1436,12 +1724,14 @@ public struct FfiConverterTypeViewDaySection: FfiConverterRustBuffer {
         return
             try ViewDaySection(
                 heading: FfiConverterString.read(from: &buf), 
+                total: FfiConverterString.read(from: &buf), 
                 rows: FfiConverterSequenceTypeViewTxRow.read(from: &buf)
         )
     }
 
     public static func write(_ value: ViewDaySection, into buf: inout [UInt8]) {
         FfiConverterString.write(value.heading, into: &buf)
+        FfiConverterString.write(value.total, into: &buf)
         FfiConverterSequenceTypeViewTxRow.write(value.rows, into: &buf)
     }
 }
@@ -1764,6 +2054,10 @@ public struct ViewMonthSection: Equatable, Hashable {
      * `"2026"`.
      */
     public var year: String
+    /**
+     * `"August 2026"` — the two of them as the marker reads them.
+     */
+    public var label: String
     public var days: [ViewDaySection]
 
     // Default memberwise initializers are never public by default, so we
@@ -1774,9 +2068,13 @@ public struct ViewMonthSection: Equatable, Hashable {
          */name: String, 
         /**
          * `"2026"`.
-         */year: String, days: [ViewDaySection]) {
+         */year: String, 
+        /**
+         * `"August 2026"` — the two of them as the marker reads them.
+         */label: String, days: [ViewDaySection]) {
         self.name = name
         self.year = year
+        self.label = label
         self.days = days
     }
 
@@ -1798,6 +2096,7 @@ public struct FfiConverterTypeViewMonthSection: FfiConverterRustBuffer {
             try ViewMonthSection(
                 name: FfiConverterString.read(from: &buf), 
                 year: FfiConverterString.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf), 
                 days: FfiConverterSequenceTypeViewDaySection.read(from: &buf)
         )
     }
@@ -1805,6 +2104,7 @@ public struct FfiConverterTypeViewMonthSection: FfiConverterRustBuffer {
     public static func write(_ value: ViewMonthSection, into buf: inout [UInt8]) {
         FfiConverterString.write(value.name, into: &buf)
         FfiConverterString.write(value.year, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
         FfiConverterSequenceTypeViewDaySection.write(value.days, into: &buf)
     }
 }
@@ -1924,14 +2224,39 @@ public func FfiConverterTypeViewRange_lower(_ value: ViewRange) -> RustBuffer {
 
 public struct ViewRecurring: Equatable, Hashable {
     /**
-     * `"−$3,771.40"`, the monthly commitment.
+     * `"Every month"` — what the headline under it is a figure for.
+     */
+    public var headlineLabel: String
+    /**
+     * `"−$3,767.18"`, the net of everything that comes back.
      */
     public var headline: String
     /**
      * `"+$4.22 in · net −$3,767.18"`.
+     *
+     * The phone draws `flow_in` and `flow_out` instead; this is the one line
+     * the web still sets under its headline.
      */
     public var detail: String
+    /**
+     * `"$4.22"` and `"$3,771.40"` — the two directions, unsigned. The words
+     * beside them say which way the money goes, so the figures do not carry a
+     * sign as well.
+     */
+    public var flowIn: String
+    public var flowOut: String
+    /**
+     * `"+$4.22"` and `"−$3,771.40"` — the same two with the sign back on, for
+     * where there is no room for the words. A diff, read as one.
+     */
+    public var flowInSigned: String
+    public var flowOutSigned: String
     public var masked: Bool
+    /**
+     * `"Where it goes"` and `"−$3,771.40"` — the heading over the split.
+     */
+    public var breakdownLabel: String
+    public var breakdownTotal: String
     /**
      * The breakdown bar and its legend are two views of one split, so they
      * come from one list.
@@ -1941,29 +2266,72 @@ public struct ViewRecurring: Equatable, Hashable {
      * When it all lands, under the breakdown.
      */
     public var calendar: ViewCalendar
+    /**
+     * What landed on the day that was tapped. `None` until one is.
+     */
+    public var dayCard: ViewDayCard?
+    /**
+     * `"Every stream"` and `"8"` — the heading over the list.
+     */
+    public var streamsLabel: String
+    public var streamsCount: String
     public var groups: [ViewStreamGroup]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(
         /**
-         * `"−$3,771.40"`, the monthly commitment.
+         * `"Every month"` — what the headline under it is a figure for.
+         */headlineLabel: String, 
+        /**
+         * `"−$3,767.18"`, the net of everything that comes back.
          */headline: String, 
         /**
          * `"+$4.22 in · net −$3,767.18"`.
-         */detail: String, masked: Bool, 
+         *
+         * The phone draws `flow_in` and `flow_out` instead; this is the one line
+         * the web still sets under its headline.
+         */detail: String, 
+        /**
+         * `"$4.22"` and `"$3,771.40"` — the two directions, unsigned. The words
+         * beside them say which way the money goes, so the figures do not carry a
+         * sign as well.
+         */flowIn: String, flowOut: String, 
+        /**
+         * `"+$4.22"` and `"−$3,771.40"` — the same two with the sign back on, for
+         * where there is no room for the words. A diff, read as one.
+         */flowInSigned: String, flowOutSigned: String, masked: Bool, 
+        /**
+         * `"Where it goes"` and `"−$3,771.40"` — the heading over the split.
+         */breakdownLabel: String, breakdownTotal: String, 
         /**
          * The breakdown bar and its legend are two views of one split, so they
          * come from one list.
          */breakdown: [ViewBreakdownSlice], 
         /**
          * When it all lands, under the breakdown.
-         */calendar: ViewCalendar, groups: [ViewStreamGroup]) {
+         */calendar: ViewCalendar, 
+        /**
+         * What landed on the day that was tapped. `None` until one is.
+         */dayCard: ViewDayCard?, 
+        /**
+         * `"Every stream"` and `"8"` — the heading over the list.
+         */streamsLabel: String, streamsCount: String, groups: [ViewStreamGroup]) {
+        self.headlineLabel = headlineLabel
         self.headline = headline
         self.detail = detail
+        self.flowIn = flowIn
+        self.flowOut = flowOut
+        self.flowInSigned = flowInSigned
+        self.flowOutSigned = flowOutSigned
         self.masked = masked
+        self.breakdownLabel = breakdownLabel
+        self.breakdownTotal = breakdownTotal
         self.breakdown = breakdown
         self.calendar = calendar
+        self.dayCard = dayCard
+        self.streamsLabel = streamsLabel
+        self.streamsCount = streamsCount
         self.groups = groups
     }
 
@@ -1983,21 +2351,41 @@ public struct FfiConverterTypeViewRecurring: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewRecurring {
         return
             try ViewRecurring(
+                headlineLabel: FfiConverterString.read(from: &buf), 
                 headline: FfiConverterString.read(from: &buf), 
                 detail: FfiConverterString.read(from: &buf), 
+                flowIn: FfiConverterString.read(from: &buf), 
+                flowOut: FfiConverterString.read(from: &buf), 
+                flowInSigned: FfiConverterString.read(from: &buf), 
+                flowOutSigned: FfiConverterString.read(from: &buf), 
                 masked: FfiConverterBool.read(from: &buf), 
+                breakdownLabel: FfiConverterString.read(from: &buf), 
+                breakdownTotal: FfiConverterString.read(from: &buf), 
                 breakdown: FfiConverterSequenceTypeViewBreakdownSlice.read(from: &buf), 
                 calendar: FfiConverterTypeViewCalendar.read(from: &buf), 
+                dayCard: FfiConverterOptionTypeViewDayCard.read(from: &buf), 
+                streamsLabel: FfiConverterString.read(from: &buf), 
+                streamsCount: FfiConverterString.read(from: &buf), 
                 groups: FfiConverterSequenceTypeViewStreamGroup.read(from: &buf)
         )
     }
 
     public static func write(_ value: ViewRecurring, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.headlineLabel, into: &buf)
         FfiConverterString.write(value.headline, into: &buf)
         FfiConverterString.write(value.detail, into: &buf)
+        FfiConverterString.write(value.flowIn, into: &buf)
+        FfiConverterString.write(value.flowOut, into: &buf)
+        FfiConverterString.write(value.flowInSigned, into: &buf)
+        FfiConverterString.write(value.flowOutSigned, into: &buf)
         FfiConverterBool.write(value.masked, into: &buf)
+        FfiConverterString.write(value.breakdownLabel, into: &buf)
+        FfiConverterString.write(value.breakdownTotal, into: &buf)
         FfiConverterSequenceTypeViewBreakdownSlice.write(value.breakdown, into: &buf)
         FfiConverterTypeViewCalendar.write(value.calendar, into: &buf)
+        FfiConverterOptionTypeViewDayCard.write(value.dayCard, into: &buf)
+        FfiConverterString.write(value.streamsLabel, into: &buf)
+        FfiConverterString.write(value.streamsCount, into: &buf)
         FfiConverterSequenceTypeViewStreamGroup.write(value.groups, into: &buf)
     }
 }
@@ -2028,6 +2416,11 @@ public struct ViewStreamGroup: Equatable, Hashable {
      * `"$2,078.50"`.
      */
     public var total: String
+    /**
+     * `"1 stream"` / `"2 streams"`, which is what the group's heading says
+     * now that the figures below it are the ones worth reading.
+     */
+    public var countLabel: String
     public var streams: [ViewStreamRow]
 
     // Default memberwise initializers are never public by default, so we
@@ -2038,10 +2431,15 @@ public struct ViewStreamGroup: Equatable, Hashable {
          */name: String, token: String, 
         /**
          * `"$2,078.50"`.
-         */total: String, streams: [ViewStreamRow]) {
+         */total: String, 
+        /**
+         * `"1 stream"` / `"2 streams"`, which is what the group's heading says
+         * now that the figures below it are the ones worth reading.
+         */countLabel: String, streams: [ViewStreamRow]) {
         self.name = name
         self.token = token
         self.total = total
+        self.countLabel = countLabel
         self.streams = streams
     }
 
@@ -2064,6 +2462,7 @@ public struct FfiConverterTypeViewStreamGroup: FfiConverterRustBuffer {
                 name: FfiConverterString.read(from: &buf), 
                 token: FfiConverterString.read(from: &buf), 
                 total: FfiConverterString.read(from: &buf), 
+                countLabel: FfiConverterString.read(from: &buf), 
                 streams: FfiConverterSequenceTypeViewStreamRow.read(from: &buf)
         )
     }
@@ -2072,6 +2471,7 @@ public struct FfiConverterTypeViewStreamGroup: FfiConverterRustBuffer {
         FfiConverterString.write(value.name, into: &buf)
         FfiConverterString.write(value.token, into: &buf)
         FfiConverterString.write(value.total, into: &buf)
+        FfiConverterString.write(value.countLabel, into: &buf)
         FfiConverterSequenceTypeViewStreamRow.write(value.streams, into: &buf)
     }
 }
@@ -2101,6 +2501,11 @@ public struct ViewStreamRow: Equatable, Hashable {
      */
     public var when: String
     /**
+     * `"Monthly · next Aug 22"` — the whole line under the name, which is
+     * the frequency and the date read as one phrase rather than two.
+     */
+    public var sub: String
+    /**
      * Due within the week, so it reads as a heads-up rather than an alarm.
      */
     public var soon: Bool
@@ -2120,6 +2525,10 @@ public struct ViewStreamRow: Equatable, Hashable {
          * `"next Aug 22 · in 3 days"`.
          */when: String, 
         /**
+         * `"Monthly · next Aug 22"` — the whole line under the name, which is
+         * the frequency and the date read as one phrase rather than two.
+         */sub: String, 
+        /**
          * Due within the week, so it reads as a heads-up rather than an alarm.
          */soon: Bool, 
         /**
@@ -2132,6 +2541,7 @@ public struct ViewStreamRow: Equatable, Hashable {
         self.title = title
         self.logoUrl = logoUrl
         self.when = when
+        self.sub = sub
         self.soon = soon
         self.amount = amount
         self.frequency = frequency
@@ -2157,6 +2567,7 @@ public struct FfiConverterTypeViewStreamRow: FfiConverterRustBuffer {
                 title: FfiConverterString.read(from: &buf), 
                 logoUrl: FfiConverterOptionString.read(from: &buf), 
                 when: FfiConverterString.read(from: &buf), 
+                sub: FfiConverterString.read(from: &buf), 
                 soon: FfiConverterBool.read(from: &buf), 
                 amount: FfiConverterString.read(from: &buf), 
                 frequency: FfiConverterString.read(from: &buf)
@@ -2168,6 +2579,7 @@ public struct FfiConverterTypeViewStreamRow: FfiConverterRustBuffer {
         FfiConverterString.write(value.title, into: &buf)
         FfiConverterOptionString.write(value.logoUrl, into: &buf)
         FfiConverterString.write(value.when, into: &buf)
+        FfiConverterString.write(value.sub, into: &buf)
         FfiConverterBool.write(value.soon, into: &buf)
         FfiConverterString.write(value.amount, into: &buf)
         FfiConverterString.write(value.frequency, into: &buf)
@@ -2770,6 +3182,18 @@ public enum EventUi: Equatable, Hashable {
     case rangeSelected(kind: RangeSelection
     )
     /**
+     * A day in the recurring calendar. Tapping the day already selected
+     * clears it, so the card below can be put away the way it was opened.
+     */
+    case calendarDaySelected(id: String
+    )
+    /**
+     * A swipe across the recurring calendar. `step` is months, so −1 is the
+     * month behind and 1 the month ahead.
+     */
+    case calendarMonthStepped(step: Int32
+    )
+    /**
      * The user picked a transaction out of the list.
      */
     case txSelected(id: String
@@ -2815,7 +3239,13 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
         case 8: return .rangeSelected(kind: try FfiConverterTypeRangeSelection.read(from: &buf)
         )
         
-        case 9: return .txSelected(id: try FfiConverterString.read(from: &buf)
+        case 9: return .calendarDaySelected(id: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 10: return .calendarMonthStepped(step: try FfiConverterInt32.read(from: &buf)
+        )
+        
+        case 11: return .txSelected(id: try FfiConverterString.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -2862,8 +3292,18 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
             FfiConverterTypeRangeSelection.write(kind, into: &buf)
             
         
-        case let .txSelected(id):
+        case let .calendarDaySelected(id):
             writeInt(&buf, Int32(9))
+            FfiConverterString.write(id, into: &buf)
+            
+        
+        case let .calendarMonthStepped(step):
+            writeInt(&buf, Int32(10))
+            FfiConverterInt32.write(step, into: &buf)
+            
+        
+        case let .txSelected(id):
+            writeInt(&buf, Int32(11))
             FfiConverterString.write(id, into: &buf)
             
         }
@@ -3417,6 +3857,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeViewDayCard: FfiConverterRustBuffer {
+    typealias SwiftType = ViewDayCard?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeViewDayCard.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeViewDayCard.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]
 
@@ -3559,6 +4023,31 @@ fileprivate struct FfiConverterSequenceTypeViewConnection: FfiConverterRustBuffe
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeViewConnection.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeViewDayRow: FfiConverterRustBuffer {
+    typealias SwiftType = [ViewDayRow]
+
+    public static func write(_ value: [ViewDayRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeViewDayRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ViewDayRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ViewDayRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeViewDayRow.read(from: &buf))
         }
         return seq
     }

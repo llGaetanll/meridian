@@ -77,8 +77,15 @@ fn loaded_on(screen: Screen) -> (StateApp, ViewScreen) {
     (state, view)
 }
 
-/// The same, with the figures revealed.
+/// The same. Figures start revealed, so this is `loaded_on` without the
+/// machine — kept because most of these tests are about what a screen says
+/// rather than about the mask.
 fn revealed_on(screen: Screen) -> ViewScreen {
+    loaded_on(screen).1
+}
+
+/// The same, with the figures covered.
+fn covered_on(screen: Screen) -> ViewScreen {
     let mut state = StateApp::new();
     let mut actions = Vec::new();
 
@@ -185,11 +192,7 @@ fn a_loaded_snapshot_fills_every_screen() {
 
 #[test]
 fn every_screen_renders() {
-    for screen in [
-        Screen::Ledger,
-        Screen::Recurring,
-        Screen::Balances,
-    ] {
+    for screen in [Screen::Ledger, Screen::Recurring, Screen::Balances] {
         let (_, view) = loaded_on(screen);
 
         let matches = matches!(
@@ -216,6 +219,37 @@ fn the_ledger_groups_by_month_and_day() {
     assert_eq!(ledger.months[0].days[0].heading, "Wed, Aug 12");
 
     assert_eq!(rows(ledger).len(), 48, "every row lands in exactly one day");
+}
+
+/// The heading carries the day's net, so the two halves of the line say the
+/// same thing about the same day.
+#[test]
+fn a_day_heading_carries_its_net() {
+    let (_, view) = loaded_on(Screen::Ledger);
+    let ledger = ledger_of(&view);
+
+    // Aug 12 is the Uber and the credit card payment: −5.40 and −25.00.
+    assert_eq!(ledger.months[0].days[0].total, "−$30.40");
+
+    // Signed, because a day that took more than it gave is worth seeing as
+    // such — Aug 10 is a $500 refund against $78.50 of climbing.
+    let plus = ledger.months[0]
+        .days
+        .iter()
+        .find(|day| day.heading == "Mon, Aug 10");
+
+    assert_eq!(plus.map(|day| day.total.as_str()), Some("+$421.50"));
+}
+
+/// The marker over each month reads as one phrase, and the parts are still
+/// there for anything that wants them separately.
+#[test]
+fn a_month_is_labelled_with_its_year() {
+    let (_, view) = loaded_on(Screen::Ledger);
+    let month = &ledger_of(&view).months[0];
+
+    assert_eq!(month.label, "August 2026");
+    assert_eq!(month.label, format!("{} {}", month.name, month.year));
 }
 
 #[test]
@@ -496,10 +530,22 @@ fn balances_of(view: &ViewScreen) -> &ViewBalances {
     }
 }
 
-/// Covered by default, so the app can be opened in public without a decision.
+/// Revealed by default. The phone has no eye any more, so a covered figure
+/// would be one nothing on the screen could uncover.
 #[test]
-fn figures_start_covered() {
+fn figures_start_revealed() {
     let (_, view) = loaded_on(Screen::Balances);
+    let balances = balances_of(&view);
+
+    assert!(!balances.masked);
+    assert_eq!(balances.headline, "$86,541.74");
+}
+
+/// Covering still works, and is still one switch for the whole app — the web
+/// is where it is reached from.
+#[test]
+fn covering_hides_the_figure() {
+    let view = covered_on(Screen::Balances);
     let balances = balances_of(&view);
 
     assert!(balances.masked);
@@ -510,23 +556,14 @@ fn figures_start_covered() {
     );
 }
 
-#[test]
-fn revealing_shows_the_real_figure() {
-    let view = revealed_on(Screen::Balances);
-    let balances = balances_of(&view);
-
-    assert!(!balances.masked);
-    assert_eq!(balances.headline, "$86,541.74");
-}
-
-/// One switch for the whole app: revealing on Balances and staying covered on
+/// One switch for the whole app: covering on Balances and staying revealed on
 /// Recurring would be a strange thing to have to explain.
 #[test]
 fn the_mask_is_one_switch_across_screens() {
-    match revealed_on(Screen::Recurring) {
+    match covered_on(Screen::Recurring) {
         ViewScreen::Recurring { view } => {
-            assert!(!view.masked);
-            assert_eq!(view.headline, "−$3,771.40");
+            assert!(view.masked);
+            assert!(!view.headline.contains('3'));
         }
         other => panic!("expected recurring, got {other:?}"),
     }
@@ -656,29 +693,167 @@ fn recurring_of(view: &ViewScreen) -> &ViewRecurring {
     }
 }
 
+/// The grid is as many rows as the month has weeks in it. August 2026 starts
+/// on a Saturday and runs 31 days, which is six; July is five.
+#[test]
+fn the_calendar_is_as_tall_as_its_month() {
+    let view = revealed_on(Screen::Recurring);
+    let calendar = &recurring_of(&view).calendar;
+
+    assert_eq!(calendar.current.label, "August 2026");
+    assert_eq!(calendar.current.weeks.len(), 6);
+    assert!(calendar.current.weeks.iter().all(|week| week.len() == 7));
+
+    assert_eq!(calendar.prev.label, "July 2026");
+    assert_eq!(calendar.prev.weeks.len(), 5);
+
+    assert_eq!(calendar.next.label, "September 2026");
+}
+
+/// The months either side arrive whole, not as the one column that shows at
+/// the edge. Turning the calendar is a scroll, and a scroll needs somewhere to
+/// scroll to.
+#[test]
+fn the_months_either_side_arrive_whole() {
+    let view = revealed_on(Screen::Recurring);
+    let calendar = &recurring_of(&view).calendar;
+
+    for month in [&calendar.prev, &calendar.next] {
+        assert!(!month.weeks.is_empty());
+        assert!(month.weeks.iter().all(|week| week.len() == 7));
+
+        // Its own days are its own; the ones it borrows are dimmed.
+        assert!(month.weeks.iter().flatten().any(|day| !day.outside));
+        assert!(month.weeks.iter().flatten().any(|day| day.outside));
+    }
+
+    // Today belongs to one month, wherever else it is drawn it is outside it.
+    let today: Vec<&ViewCalendarDay> = calendar
+        .current
+        .weeks
+        .iter()
+        .flatten()
+        .filter(|day| day.today)
+        .collect();
+
+    assert_eq!(today.len(), 1);
+    assert!(!today[0].outside);
+}
+
+/// A day in two months' grids is one day, so the two carry the same id.
+#[test]
+fn a_day_has_one_id_wherever_it_is_drawn() {
+    let view = revealed_on(Screen::Recurring);
+    let calendar = &recurring_of(&view).calendar;
+
+    // The 2nd of August closes July's last week and opens August's first.
+    let inside = calendar
+        .current
+        .weeks
+        .iter()
+        .flatten()
+        .find(|day| day.label == "2" && !day.outside);
+
+    let borrowed = calendar
+        .prev
+        .weeks
+        .iter()
+        .flatten()
+        .find(|day| day.label == "2" && day.outside);
+
+    assert!(inside.is_some() && borrowed.is_some());
+    assert_eq!(
+        inside.map(|day| day.id.as_str()),
+        borrowed.map(|day| day.id.as_str()),
+        "the 2nd of August is the 2nd of August",
+    );
+}
+
+/// Tapping a day opens what landed on it; tapping it again puts it away. A
+/// card that could only be opened would need a close button of its own.
+#[test]
+fn tapping_a_day_opens_it_and_tapping_it_again_shuts_it() {
+    let (state, view) = loaded_on(Screen::Recurring);
+    let mut state = state;
+
+    assert!(recurring_of(&view).day_card.is_none(), "nothing tapped yet");
+
+    // The day the sketch draws a card for: two streams land on it.
+    let marked = recurring_of(&view)
+        .calendar
+        .current
+        .weeks
+        .iter()
+        .flatten()
+        .find(|day| day.marks.len() > 1)
+        .map(|day| day.id.clone());
+
+    let Some(id) = marked else {
+        panic!("the fixture should land more than one stream on some day")
+    };
+
+    let pick = |id: &str| ui(EventUi::CalendarDaySelected { id: id.to_string() });
+
+    let mut actions = Vec::new();
+    state.handle_events(NOW, &[ui(EventUi::MaskToggled), pick(&id)], &mut actions);
+
+    let opened = last_render(&actions);
+    let card = recurring_of(&opened).day_card.clone();
+
+    assert!(card.is_some(), "the day that was tapped opens");
+    assert!(card.is_some_and(|card| card.rows.len() > 1));
+
+    assert!(
+        recurring_of(&opened)
+            .calendar
+            .current
+            .weeks
+            .iter()
+            .flatten()
+            .any(|day| day.picked),
+        "and it reads as picked",
+    );
+
+    let mut actions = Vec::new();
+    state.handle_events(NOW, &[pick(&id)], &mut actions);
+
+    assert!(recurring_of(&last_render(&actions)).day_card.is_none());
+}
+
 #[test]
 fn recurring_leads_with_the_monthly_commitment() {
     let view = revealed_on(Screen::Recurring);
     let recurring = recurring_of(&view);
 
-    assert_eq!(recurring.headline, "−$3,771.40");
+    // The headline is the net, and the two directions sit under it — the
+    // words beside them carry the sign, so the figures do not.
+    assert_eq!(recurring.headline_label, "Every month");
+    assert_eq!(recurring.headline, "−$3,767.18");
+    assert_eq!(recurring.flow_in, "$4.22");
+    assert_eq!(recurring.flow_out, "$3,771.40");
+
+    // The same pair with the sign back on, for the band, where the words that
+    // carry the direction do not fit.
+    assert_eq!(recurring.flow_in_signed, "+$4.22");
+    assert_eq!(recurring.flow_out_signed, "−$3,771.40");
+    assert_eq!(recurring.breakdown_total, "−$3,771.40");
     assert_eq!(recurring.detail, "+$4.22 in · net −$3,767.18");
 }
 
-/// The grid is one shape whatever month it is: six rows of seven, with the
-/// days either side of the month drawn rather than left blank.
+/// Every row is a full week, whichever month it belongs to — the days either
+/// side of the month are drawn rather than left blank.
 #[test]
-fn the_calendar_is_always_six_full_weeks() {
+fn the_calendar_draws_whole_weeks() {
     let (_, view) = loaded_on(Screen::Recurring);
     let calendar = &recurring_of(&view).calendar;
 
-    assert_eq!(calendar.month, "August 2026");
     assert_eq!(calendar.weekdays, ["M", "T", "W", "T", "F", "S", "S"]);
-    assert_eq!(calendar.weeks.len(), 6);
 
-    for week in &calendar.weeks {
-        assert_eq!(week.len(), 7);
-        assert!(week.iter().all(|d| !d.label.is_empty()), "no blank cells");
+    for month in [&calendar.prev, &calendar.current, &calendar.next] {
+        for week in &month.weeks {
+            assert_eq!(week.len(), 7);
+            assert!(week.iter().all(|d| !d.label.is_empty()), "no blank cells");
+        }
     }
 }
 
@@ -687,7 +862,7 @@ fn the_calendar_is_always_six_full_weeks() {
 #[test]
 fn the_calendar_starts_the_month_on_its_own_weekday() {
     let (_, view) = loaded_on(Screen::Recurring);
-    let first = &recurring_of(&view).calendar.weeks[0];
+    let first = &recurring_of(&view).calendar.current.weeks[0];
 
     let labels: Vec<&str> = first.iter().map(|d| d.label.as_str()).collect();
     assert_eq!(labels, ["27", "28", "29", "30", "31", "1", "2"]);
@@ -703,6 +878,7 @@ fn the_calendar_marks_today() {
     let calendar = &recurring_of(&view).calendar;
 
     let today: Vec<&str> = calendar
+        .current
         .weeks
         .iter()
         .flatten()
@@ -720,7 +896,13 @@ fn the_calendar_marks_only_the_dates_plaid_gave_us() {
     let (state, view) = loaded_on(Screen::Recurring);
     let calendar = &recurring_of(&view).calendar;
 
-    let marks: usize = calendar.weeks.iter().flatten().map(|d| d.marks.len()).sum();
+    let marks: usize = calendar
+        .current
+        .weeks
+        .iter()
+        .flatten()
+        .map(|d| d.marks.len())
+        .sum();
 
     assert!(marks > 0, "the feed has streams with next dates");
     assert!(
@@ -731,6 +913,7 @@ fn the_calendar_marks_only_the_dates_plaid_gave_us() {
 
     // A marked day carries the category token the breakdown above colours by.
     let tokens: Vec<&str> = calendar
+        .current
         .weeks
         .iter()
         .flatten()

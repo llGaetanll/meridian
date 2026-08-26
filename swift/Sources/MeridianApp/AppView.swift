@@ -32,7 +32,8 @@ struct AppView: View {
             if let screen = runtime.screen, opened {
                 PhoneShell(
                     title: Self.title(of: screen),
-                    panel: { Self.panel(of: screen) },
+                    screen: Self.title(of: screen),
+                    band: { scroller in Self.band(of: screen, scroller: scroller) },
                     content: { Self.content(of: screen) }
                 )
             } else {
@@ -57,13 +58,15 @@ struct AppView: View {
         }
     }
 
-    /// Drawn above the body. Only the Ledger has one.
+    /// What a page's headline becomes once it has scrolled away. Every screen
+    /// has one; the Ledger's is what its filter is set to, the other two are
+    /// the figure the page opens on.
     @ViewBuilder
-    private static func panel(of screen: ViewScreen) -> some View {
+    private static func band(of screen: ViewScreen, scroller: ScrollViewProxy) -> some View {
         switch screen {
-        case .ledger(let view): LedgerPanel(filter: view.filter)
-        case .recurring: EmptyView()
-        case .balances: EmptyView()
+        case .ledger(let view): LedgerBand(filter: view.filter, scroller: scroller)
+        case .recurring(let view): RecurringBand(view: view)
+        case .balances(let view): BalancesBand(view: view)
         }
     }
 

@@ -17,7 +17,6 @@ pub struct ViewFilter {
 
     /// `"Last 3 months"` — what a shut range group shows.
     pub range_summary: String,
-
 }
 
 /// One category in the filter grid.

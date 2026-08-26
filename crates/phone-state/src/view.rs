@@ -38,6 +38,13 @@ pub enum Screen {
 /// One type rather than three optional ones: the view renders whichever arm it
 /// is handed and holds no "which screen am I on" state of its own.
 #[derive(Debug, Clone, uniffi::Enum)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one of these is built per render and handed straight across the \
+              FFI, so the few hundred bytes between the largest variant and \
+              the smallest are paid once per event and never moved again. \
+              Boxing the payload would not cross UniFFI."
+)]
 pub enum ViewScreen {
     Ledger { view: ViewLedger },
     Recurring { view: ViewRecurring },

@@ -16,6 +16,11 @@ pub struct ViewBalances {
     /// value itself was already replaced, so nothing is hidden in the DOM.
     pub masked: bool,
 
+    /// `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks, and
+    /// the only place on the page money still takes a colour.
+    pub owed_label: String,
+    pub owed_total: String,
+
     pub connections: Vec<ViewConnection>,
 }
 
