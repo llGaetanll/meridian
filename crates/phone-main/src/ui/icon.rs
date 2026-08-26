@@ -74,6 +74,15 @@ fn path(name: &str) -> AnyView {
 
         "chevron" => view! { <polyline points="6 9 12 15 18 9" /> }.into_any(),
 
+        // Open in new, and it is telling the truth: Plaid Link in update mode
+        // is a hosted page, so the tap leaves the app.
+        "ext" => view! {
+            <path d="M14 4h6v6" />
+            <path d="M20 4 12.5 11.5" />
+            <path d="M18.5 14v5.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1H10" />
+        }
+        .into_any(),
+
         "caret" => view! { <polygon points="6 9 18 9 12 16" fill="currentColor" stroke="none" /> }
             .into_any(),
 

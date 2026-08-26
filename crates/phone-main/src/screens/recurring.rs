@@ -51,11 +51,13 @@ pub fn RecurringScreen(view: ViewRecurring) -> impl IntoView {
 #[component]
 fn CalendarGrid(calendar: ViewCalendar) -> impl IntoView {
     let weekdays = calendar.weekdays.clone();
-    let weeks = calendar.weeks.clone();
+    let weeks = calendar.current.weeks.clone();
 
     view! {
         <div class="cal">
-            <div class="cal-month">{calendar.month}</div>
+            // The web draws the month it is on. The two either side come over
+            // for the phone, which scrolls between them.
+            <div class="cal-month">{calendar.current.label}</div>
 
             <div class="cal-grid">
                 // Tuesday and Thursday are both "T", so the headings are keyed

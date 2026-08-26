@@ -56,9 +56,23 @@ pub struct StateApp {
     /// freeze "in 3 days" until the next fetch.
     server_clock: Option<(Timestamp, Timestamp)>,
 
-    /// Whether figures are covered. Starts covered, so the ledger can be
-    /// opened in public without a decision.
+    /// Whether figures are covered.
+    ///
+    /// Starts revealed. It used to start covered, so that the ledger could be
+    /// opened in public without a decision — but the phone has no way to
+    /// uncover them any more, and a screen of grey bars with nothing to tap is
+    /// worse than one that shows the figures. The web still has its eye.
     masked: bool,
+
+    /// The day tapped in the recurring calendar, as a day index. A choice
+    /// rather than data, and the only one the Recurring screen owns — not
+    /// enough to be worth a machine of its own.
+    picked_day: Option<u64>,
+
+    /// How many months the calendar has been swiped from the one the app is
+    /// in. Months rather than a date, so that the clock moving over midnight
+    /// carries the calendar with it.
+    month_step: i32,
 
     /// The Ledger screen's own state.
     ///
@@ -86,12 +100,6 @@ pub struct StateApp {
 }
 
 impl Default for StateApp {
-    /// Figures start **covered**.
-    ///
-    /// This is the one field whose default is not `Default::default()`, and it
-    /// is deliberate: the app should be openable on a train without first
-    /// deciding to hide anything. Deriving `Default` here would silently start
-    /// the app revealed, which is why it is written out.
     fn default() -> Self {
         Self {
             screen: Screen::default(),
@@ -100,7 +108,9 @@ impl Default for StateApp {
             streams: Vec::new(),
             device_now: Timestamp::EPOCH,
             server_clock: None,
-            masked: true,
+            masked: false,
+            picked_day: None,
+            month_step: 0,
             ledger: StateLedger::default(),
             load_failed: None,
             loaded: false,
@@ -184,6 +194,22 @@ impl StateApp {
             EventUi::CategoriesCleared => self.ledger.clear_categories(),
 
             EventUi::RangeSelected { kind } => self.ledger.set_range(*kind),
+
+            EventUi::CalendarDaySelected { id } => {
+                // Tapping the day already picked clears it. A card that could
+                // only be opened would need a close button of its own.
+                let day = id.parse::<u64>().ok();
+
+                self.picked_day = if day == self.picked_day { None } else { day };
+            }
+
+            EventUi::CalendarMonthStepped { step } => {
+                self.month_step = self.month_step.saturating_add(*step);
+
+                // The card belongs to the month it was opened in, and a swipe
+                // takes that month off the screen.
+                self.picked_day = None;
+            }
 
             EventUi::TxSelected { .. } => {
                 // There is no detail screen yet. The event exists so the view
@@ -299,6 +325,14 @@ impl StateApp {
 
     pub(crate) fn masked(&self) -> bool {
         self.masked
+    }
+
+    pub(crate) fn picked_day(&self) -> Option<u64> {
+        self.picked_day
+    }
+
+    pub(crate) fn month_step(&self) -> i32 {
+        self.month_step
     }
 
     pub(crate) fn ledger(&self) -> &StateLedger {

@@ -1246,6 +1246,26 @@ public object FfiConverterUInt : FfiConverter<UInt, Int> {
 /**
  * @suppress
  */
+public object FfiConverterInt : FfiConverter<Int, Int> {
+    override fun lift(value: Int): Int = value
+
+    override fun read(buf: ByteBuffer): Int = buf.getInt()
+
+    override fun lower(value: Int): Int = value
+
+    override fun allocationSize(value: Int) = 4UL
+
+    override fun write(
+        value: Int,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value)
+    }
+}
+
+/**
+ * @suppress
+ */
 public object FfiConverterULong : FfiConverter<ULong, Long> {
     override fun lift(value: Long): ULong = value.toULong()
 
@@ -1733,6 +1753,12 @@ data class ViewBalances(
      * value itself was already replaced, so nothing is hidden in the DOM.
      */
     var `masked`: kotlin.Boolean,
+    /**
+     * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks, and
+     * the only place on the page money still takes a colour.
+     */
+    var `owedLabel`: kotlin.String,
+    var `owedTotal`: kotlin.String,
     var `connections`: List<ViewConnection>,
 ) {
     companion object
@@ -1747,6 +1773,8 @@ public object FfiConverterTypeViewBalances : FfiConverterRustBuffer<ViewBalances
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewConnection.read(buf),
         )
 
@@ -1755,6 +1783,8 @@ public object FfiConverterTypeViewBalances : FfiConverterRustBuffer<ViewBalances
             FfiConverterString.allocationSize(value.`headlineLabel`) +
                 FfiConverterString.allocationSize(value.`headline`) +
                 FfiConverterBoolean.allocationSize(value.`masked`) +
+                FfiConverterString.allocationSize(value.`owedLabel`) +
+                FfiConverterString.allocationSize(value.`owedTotal`) +
                 FfiConverterSequenceTypeViewConnection.allocationSize(value.`connections`)
         )
 
@@ -1765,6 +1795,8 @@ public object FfiConverterTypeViewBalances : FfiConverterRustBuffer<ViewBalances
         FfiConverterString.write(value.`headlineLabel`, buf)
         FfiConverterString.write(value.`headline`, buf)
         FfiConverterBoolean.write(value.`masked`, buf)
+        FfiConverterString.write(value.`owedLabel`, buf)
+        FfiConverterString.write(value.`owedTotal`, buf)
         FfiConverterSequenceTypeViewConnection.write(value.`connections`, buf)
     }
 }
@@ -1822,23 +1854,27 @@ public object FfiConverterTypeViewBreakdownSlice : FfiConverterRustBuffer<ViewBr
 }
 
 /**
- * A calendar of the month the app is in.
+ * Three months side by side: the one you are looking at, and the one either
+ * side of it.
  *
- * Six rows always, and the days either side of the month drawn rather than
- * left blank — a grid that changes height as the months turn moves everything
- * under it, and a row of empty cells reads as a rendering fault.
+ * The calendar runs sideways, because months do, and turning it is a scroll
+ * rather than a redraw — so the months either side have to be here in full.
+ * Only a column of each shows at the edge, but that column is the real month's
+ * first or last, and a swipe brings the rest of it over.
+ *
+ * Drawn as a whole month each rather than as the one visible column, because a
+ * column that has to become a month when the finger moves is two drawings of
+ * the same thing that can disagree.
  */
 data class ViewCalendar(
     /**
-     * `"August 2026"`.
-     */
-    var `month`: kotlin.String,
-    /**
      * `["M", "T", "W", "T", "F", "S", "S"]` — the column headings, starting
-     * on Monday.
+     * on Monday. One set: all three months are laid out the same way.
      */
     var `weekdays`: List<kotlin.String>,
-    var `weeks`: List<List<ViewCalendarDay>>,
+    var `prev`: ViewCalendarMonth,
+    var `current`: ViewCalendarMonth,
+    var `next`: ViewCalendarMonth,
 ) {
     companion object
 }
@@ -1849,29 +1885,37 @@ data class ViewCalendar(
 public object FfiConverterTypeViewCalendar : FfiConverterRustBuffer<ViewCalendar> {
     override fun read(buf: ByteBuffer): ViewCalendar =
         ViewCalendar(
-            FfiConverterString.read(buf),
             FfiConverterSequenceString.read(buf),
-            FfiConverterSequenceSequenceTypeViewCalendarDay.read(buf),
+            FfiConverterTypeViewCalendarMonth.read(buf),
+            FfiConverterTypeViewCalendarMonth.read(buf),
+            FfiConverterTypeViewCalendarMonth.read(buf),
         )
 
     override fun allocationSize(value: ViewCalendar) =
         (
-            FfiConverterString.allocationSize(value.`month`) +
-                FfiConverterSequenceString.allocationSize(value.`weekdays`) +
-                FfiConverterSequenceSequenceTypeViewCalendarDay.allocationSize(value.`weeks`)
+            FfiConverterSequenceString.allocationSize(value.`weekdays`) +
+                FfiConverterTypeViewCalendarMonth.allocationSize(value.`prev`) +
+                FfiConverterTypeViewCalendarMonth.allocationSize(value.`current`) +
+                FfiConverterTypeViewCalendarMonth.allocationSize(value.`next`)
         )
 
     override fun write(
         value: ViewCalendar,
         buf: ByteBuffer,
     ) {
-        FfiConverterString.write(value.`month`, buf)
         FfiConverterSequenceString.write(value.`weekdays`, buf)
-        FfiConverterSequenceSequenceTypeViewCalendarDay.write(value.`weeks`, buf)
+        FfiConverterTypeViewCalendarMonth.write(value.`prev`, buf)
+        FfiConverterTypeViewCalendarMonth.write(value.`current`, buf)
+        FfiConverterTypeViewCalendarMonth.write(value.`next`, buf)
     }
 }
 
 data class ViewCalendarDay(
+    /**
+     * What a tap on this day sends back — the day itself, not where it sits
+     * in the grid, so the same day in two months' grids is one day.
+     */
+    var `id`: kotlin.String,
     /**
      * `"12"`.
      */
@@ -1881,6 +1925,11 @@ data class ViewCalendarDay(
      */
     var `outside`: kotlin.Boolean,
     var `today`: kotlin.Boolean,
+    /**
+     * The day the user tapped, filled in grey. Grey and not outlined: an
+     * outline reads as a different kind of control sitting in the grid.
+     */
+    var `picked`: kotlin.Boolean,
     /**
      * One per stream landing that day, as category tokens — the same tokens
      * the breakdown above colours its segments with.
@@ -1901,6 +1950,8 @@ public object FfiConverterTypeViewCalendarDay : FfiConverterRustBuffer<ViewCalen
     override fun read(buf: ByteBuffer): ViewCalendarDay =
         ViewCalendarDay(
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterSequenceString.read(buf),
@@ -1908,9 +1959,11 @@ public object FfiConverterTypeViewCalendarDay : FfiConverterRustBuffer<ViewCalen
 
     override fun allocationSize(value: ViewCalendarDay) =
         (
-            FfiConverterString.allocationSize(value.`label`) +
+            FfiConverterString.allocationSize(value.`id`) +
+                FfiConverterString.allocationSize(value.`label`) +
                 FfiConverterBoolean.allocationSize(value.`outside`) +
                 FfiConverterBoolean.allocationSize(value.`today`) +
+                FfiConverterBoolean.allocationSize(value.`picked`) +
                 FfiConverterSequenceString.allocationSize(value.`marks`)
         )
 
@@ -1918,10 +1971,58 @@ public object FfiConverterTypeViewCalendarDay : FfiConverterRustBuffer<ViewCalen
         value: ViewCalendarDay,
         buf: ByteBuffer,
     ) {
+        FfiConverterString.write(value.`id`, buf)
         FfiConverterString.write(value.`label`, buf)
         FfiConverterBoolean.write(value.`outside`, buf)
         FfiConverterBoolean.write(value.`today`, buf)
+        FfiConverterBoolean.write(value.`picked`, buf)
         FfiConverterSequenceString.write(value.`marks`, buf)
+    }
+}
+
+/**
+ * One month's grid.
+ *
+ * As many rows as the month has weeks in it — five for July, six for August —
+ * rather than six always. A row that is entirely next month is a row of
+ * nothing, and the grid changing height as the months turn is the price.
+ */
+data class ViewCalendarMonth(
+    /**
+     * `"August 2026"`.
+     *
+     * The year on all three and not just the middle one: the label travels
+     * from the edge to the centre as the month turns, and a label that gains a
+     * year on the way is a label that changes rather than moves.
+     */
+    var `label`: kotlin.String,
+    var `weeks`: List<List<ViewCalendarDay>>,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewCalendarMonth : FfiConverterRustBuffer<ViewCalendarMonth> {
+    override fun read(buf: ByteBuffer): ViewCalendarMonth =
+        ViewCalendarMonth(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceSequenceTypeViewCalendarDay.read(buf),
+        )
+
+    override fun allocationSize(value: ViewCalendarMonth) =
+        (
+            FfiConverterString.allocationSize(value.`label`) +
+                FfiConverterSequenceSequenceTypeViewCalendarDay.allocationSize(value.`weeks`)
+        )
+
+    override fun write(
+        value: ViewCalendarMonth,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`label`, buf)
+        FfiConverterSequenceSequenceTypeViewCalendarDay.write(value.`weeks`, buf)
     }
 }
 
@@ -2068,6 +2169,93 @@ public object FfiConverterTypeViewConnection : FfiConverterRustBuffer<ViewConnec
 }
 
 /**
+ * The streams landing on the day the calendar has selected.
+ */
+data class ViewDayCard(
+    /**
+     * `"Fri, Jul 10"`.
+     */
+    var `heading`: kotlin.String,
+    /**
+     * `"−$578.50"`, what the day comes to.
+     */
+    var `total`: kotlin.String,
+    var `rows`: List<ViewDayRow>,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewDayCard : FfiConverterRustBuffer<ViewDayCard> {
+    override fun read(buf: ByteBuffer): ViewDayCard =
+        ViewDayCard(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeViewDayRow.read(buf),
+        )
+
+    override fun allocationSize(value: ViewDayCard) =
+        (
+            FfiConverterString.allocationSize(value.`heading`) +
+                FfiConverterString.allocationSize(value.`total`) +
+                FfiConverterSequenceTypeViewDayRow.allocationSize(value.`rows`)
+        )
+
+    override fun write(
+        value: ViewDayCard,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`heading`, buf)
+        FfiConverterString.write(value.`total`, buf)
+        FfiConverterSequenceTypeViewDayRow.write(value.`rows`, buf)
+    }
+}
+
+data class ViewDayRow(
+    var `id`: kotlin.String,
+    /**
+     * `"United Airlines"`.
+     */
+    var `name`: kotlin.String,
+    /**
+     * `"−$500.00"`.
+     */
+    var `amount`: kotlin.String,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewDayRow : FfiConverterRustBuffer<ViewDayRow> {
+    override fun read(buf: ByteBuffer): ViewDayRow =
+        ViewDayRow(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+
+    override fun allocationSize(value: ViewDayRow) =
+        (
+            FfiConverterString.allocationSize(value.`id`) +
+                FfiConverterString.allocationSize(value.`name`) +
+                FfiConverterString.allocationSize(value.`amount`)
+        )
+
+    override fun write(
+        value: ViewDayRow,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`id`, buf)
+        FfiConverterString.write(value.`name`, buf)
+        FfiConverterString.write(value.`amount`, buf)
+    }
+}
+
+/**
  * A day's worth of rows, under its heading.
  *
  * Grouping is done in the machine rather than in the view because three view
@@ -2079,6 +2267,11 @@ data class ViewDaySection(
      * `"Wed, Aug 12"`.
      */
     var `heading`: kotlin.String,
+    /**
+     * `"−$30.40"`, the day's net. It sits on the heading's own line, so the
+     * two halves of the line say the same thing about the same day.
+     */
+    var `total`: kotlin.String,
     var `rows`: List<ViewTxRow>,
 ) {
     companion object
@@ -2091,12 +2284,14 @@ public object FfiConverterTypeViewDaySection : FfiConverterRustBuffer<ViewDaySec
     override fun read(buf: ByteBuffer): ViewDaySection =
         ViewDaySection(
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewTxRow.read(buf),
         )
 
     override fun allocationSize(value: ViewDaySection) =
         (
             FfiConverterString.allocationSize(value.`heading`) +
+                FfiConverterString.allocationSize(value.`total`) +
                 FfiConverterSequenceTypeViewTxRow.allocationSize(value.`rows`)
         )
 
@@ -2105,6 +2300,7 @@ public object FfiConverterTypeViewDaySection : FfiConverterRustBuffer<ViewDaySec
         buf: ByteBuffer,
     ) {
         FfiConverterString.write(value.`heading`, buf)
+        FfiConverterString.write(value.`total`, buf)
         FfiConverterSequenceTypeViewTxRow.write(value.`rows`, buf)
     }
 }
@@ -2300,6 +2496,10 @@ data class ViewMonthSection(
      * `"2026"`.
      */
     var `year`: kotlin.String,
+    /**
+     * `"August 2026"` — the two of them as the marker reads them.
+     */
+    var `label`: kotlin.String,
     var `days`: List<ViewDaySection>,
 ) {
     companion object
@@ -2313,6 +2513,7 @@ public object FfiConverterTypeViewMonthSection : FfiConverterRustBuffer<ViewMont
         ViewMonthSection(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewDaySection.read(buf),
         )
 
@@ -2320,6 +2521,7 @@ public object FfiConverterTypeViewMonthSection : FfiConverterRustBuffer<ViewMont
         (
             FfiConverterString.allocationSize(value.`name`) +
                 FfiConverterString.allocationSize(value.`year`) +
+                FfiConverterString.allocationSize(value.`label`) +
                 FfiConverterSequenceTypeViewDaySection.allocationSize(value.`days`)
         )
 
@@ -2329,6 +2531,7 @@ public object FfiConverterTypeViewMonthSection : FfiConverterRustBuffer<ViewMont
     ) {
         FfiConverterString.write(value.`name`, buf)
         FfiConverterString.write(value.`year`, buf)
+        FfiConverterString.write(value.`label`, buf)
         FfiConverterSequenceTypeViewDaySection.write(value.`days`, buf)
     }
 }
@@ -2398,14 +2601,39 @@ public object FfiConverterTypeViewRange : FfiConverterRustBuffer<ViewRange> {
 
 data class ViewRecurring(
     /**
-     * `"−$3,771.40"`, the monthly commitment.
+     * `"Every month"` — what the headline under it is a figure for.
+     */
+    var `headlineLabel`: kotlin.String,
+    /**
+     * `"−$3,767.18"`, the net of everything that comes back.
      */
     var `headline`: kotlin.String,
     /**
      * `"+$4.22 in · net −$3,767.18"`.
+     *
+     * The phone draws `flow_in` and `flow_out` instead; this is the one line
+     * the web still sets under its headline.
      */
     var `detail`: kotlin.String,
+    /**
+     * `"$4.22"` and `"$3,771.40"` — the two directions, unsigned. The words
+     * beside them say which way the money goes, so the figures do not carry a
+     * sign as well.
+     */
+    var `flowIn`: kotlin.String,
+    var `flowOut`: kotlin.String,
+    /**
+     * `"+$4.22"` and `"−$3,771.40"` — the same two with the sign back on, for
+     * where there is no room for the words. A diff, read as one.
+     */
+    var `flowInSigned`: kotlin.String,
+    var `flowOutSigned`: kotlin.String,
     var `masked`: kotlin.Boolean,
+    /**
+     * `"Where it goes"` and `"−$3,771.40"` — the heading over the split.
+     */
+    var `breakdownLabel`: kotlin.String,
+    var `breakdownTotal`: kotlin.String,
     /**
      * The breakdown bar and its legend are two views of one split, so they
      * come from one list.
@@ -2415,6 +2643,15 @@ data class ViewRecurring(
      * When it all lands, under the breakdown.
      */
     var `calendar`: ViewCalendar,
+    /**
+     * What landed on the day that was tapped. `None` until one is.
+     */
+    var `dayCard`: ViewDayCard?,
+    /**
+     * `"Every stream"` and `"8"` — the heading over the list.
+     */
+    var `streamsLabel`: kotlin.String,
+    var `streamsCount`: kotlin.String,
     var `groups`: List<ViewStreamGroup>,
 ) {
     companion object
@@ -2428,19 +2665,39 @@ public object FfiConverterTypeViewRecurring : FfiConverterRustBuffer<ViewRecurri
         ViewRecurring(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewBreakdownSlice.read(buf),
             FfiConverterTypeViewCalendar.read(buf),
+            FfiConverterOptionalTypeViewDayCard.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewStreamGroup.read(buf),
         )
 
     override fun allocationSize(value: ViewRecurring) =
         (
-            FfiConverterString.allocationSize(value.`headline`) +
+            FfiConverterString.allocationSize(value.`headlineLabel`) +
+                FfiConverterString.allocationSize(value.`headline`) +
                 FfiConverterString.allocationSize(value.`detail`) +
+                FfiConverterString.allocationSize(value.`flowIn`) +
+                FfiConverterString.allocationSize(value.`flowOut`) +
+                FfiConverterString.allocationSize(value.`flowInSigned`) +
+                FfiConverterString.allocationSize(value.`flowOutSigned`) +
                 FfiConverterBoolean.allocationSize(value.`masked`) +
+                FfiConverterString.allocationSize(value.`breakdownLabel`) +
+                FfiConverterString.allocationSize(value.`breakdownTotal`) +
                 FfiConverterSequenceTypeViewBreakdownSlice.allocationSize(value.`breakdown`) +
                 FfiConverterTypeViewCalendar.allocationSize(value.`calendar`) +
+                FfiConverterOptionalTypeViewDayCard.allocationSize(value.`dayCard`) +
+                FfiConverterString.allocationSize(value.`streamsLabel`) +
+                FfiConverterString.allocationSize(value.`streamsCount`) +
                 FfiConverterSequenceTypeViewStreamGroup.allocationSize(value.`groups`)
         )
 
@@ -2448,11 +2705,21 @@ public object FfiConverterTypeViewRecurring : FfiConverterRustBuffer<ViewRecurri
         value: ViewRecurring,
         buf: ByteBuffer,
     ) {
+        FfiConverterString.write(value.`headlineLabel`, buf)
         FfiConverterString.write(value.`headline`, buf)
         FfiConverterString.write(value.`detail`, buf)
+        FfiConverterString.write(value.`flowIn`, buf)
+        FfiConverterString.write(value.`flowOut`, buf)
+        FfiConverterString.write(value.`flowInSigned`, buf)
+        FfiConverterString.write(value.`flowOutSigned`, buf)
         FfiConverterBoolean.write(value.`masked`, buf)
+        FfiConverterString.write(value.`breakdownLabel`, buf)
+        FfiConverterString.write(value.`breakdownTotal`, buf)
         FfiConverterSequenceTypeViewBreakdownSlice.write(value.`breakdown`, buf)
         FfiConverterTypeViewCalendar.write(value.`calendar`, buf)
+        FfiConverterOptionalTypeViewDayCard.write(value.`dayCard`, buf)
+        FfiConverterString.write(value.`streamsLabel`, buf)
+        FfiConverterString.write(value.`streamsCount`, buf)
         FfiConverterSequenceTypeViewStreamGroup.write(value.`groups`, buf)
     }
 }
@@ -2467,6 +2734,11 @@ data class ViewStreamGroup(
      * `"$2,078.50"`.
      */
     var `total`: kotlin.String,
+    /**
+     * `"1 stream"` / `"2 streams"`, which is what the group's heading says
+     * now that the figures below it are the ones worth reading.
+     */
+    var `countLabel`: kotlin.String,
     var `streams`: List<ViewStreamRow>,
 ) {
     companion object
@@ -2481,6 +2753,7 @@ public object FfiConverterTypeViewStreamGroup : FfiConverterRustBuffer<ViewStrea
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewStreamRow.read(buf),
         )
 
@@ -2489,6 +2762,7 @@ public object FfiConverterTypeViewStreamGroup : FfiConverterRustBuffer<ViewStrea
             FfiConverterString.allocationSize(value.`name`) +
                 FfiConverterString.allocationSize(value.`token`) +
                 FfiConverterString.allocationSize(value.`total`) +
+                FfiConverterString.allocationSize(value.`countLabel`) +
                 FfiConverterSequenceTypeViewStreamRow.allocationSize(value.`streams`)
         )
 
@@ -2499,6 +2773,7 @@ public object FfiConverterTypeViewStreamGroup : FfiConverterRustBuffer<ViewStrea
         FfiConverterString.write(value.`name`, buf)
         FfiConverterString.write(value.`token`, buf)
         FfiConverterString.write(value.`total`, buf)
+        FfiConverterString.write(value.`countLabel`, buf)
         FfiConverterSequenceTypeViewStreamRow.write(value.`streams`, buf)
     }
 }
@@ -2511,6 +2786,11 @@ data class ViewStreamRow(
      * `"next Aug 22 · in 3 days"`.
      */
     var `when`: kotlin.String,
+    /**
+     * `"Monthly · next Aug 22"` — the whole line under the name, which is
+     * the frequency and the date read as one phrase rather than two.
+     */
+    var `sub`: kotlin.String,
     /**
      * Due within the week, so it reads as a heads-up rather than an alarm.
      */
@@ -2537,6 +2817,7 @@ public object FfiConverterTypeViewStreamRow : FfiConverterRustBuffer<ViewStreamR
             FfiConverterString.read(buf),
             FfiConverterOptionalString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
@@ -2548,6 +2829,7 @@ public object FfiConverterTypeViewStreamRow : FfiConverterRustBuffer<ViewStreamR
                 FfiConverterString.allocationSize(value.`title`) +
                 FfiConverterOptionalString.allocationSize(value.`logoUrl`) +
                 FfiConverterString.allocationSize(value.`when`) +
+                FfiConverterString.allocationSize(value.`sub`) +
                 FfiConverterBoolean.allocationSize(value.`soon`) +
                 FfiConverterString.allocationSize(value.`amount`) +
                 FfiConverterString.allocationSize(value.`frequency`)
@@ -2561,6 +2843,7 @@ public object FfiConverterTypeViewStreamRow : FfiConverterRustBuffer<ViewStreamR
         FfiConverterString.write(value.`title`, buf)
         FfiConverterOptionalString.write(value.`logoUrl`, buf)
         FfiConverterString.write(value.`when`, buf)
+        FfiConverterString.write(value.`sub`, buf)
         FfiConverterBoolean.write(value.`soon`, buf)
         FfiConverterString.write(value.`amount`, buf)
         FfiConverterString.write(value.`frequency`, buf)
@@ -3133,6 +3416,26 @@ sealed class EventUi {
     }
 
     /**
+     * A day in the recurring calendar. Tapping the day already selected
+     * clears it, so the card below can be put away the way it was opened.
+     */
+    data class CalendarDaySelected(
+        val `id`: kotlin.String,
+    ) : EventUi() {
+        companion object
+    }
+
+    /**
+     * A swipe across the recurring calendar. `step` is months, so −1 is the
+     * month behind and 1 the month ahead.
+     */
+    data class CalendarMonthStepped(
+        val `step`: kotlin.Int,
+    ) : EventUi() {
+        companion object
+    }
+
+    /**
      * The user picked a transaction out of the list.
      */
     data class TxSelected(
@@ -3191,6 +3494,18 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
             }
 
             9 -> {
+                EventUi.CalendarDaySelected(
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            10 -> {
+                EventUi.CalendarMonthStepped(
+                    FfiConverterInt.read(buf),
+                )
+            }
+
+            11 -> {
                 EventUi.TxSelected(
                     FfiConverterString.read(buf),
                 )
@@ -3263,6 +3578,22 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
                 )
             }
 
+            is EventUi.CalendarDaySelected -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`id`)
+                )
+            }
+
+            is EventUi.CalendarMonthStepped -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterInt.allocationSize(value.`step`)
+                )
+            }
+
             is EventUi.TxSelected -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
@@ -3321,8 +3652,20 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
                 Unit
             }
 
-            is EventUi.TxSelected -> {
+            is EventUi.CalendarDaySelected -> {
                 buf.putInt(9)
+                FfiConverterString.write(value.`id`, buf)
+                Unit
+            }
+
+            is EventUi.CalendarMonthStepped -> {
+                buf.putInt(10)
+                FfiConverterInt.write(value.`step`, buf)
+                Unit
+            }
+
+            is EventUi.TxSelected -> {
+                buf.putInt(11)
                 FfiConverterString.write(value.`id`, buf)
                 Unit
             }
@@ -3760,6 +4103,38 @@ public object FfiConverterOptionalString : FfiConverterRustBuffer<kotlin.String?
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeViewDayCard : FfiConverterRustBuffer<ViewDayCard?> {
+    override fun read(buf: ByteBuffer): ViewDayCard? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeViewDayCard.read(buf)
+    }
+
+    override fun allocationSize(value: ViewDayCard?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeViewDayCard.allocationSize(value)
+        }
+    }
+
+    override fun write(
+        value: ViewDayCard?,
+        buf: ByteBuffer,
+    ) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeViewDayCard.write(value, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceString : FfiConverterRustBuffer<List<kotlin.String>> {
     override fun read(buf: ByteBuffer): List<kotlin.String> {
         val len = buf.getInt()
@@ -3921,6 +4296,34 @@ public object FfiConverterSequenceTypeViewConnection : FfiConverterRustBuffer<Li
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewConnection.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeViewDayRow : FfiConverterRustBuffer<List<ViewDayRow>> {
+    override fun read(buf: ByteBuffer): List<ViewDayRow> {
+        val len = buf.getInt()
+        return List<ViewDayRow>(len) {
+            FfiConverterTypeViewDayRow.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ViewDayRow>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeViewDayRow.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<ViewDayRow>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeViewDayRow.write(it, buf)
         }
     }
 }

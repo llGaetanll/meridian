@@ -6,7 +6,6 @@ use crate::ViewTxRow;
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewLedger {
     /// `"3 connections · synced 2m ago"`.
-
     pub months: Vec<ViewMonthSection>,
 
     /// The filter panel, whose state travels with the screen it filters.
@@ -24,6 +23,8 @@ pub struct ViewMonthSection {
     pub name: String,
     /// `"2026"`.
     pub year: String,
+    /// `"August 2026"` — the two of them as the marker reads them.
+    pub label: String,
     pub days: Vec<ViewDaySection>,
 }
 
@@ -36,5 +37,10 @@ pub struct ViewMonthSection {
 pub struct ViewDaySection {
     /// `"Wed, Aug 12"`.
     pub heading: String,
+
+    /// `"−$30.40"`, the day's net. It sits on the heading's own line, so the
+    /// two halves of the line say the same thing about the same day.
+    pub total: String,
+
     pub rows: Vec<ViewTxRow>,
 }
