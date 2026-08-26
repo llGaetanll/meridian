@@ -117,7 +117,12 @@ impl RuntimeServer {
             .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any))
             .with_state(Arc::clone(&runtime));
 
-        let listener = tokio::net::TcpListener::bind(("127.0.0.1", PORT)).await?;
+        // Every interface rather than loopback, because a phone on the LAN is
+        // one of the clients. The simulator shares the Mac's loopback and would
+        // be happy either way; a real device has to reach the Mac by its
+        // address on the network, and nothing answers there if we bind
+        // loopback. This is a development server on a home network.
+        let listener = tokio::net::TcpListener::bind(("0.0.0.0", PORT)).await?;
 
         tracing::info!(port = PORT, "server listening");
 
