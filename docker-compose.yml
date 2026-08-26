@@ -1,0 +1,89 @@
+# The whole operation, in one command.
+#
+#   docker compose up -d                      the database, for a server run on
+#                                             the host with `cargo run`
+#   docker compose --profile server up        both, exactly as deployed
+#
+# The split is a development convenience and nothing more. `cargo run` rebuilds
+# in about three seconds where an image rebuild is closer to twenty, so the
+# database alone is what you want while writing code — but the server container
+# is the real target and is meant to stay working, not to rot.
+
+services:
+  db:
+    # Pinned to a major version on purpose. Postgres does not upgrade its data
+    # directory across majors: moving 17 to 18 by editing this line gives a
+    # container that refuses to start against the existing volume. That is a
+    # dump and a restore, deliberately, not a tag change.
+    image: postgres:17-alpine
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-meridian}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-meridian}
+      POSTGRES_DB: ${POSTGRES_DB:-meridian}
+
+    ports:
+      # Loopback only. The phone needs to reach the *server*; nothing outside
+      # this machine has any business reaching the database, and `5432:5432`
+      # would put it on the network for anyone to try.
+      - "127.0.0.1:5432:5432"
+
+    volumes:
+      - meridian-db:/var/lib/postgresql/data
+
+    # What makes `depends_on` below mean anything. Without it the server starts
+    # the moment the container exists rather than when Postgres is listening,
+    # races it, and fails on a cold `up` — which is exactly the confidence this
+    # file is supposed to buy.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-meridian} -d ${POSTGRES_DB:-meridian}
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+
+  server:
+    # Not started by a plain `up`. See the header.
+    profiles: ["server"]
+
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Stamped into every log line. Unset locally is fine — you know what
+        # you built. A deploy must pass the real one:
+        #
+        #     MERIDIAN_SHA=$(git rev-parse --short HEAD) docker compose build server
+        MERIDIAN_SHA: ${MERIDIAN_SHA:-unknown}
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    environment:
+      # `db` rather than localhost: inside the network the database is a
+      # service name. This is the one setting that has to differ between a
+      # server in a container and one on the host.
+      DATABASE_URL: postgres://${POSTGRES_USER:-meridian}:${POSTGRES_PASSWORD:-meridian}@db:5432/${POSTGRES_DB:-meridian}
+
+      # Passed through rather than read from an `env_file`, so that a clone
+      # with no `.env` still comes up — compose fills these from `.env` when
+      # there is one and leaves them empty when there is not, and an empty
+      # PLAID_CLIENT_ID is the fixtures path rather than an error.
+      #
+      # Either way they are never baked into the image, where they would
+      # survive in `docker history` for anyone who pulled it.
+      PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:-}
+      PLAID_SECRET: ${PLAID_SECRET:-}
+      PLAID_ENV: ${PLAID_ENV:-sandbox}
+      PLAID_ACCESS_TOKEN: ${PLAID_ACCESS_TOKEN:-}
+
+    ports:
+      # Every interface, because a real phone on the LAN is one of the clients
+      # and nothing answers on loopback from another device.
+      - "8082:8082"
+
+volumes:
+  meridian-db:

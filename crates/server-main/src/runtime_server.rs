@@ -20,6 +20,7 @@ use axum::Json;
 use axum::Router;
 use axum::extract::Query;
 use axum::extract::State;
+use axum::http::StatusCode;
 use axum::routing::get;
 use serde::Deserialize;
 use tokio::sync::Mutex;
@@ -40,11 +41,20 @@ use crate::runtime_plaid;
 use crate::runtime_plaid::PlaidConfig;
 use server_wire::WireSnapshot;
 use server_wire::WireSource;
+use src_postgres::Db;
 
 /// A different port from either front-end, so all three can run at once.
 const PORT: u16 = 8082;
 
 pub struct RuntimeServer {
+    /// The store, once there is one.
+    ///
+    /// `None` when `DATABASE_URL` is unset, and that stays a supported way to
+    /// run: a clean checkout with no `.env` serves the captured fixtures and
+    /// needs neither Plaid nor Postgres. The moment it holds real data that
+    /// changes, but an app you cannot start is an app nobody reads the code of.
+    db: Option<Db>,
+
     /// The machine.
     ///
     /// An `RwLock` rather than a `Mutex`: reads are the common case — every
@@ -89,6 +99,8 @@ impl RuntimeServer {
     ///
     /// The only public entry point.
     pub async fn run() -> anyhow::Result<()> {
+        let db = Self::open_store().await?;
+
         let plaid = PlaidConfig::from_env();
 
         match &plaid {
@@ -104,6 +116,7 @@ impl RuntimeServer {
         let runtime = Arc::new(Self {
             state: RwLock::new(StateServer::new()),
             plaid,
+            db,
             fetching: Mutex::new(()),
             shutdown: Notify::new(),
         });
@@ -158,6 +171,36 @@ impl RuntimeServer {
         tracing::debug!(?events, ?actions, "handled");
 
         self.perform_actions(&actions).await;
+    }
+
+    /// Connect to Postgres and bring the schema up to date, if there is one to
+    /// connect to.
+    ///
+    /// Migrations run here, on boot, rather than as a step in `docker compose`
+    /// or a script somebody has to remember. That is what makes bringing the
+    /// whole thing up one command: the binary knows which schema it needs and
+    /// says so to whatever database it is handed.
+    ///
+    /// A `DATABASE_URL` that is set and wrong is fatal, deliberately. Falling
+    /// back to running without a store would be the worst of both — a server
+    /// that looks healthy while quietly keeping nothing.
+    async fn open_store() -> anyhow::Result<Option<Db>> {
+        let Ok(url) = std::env::var("DATABASE_URL") else {
+            tracing::info!(
+                store = "none",
+                "no DATABASE_URL, holding state in memory only",
+            );
+
+            return Ok(None);
+        };
+
+        let db = src_postgres::connect(&url).await?;
+
+        src_postgres::migrate(&db).await?;
+
+        tracing::info!(store = "postgres", "store ready");
+
+        Ok(Some(db))
     }
 
     /// Boxed because the cycle `perform_actions -> fetch_plaid ->
@@ -369,8 +412,29 @@ async fn snapshot(
 }
 
 /// `GET /health`
-async fn health() -> &'static str {
-    "ok"
+/// Whether the server is up, and whether what it depends on is.
+///
+/// It reports the database by asking it something rather than by checking that
+/// a pool exists: a pool holds connections the far end may have closed since,
+/// so the only honest answer comes from a query. This is what `docker compose
+/// up` is checked with, so an optimistic answer here would defeat the point of
+/// having it.
+async fn health(State(runtime): State<Arc<RuntimeServer>>) -> (StatusCode, String) {
+    let Some(db) = &runtime.db else {
+        return (StatusCode::OK, String::from("ok store=none"));
+    };
+
+    match src_postgres::ping(db).await {
+        Ok(()) => (StatusCode::OK, String::from("ok store=postgres")),
+        Err(e) => {
+            tracing::error!(error = %e, "the store is not answering");
+
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                format!("store unreachable: {e}"),
+            )
+        }
+    }
 }
 
 /// Resolves with whichever signal arrives first.

@@ -26,6 +26,12 @@ first thing in `main`, before anything worth logging happens.
 Timestamp (UTC), the commit the build came from, level, target, the spans the
 event happened in, the message, then `key=value` fields.
 
+The commit is read at build time by `api-trace`'s build script. A build that
+cannot reach git — a container, whose context excludes `.git` on purpose —
+takes it from `MERIDIAN_SHA` in the environment instead, and says `unknown` if
+it has neither. **A deployed build must pass it**: a log that cannot be matched
+to the source that produced it has lost most of what this line is for.
+
 A line's target is the module it came from — `server_main::runtime_server`,
 `web_main::io::markets` — unless it names one of the few that cut across
 modules: `api` for anything crossing the network, `cache` for what the store
@@ -48,6 +54,13 @@ set `NO_COLOR`. The file and the buffer are read back as text long afterwards,
 and escape codes in them are noise.
 
 Level is INFO by default. `DEBUG` adds cancelled requests.
+
+A few targets are held to `WARN` whatever the level says — `Config::quiet`.
+They are libraries that narrate their own housekeeping at `INFO`, like sqlx
+announcing that its migrations table already exists on every single boot. Every
+line in the list below is one somebody chose to write, and a dependency talking
+over them is how a log becomes something people skim past. Held rather than
+silenced, so a genuine warning from one still arrives.
 
 ## Every line we log
 

@@ -17,6 +17,7 @@ fn main() {
         level: Level::DEBUG,
         buffer: 64,
         file: None,
+        quiet: &[],
     });
 
     tracing::info!(target: "web_main", version = "0.1.0", "meridian starting");

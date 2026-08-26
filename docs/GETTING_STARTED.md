@@ -34,6 +34,19 @@ With no `.env` the server answers from the captured Sandbox fixtures in
 `crates/server-main/fixtures/` instead of calling out, so the app runs from a
 clean checkout. Fill in `.env` to get live Sandbox data.
 
+The database is optional in the same way. With no `DATABASE_URL` the server
+holds everything in memory, as it always has. To run with one:
+
+```
+cp .env.example .env
+./scripts/db-init.sh                      # Postgres in a container
+cargo run -p server-main                  # applies migrations, then serves
+```
+
+`docker compose --profile server up` brings both up as they are deployed.
+[DATABASE.md](DATABASE.md) has the rest, including the one rule about
+migrations.
+
 That is everything the web and phone front-ends need. The rest of this document
 is only for working on the native phone apps.
 

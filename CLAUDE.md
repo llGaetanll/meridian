@@ -37,6 +37,16 @@ If a screen needs a control the sheet does not have, add it to the sheet in the
 same pass — a component that exists only inside one screen is how three
 platforms end up with three design languages.
 
+## The database
+
+`docs/DATABASE.md` covers Postgres, the containers, and the one rule that
+matters: **a migration that has been applied anywhere is immutable** — fix a
+mistake with the next migration, never by editing the last one. All SQL lives
+in `src-postgres` and nowhere else.
+
+`scripts/db-reset.sh` destroys the database. It is for a human who has decided;
+never run it yourself.
+
 ## Logging
 
 How logging works is in `docs/LOGGING.md`. It ends with a list of every log
