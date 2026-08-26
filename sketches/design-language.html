@@ -53,7 +53,7 @@ body {
   border-radius: var(--r-lg);
   background: var(--bg-panel);
 }
-.demo.row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.demo.inline { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .entry .body { flex: 1; min-width: 0; padding-top: 2px; }
 .entry h3 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
 .entry p { color: var(--text-muted); font-size: 14px; margin-top: 6px; }
@@ -88,7 +88,7 @@ body {
 
 .track-demo { position: relative; padding-bottom: 12px; border-bottom: 1px solid var(--divider); }
 .track-demo .track { position: absolute; left: 0; right: 0; bottom: -1px; }
-.track-demo .row { display: flex; justify-content: space-between; font-size: 13.5px; color: var(--text-muted); }
+.track-demo .caption { display: flex; justify-content: space-between; font-size: 13.5px; color: var(--text-muted); }
 </style>
 </head>
 <body>
@@ -97,6 +97,9 @@ body {
   <defs>
     <symbol id="i-caret" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 9 18 9 12 16"/></symbol>
     <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="m3 7 9 6 9-6"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/></symbol>
+    <symbol id="i-bank" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9.5 9-5.5 9 5.5"/><line x1="4" y1="20" x2="20" y2="20"/><line x1="6.5" y1="12" x2="6.5" y2="17"/><line x1="12" y1="12" x2="12" y2="17"/><line x1="17.5" y1="12" x2="17.5" y2="17"/></symbol>
     <symbol id="i-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4 12.5 11.5"/><path d="M18.5 14v5.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1H10"/></symbol>
   </defs>
 </svg>
@@ -162,7 +165,7 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo row">
+      <div class="demo inline">
         <button class="btn primary">Reconnect</button>
         <span class="chip on"><span class="in">Travel</span></span>
         <div class="cal-day today"><span class="n">19</span><span class="marks"></span></div>
@@ -218,7 +221,7 @@ body {
     <h2>Selecting</h2>
 
     <div class="entry">
-      <div class="demo row" data-select="many">
+      <div class="demo inline" data-select="many">
         <button class="chip"><span class="in"><span class="n">9</span>Transportation</span></button>
         <button class="chip on"><span class="in"><span class="n">9</span>Food &amp; drink</span></button>
         <button class="chip"><span class="in"><span class="n">3</span>Personal care</span></button>
@@ -253,20 +256,27 @@ body {
       <div class="body">
         <h3>Chip row</h3>
         <p>
-          Where the order of a row of chips carries no meaning, it is chosen to
-          fill the measure, and the space between them takes up whatever is
-          left so each line is flush at both edges.
+          A justified paragraph, which is what it is. Every line but the last
+          is as full as it can be, and the space between its chips takes up
+          whatever is left so the line is flush at both edges. The line with
+          the most room to spare is the one put last, where it sits left at its
+          natural spacing.
         </p>
         <div class="why">
-          Every partition of the chips into lines is costed by the square of
-          what each line wastes and the cheapest is taken. Greedy widest-first
-          gets close and then leaves one line short, which is a ragged edge you
-          can see from across the room. The chips keep their own widths —
-          stretching them makes “Travel” as wide as “Transportation”, and a
-          chip's width should say something about its label.
+          The packing leaves that loosest line out of what it costs, so the
+          remainder is pushed onto one line rather than shared out over all of
+          them and the lines that are left come out tight. Stretching a short
+          line across the measure is the ragged edge you can see from across
+          the room, and it is why the last line of a paragraph is not justified
+          either. A line with one chip on it is never stretched at all.
+          <br><br>
+          The chips keep their own widths — stretching them makes “Travel” as
+          wide as “Transportation”, and a chip's width should say something
+          about its label.
           <br><br>
           This is the core's job, not the view's: the platform receives the
           order already packed, like every other finished value.
+          <code>ChipRows.swift</code> is where the rule is written down.
         </div>
       </div>
     </div>
@@ -303,17 +313,20 @@ body {
     <h2>Acting</h2>
 
     <div class="entry">
-      <div class="demo row">
+      <div class="demo inline">
         <button class="btn primary">Reconnect</button>
         <button class="btn">Clear</button>
         <button class="btn sm">Retry</button>
+        <button class="btn dead">Add a bank</button>
       </div>
       <div class="body">
         <h3>Button</h3>
         <p>
           Raised on a solid line of its own darker shade, and it drops onto
           that line when pressed. Solid violet is one action per screen: the
-          thing you are there to do. Everything else is the quiet one.
+          thing you are there to do. Everything else is the quiet one, and
+          <code>.dead</code> is the chip's own drawn-but-not-built state — the
+          app has two of those already, Reconnect and the dock's search.
         </p>
         <div class="why">
           The edge has to be darker than the button <em>and</em> lighter than
@@ -327,7 +340,28 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo row">
+      <div class="demo">
+        <button class="btn primary lg block">Connect a bank</button>
+      </div>
+      <div class="body">
+        <h3>Large, and across the measure</h3>
+        <p>
+          <code>.lg</code> grows the type and the padding, <code>.block</code>
+          takes the width of whatever it is in. The phone's one action per
+          screen is both; a row of buttons beside a list is neither.
+        </p>
+        <div class="why">
+          The edge, the corner and the two violets stay exactly as they are, so
+          this is the same button rather than a second one for phones. A
+          control that has a different shape on every platform is three
+          controls to keep in agreement.
+        </div>
+        <div class="use">.btn.primary.lg.block</div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="demo inline">
         <div class="btn-group" data-select="one">
           <button class="btn">Week</button><button class="btn on">Month</button><button class="btn">Year</button>
         </div>
@@ -348,7 +382,7 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo row">
+      <div class="demo inline">
         <button class="btn plain"><svg><use href="#i-ext"/></svg>Reconnect</button>
       </div>
       <div class="body">
@@ -367,13 +401,111 @@ body {
     </div>
   </div>
 
+  <div class="group" id="typing">
+    <h2>Typing</h2>
+
+    <div class="entry">
+      <div class="demo" style="display:flex;flex-direction:column;gap:10px">
+        <span class="field on"><span class="in"><svg><use href="#i-mail"/></svg>al@example.com<i class="caret"></i></span></span>
+        <span class="field"><span class="in"><svg><use href="#i-mail"/></svg><span class="ph">you@example.com</span></span></span>
+        <span class="field bad"><span class="in"><svg><use href="#i-mail"/></svg>al@example</span></span>
+      </div>
+      <div class="body">
+        <h3>Field</h3>
+        <p>
+          The frame again, at the size of a thing you type into: the hairline,
+          three pixels of ground, and the well inset in them. Typing in it
+          warms the frame by exactly what selecting warms a chip's.
+        </p>
+        <div class="why">
+          So a live field and a chosen chip are the same event happening on
+          screen, and violet keeps meaning you. <code>.bad</code> is for a
+          value the server rejected — an expired code, an address that is not
+          one — and never for an empty field: nothing has gone wrong yet, and a
+          form that turns red as you arrive is scolding you for showing up.
+        </div>
+        <div class="use">.field &gt; .in &gt; (svg, value | .ph, .caret) · .on · .bad</div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="demo">
+        <div class="code">
+          <span class="field"><span class="in">4</span></span>
+          <span class="field"><span class="in">0</span></span>
+          <span class="field"><span class="in">7</span></span>
+          <span class="field on"><span class="in"><i class="caret"></i></span></span>
+          <span class="field"><span class="in"></span></span>
+          <span class="field"><span class="in"></span></span>
+        </div>
+      </div>
+      <div class="body">
+        <h3>Code</h3>
+        <p>
+          As many fields as there are digits, one glyph each, set in the money
+          face. The field that takes the next digit is the live one.
+        </p>
+        <div class="why">
+          Monospace because a code is read a digit at a time and every glyph
+          wants its own slot — the same reason a column of figures is set in
+          it. And a box per digit says how many are left without a counter
+          saying so.
+        </div>
+        <div class="use">.code &gt; .field &gt; .in</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="group" id="listing">
+    <h2>Listing</h2>
+
+    <div class="entry">
+      <div class="demo">
+        <div class="row top">
+          <svg><use href="#i-lock"/></svg>
+          <div class="rt">Your bank password goes to Plaid<div class="rs">Never to Meridian. We are handed a key to read with, not your sign-in.</div></div>
+        </div>
+        <div class="row needs">
+          <svg><use href="#i-bank"/></svg>
+          <div class="rt">First Platypus Bank<div class="rs">Sign in again to keep it syncing</div></div>
+          <svg class="go"><use href="#i-chev"/></svg>
+        </div>
+        <div class="row flat">
+          <div class="rt">Available</div>
+          <span class="rv hard money">$4,182.03</span>
+        </div>
+      </div>
+      <div class="body">
+        <h3>Row</h3>
+        <p>
+          An icon, a name, a second line under it, and something on the right.
+          Every list in the app that is not transactions is this one: what
+          connecting a bank means, what the first sync has fetched, what a
+          connection needs, what is in an account.
+        </p>
+        <div class="why">
+          A list of facts and a list of settings are the same shape, so there
+          is one row and not one per screen — three screens each inventing a
+          row is how the same list ends up three heights.
+          <code>.top</code> is for a row whose second line is a sentence rather
+          than a value, and lifts the icon to the first line instead of the
+          middle. <code>.flat</code> drops the icon and the weight for a name
+          and a figure read down a column. <code>.needs</code> turns the second
+          line amber, for the one row in a list that wants doing something
+          about.
+        </div>
+        <div class="use">.row &gt; (svg, .rt &gt; .rs, .rv | .rv.hard, .go) · .top · .flat · .needs</div>
+      </div>
+    </div>
+  </div>
+
   <div class="group" id="figures">
     <h2>Figures</h2>
 
     <div class="entry">
       <div class="demo">
         <div class="track-demo">
-          <div class="row"><span>Transfer out</span><span class="money">$2,078.50</span></div>
+          <div class="caption"><span>Transfer out</span><span class="money">$2,078.50</span></div>
           <span class="track"><i style="width:55.1%"></i></span>
         </div>
       </div>
@@ -459,97 +591,37 @@ body {
     </div>
   </div>
 
+  <div class="group" id="identity">
+    <h2>Identity</h2>
+
+    <div class="entry">
+      <div class="demo inline">
+        <span class="mark">CI</span>
+        <span class="mark">FI</span>
+        <span class="mark">AX</span>
+        <span class="mark sm">HS</span>
+      </div>
+      <div class="body">
+        <h3>Mark</h3>
+        <p>
+          Who a row is: a merchant's logo in the ledger, a bank's initials on
+          Balances. One square, whether the logo arrived or not, so the text of
+          every row starts on the same line either way.
+        </p>
+        <div class="why">
+          A hairline square rather than a filled tile. Filled, a column of them
+          reads as a column of buttons you could press — and the only thing on
+          a balances block you can press is Reconnect, which is a button and
+          looks like one.
+        </div>
+        <div class="use">.mark &gt; (img, initials) · .sm</div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
-<script>
-/* The same behaviour the sketch uses, so the controls on this page answer a
-   tap. None of it belongs in the app: the core decides what is selected and
-   hands a chip row over already packed. */
-
-(() => {
-  const GAP = 8;
-
-  /* Every way of cutting the chips into lines, costed by the square of what
-     each line wastes, cheapest taken. 3^n subset-of-subset steps, which for a
-     row of chips is nothing. */
-  function partition(widths, measure) {
-    const n = widths.length;
-    const full = (1 << n) - 1;
-
-    const span = new Array(full + 1).fill(-1);
-    for (let mask = 1; mask <= full; mask++) {
-      let total = -GAP;
-      for (let i = 0; i < n; i++) if (mask & (1 << i)) total += GAP + widths[i];
-      span[mask] = total <= measure ? total : -1;
-    }
-
-    const cost = new Array(full + 1).fill(Infinity);
-    const take = new Array(full + 1).fill(0);
-    cost[0] = 0;
-
-    for (let mask = 1; mask <= full; mask++) {
-      /* Pin the lowest chip to this line, so each partition is reached once
-         rather than once per ordering of its lines. */
-      const pinned = mask & -mask;
-      for (let line = mask; line > 0; line = (line - 1) & mask) {
-        if (!(line & pinned) || span[line] < 0) continue;
-        const slack = measure - span[line];
-        const total = cost[mask ^ line] + slack * slack;
-        if (total < cost[mask]) { cost[mask] = total; take[mask] = line; }
-      }
-    }
-
-    const lines = [];
-    for (let mask = full; mask; mask ^= take[mask]) {
-      const line = take[mask];
-      lines.push([...Array(n).keys()].filter((i) => line & (1 << i)));
-    }
-    return lines;
-  }
-
-  function pack(grid) {
-    const measure = grid.clientWidth;
-    const chips = [...grid.querySelectorAll(":scope > .chip")];
-    if (!measure || !chips.length) return;
-
-    const widths = chips.map((el) => Math.ceil(el.getBoundingClientRect().width));
-    /* Widest line first: a heavy line under a light one reads as a mistake. */
-    const lines = partition(widths, measure)
-      .map((line) => line.sort((a, b) => widths[b] - widths[a]))
-      .sort((a, b) => widths[b[0]] - widths[a[0]]);
-
-    const packed = document.createElement("div");
-    packed.className = "chip-rows";
-    for (const line of lines) {
-      const row = document.createElement("div");
-      row.className = "chip-row";
-      for (const i of line) row.appendChild(chips[i]);
-      packed.appendChild(row);
-    }
-    grid.replaceChildren(packed);
-  }
-
-  /* Measure once the webfont has landed: Inter is wider than the fallback, so
-     packing before it arrives lays out lines that then overflow. */
-  const layout = () => document.querySelectorAll("[data-pack]").forEach(pack);
-  document.fonts ? document.fonts.ready.then(layout) : addEventListener("load", layout);
-
-  document.addEventListener("click", (event) => {
-    const hit = event.target.closest(".chip, .range .opt, .btn-group .btn, .cal-day");
-    if (!hit || hit.classList.contains("dead") || hit.classList.contains("outside")) return;
-
-    const group = hit.closest("[data-select]");
-    if (!group) return;
-
-    if (group.dataset.select === "one") {
-      group.querySelectorAll(".on, .picked").forEach((one) => one.classList.remove("on", "picked"));
-      hit.classList.add(hit.classList.contains("cal-day") ? "picked" : "on");
-    } else {
-      hit.classList.toggle("on");
-    }
-  });
-})();
-</script>
+<script src="shared/controls.js"></script>
 
 </body>
 </html>

@@ -1,0 +1,188 @@
+/* The web's frame: a sidebar that says where you are, and one scroller beside
+   it.
+
+   The phone's frame is a 30px title at the top and three icons at the bottom,
+   because that is what fits. The web's is a nav down the left, and once the
+   nav is lit the page does not need a title as well — so no page on the web
+   opens on its own name. It opens on its figure.
+
+   This is the phone's `shell.rs` and `Shell.swift` at the other size. The
+   controls inside it are `shared/components.css` and are the same controls;
+   nothing here restyles one.
+
+   `shared/app.css` is the older version of this file, written before the
+   design language, and it still dresses the markets sketches. Where the two
+   disagree — the nav's live state is `.on` here and `.active` there — this one
+   is the newer answer. */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, "Inter var", ui-sans-serif, -apple-system, system-ui, sans-serif;
+  font-size: 14px; line-height: 1.5; letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Money, in the monospaced face with tabular figures, so a column of them
+   lines up on the decimal without the reader having to look for it. The
+   design language calls this `.money`; `.num` is the older name and both are
+   here until the markets pages catch up. */
+.num, .money {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.up { color: var(--up); }
+.down { color: var(--down); }
+.muted { color: var(--text-muted); }
+.faint { color: var(--text-faint); }
+
+.sidebar {
+  display: flex; flex-direction: column; gap: 22px;
+  height: 100%;
+  padding: 22px 14px;
+}
+
+.brand {
+  /* The left padding matches a nav row, so the globe lines up with the icons
+     under it. */
+  display: flex; align-items: center; gap: 12px;
+  padding: 2px 14px 0;
+  font-size: 24px; font-weight: 600; line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--violet-300);
+}
+.brand-mark { display: block; width: 38px; height: 38px; flex: none; }
+
+.nav { display: flex; flex-direction: column; gap: 6px; }
+.nav a {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 14px;
+  border-radius: var(--r-pill);
+  color: var(--slate-300);
+  font-size: 15px; font-weight: 500;
+  text-decoration: none;
+}
+.nav a:hover { background: var(--bg-raised); color: var(--text); }
+.nav a.on {
+  background: var(--accent-tint);
+  color: var(--violet-300);
+  font-weight: 600;
+}
+/* Drawn but not built, the same state a chip has. The markets side is real
+   work that is coming; a nav that pretends the app is three pages would have
+   to grow three more rows later and move everything under them. */
+.nav a.dead { opacity: 0.4; cursor: default; }
+.nav a.dead:hover { background: none; color: var(--slate-300); }
+.nav .icon { width: 22px; height: 22px; flex: none; stroke-width: 1.75; }
+
+.sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+
+.account {
+  display: flex; align-items: center; gap: 11px;
+  padding: 10px 12px; margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  cursor: pointer;
+}
+.account:hover { background: var(--bg-raised); }
+.account-id { min-width: 0; }
+.account-name {
+  font-size: 13.5px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.account-meta {
+  display: flex; align-items: center; gap: 5px;
+  margin-top: 1px;
+  font-size: 11px; color: var(--text-faint);
+}
+.account .more { margin-left: auto; flex: none; color: var(--text-faint); }
+.account .more svg { width: 16px; height: 16px; }
+
+.avatar {
+  width: 44px; height: 44px; flex: none;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+}
+.avatar svg { display: block; width: 100%; height: 100%; }
+.status-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--up); }
+
+/* One scroller for the whole page, and only one. The sidebar stays put and
+   everything to the right of it moves together — the rail included. A rail
+   that holds still while the page moves is a second scroll area under the same
+   pointer, and which of the two a wheel turns depends on where the pointer
+   happens to be resting. */
+.main { min-width: 0; height: 100%; overflow-y: auto; }
+.main::-webkit-scrollbar { width: 8px; }
+.main::-webkit-scrollbar-thumb { background: var(--bg-input); border-radius: 4px; }
+.main::-webkit-scrollbar-track { background: transparent; }
+
+/* The page's inset. On the phone every row carries its own so the rules can
+   run to the glass; here the rules run the width of the column they belong
+   to, which is the measure the page is set to, so the inset is the content's
+   and the rows are flush inside it. */
+.content { padding: 0 28px 60px; }
+
+.searchrow { display: flex; justify-content: center; padding: 22px 0 4px; }
+.search {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; max-width: 520px; height: 46px;
+  padding: 0 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  color: var(--text-faint);
+}
+/* Drawn and dead, as the dock's search button is on the phone: the sketch has
+   never drawn the screen behind it. */
+.search.dead { opacity: 0.45; cursor: default; }
+.search svg { width: 19px; height: 19px; flex: none; }
+.search .placeholder { flex: 1; font-size: 15px; }
+.kbd {
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--bg-input);
+  font-size: 11px; color: var(--text-faint);
+}
+
+/* The page: what you came to read, and beside it the one control that decides
+   what it says.
+
+   Every one of the three has such a control — the ledger's filter, the
+   recurring calendar, the split of balances across banks — and on the phone
+   every one of them has to sit in the flow of the page, because there is one
+   column of room. A column of its own is what the extra width buys. */
+.page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--rail-w);
+  gap: 36px;
+  align-items: start;
+}
+@media (max-width: 1180px) { .page { grid-template-columns: minmax(0, 1fr); } }
+
+.rail {
+  display: flex; flex-direction: column;
+  padding-top: 30px;
+}
+.rail-sec { padding-top: 26px; }
+.rail-sec:first-child { padding-top: 0; }
+.rail-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px;
+}
+.rail-title {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+}
+.rail-title .v {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 13px; font-weight: 700;
+  letter-spacing: 0; text-transform: none;
+  color: var(--text-muted);
+}

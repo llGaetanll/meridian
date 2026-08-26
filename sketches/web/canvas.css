@@ -1,0 +1,93 @@
+/* Scaffolding, not part of the app: what puts browser windows on a page with
+   notes under them. The phone's sketches do the same thing with phones.
+
+   The windows scroll for real, so a pinned day heading can be looked at rather
+   than described.
+
+   The whole canvas is one window wide and no wider. Notes in a column beside
+   the window pushed it to 1900px, which on the screen this is drawn for meant
+   the rail — the categories, the calendar — hung off the right of the display
+   and had to be scrolled to. A sketch of a page you cannot see the right-hand
+   edge of is not much of a sketch. */
+
+:root {
+  /* 1440 is the laptop this is drawn for, and the narrowest screen worth
+     drawing for: under 1180 the rail drops under the page and there is nothing
+     left to sketch. */
+  --window-w: 1440px;
+}
+
+body {
+  padding: 44px 24px 80px;
+  background: #0a0d12;
+  color: var(--text);
+  font-family: Inter, "Inter var", ui-sans-serif, -apple-system, system-ui, sans-serif;
+  font-size: 15px; line-height: 1.5; letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+}
+
+.canvas { display: flex; flex-direction: column; gap: 64px; width: max-content; }
+
+.lede { max-width: 74ch; }
+.lede h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.03em; }
+.lede p { margin-top: 12px; color: var(--text-muted); }
+.lede p + p { margin-top: 10px; }
+.lede code, .pair-head code, .notes code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 0.9em;
+  color: var(--text);
+}
+
+.pair { display: flex; flex-direction: column; gap: 18px; }
+.pair-head { max-width: 74ch; }
+.pair-head h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.pair-head p { margin-top: 6px; font-size: 14px; color: var(--text-muted); }
+
+.pair-body { display: flex; flex-direction: column; gap: 22px; }
+
+.col { display: flex; flex-direction: column; gap: 10px; }
+.col-label {
+  padding-left: 4px;
+  font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--violet-400);
+}
+
+/* Under the window it belongs to, set to the same measure and read across
+   rather than down. */
+.notes {
+  width: var(--window-w);
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 18px 32px;
+}
+
+.notes .n-item { display: flex; flex-direction: column; gap: 3px; }
+.notes .n-t { font-size: 13.5px; font-weight: 600; }
+.notes .n-d { font-size: 13px; line-height: 1.45; color: var(--text-muted); }
+.notes .n-item.drop .n-t::before { content: "− "; color: var(--rose-400); }
+.notes .n-item.add  .n-t::before { content: "+ "; color: var(--lime-400); }
+.notes .n-item.ask  .n-t::before { content: "? "; color: var(--violet-400); }
+
+.window {
+  display: flex; flex-direction: column;
+  width: var(--window-w); height: 920px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.window-bar {
+  display: flex; align-items: center; gap: 8px; flex: none;
+  height: 38px; padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.window-bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--bars); }
+.window-url {
+  margin: 0 auto;
+  padding: 3px 16px;
+  border-radius: var(--r-pill);
+  background: var(--bg);
+  font-size: 11.5px; color: var(--text-faint);
+}
+.viewport { flex: 1; min-height: 0; }

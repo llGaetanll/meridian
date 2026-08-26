@@ -127,13 +127,14 @@
         <div>
           <div class="spec-t">Chip row</div>
           <div class="spec-d">
-            Where the order of a row of chips carries no meaning, it is chosen
-            to fill the measure — and chosen properly. The script costs every
-            way of cutting the chips into lines by the square of what each line
-            wastes and takes the cheapest; then the chips on a line share out
-            what is left, so the row is flush at both edges. Greedy packing got
-            close and then left one line short, which is the ragged edge you
-            can see from across the room.
+            A justified paragraph, which is what it is. Every line but the
+            last is as full as it can be and its chips share out what little is
+            left, so the line is flush at both edges; the line with the most
+            room to spare goes last and sits left at its natural spacing. The
+            packing leaves that line out of what it costs, which is what pushes
+            the remainder onto one line instead of over all of them. A short
+            line stretched across the measure is the ragged edge you can see
+            from across the room.
           </div>
         </div>
       </div>
@@ -1291,123 +1292,7 @@
 
 </div>
 
-<script>
-/* Enough script to make the sheet answer a tap. Nothing here drives anything:
-   it exists so the states can be looked at rather than described, and so a row
-   of chips is laid out by the rule the app would use rather than by hand.
-
-   In the app none of this is the view's job. The core decides which chips are
-   on and hands the order over already packed, the same way it hands over every
-   other finished value — see docs/FFI.md. */
-
-(() => {
-  const GAP = 8;
-
-  /* Every way of cutting the chips into lines, and the one that wastes least.
-
-     Greedy widest-first gets close and then leaves one line short, which is
-     the ragged edge you can see from across the room. With nine chips there
-     are 3^9 subset-of-subset steps to check, so there is no reason to guess:
-     cost each line by the square of what it wastes — squaring is what makes
-     four lines wasting a little beat three wasting a lot on one of them — and
-     take the cheapest partition outright. */
-  function partition(widths, measure) {
-    const n = widths.length;
-    const full = (1 << n) - 1;
-
-    /* Width of a set of chips laid on one line, gaps included. −1 if it does
-       not fit. */
-    const span = new Array(full + 1).fill(-1);
-    for (let mask = 1; mask <= full; mask++) {
-      let total = -GAP;
-      for (let i = 0; i < n; i++) if (mask & (1 << i)) total += GAP + widths[i];
-      span[mask] = total <= measure ? total : -1;
-    }
-
-    const cost = new Array(full + 1).fill(Infinity);
-    const take = new Array(full + 1).fill(0);
-    cost[0] = 0;
-
-    for (let mask = 1; mask <= full; mask++) {
-      /* Pin the lowest chip in the mask to this line, so each partition is
-         reached once rather than once per ordering of its lines. */
-      const pinned = mask & -mask;
-      for (let line = mask; line > 0; line = (line - 1) & mask) {
-        if (!(line & pinned) || span[line] < 0) continue;
-        const slack = measure - span[line];
-        const total = cost[mask ^ line] + slack * slack;
-        if (total < cost[mask]) {
-          cost[mask] = total;
-          take[mask] = line;
-        }
-      }
-    }
-
-    const lines = [];
-    for (let mask = full; mask; mask ^= take[mask]) {
-      const line = take[mask];
-      lines.push([...Array(n).keys()].filter((i) => line & (1 << i)));
-    }
-    return lines;
-  }
-
-  function pack(grid) {
-    const measure = grid.clientWidth;
-    if (!measure) return;
-
-    const chips = [...grid.querySelectorAll(":scope > .chip")];
-    if (!chips.length) return;
-    const widths = chips.map((el) => Math.ceil(el.getBoundingClientRect().width));
-
-    /* Widest line first: a heavy line under a light one reads as a mistake. */
-    const lines = partition(widths, measure)
-      .map((line) => line.sort((a, b) => widths[b] - widths[a]))
-      .sort((a, b) => widths[b[0]] - widths[a[0]]);
-
-    const packed = document.createElement("div");
-    packed.className = "chip-rows";
-
-    for (const line of lines) {
-      const row = document.createElement("div");
-      row.className = "chip-row";
-      for (const i of line) row.appendChild(chips[i]);
-      packed.appendChild(row);
-    }
-
-    grid.replaceChildren(packed);
-    grid.classList.add("packed");
-  }
-
-  /* Measure once the webfont has landed: Inter is wider than the fallback, so
-     packing before it arrives lays out lines that then overflow. */
-  const layout = () => document.querySelectorAll("[data-pack]").forEach(pack);
-  document.fonts ? document.fonts.ready.then(layout) : addEventListener("load", layout);
-
-  document.addEventListener("click", (event) => {
-    const hit = event.target.closest(
-      ".chip, .range .opt, .btn-group .btn, .cal-strip .cal-day"
-    );
-    if (!hit || hit.classList.contains("dead") || hit.classList.contains("outside")) return;
-
-    if (hit.classList.contains("cal-day")) {
-      const strip = hit.closest(".cal-strip");
-      strip.querySelectorAll(".picked").forEach((day) => day.classList.remove("picked"));
-      hit.classList.add("picked");
-      return;
-    }
-
-    const group = hit.closest("[data-select]");
-    if (!group) return;
-
-    if (group.dataset.select === "one") {
-      group.querySelectorAll(".on").forEach((one) => one.classList.remove("on"));
-      hit.classList.add("on");
-    } else {
-      hit.classList.toggle("on");
-    }
-  });
-})();
-</script>
+<script src="../shared/controls.js"></script>
 
 </body>
 </html>

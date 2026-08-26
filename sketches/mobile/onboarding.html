@@ -8,37 +8,43 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../shared/theme.css">
+<link rel="stylesheet" href="../shared/components.css">
 <link rel="stylesheet" href="phone.css">
-<link rel="stylesheet" href="onboarding.css">
 </head>
 <body>
 
 <!--
   First run: no Meridian account, no bank, no data.
 
+  Every control here is the design language's — the button at thumb size, the
+  field, the code, the mark. The field and the code were not on the sheet
+  before this flow needed them and are on it now.
+
   The order is forced rather than chosen. The Plaid `access_token` is
   permanent and lives on the server (docs/PLAID.md), so it has to belong to
-  somebody before it can be stored — the account must exist before the bank
-  is connected. Everything else here follows from three facts:
+  somebody before it can be stored: the account exists before the bank does.
+  The rest follows from three facts.
 
     1. Plaid is Hosted Link, a URL, not an SDK. The bank sign-in happens on
        Plaid's own page in a web session the app opens and does not draw.
-       Screen 6 is a stub for that reason, and the app's job is only the
-       screen before it and the screen after.
+       Screen 6 is a stub for that reason; ours is the screen before it and
+       the screen after.
     2. The first `/transactions/sync` returns the whole history and the
        second returns nothing. So first run has a wait in it that no later
-       refresh does, and it gets a screen of its own (7).
-    3. The user can leave in the middle of any of it. Every step here has a
-       way back and a way to stop, and screens 8 and 9 are what the app
-       looks like when someone did.
+       refresh does, and it gets a screen of its own.
+    3. There is no version of this app without a bank in it. Connecting one
+       is not a step that can be skipped and come back to later — the screens
+       have nothing to draw until it happens — so nothing here offers to.
+       What the flow owes the user instead is a way out of every failure
+       back onto the same road, which is screen 9.
 
   Numbers are the Plaid Sandbox fixtures in `crates/server-main/fixtures`:
   8 accounts at First Platypus Bank, 48 transactions back to 23 May, 8
   recurring streams.
 
-  Not drawn, because nothing here decides them: the app's launch screen, and
-  the returning-user case where a session already exists — that one opens on
-  the Ledger and shows none of this.
+  Not drawn, because nothing here decides them: the launch screen, and the
+  returning user whose session is still good — that one opens on the Ledger
+  and sees none of this.
 -->
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -65,16 +71,12 @@
     <symbol id="i-tick-c" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="16 9.5 10.8 15 8 12.4"/></symbol>
     <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="7.5" x2="12" y2="13"/><circle cx="12" cy="16.5" r="0.6" fill="currentColor"/></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/></symbol>
-    <symbol id="i-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/><line x1="3" y1="21" x2="21" y2="3"/></symbol>
-    <symbol id="i-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5" opacity="0.95"/><path d="M3.5 12A8.5 8.5 0 0 1 12 3.5" opacity="0.2"/></symbol>
+    <symbol id="i-ledger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="9" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></symbol>
+    <symbol id="i-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"/><path d="M3.5 12A8.5 8.5 0 0 1 12 3.5" opacity="0.2"/></symbol>
     <symbol id="i-dot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8"/></symbol>
     <symbol id="i-bank" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9.5 9-5.5 9 5.5"/><line x1="4" y1="20" x2="20" y2="20"/><line x1="6.5" y1="12" x2="6.5" y2="17"/><line x1="12" y1="12" x2="12" y2="17"/><line x1="17.5" y1="12" x2="17.5" y2="17"/></symbol>
-    <symbol id="i-sync" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11a9 9 0 0 1 15-6.7L21 7"/><polyline points="21 3 21 7 17 7"/><path d="M21 13a9 9 0 0 1-15 6.7L3 17"/><polyline points="3 21 3 17 7 17"/></symbol>
-    <symbol id="i-ledger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="9" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></symbol>
-    <symbol id="i-recurring" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11a9 9 0 0 1 15-6.7L21 7"/><polyline points="21 3 21 7 17 7"/><path d="M21 13a9 9 0 0 1-15 6.7L3 17"/><polyline points="3 21 3 17 7 17"/></symbol>
-    <symbol id="i-balances" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></symbol>
-    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></symbol>
-    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5h15"/><path d="M9 6.5V4.8h6v1.7"/><path d="M6.5 6.5 7.4 20h9.2l.9-13.5"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4 12.5 11.5"/><path d="M18.5 14v5.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1H10"/></symbol>
   </defs>
 </svg>
 
@@ -83,7 +85,7 @@
   <!-- ══════════════════ 1 · Welcome ══════════════════ -->
   <section class="screen">
     <div class="screen-label">1 · Welcome</div>
-    <div class="phone">
+    <div class="phone ui">
 
       <div class="statusbar">
         <span class="num">9:41</span>
@@ -91,33 +93,35 @@
       </div>
 
       <!--
-        One door, not two. There is no "sign up" and no "sign in": an address
-        that exists signs in and an address that does not signs up, and the
-        app cannot tell them apart until the code comes back anyway. That
-        removes the commonest first-run dead end — a returning user tapping
+        One door, not two. There is no Sign up and no Sign in: an address that
+        exists signs in, one that does not signs up, and until the code comes
+        back the server cannot tell them apart anyway. That removes the
+        commonest first-run dead end, which is a returning user tapping
         Create account and being told they already exist.
 
-        No password anywhere in this flow. A password means storing hashes,
-        a reset flow, a "wrong password" state, and a rule about length, all
-        for a secret people reuse. A code to the address we would send the
-        reset to is the same security with none of the screens.
+        No password anywhere in this flow. A password means stored hashes, a
+        reset flow, a wrong-password state and a rule about length, all for a
+        secret people reuse — and the reset would go to this same address.
 
-        Apple's button is first because on iOS it is one tap and no typing.
-        It costs the server a token to verify and an Apple relay address to
-        keep — worth it, but it is the one item on this page that is a real
-        decision rather than an obvious one.
+        Two ways in and one violet. Apple's is a system control on iOS,
+        drawn by Apple in Apple's colours, so it is the quiet button here and
+        the violet one is the way we know we are building. If Apple goes, the
+        email button is already the primary and nothing else on the screen
+        moves. It is the one open decision in this flow: one tap and no
+        typing, against a token to verify and a relay address to keep.
       -->
       <div class="onb">
-        <div class="onb-fill" style="max-height:70px"></div>
+        <div class="onb-fill" style="max-height:66px"></div>
         <svg class="onb-mark"><use href="#i-mark"/></svg>
         <div class="onb-title">Every account,<br>one ledger.</div>
         <div class="onb-body">Meridian reads your banks and puts what you spend, hold and owe on one page.</div>
 
         <div class="onb-fill"></div>
 
-        <button class="btn apple"><svg><use href="#i-apple"/></svg>Continue with Apple</button>
-        <div class="or">or</div>
-        <button class="btn line"><svg><use href="#i-mail"/></svg>Continue with email</button>
+        <div class="acts">
+          <button class="btn lg block"><svg><use href="#i-apple"/></svg>Continue with Apple</button>
+          <button class="btn primary lg block"><svg><use href="#i-mail"/></svg>Continue with email</button>
+        </div>
 
         <div class="legal">
           By continuing you agree to our <a href="#">Terms</a> and <a href="#">Privacy Policy</a>.
@@ -130,32 +134,31 @@
   <!-- ══════════════════ 2 · Email ══════════════════ -->
   <section class="screen">
     <div class="screen-label">2 · Email</div>
-    <div class="phone">
+    <div class="phone ui">
 
       <div class="statusbar">
         <span class="num">9:41</span>
         <span class="glyphs"><svg viewBox="0 0 90 24" style="width:74px;height:16px"><use href="#i-status"/></svg></span>
       </div>
 
-      <div class="onb-back"><button><svg><use href="#i-back"/></svg></button></div>
+      <div class="onb-back"><svg><use href="#i-back"/></svg></div>
 
-      <!-- The keyboard covers the bottom third the moment this screen opens,
-           so the button sits directly above the field rather than pinned to
-           an edge the thumb cannot see. -->
+      <!-- The keyboard covers the bottom third the moment this opens, so the
+           button sits under the field rather than on an edge the thumb
+           cannot reach. -->
       <div class="onb">
-        <div class="steps"><i class="on"></i><i></i><i></i><span>Step 1 of 3 · Account</span></div>
+        <div class="onb-step">Step 1 of 3 · Account</div>
 
         <div class="onb-title">What's your email?</div>
-        <div class="onb-body">We'll send a six-digit code. No password to make up or forget.</div>
+        <div class="onb-body">We'll send a six-digit code. Nothing to make up and nothing to forget.</div>
 
-        <div class="field" style="margin-top:26px">
-          <div class="field-box focus">
-            <svg><use href="#i-mail"/></svg>
-            <span>al@example.com<span class="caret"></span></span>
-          </div>
+        <div style="margin-top:24px">
+          <span class="field on"><span class="in"><svg><use href="#i-mail"/></svg>al@example.com<i class="caret"></i></span></span>
         </div>
 
-        <div style="margin-top:14px"><button class="btn primary">Continue</button></div>
+        <div style="margin-top:12px">
+          <button class="btn primary lg block">Continue</button>
+        </div>
 
         <div class="onb-fill"></div>
       </div>
@@ -166,33 +169,38 @@
   <!-- ══════════════════ 3 · Code ══════════════════ -->
   <section class="screen">
     <div class="screen-label">3 · Code</div>
-    <div class="phone">
+    <div class="phone ui">
 
       <div class="statusbar">
         <span class="num">9:41</span>
         <span class="glyphs"><svg viewBox="0 0 90 24" style="width:74px;height:16px"><use href="#i-status"/></svg></span>
       </div>
 
-      <div class="onb-back"><button><svg><use href="#i-back"/></svg></button></div>
+      <div class="onb-back"><svg><use href="#i-back"/></svg></div>
 
-      <!-- Six boxes and no Continue: the code submits itself on the sixth
-           digit, because there is nothing to check before then. iOS fills it
-           from the notification, so for most people this screen is a flash.
+      <!-- Six fields and no Continue: there is nothing to check before the
+           sixth digit, so the sixth digit submits. iOS fills it from the
+           notification, which makes this screen a flash for most people.
 
-           The address is on screen and going back to it is one tap — a typo
-           in step 2 is otherwise a dead end, since the code never arrives
-           and nothing on screen says why. -->
+           The address is on screen and one tap from being fixed. A typo in
+           step 2 is otherwise a dead end — the code never arrives and
+           nothing here says why. -->
       <div class="onb">
-        <div class="steps"><i class="on"></i><i></i><i></i><span>Step 1 of 3 · Account</span></div>
+        <div class="onb-step">Step 1 of 3 · Account</div>
 
         <div class="onb-title">Check your email</div>
         <div class="onb-body">We sent a code to <b>al@example.com</b>.</div>
 
-        <div class="code" style="margin-top:28px">
-          <i>4</i><i>0</i><i>7</i><i class="next"></i><i></i><i></i>
+        <div class="code" style="margin-top:26px">
+          <span class="field"><span class="in">4</span></span>
+          <span class="field"><span class="in">0</span></span>
+          <span class="field"><span class="in">7</span></span>
+          <span class="field on"><span class="in"><i class="caret"></i></span></span>
+          <span class="field"><span class="in"></span></span>
+          <span class="field"><span class="in"></span></span>
         </div>
 
-        <div class="resend">Resend in <b>0:42</b> · <a href="#">Wrong address?</a></div>
+        <div class="resend">Resend in <span class="num">0:42</span> · <a href="#" style="color:var(--violet-300);text-decoration:none;font-weight:600">Wrong address?</a></div>
 
         <div class="onb-fill"></div>
       </div>
@@ -203,32 +211,38 @@
   <!-- ══════════════════ 3b · Code expired ══════════════════ -->
   <section class="screen">
     <div class="screen-label">3b · Code · expired</div>
-    <div class="phone">
+    <div class="phone ui">
 
       <div class="statusbar">
         <span class="num">9:41</span>
         <span class="glyphs"><svg viewBox="0 0 90 24" style="width:74px;height:16px"><use href="#i-status"/></svg></span>
       </div>
 
-      <div class="onb-back"><button><svg><use href="#i-back"/></svg></button></div>
+      <div class="onb-back"><svg><use href="#i-back"/></svg></div>
 
-      <!-- Codes expire, and the honest message is the difference between
-           "wrong" and "too late" — one asks you to look again, the other
-           asks you for a new code. Same screen, two sentences, and Resend
-           is live rather than counting down. -->
+      <!-- Wrong and too late are different problems: one asks you to look
+           again, the other asks for a new code. Same screen, one sentence
+           apart, and the resend is live rather than counting down. -->
       <div class="onb">
-        <div class="steps"><i class="on"></i><i></i><i></i><span>Step 1 of 3 · Account</span></div>
+        <div class="onb-step">Step 1 of 3 · Account</div>
 
         <div class="onb-title">Check your email</div>
         <div class="onb-body">We sent a code to <b>al@example.com</b>.</div>
 
-        <div class="code bad" style="margin-top:28px">
-          <i>4</i><i>0</i><i>7</i><i>1</i><i>9</i><i>3</i>
+        <div class="code" style="margin-top:26px">
+          <span class="field bad"><span class="in">4</span></span>
+          <span class="field bad"><span class="in">0</span></span>
+          <span class="field bad"><span class="in">7</span></span>
+          <span class="field bad"><span class="in">1</span></span>
+          <span class="field bad"><span class="in">9</span></span>
+          <span class="field bad"><span class="in">3</span></span>
         </div>
 
-        <div class="err"><svg><use href="#i-warn"/></svg>That code has expired. Codes last ten minutes.</div>
+        <div class="err"><svg><use href="#i-warn"/></svg>That code has expired. They last ten minutes.</div>
 
-        <div class="resend"><a href="#">Send a new code</a></div>
+        <div style="margin-top:16px">
+          <button class="btn lg block">Send a new code</button>
+        </div>
 
         <div class="onb-fill"></div>
       </div>
@@ -239,7 +253,7 @@
   <!-- ══════════════════ 4 · Connect a bank ══════════════════ -->
   <section class="screen">
     <div class="screen-label">4 · Connect a bank</div>
-    <div class="phone">
+    <div class="phone ui">
 
       <div class="statusbar">
         <span class="num">9:41</span>
@@ -248,53 +262,59 @@
 
       <!--
         The screen this whole flow exists for. Everything before it is
-        bookkeeping; this is the one where a stranger decides whether to type
-        their bank password into a phone.
+        bookkeeping; this is where a stranger decides whether to sign in to
+        their bank on their phone.
 
-        So it says the four things a reasonable person wants, in the order
-        they want them, and one of them is what we do *not* get. Read-only
-        and "we never see your password" are both literally true — the
-        credentials go to Plaid, the token comes back to our server, and the
-        app itself never holds either.
+        So the four lines are true ones, including the third, which is the
+        one apps like this usually leave out. Meridian sees your
+        transactions. It stores them. That is the product — a ledger cannot
+        be drawn from data nobody holds — and an app that implies otherwise
+        has told its first lie on the screen where it is asking to be
+        trusted.
 
-        Plaid's end-user privacy policy is linked here rather than in
-        settings: this is the screen where the data starts moving.
+        What is worth saying is the part that is genuinely narrow: the
+        credentials go to Plaid and never to us, nothing here can move money,
+        and the way out deletes what we kept. "We don't sell your data" is
+        not on the list. It is the law, not a favour, and a promise nobody
+        can check is worth nothing on this screen.
 
-        "I'll do this later" is small but real. A bank that is down or a
-        person who wants to look around first should not be trapped on this
-        screen — screen 9 is where they land.
+        Plaid's own end-user policy is linked here rather than in a settings
+        screen: this is where the data starts moving.
+
+        No skip. There is no Meridian without a bank in it — every screen in
+        the app is a view of transactions — so an app that let someone past
+        this would be an app that opens on four empty tabs.
       -->
       <div class="onb">
-        <div class="steps"><i class="done"></i><i class="on"></i><i></i><span>Step 2 of 3 · Bank</span></div>
+        <div class="onb-step">Step 2 of 3 · Bank</div>
 
         <div class="onb-title">Connect your bank</div>
-        <div class="onb-body">Meridian uses <b>Plaid</b> to connect. You sign in on your bank's own page — Meridian never sees it.</div>
+        <div class="onb-body">Meridian uses <b>Plaid</b> to connect. You sign in on your bank's own page.</div>
 
-        <div class="points">
-          <div class="point yes">
-            <svg><use href="#i-tick-c"/></svg>
-            <div><div class="t">Read-only</div><div class="d">Balances, transactions and recurring bills. Nothing can be moved.</div></div>
-          </div>
-          <div class="point yes">
+        <div style="margin-top:18px">
+          <div class="row top">
             <svg><use href="#i-lock"/></svg>
-            <div><div class="t">Your password stays with your bank</div><div class="d">It goes to Plaid's page, never to Meridian.</div></div>
+            <div class="rt">Your bank password goes to Plaid<div class="rs">Never to Meridian. We are handed a key to read with, not your sign-in.</div></div>
           </div>
-          <div class="point no">
-            <svg><use href="#i-eye-off"/></svg>
-            <div><div class="t">Not sold, not shared</div><div class="d">Your data is used to draw your screens and nothing else.</div></div>
+          <div class="row top">
+            <svg><use href="#i-tick-c"/></svg>
+            <div class="rt">Read-only<div class="rs">Balances, transactions and recurring bills. Nothing can move money.</div></div>
           </div>
-          <div class="point no">
-            <svg><use href="#i-sync"/></svg>
-            <div><div class="t">Disconnect whenever</div><div class="d">One tap in Account removes the bank and its history.</div></div>
+          <div class="row top">
+            <svg><use href="#i-ledger"/></svg>
+            <div class="rt">Meridian keeps your transactions<div class="rs">They are stored on our server. That is what the ledger is made of.</div></div>
+          </div>
+          <div class="row top">
+            <svg><use href="#i-trash"/></svg>
+            <div class="rt">Removing a bank deletes them<div class="rs">One tap in Account, and its history goes with it.</div></div>
           </div>
         </div>
 
         <div class="onb-fill"></div>
 
-        <button class="btn primary"><svg><use href="#i-bank"/></svg>Connect a bank</button>
-        <button class="btn ghost">I'll do this later</button>
+        <button class="btn primary lg block"><svg><use href="#i-bank"/></svg>Connect a bank</button>
 
-        <div class="legal" style="margin-top:6px">
+        <div class="legal">
           Plaid handles the connection under its <a href="#">end-user privacy policy</a>.
         </div>
       </div>
@@ -302,10 +322,10 @@
     </div>
   </section>
 
-  <!-- ══════════════════ 5 · Plaid (not ours) ══════════════════ -->
+  <!-- ══════════════════ 5 · Plaid ══════════════════ -->
   <section class="screen">
     <div class="screen-label">5 · Plaid Hosted Link — not ours to draw</div>
-    <div class="phone">
+    <div class="phone ui">
 
       <div class="statusbar">
         <span class="num">9:41</span>
@@ -316,19 +336,19 @@
         Everything inside the rounded box is Plaid's, over the web, in an
         `ASWebAuthenticationSession`. We choose nothing in it: not the bank
         list, not the wording, not the look — and it will not match the app,
-        which is fine and is the point. This frame is here so nobody builds
-        it by mistake.
+        which is fine and is the point. The frame is here so that nobody
+        builds it by mistake.
 
-        What is ours is the pair of moments either side. Going in: the app
-        asks the server for a `link_token` and opens the `hosted_link_url`
-        that comes back. Coming out: Plaid redirects to our universal link,
-        the app tells the server, and the server exchanges the public token.
-        The app never holds a token of either kind.
+        Ours is the pair of moments either side. Going in: the app asks the
+        server for a `link_token` and opens the `hosted_link_url` that comes
+        back. Coming out: Plaid redirects to our universal link, the app
+        tells the server, the server exchanges the public token. The app
+        never holds a token of either kind.
 
-        The session can also end with nothing — dismissed, failed, timed
-        out. Screen 8.
+        The session can also end with nothing — dismissed, failed, timed out.
+        Screen 9.
 
-        Sandbox note: any institution here takes `user_good` / `pass_good`.
+        Sandbox: any institution here takes `user_good` / `pass_good`.
       -->
       <div class="plaid">
         <div class="plaid-bar"><svg><use href="#i-lock"/></svg>secure.plaid.com</div>
@@ -352,7 +372,7 @@
   <!-- ══════════════════ 6 · First sync ══════════════════ -->
   <section class="screen">
     <div class="screen-label">6 · First sync</div>
-    <div class="phone">
+    <div class="phone ui">
 
       <div class="statusbar">
         <span class="num">9:41</span>
@@ -360,34 +380,34 @@
       </div>
 
       <!--
-        The only slow screen in the app. `/transactions/sync` pages through
-        the entire history the first time and returns almost nothing every
-        time after, so this wait happens once per bank and never again — and
-        a spinner would make a one-off minute feel like a broken app.
+        The only slow screen in the app, and it happens once per bank.
+        `/transactions/sync` pages the entire history the first time and
+        returns almost nothing every time after, so a spinner would make a
+        one-off minute feel like a broken app.
 
-        The counts climb because the pages actually arrive; each line is a
-        real call finishing, not a fake progress animation. If the ledger
-        ever went blank on a later refresh, this is the same call being
-        assigned instead of accumulated — the bug docs/PLAID.md warns about.
+        The counts climb because the pages actually land: each line is a call
+        finishing, not an animation. The bar is the design language's share
+        control, standing on the rule the way it does under a category — a
+        proportion drawn on a line the page already had.
 
-        No Cancel. There is nothing to go back to: the bank is already
-        connected and the token already stored, so stopping here would leave
-        an account attached to a half-read history. Backgrounding the app is
-        safe — the server is doing the work.
+        No Cancel. There is nothing to go back to: the bank is connected and
+        the token stored, so stopping here leaves an account holding half a
+        history. Backgrounding the app is safe, since the server is the one
+        doing the work.
       -->
       <div class="onb">
-        <div class="steps"><i class="done"></i><i class="done"></i><i class="on"></i><span>Step 3 of 3 · Sync</span></div>
+        <div class="onb-step">Step 3 of 3 · Sync</div>
 
         <div class="onb-title">Reading your history</div>
-        <div class="onb-body">First time only. Every later refresh takes a moment.</div>
+        <div class="onb-body">First time only. Every refresh after this one takes a moment.</div>
 
-        <div class="bar" style="margin-top:26px"><i style="width:62%"></i></div>
+        <div class="sync-bar"><span class="track"><i style="width:62%"></i></span></div>
 
-        <div class="sync-steps">
-          <div class="sync-step done"><svg><use href="#i-tick-c"/></svg>First Platypus Bank<span class="n">connected</span></div>
-          <div class="sync-step done"><svg><use href="#i-tick-c"/></svg>Accounts<span class="n">8</span></div>
-          <div class="sync-step now"><svg><use href="#i-spin"/></svg>Transactions<span class="n">48 so far</span></div>
-          <div class="sync-step wait"><svg><use href="#i-dot"/></svg>Recurring bills<span class="n">waiting</span></div>
+        <div style="margin-top:10px">
+          <div class="row sync-step done"><svg><use href="#i-tick-c"/></svg><div class="rt">First Platypus Bank</div><span class="rv">connected</span></div>
+          <div class="row sync-step done"><svg><use href="#i-tick-c"/></svg><div class="rt">Accounts</div><span class="rv num">8</span></div>
+          <div class="row sync-step now"><svg><use href="#i-spin"/></svg><div class="rt">Transactions</div><span class="rv num">48 so far</span></div>
+          <div class="row sync-step wait"><svg><use href="#i-dot"/></svg><div class="rt">Recurring bills</div><span class="rv">waiting</span></div>
         </div>
 
         <div class="onb-fill"></div>
@@ -399,7 +419,7 @@
   <!-- ══════════════════ 7 · Ready ══════════════════ -->
   <section class="screen">
     <div class="screen-label">7 · Ready</div>
-    <div class="phone">
+    <div class="phone ui">
 
       <div class="statusbar">
         <span class="num">9:41</span>
@@ -407,23 +427,23 @@
       </div>
 
       <!--
-        Counts, not a tick and a slogan. They are the first proof the thing
-        works, and they set the expectation for the Ledger the next tap
-        opens — 48 rows and three months, so an empty-looking August is the
-        history being short rather than the app being broken.
+        Counts rather than a tick and a slogan. They are the first proof the
+        thing works, and they set the expectation for the Ledger the next tap
+        opens: 48 rows and three months, so a thin-looking August reads as a
+        short history rather than a broken app.
 
-        No balance here. Balances are hidden by default on their own page so
-        the app can be opened in public; putting the figure on the last
+        No balance. Balances are hidden by default on their own page so the
+        app can be opened in public, and putting the figure on the last
         screen of setup would undo that on day one.
 
-        "Add another bank" and not "Done": most people have more than one,
-        and the second connection is far more likely now than from a
-        settings screen later.
+        Add another bank rather than Done, because most people have more than
+        one and the second connection will never be more likely than it is
+        right now.
       -->
       <div class="onb">
-        <div class="onb-fill" style="max-height:60px"></div>
+        <div class="onb-fill" style="max-height:56px"></div>
 
-        <svg style="width:44px;height:44px;color:var(--lime-400)"><use href="#i-tick-c"/></svg>
+        <svg style="width:40px;height:40px;color:var(--lime-400)"><use href="#i-tick-c"/></svg>
         <div class="onb-title" style="margin-top:18px">You're set.</div>
         <div class="onb-body">First Platypus Bank is connected and syncing.</div>
 
@@ -435,8 +455,10 @@
 
         <div class="onb-fill"></div>
 
-        <button class="btn primary">Open Meridian</button>
-        <button class="btn ghost">Add another bank</button>
+        <div class="acts">
+          <button class="btn lg block">Add another bank</button>
+          <button class="btn primary lg block">Open Meridian</button>
+        </div>
       </div>
 
     </div>
@@ -445,7 +467,7 @@
   <!-- ══════════════════ 8 · Connect didn't finish ══════════════════ -->
   <section class="screen">
     <div class="screen-label">8 · Connect didn't finish</div>
-    <div class="phone">
+    <div class="phone ui">
 
       <div class="statusbar">
         <span class="num">9:41</span>
@@ -453,75 +475,36 @@
       </div>
 
       <!--
-        The common ending, not a rare one: people close the sheet to go find
-        a password, or the bank's own login fails. Nothing was created, and
-        saying so plainly is the whole job — a vague "something went wrong"
-        leaves someone wondering whether their bank is half-connected.
+        The common ending, not a rare one: people close the sheet to go and
+        find a password, or their bank's own login fails. Nothing was
+        created, and saying so plainly is the whole job — "something went
+        wrong" leaves someone wondering whether their bank is half-attached
+        to an app they have not finished setting up.
 
-        The account still exists, so this is never a dead end: try again, or
-        carry on to screen 9 and connect later.
+        Since there is no skip, this screen carries the way out instead: the
+        account is already made, and closing the app here loses nothing. That
+        is the difference between insisting on a bank and trapping someone on
+        a screen.
       -->
       <div class="onb">
-        <div class="steps"><i class="done"></i><i class="on"></i><i></i><span>Step 2 of 3 · Bank</span></div>
+        <div class="onb-step">Step 2 of 3 · Bank</div>
 
-        <div class="onb-fill" style="max-height:40px"></div>
+        <div class="onb-fill" style="max-height:36px"></div>
 
-        <svg style="width:38px;height:38px;color:var(--amber-300)"><use href="#i-warn"/></svg>
+        <svg style="width:36px;height:36px;color:var(--amber-300)"><use href="#i-warn"/></svg>
         <div class="onb-title" style="margin-top:18px">That didn't finish</div>
-        <div class="onb-body">The bank sign-in closed before it was done, so nothing was connected. Your Meridian account is fine.</div>
+        <div class="onb-body">The bank sign-in closed before it was done, so no bank was connected.</div>
+
+        <div style="margin-top:20px">
+          <div class="row top">
+            <svg><use href="#i-tick-c"/></svg>
+            <div class="rt">Your account is made<div class="rs">Close the app if you need to. Signing in again comes back to here.</div></div>
+          </div>
+        </div>
 
         <div class="onb-fill"></div>
 
-        <button class="btn primary">Try again</button>
-        <button class="btn ghost">I'll do this later</button>
-      </div>
-
-    </div>
-  </section>
-
-  <!-- ══════════════════ 9 · No bank yet ══════════════════ -->
-  <section class="screen">
-    <div class="screen-label">9 · The app with no bank</div>
-    <div class="phone">
-
-      <div class="statusbar">
-        <span class="num">9:41</span>
-        <span class="glyphs"><svg viewBox="0 0 90 24" style="width:74px;height:16px"><use href="#i-status"/></svg></span>
-      </div>
-
-      <header class="header">
-        <div>
-          <div class="page-title">Ledger</div>
-        </div>
-      </header>
-
-      <!--
-        Where "I'll do this later" lands, and the state the app is in until a
-        bank exists. Every tab looks like this, one card each.
-
-        `empty_message` in `phone-state/src/screens.rs` names three nothings
-        today — loading, filtered out, and empty ledger. This is a fourth,
-        and "No transactions yet." is wrong for it: nothing is wrong, nothing
-        is loading, and there is exactly one thing to do about it. It needs
-        its own arm, or the first screen a new user sees reads as a bug.
-      -->
-      <main class="list">
-        <div class="blank">
-          <svg><use href="#i-bank"/></svg>
-          <div class="t">No bank connected</div>
-          <div class="d">Meridian has nothing to show until one is. It takes about a minute.</div>
-          <button class="btn primary">Connect a bank</button>
-        </div>
-      </main>
-
-      <div class="dockrow">
-        <nav class="dock glass">
-          <a class="on" href="#"><svg><use href="#i-ledger"/></svg>Ledger</a>
-          <a href="#"><svg><use href="#i-recurring"/></svg>Recurring</a>
-          <a href="#"><svg><use href="#i-balances"/></svg>Balances</a>
-          <a href="#"><svg><use href="#i-user"/></svg>Account</a>
-        </nav>
-        <a class="dock-search glass" href="#" aria-label="Search"><svg><use href="#i-search"/></svg></a>
+        <button class="btn primary lg block"><svg><use href="#i-ext"/></svg>Try again</button>
       </div>
 
     </div>
