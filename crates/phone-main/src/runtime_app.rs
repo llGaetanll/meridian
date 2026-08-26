@@ -140,7 +140,7 @@ impl RuntimeApp {
         match action {
             ActionUi::Render { screen, dock } => {
                 self.screen.set(Some(screen.clone()));
-                self.dock.set(Some(dock.clone()));
+                self.dock.set(dock.clone());
             }
 
             ActionUi::ShowError { message } => {
@@ -153,10 +153,46 @@ impl RuntimeApp {
     fn perform_action_source(&self, action: &ActionSource) {
         match action {
             ActionSource::LoadSnapshot { force } => self.load_snapshot(*force),
+
+            ActionSource::LoadSession => self.load_session(),
+
+            // First run is drawn on the phone and not here yet, and
+            // `load_session` is what makes sure it is never reached — so an
+            // action from it arriving on the web is worth a line rather than a
+            // silent no-op.
+            ActionSource::SaveSession { .. }
+            | ActionSource::SendCode { .. }
+            | ActionSource::VerifyCode { .. }
+            | ActionSource::StartBankLink
+            | ActionSource::WatchSync => {
+                tracing::warn!(?action, "first run is not drawn on the web");
+            }
         }
     }
 
-    /// The one piece of IO, and the only `async` in the front end.
+    /// Who the browser is signed in as.
+    ///
+    /// It answers as a browser that already is, which is what the web did
+    /// before there was a session to load at all: the phone owns first run
+    /// (`sketches/mobile/onboarding.html`), and until those screens exist here
+    /// too, sending the web down that road would be sending it to a placeholder.
+    ///
+    /// Answered on the next turn rather than inside this one, so the actions
+    /// from the batch that asked are all carried out before the answer starts
+    /// another.
+    fn load_session(&self) {
+        let runtime = *self;
+
+        spawn_local(async move {
+            runtime.dispatch(Event::FromSource {
+                event: EventSource::SessionLoaded {
+                    email: Some(WEB_SESSION.to_string()),
+                },
+            });
+        });
+    }
+
+    /// The one piece of IO that reaches the network.
     ///
     /// Whatever comes back re-enters the machine as an event, which is what
     /// closes the loop: nothing here inspects the answer or decides anything
@@ -195,6 +231,9 @@ impl RuntimeApp {
 pub fn use_runtime() -> RuntimeApp {
     expect_context()
 }
+
+/// Who the web says it is, until it has a way to ask.
+const WEB_SESSION: &str = "web";
 
 /// The wall clock, in seconds.
 ///

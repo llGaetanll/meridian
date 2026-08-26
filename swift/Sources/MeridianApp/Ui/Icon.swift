@@ -49,6 +49,10 @@ struct Glyph: Shape {
     let name: String
 
     /// Drawn filled rather than stroked, as `fill="currentColor"` in the SVG.
+    ///
+    /// `warn` is not among them: its dot is the one filled part of an
+    /// otherwise stroked glyph, and at 18px a 0.6-radius ring reads as a dot
+    /// anyway.
     static let filled: Set<String> = ["caret"]
 
     func path(in rect: CGRect) -> Path {
@@ -123,6 +127,48 @@ struct Glyph: Shape {
         case "refresh":
             Svg.append("M3 12a9 9 0 0 1 15-6.7L21 8", to: &path)
             Svg.polyline([21, 3, 21, 8, 16, 8], to: &path)
+
+        case "mail":
+            Svg.rect(2.5, 5, 19, 14, 2.5, to: &path)
+            Svg.append("m3 7 9 6 9-6", to: &path)
+
+        // Back, and only back. The dock's `chevron` points down; this one is
+        // the same stroke turned, so the two read as one family.
+        case "back":
+            Svg.polyline([15, 5, 8, 12, 15, 19], to: &path)
+
+        case "tick-circle":
+            Svg.circle(12, 12, 9, to: &path)
+            Svg.polyline([16, 9.5, 10.8, 15, 8, 12.4], to: &path)
+
+        case "warn":
+            Svg.circle(12, 12, 9, to: &path)
+            Svg.line(12, 7.5, 12, 13, to: &path)
+            Svg.circle(12, 16.5, 0.6, to: &path)
+
+        case "lock":
+            Svg.rect(4.5, 10.5, 15, 10, 2.5, to: &path)
+            Svg.append("M8 10.5V7.8a4 4 0 0 1 8 0v2.7", to: &path)
+
+        case "bank":
+            Svg.append("m3 9.5 9-5.5 9 5.5", to: &path)
+            Svg.line(4, 20, 20, 20, to: &path)
+            Svg.line(6.5, 12, 6.5, 17, to: &path)
+            Svg.line(12, 12, 12, 17, to: &path)
+            Svg.line(17.5, 12, 17.5, 17, to: &path)
+
+        case "trash":
+            Svg.append("M4.5 6.5h15", to: &path)
+            Svg.append("M9 6.5V4.8h6v1.7", to: &path)
+            Svg.append("M6.5 6.5 7.4 20h9.2l.9-13.5", to: &path)
+
+        // One three-quarter arc, and the turning is what says "working".
+        case "spin":
+            Svg.append("M12 3.5a8.5 8.5 0 1 1-8.5 8.5", to: &path)
+
+        // A step not reached yet: the tick's circle with nothing in it.
+        case "dot":
+            Svg.circle(12, 12, 8, to: &path)
 
         // An unknown name draws nothing rather than a "missing" glyph: a gap is
         // easier to spot in review than a box that looks deliberate.

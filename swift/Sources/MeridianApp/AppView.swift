@@ -30,12 +30,7 @@ struct AppView: View {
             Theme.bg.ignoresSafeArea()
 
             if let screen = runtime.screen, opened {
-                PhoneShell(
-                    title: Self.title(of: screen),
-                    screen: Self.title(of: screen),
-                    band: { scroller in Self.band(of: screen, scroller: scroller) },
-                    content: { Self.content(of: screen) }
-                )
+                Self.app(of: screen)
             } else {
                 BootScreen()
                     .transition(.opacity)
@@ -50,11 +45,36 @@ struct AppView: View {
         .tint(Theme.accentSoft)
     }
 
+    /// First run gets no shell. Its screens are not tabs, so there is no
+    /// header to put over them, no band to slide in and no dock to float
+    /// under them — and it is a road with an end rather than a place in the
+    /// app you can navigate back to.
+    @ViewBuilder
+    private static func app(of screen: ViewScreen) -> some View {
+        switch screen {
+        case .onboarding(let view):
+            OnboardingScreen(view: view)
+                .transition(.opacity)
+
+        case .ledger, .recurring, .balances:
+            PhoneShell(
+                title: Self.title(of: screen),
+                screen: Self.title(of: screen),
+                band: { scroller in Self.band(of: screen, scroller: scroller) },
+                content: { Self.content(of: screen) }
+            )
+        }
+    }
+
+    /// The three below are only ever reached through the shell, which `app` is
+    /// what routes to — so first run's arm in each is what keeps the switch
+    /// exhaustive rather than a screen anyone draws.
     private static func title(of screen: ViewScreen) -> String {
         switch screen {
         case .ledger: "Ledger"
         case .recurring: "Recurring"
         case .balances: "Balances"
+        case .onboarding: ""
         }
     }
 
@@ -67,6 +87,7 @@ struct AppView: View {
         case .ledger(let view): LedgerBand(filter: view.filter, scroller: scroller)
         case .recurring(let view): RecurringBand(view: view)
         case .balances(let view): BalancesBand(view: view)
+        case .onboarding: EmptyView()
         }
     }
 
@@ -76,6 +97,7 @@ struct AppView: View {
         case .ledger(let view): LedgerScreen(view: view)
         case .recurring(let view): RecurringScreen(view: view)
         case .balances(let view): BalancesScreen(view: view)
+        case .onboarding: EmptyView()
         }
     }
 }

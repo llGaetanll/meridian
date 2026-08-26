@@ -28,6 +28,14 @@ pub fn App() -> impl IntoView {
             Some(ViewScreen::Balances { view }) => {
                 view! { <BalancesScreen view=view /> }.into_any()
             }
+            // Unreachable while the web answers `LoadSession` as already
+            // signed in — see `RuntimeApp::load_session`. It is here so that
+            // the day the web draws first run, this is the one place that has
+            // to change, and so that adding a screen in Rust keeps failing to
+            // compile until every front end has drawn it.
+            Some(ViewScreen::Onboarding { .. }) => {
+                view! { <div class="boot">"First run is on the phone."</div> }.into_any()
+            }
         }}
     }
 }

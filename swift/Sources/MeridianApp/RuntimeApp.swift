@@ -43,7 +43,60 @@ final class RuntimeApp: ObservableObject {
     /// Shorthand for the common case. A view's tap handler calls this; it
     /// never writes a published value itself.
     func ui(_ event: EventUi) {
+        // TEMPORARY tracing. `core` is the machine plus lifting the screen back
+        // into Swift; `settled` is measured on the next turn of the main queue,
+        // which is after SwiftUI has done the work the event caused. The gap
+        // between them is the drawing.
+        let t0 = Date()
+        let before = screenName
+
         dispatch(.fromUi(event: event))
+
+        let core = Date().timeIntervalSince(t0) * 1000
+        let after = screenName
+
+        DispatchQueue.main.async {
+            let settled = Date().timeIntervalSince(t0) * 1000
+            NSLog(
+                "MERIDIAN tap event=%@ %@->%@ core=%.0fms settled=%.0fms",
+                Self.name(event), before, after, core, settled
+            )
+        }
+    }
+
+    private var screenName: String {
+        switch screen {
+        case .ledger: "ledger"
+        case .recurring: "recurring"
+        case .balances: "balances"
+        case .onboarding: "first-run"
+        case nil: "none"
+        }
+    }
+
+    private static func name(_ event: EventUi) -> String {
+        switch event {
+        case .started: "started"
+        case .screenOpened(let screen): "screenOpened(\(screen))"
+        case .refreshRequested: "refresh"
+        case .maskToggled: "mask"
+        case .filterGroupToggled: "filterGroup"
+        case .categoryToggled(let id): "category(\(id))"
+        case .categoriesCleared: "categoriesCleared"
+        case .rangeSelected: "range"
+        case .calendarDaySelected(let id): "calendarDay(\(id))"
+        case .calendarMonthStepped(let step): "calendarMonth(\(step))"
+        case .txSelected(let id): "tx(\(id))"
+        case .emailChosen: "emailChosen"
+        case .emailTyped: "emailTyped"
+        case .emailSubmitted: "emailSubmitted"
+        case .codeTyped: "codeTyped"
+        case .resendRequested: "resend"
+        case .backPressed: "back"
+        case .bankConnectRequested: "bankConnect"
+        case .onboardingFinished: "onboardingFinished"
+        case .ticked: "tick"
+        }
     }
 
     /// Send an event in, and carry out whatever comes back. One turn of the
@@ -84,6 +137,72 @@ final class RuntimeApp: ObservableObject {
     private func performActionSource(_ action: ActionSource) {
         switch action {
         case .loadSnapshot(let force): loadSnapshot(force: force)
+
+        // First run. Every one of these is answered by `FirstRun`, which is
+        // standing in for a server that does not have these endpoints yet —
+        // see the note on that type. Nothing above this line can tell the
+        // difference, and nothing below it decides anything.
+        case .loadSession: loadSession()
+        case .saveSession(let email): FirstRun.remember(email)
+        case .sendCode(let email): sendCode(to: email)
+        case .verifyCode(_, let code): verifyCode(code)
+        case .startBankLink: startBankLink()
+        case .watchSync: watchSync()
+        }
+    }
+
+    /// Who the device says is signed in.
+    ///
+    /// Read straight away and answered on the next turn, so that the actions
+    /// from the batch that asked are all carried out before the answer starts
+    /// another. The app draws its opening screen behind this, and the store is
+    /// fast enough that nobody sees the one it guessed.
+    private func loadSession() {
+        let email = FirstRun.session
+
+        Task { [weak self] in
+            self?.dispatch(.fromSource(event: .sessionLoaded(email: email)))
+        }
+    }
+
+    private func sendCode(to email: String) {
+        NSLog("MERIDIAN first run: a code for %@ would be sent here", email)
+
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+
+            self?.dispatch(.fromSource(event: .codeSent))
+        }
+    }
+
+    private func verifyCode(_ code: String) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(400))
+
+            self?.dispatch(.fromSource(event: FirstRun.verdict(on: code)))
+        }
+    }
+
+    /// Ask the server for a `link_token` and open the `hosted_link_url` that
+    /// comes back, which is Plaid's own page in a web session the app does not
+    /// draw.
+    private func startBankLink() {
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(900))
+
+            self?.dispatch(.fromSource(event: FirstRun.link()))
+        }
+    }
+
+    /// Follow the first sync. The work is the server's; this reports what
+    /// lands.
+    private func watchSync() {
+        Task { [weak self] in
+            for step in FirstRun.sync {
+                try? await Task.sleep(for: .milliseconds(650))
+
+                self?.dispatch(.fromSource(event: step))
+            }
         }
     }
 

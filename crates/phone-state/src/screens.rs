@@ -44,6 +44,7 @@ use crate::ViewStreamGroup;
 use crate::ViewStreamRow;
 use crate::ViewTxRow;
 use crate::fmt;
+use crate::screens_onboarding;
 
 /// Seconds in a day, for stepping the calendar a cell at a time.
 const DAY: u64 = 86_400;
@@ -58,6 +59,14 @@ const SOON_DAYS: u64 = 7;
 const SUMMARY_CHIPS: usize = 2;
 
 pub fn screen(state: &StateApp) -> ViewScreen {
+    // First run is a road with an end rather than a place in the app, so while
+    // it is being walked it is the only thing on screen — tabs included.
+    if let Some(flow) = state.onboarding() {
+        return ViewScreen::Onboarding {
+            view: screens_onboarding::onboarding(flow, state.now()),
+        };
+    }
+
     match state.screen() {
         Screen::Ledger => ViewScreen::Ledger {
             view: ledger(state),

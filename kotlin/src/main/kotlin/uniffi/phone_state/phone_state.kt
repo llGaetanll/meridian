@@ -2092,6 +2092,54 @@ public object FfiConverterTypeViewCategoryChip : FfiConverterRustBuffer<ViewCate
     }
 }
 
+/**
+ * One box of a six-digit code.
+ */
+data class ViewCodeCell(
+    /**
+     * The digit, or empty.
+     */
+    var `digit`: kotlin.String,
+    /**
+     * The box that takes the next digit. It carries the caret.
+     */
+    var `live`: kotlin.Boolean,
+    /**
+     * Set on every box at once — a rejected code is one wrong value, not six.
+     */
+    var `bad`: kotlin.Boolean,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewCodeCell : FfiConverterRustBuffer<ViewCodeCell> {
+    override fun read(buf: ByteBuffer): ViewCodeCell =
+        ViewCodeCell(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+
+    override fun allocationSize(value: ViewCodeCell) =
+        (
+            FfiConverterString.allocationSize(value.`digit`) +
+                FfiConverterBoolean.allocationSize(value.`live`) +
+                FfiConverterBoolean.allocationSize(value.`bad`)
+        )
+
+    override fun write(
+        value: ViewCodeCell,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`digit`, buf)
+        FfiConverterBoolean.write(value.`live`, buf)
+        FfiConverterBoolean.write(value.`bad`, buf)
+    }
+}
+
 data class ViewConnection(
     var `id`: kotlin.String,
     var `name`: kotlin.String,
@@ -2376,6 +2424,60 @@ public object FfiConverterTypeViewDockItem : FfiConverterRustBuffer<ViewDockItem
     }
 }
 
+/**
+ * Something to type into.
+ */
+data class ViewField(
+    /**
+     * An icon name the view resolves in its own set.
+     */
+    var `icon`: kotlin.String,
+    /**
+     * What is in it. Empty means the placeholder shows instead.
+     */
+    var `value`: kotlin.String,
+    var `placeholder`: kotlin.String,
+    /**
+     * What the server, or the machine, made of the value. `Some` is what
+     * draws the field wrong — never an empty field, which has not done
+     * anything yet.
+     */
+    var `fault`: kotlin.String?,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewField : FfiConverterRustBuffer<ViewField> {
+    override fun read(buf: ByteBuffer): ViewField =
+        ViewField(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+
+    override fun allocationSize(value: ViewField) =
+        (
+            FfiConverterString.allocationSize(value.`icon`) +
+                FfiConverterString.allocationSize(value.`value`) +
+                FfiConverterString.allocationSize(value.`placeholder`) +
+                FfiConverterOptionalString.allocationSize(value.`fault`)
+        )
+
+    override fun write(
+        value: ViewField,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`icon`, buf)
+        FfiConverterString.write(value.`value`, buf)
+        FfiConverterString.write(value.`placeholder`, buf)
+        FfiConverterOptionalString.write(value.`fault`, buf)
+    }
+}
+
 data class ViewFilter(
     var `categoriesOpen`: kotlin.Boolean,
     var `rangeOpen`: kotlin.Boolean,
@@ -2435,6 +2537,63 @@ public object FfiConverterTypeViewFilter : FfiConverterRustBuffer<ViewFilter> {
         FfiConverterOptionalString.write(value.`categoriesOverflow`, buf)
         FfiConverterTypeViewRange.write(value.`range`, buf)
         FfiConverterString.write(value.`rangeSummary`, buf)
+    }
+}
+
+/**
+ * An icon, a line, a line under it, and something on the right.
+ *
+ * Every list in this flow is this one row: what connecting a bank means, what
+ * the first sync has fetched, what is still true after a failure.
+ */
+data class ViewIconRow(
+    /**
+     * An icon name the view resolves in its own set.
+     */
+    var `icon`: kotlin.String,
+    var `tone`: ViewRowTone,
+    var `title`: kotlin.String,
+    var `sub`: kotlin.String?,
+    /**
+     * `"8"`, `"48 so far"`, `"waiting"` — what the row has to say about
+     * itself, on the right.
+     */
+    var `value`: kotlin.String?,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewIconRow : FfiConverterRustBuffer<ViewIconRow> {
+    override fun read(buf: ByteBuffer): ViewIconRow =
+        ViewIconRow(
+            FfiConverterString.read(buf),
+            FfiConverterTypeViewRowTone.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+
+    override fun allocationSize(value: ViewIconRow) =
+        (
+            FfiConverterString.allocationSize(value.`icon`) +
+                FfiConverterTypeViewRowTone.allocationSize(value.`tone`) +
+                FfiConverterString.allocationSize(value.`title`) +
+                FfiConverterOptionalString.allocationSize(value.`sub`) +
+                FfiConverterOptionalString.allocationSize(value.`value`)
+        )
+
+    override fun write(
+        value: ViewIconRow,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`icon`, buf)
+        FfiConverterTypeViewRowTone.write(value.`tone`, buf)
+        FfiConverterString.write(value.`title`, buf)
+        FfiConverterOptionalString.write(value.`sub`, buf)
+        FfiConverterOptionalString.write(value.`value`, buf)
     }
 }
 
@@ -2724,6 +2883,47 @@ public object FfiConverterTypeViewRecurring : FfiConverterRustBuffer<ViewRecurri
     }
 }
 
+/**
+ * A stretch of body copy, and whether it is set strong.
+ *
+ * The sketch's `<b>`: the address on the code screen, Plaid's name on the
+ * bank screen. A list of runs rather than one string with markup in it,
+ * because the alternative is every platform learning to parse the same
+ * markup — and the alternative to *that* is losing the emphasis the sentence
+ * was written around.
+ */
+data class ViewRun(
+    var `text`: kotlin.String,
+    var `strong`: kotlin.Boolean,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewRun : FfiConverterRustBuffer<ViewRun> {
+    override fun read(buf: ByteBuffer): ViewRun =
+        ViewRun(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+
+    override fun allocationSize(value: ViewRun) =
+        (
+            FfiConverterString.allocationSize(value.`text`) +
+                FfiConverterBoolean.allocationSize(value.`strong`)
+        )
+
+    override fun write(
+        value: ViewRun,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`text`, buf)
+        FfiConverterBoolean.write(value.`strong`, buf)
+    }
+}
+
 data class ViewStreamGroup(
     /**
      * `"Transfer out"`.
@@ -2847,6 +3047,47 @@ public object FfiConverterTypeViewStreamRow : FfiConverterRustBuffer<ViewStreamR
         FfiConverterBoolean.write(value.`soon`, buf)
         FfiConverterString.write(value.`amount`, buf)
         FfiConverterString.write(value.`frequency`, buf)
+    }
+}
+
+/**
+ * One figure on the last screen, and what it is a figure for.
+ */
+data class ViewTally(
+    /**
+     * `"48"`.
+     */
+    var `value`: kotlin.String,
+    /**
+     * `"transactions, back to 23 May"`.
+     */
+    var `label`: kotlin.String,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewTally : FfiConverterRustBuffer<ViewTally> {
+    override fun read(buf: ByteBuffer): ViewTally =
+        ViewTally(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+
+    override fun allocationSize(value: ViewTally) =
+        (
+            FfiConverterString.allocationSize(value.`value`) +
+                FfiConverterString.allocationSize(value.`label`)
+        )
+
+    override fun write(
+        value: ViewTally,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`value`, buf)
+        FfiConverterString.write(value.`label`, buf)
     }
 }
 
@@ -3029,6 +3270,57 @@ sealed class ActionSource {
         companion object
     }
 
+    /**
+     * Read who the device says is signed in. The first thing the app asks
+     * for, because the answer decides whether it opens on the Ledger or on
+     * the first screen of first run.
+     */
+    object LoadSession : ActionSource()
+
+    /**
+     * Remember it, so that the next launch opens on the Ledger.
+     */
+    data class SaveSession(
+        val `email`: kotlin.String,
+    ) : ActionSource() {
+        companion object
+    }
+
+    /**
+     * Send a six-digit code to this address.
+     */
+    data class SendCode(
+        val `email`: kotlin.String,
+    ) : ActionSource() {
+        companion object
+    }
+
+    data class VerifyCode(
+        val `email`: kotlin.String,
+        val `code`: kotlin.String,
+    ) : ActionSource() {
+        companion object
+    }
+
+    /**
+     * Ask the server for a `link_token` and open the `hosted_link_url` that
+     * comes back, which is Plaid's own page over the web.
+     *
+     * The app never holds a token of either kind: the server creates the link
+     * token and the server exchanges the public token, because the secret
+     * that signs both cannot ship inside an app (`docs/PLAID.md`).
+     */
+    object StartBankLink : ActionSource()
+
+    /**
+     * Follow the first sync, and report what lands.
+     *
+     * The work is the server's — it holds the `access_token` and runs
+     * `/transactions/sync` — so this asks to be told about it rather than to
+     * do it. Backgrounding the app while it runs is safe for the same reason.
+     */
+    object WatchSync : ActionSource()
+
     companion object
 }
 
@@ -3042,6 +3334,37 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
                 ActionSource.LoadSnapshot(
                     FfiConverterBoolean.read(buf),
                 )
+            }
+
+            2 -> {
+                ActionSource.LoadSession
+            }
+
+            3 -> {
+                ActionSource.SaveSession(
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            4 -> {
+                ActionSource.SendCode(
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            5 -> {
+                ActionSource.VerifyCode(
+                    FfiConverterString.read(buf),
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            6 -> {
+                ActionSource.StartBankLink
+            }
+
+            7 -> {
+                ActionSource.WatchSync
             }
 
             else -> {
@@ -3058,6 +3381,52 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
                         FfiConverterBoolean.allocationSize(value.`force`)
                 )
             }
+
+            is ActionSource.LoadSession -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is ActionSource.SaveSession -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`email`)
+                )
+            }
+
+            is ActionSource.SendCode -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`email`)
+                )
+            }
+
+            is ActionSource.VerifyCode -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`email`) +
+                        FfiConverterString.allocationSize(value.`code`)
+                )
+            }
+
+            is ActionSource.StartBankLink -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is ActionSource.WatchSync -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
         }
 
     override fun write(
@@ -3068,6 +3437,40 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
             is ActionSource.LoadSnapshot -> {
                 buf.putInt(1)
                 FfiConverterBoolean.write(value.`force`, buf)
+                Unit
+            }
+
+            is ActionSource.LoadSession -> {
+                buf.putInt(2)
+                Unit
+            }
+
+            is ActionSource.SaveSession -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`email`, buf)
+                Unit
+            }
+
+            is ActionSource.SendCode -> {
+                buf.putInt(4)
+                FfiConverterString.write(value.`email`, buf)
+                Unit
+            }
+
+            is ActionSource.VerifyCode -> {
+                buf.putInt(5)
+                FfiConverterString.write(value.`email`, buf)
+                FfiConverterString.write(value.`code`, buf)
+                Unit
+            }
+
+            is ActionSource.StartBankLink -> {
+                buf.putInt(6)
+                Unit
+            }
+
+            is ActionSource.WatchSync -> {
+                buf.putInt(7)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -3087,10 +3490,13 @@ sealed class ActionUi {
      * state the diff applies to, and holding state above the boundary is the
      * thing this design exists to prevent. Sending the whole screen means the
      * view can be a pure function of the last action it saw.
+     * The dock is absent on a screen that is not one of its tabs — every
+     * screen of first run. `None` rather than an empty dock: a dock with no
+     * items would still be a strip of ground at the bottom of the phone.
      */
     data class Render(
         val `screen`: uniffi.phone_state.ViewScreen,
-        val `dock`: uniffi.phone_state.ViewDock,
+        val `dock`: uniffi.phone_state.ViewDock?,
     ) : ActionUi() {
         companion object
     }
@@ -3116,7 +3522,7 @@ public object FfiConverterTypeActionUi : FfiConverterRustBuffer<ActionUi> {
             1 -> {
                 ActionUi.Render(
                     FfiConverterTypeViewScreen.read(buf),
-                    FfiConverterTypeViewDock.read(buf),
+                    FfiConverterOptionalTypeViewDock.read(buf),
                 )
             }
 
@@ -3138,7 +3544,7 @@ public object FfiConverterTypeActionUi : FfiConverterRustBuffer<ActionUi> {
                 (
                     4UL +
                         FfiConverterTypeViewScreen.allocationSize(value.`screen`) +
-                        FfiConverterTypeViewDock.allocationSize(value.`dock`)
+                        FfiConverterOptionalTypeViewDock.allocationSize(value.`dock`)
                 )
             }
 
@@ -3159,7 +3565,7 @@ public object FfiConverterTypeActionUi : FfiConverterRustBuffer<ActionUi> {
             is ActionUi.Render -> {
                 buf.putInt(1)
                 FfiConverterTypeViewScreen.write(value.`screen`, buf)
-                FfiConverterTypeViewDock.write(value.`dock`, buf)
+                FfiConverterOptionalTypeViewDock.write(value.`dock`, buf)
                 Unit
             }
 
@@ -3290,6 +3696,77 @@ sealed class EventSource {
         companion object
     }
 
+    /**
+     * What the device had stored about who is signed in — the address the
+     * app last completed first run as, absent on a device that never has.
+     *
+     * Absent rather than an empty string: "nobody" and "somebody with no
+     * address" are different, and only one of them can happen.
+     */
+    data class SessionLoaded(
+        val `email`: kotlin.String?,
+    ) : EventSource() {
+        companion object
+    }
+
+    /**
+     * A code went out.
+     */
+    object CodeSent : EventSource()
+
+    /**
+     * The code was the right one.
+     */
+    object CodeAccepted : EventSource()
+
+    /**
+     * It was not. `expired` separates too late from wrong: one asks you to
+     * look again, the other asks for a new code.
+     */
+    data class CodeRejected(
+        val `expired`: kotlin.Boolean,
+    ) : EventSource() {
+        companion object
+    }
+
+    /**
+     * Plaid came back with a bank attached, and this is what it is called.
+     */
+    data class BankLinked(
+        val `institution`: kotlin.String,
+    ) : EventSource() {
+        companion object
+    }
+
+    /**
+     * The bank sign-in ended with nothing — dismissed, failed, timed out.
+     * The common ending, not a rare one.
+     */
+    object BankAbandoned : EventSource()
+
+    /**
+     * How far the first sync has got, and what it has so far.
+     *
+     * The stage and the counts are separate facts: the transactions row reads
+     * `48 so far` while it is still running, so a count is not a claim that
+     * the stage is done.
+     */
+    data class SyncProgressed(
+        val `stage`: uniffi.phone_state.SyncStage,
+        val `accounts`: kotlin.UInt,
+        val `transactions`: kotlin.UInt,
+        val `streams`: kotlin.UInt,
+    ) : EventSource() {
+        companion object
+    }
+
+    /**
+     * The whole history is in. `/transactions/sync` pages all of it the first
+     * time and almost nothing every time after, which is why this happens
+     * once per bank and never again.
+     */
+    object SyncFinished : EventSource()
+
     companion object
 }
 
@@ -3309,6 +3786,49 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
                 EventSource.LoadFailed(
                     FfiConverterString.read(buf),
                 )
+            }
+
+            3 -> {
+                EventSource.SessionLoaded(
+                    FfiConverterOptionalString.read(buf),
+                )
+            }
+
+            4 -> {
+                EventSource.CodeSent
+            }
+
+            5 -> {
+                EventSource.CodeAccepted
+            }
+
+            6 -> {
+                EventSource.CodeRejected(
+                    FfiConverterBoolean.read(buf),
+                )
+            }
+
+            7 -> {
+                EventSource.BankLinked(
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            8 -> {
+                EventSource.BankAbandoned
+            }
+
+            9 -> {
+                EventSource.SyncProgressed(
+                    FfiConverterTypeSyncStage.read(buf),
+                    FfiConverterUInt.read(buf),
+                    FfiConverterUInt.read(buf),
+                    FfiConverterUInt.read(buf),
+                )
+            }
+
+            10 -> {
+                EventSource.SyncFinished
             }
 
             else -> {
@@ -3333,6 +3853,69 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
                         FfiConverterString.allocationSize(value.`message`)
                 )
             }
+
+            is EventSource.SessionLoaded -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterOptionalString.allocationSize(value.`email`)
+                )
+            }
+
+            is EventSource.CodeSent -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is EventSource.CodeAccepted -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is EventSource.CodeRejected -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterBoolean.allocationSize(value.`expired`)
+                )
+            }
+
+            is EventSource.BankLinked -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`institution`)
+                )
+            }
+
+            is EventSource.BankAbandoned -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is EventSource.SyncProgressed -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypeSyncStage.allocationSize(value.`stage`) +
+                        FfiConverterUInt.allocationSize(value.`accounts`) +
+                        FfiConverterUInt.allocationSize(value.`transactions`) +
+                        FfiConverterUInt.allocationSize(value.`streams`)
+                )
+            }
+
+            is EventSource.SyncFinished -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
         }
 
     override fun write(
@@ -3349,6 +3932,53 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
             is EventSource.LoadFailed -> {
                 buf.putInt(2)
                 FfiConverterString.write(value.`message`, buf)
+                Unit
+            }
+
+            is EventSource.SessionLoaded -> {
+                buf.putInt(3)
+                FfiConverterOptionalString.write(value.`email`, buf)
+                Unit
+            }
+
+            is EventSource.CodeSent -> {
+                buf.putInt(4)
+                Unit
+            }
+
+            is EventSource.CodeAccepted -> {
+                buf.putInt(5)
+                Unit
+            }
+
+            is EventSource.CodeRejected -> {
+                buf.putInt(6)
+                FfiConverterBoolean.write(value.`expired`, buf)
+                Unit
+            }
+
+            is EventSource.BankLinked -> {
+                buf.putInt(7)
+                FfiConverterString.write(value.`institution`, buf)
+                Unit
+            }
+
+            is EventSource.BankAbandoned -> {
+                buf.putInt(8)
+                Unit
+            }
+
+            is EventSource.SyncProgressed -> {
+                buf.putInt(9)
+                FfiConverterTypeSyncStage.write(value.`stage`, buf)
+                FfiConverterUInt.write(value.`accounts`, buf)
+                FfiConverterUInt.write(value.`transactions`, buf)
+                FfiConverterUInt.write(value.`streams`, buf)
+                Unit
+            }
+
+            is EventSource.SyncFinished -> {
+                buf.putInt(10)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -3444,6 +4074,75 @@ sealed class EventUi {
         companion object
     }
 
+    /**
+     * The Welcome screen's one button. There is no Sign up and no Sign in:
+     * an address that exists signs in and one that does not signs up, so
+     * there is nothing to choose and no way to choose wrong.
+     */
+    object EmailChosen : EventUi()
+
+    /**
+     * The address field, as it now reads.
+     *
+     * The whole value rather than one keystroke, so a paste, a backspace and
+     * a tap are the same event and the machine holds what the field holds.
+     */
+    data class EmailTyped(
+        val `text`: kotlin.String,
+    ) : EventUi() {
+        companion object
+    }
+
+    /**
+     * Continue, under the address.
+     */
+    object EmailSubmitted : EventUi()
+
+    /**
+     * The code field, as it now reads. There is nothing to check before the
+     * sixth digit, so the sixth digit submits and there is no Continue.
+     */
+    data class CodeTyped(
+        val `digits`: kotlin.String,
+    ) : EventUi() {
+        companion object
+    }
+
+    /**
+     * Send a new code.
+     */
+    object ResendRequested : EventUi()
+
+    /**
+     * The chevron, and the code screen's way back to a mistyped address.
+     */
+    object BackPressed : EventUi()
+
+    /**
+     * Connect a bank, Try again, and Add another bank.
+     *
+     * One event rather than three, because it is one thing: whichever screen
+     * the tap came from, the next thing that happens is Plaid opening.
+     */
+    object BankConnectRequested : EventUi()
+
+    /**
+     * Open Meridian, on the last screen of first run.
+     */
+    object OnboardingFinished : EventUi()
+
+    /**
+     * A second has passed, and nothing else happened.
+     *
+     * The resend countdown is the one thing in the app that changes while
+     * nobody is touching it, and it is a function of `now` — so this carries
+     * nothing and asks only to be redrawn against a newer clock. The runtime
+     * sends it while the code screen is up and not otherwise; a tick per
+     * second behind the Ledger would rebuild that list sixty times a minute
+     * for nothing.
+     */
+    object Ticked : EventUi()
+
     companion object
 }
 
@@ -3509,6 +4208,46 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
                 EventUi.TxSelected(
                     FfiConverterString.read(buf),
                 )
+            }
+
+            12 -> {
+                EventUi.EmailChosen
+            }
+
+            13 -> {
+                EventUi.EmailTyped(
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            14 -> {
+                EventUi.EmailSubmitted
+            }
+
+            15 -> {
+                EventUi.CodeTyped(
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            16 -> {
+                EventUi.ResendRequested
+            }
+
+            17 -> {
+                EventUi.BackPressed
+            }
+
+            18 -> {
+                EventUi.BankConnectRequested
+            }
+
+            19 -> {
+                EventUi.OnboardingFinished
+            }
+
+            20 -> {
+                EventUi.Ticked
             }
 
             else -> {
@@ -3601,6 +4340,71 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
                         FfiConverterString.allocationSize(value.`id`)
                 )
             }
+
+            is EventUi.EmailChosen -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is EventUi.EmailTyped -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`text`)
+                )
+            }
+
+            is EventUi.EmailSubmitted -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is EventUi.CodeTyped -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`digits`)
+                )
+            }
+
+            is EventUi.ResendRequested -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is EventUi.BackPressed -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is EventUi.BankConnectRequested -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is EventUi.OnboardingFinished -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is EventUi.Ticked -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
         }
 
     override fun write(
@@ -3667,6 +4471,53 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
             is EventUi.TxSelected -> {
                 buf.putInt(11)
                 FfiConverterString.write(value.`id`, buf)
+                Unit
+            }
+
+            is EventUi.EmailChosen -> {
+                buf.putInt(12)
+                Unit
+            }
+
+            is EventUi.EmailTyped -> {
+                buf.putInt(13)
+                FfiConverterString.write(value.`text`, buf)
+                Unit
+            }
+
+            is EventUi.EmailSubmitted -> {
+                buf.putInt(14)
+                Unit
+            }
+
+            is EventUi.CodeTyped -> {
+                buf.putInt(15)
+                FfiConverterString.write(value.`digits`, buf)
+                Unit
+            }
+
+            is EventUi.ResendRequested -> {
+                buf.putInt(16)
+                Unit
+            }
+
+            is EventUi.BackPressed -> {
+                buf.putInt(17)
+                Unit
+            }
+
+            is EventUi.BankConnectRequested -> {
+                buf.putInt(18)
+                Unit
+            }
+
+            is EventUi.OnboardingFinished -> {
+                buf.putInt(19)
+                Unit
+            }
+
+            is EventUi.Ticked -> {
+                buf.putInt(20)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -3927,6 +4778,429 @@ public object FfiConverterTypeScreen : FfiConverterRustBuffer<Screen> {
     }
 }
 
+/**
+ * Which part of the first sync is running.
+ *
+ * In the order they happen, because that order is what the progress bar is a
+ * fraction of.
+ */
+
+enum class SyncStage {
+    ACCOUNTS,
+    TRANSACTIONS,
+    STREAMS,
+    ;
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeSyncStage : FfiConverterRustBuffer<SyncStage> {
+    override fun read(buf: ByteBuffer) =
+        try {
+            SyncStage.values()[buf.getInt() - 1]
+        } catch (e: IndexOutOfBoundsException) {
+            throw RuntimeException("invalid enum value, something is very wrong!!", e)
+        }
+
+    override fun allocationSize(value: SyncStage) = 4UL
+
+    override fun write(
+        value: SyncStage,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+/**
+ * Where the flow is, and everything that screen prints.
+ *
+ * An enum rather than one record of optional fields, for the same reason
+ * [`ViewScreen`](crate::ViewScreen) is one: the view draws the arm it is
+ * handed and holds no "which step am I on" of its own. The repeated `step`,
+ * `title` and `body` are the price of that, and a cheap one — a variant
+ * carries exactly what its screen has and no arm has to check whether a field
+ * applies to it.
+ */
+sealed class ViewOnboarding {
+    /**
+     * One door, not two. An address that exists signs in and one that does
+     * not signs up, so there is nothing to choose here and no way to choose
+     * wrong.
+     */
+    data class Welcome(
+        val `title`: kotlin.String,
+        val `body`: List<uniffi.phone_state.ViewRun>,
+        /**
+         * `"Continue with email"`.
+         */
+        val `action`: kotlin.String,
+        val `legal`: kotlin.String,
+    ) : ViewOnboarding() {
+        companion object
+    }
+
+    /**
+     * The address, and nothing else on the screen.
+     */
+    data class Email(
+        val `step`: kotlin.String,
+        val `title`: kotlin.String,
+        val `body`: List<uniffi.phone_state.ViewRun>,
+        val `field`: uniffi.phone_state.ViewField,
+        /**
+         * `"Continue"`. Under the field rather than on the bottom edge: the
+         * keyboard covers the bottom third the moment this opens.
+         */
+        val `action`: kotlin.String,
+    ) : ViewOnboarding() {
+        companion object
+    }
+
+    /**
+     * Six digits, and no Continue — there is nothing to check before the
+     * sixth, so the sixth submits.
+     */
+    data class Code(
+        val `step`: kotlin.String,
+        val `title`: kotlin.String,
+        val `body`: List<uniffi.phone_state.ViewRun>,
+        val `cells`: List<uniffi.phone_state.ViewCodeCell>,
+        /**
+         * `"That code has expired. They last ten minutes."` Wrong and too
+         * late are different problems, one sentence apart.
+         */
+        val `fault`: kotlin.String?,
+        val `resend`: uniffi.phone_state.ViewResend,
+    ) : ViewOnboarding() {
+        companion object
+    }
+
+    /**
+     * What connecting a bank means, said plainly, and the button that does
+     * it. No skip: every screen in the app is a view of transactions, so an
+     * app that let someone past this would open on three empty tabs.
+     */
+    data class Bank(
+        val `step`: kotlin.String,
+        val `title`: kotlin.String,
+        val `body`: List<uniffi.phone_state.ViewRun>,
+        val `rows`: List<uniffi.phone_state.ViewIconRow>,
+        val `action`: kotlin.String,
+        val `legal`: kotlin.String,
+    ) : ViewOnboarding() {
+        companion object
+    }
+
+    /**
+     * The one slow screen in the app, and it happens once per bank.
+     */
+    data class Sync(
+        val `step`: kotlin.String,
+        val `title`: kotlin.String,
+        val `body`: List<uniffi.phone_state.ViewRun>,
+        /**
+         * How far along, 0..1 — geometry rather than a percentage to print,
+         * which is the exception `docs/FFI.md` carves out for a drawn figure.
+         */
+        val `progress`: kotlin.Double,
+        val `rows`: List<uniffi.phone_state.ViewIconRow>,
+    ) : ViewOnboarding() {
+        companion object
+    }
+
+    /**
+     * Counts rather than a tick and a slogan: they are the first proof the
+     * thing works, and they set the expectation for the Ledger the next tap
+     * opens.
+     */
+    data class Ready(
+        val `title`: kotlin.String,
+        val `body`: List<uniffi.phone_state.ViewRun>,
+        val `tally`: List<uniffi.phone_state.ViewTally>,
+        /**
+         * `"Add another bank"` — most people have more than one, and the
+         * second connection will never be likelier than it is right now.
+         */
+        val `another`: kotlin.String,
+        /**
+         * `"Open Meridian"`.
+         */
+        val `open`: kotlin.String,
+    ) : ViewOnboarding() {
+        companion object
+    }
+
+    /**
+     * The common ending, not a rare one: people close the sheet to go and
+     * find a password. Nothing was created, and saying so plainly is the
+     * whole job.
+     */
+    data class Failed(
+        val `step`: kotlin.String,
+        val `title`: kotlin.String,
+        val `body`: List<uniffi.phone_state.ViewRun>,
+        val `rows`: List<uniffi.phone_state.ViewIconRow>,
+        val `action`: kotlin.String,
+    ) : ViewOnboarding() {
+        companion object
+    }
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboarding> {
+    override fun read(buf: ByteBuffer): ViewOnboarding =
+        when (buf.getInt()) {
+            1 -> {
+                ViewOnboarding.Welcome(
+                    FfiConverterString.read(buf),
+                    FfiConverterSequenceTypeViewRun.read(buf),
+                    FfiConverterString.read(buf),
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            2 -> {
+                ViewOnboarding.Email(
+                    FfiConverterString.read(buf),
+                    FfiConverterString.read(buf),
+                    FfiConverterSequenceTypeViewRun.read(buf),
+                    FfiConverterTypeViewField.read(buf),
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            3 -> {
+                ViewOnboarding.Code(
+                    FfiConverterString.read(buf),
+                    FfiConverterString.read(buf),
+                    FfiConverterSequenceTypeViewRun.read(buf),
+                    FfiConverterSequenceTypeViewCodeCell.read(buf),
+                    FfiConverterOptionalString.read(buf),
+                    FfiConverterTypeViewResend.read(buf),
+                )
+            }
+
+            4 -> {
+                ViewOnboarding.Bank(
+                    FfiConverterString.read(buf),
+                    FfiConverterString.read(buf),
+                    FfiConverterSequenceTypeViewRun.read(buf),
+                    FfiConverterSequenceTypeViewIconRow.read(buf),
+                    FfiConverterString.read(buf),
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            5 -> {
+                ViewOnboarding.Sync(
+                    FfiConverterString.read(buf),
+                    FfiConverterString.read(buf),
+                    FfiConverterSequenceTypeViewRun.read(buf),
+                    FfiConverterDouble.read(buf),
+                    FfiConverterSequenceTypeViewIconRow.read(buf),
+                )
+            }
+
+            6 -> {
+                ViewOnboarding.Ready(
+                    FfiConverterString.read(buf),
+                    FfiConverterSequenceTypeViewRun.read(buf),
+                    FfiConverterSequenceTypeViewTally.read(buf),
+                    FfiConverterString.read(buf),
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            7 -> {
+                ViewOnboarding.Failed(
+                    FfiConverterString.read(buf),
+                    FfiConverterString.read(buf),
+                    FfiConverterSequenceTypeViewRun.read(buf),
+                    FfiConverterSequenceTypeViewIconRow.read(buf),
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            else -> {
+                throw RuntimeException("invalid enum value, something is very wrong!!")
+            }
+        }
+
+    override fun allocationSize(value: ViewOnboarding): ULong =
+        when (value) {
+            is ViewOnboarding.Welcome -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`title`) +
+                        FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
+                        FfiConverterString.allocationSize(value.`action`) +
+                        FfiConverterString.allocationSize(value.`legal`)
+                )
+            }
+
+            is ViewOnboarding.Email -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`step`) +
+                        FfiConverterString.allocationSize(value.`title`) +
+                        FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
+                        FfiConverterTypeViewField.allocationSize(value.`field`) +
+                        FfiConverterString.allocationSize(value.`action`)
+                )
+            }
+
+            is ViewOnboarding.Code -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`step`) +
+                        FfiConverterString.allocationSize(value.`title`) +
+                        FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
+                        FfiConverterSequenceTypeViewCodeCell.allocationSize(value.`cells`) +
+                        FfiConverterOptionalString.allocationSize(value.`fault`) +
+                        FfiConverterTypeViewResend.allocationSize(value.`resend`)
+                )
+            }
+
+            is ViewOnboarding.Bank -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`step`) +
+                        FfiConverterString.allocationSize(value.`title`) +
+                        FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
+                        FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`) +
+                        FfiConverterString.allocationSize(value.`action`) +
+                        FfiConverterString.allocationSize(value.`legal`)
+                )
+            }
+
+            is ViewOnboarding.Sync -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`step`) +
+                        FfiConverterString.allocationSize(value.`title`) +
+                        FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
+                        FfiConverterDouble.allocationSize(value.`progress`) +
+                        FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`)
+                )
+            }
+
+            is ViewOnboarding.Ready -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`title`) +
+                        FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
+                        FfiConverterSequenceTypeViewTally.allocationSize(value.`tally`) +
+                        FfiConverterString.allocationSize(value.`another`) +
+                        FfiConverterString.allocationSize(value.`open`)
+                )
+            }
+
+            is ViewOnboarding.Failed -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`step`) +
+                        FfiConverterString.allocationSize(value.`title`) +
+                        FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
+                        FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`) +
+                        FfiConverterString.allocationSize(value.`action`)
+                )
+            }
+        }
+
+    override fun write(
+        value: ViewOnboarding,
+        buf: ByteBuffer,
+    ) {
+        when (value) {
+            is ViewOnboarding.Welcome -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`title`, buf)
+                FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
+                FfiConverterString.write(value.`action`, buf)
+                FfiConverterString.write(value.`legal`, buf)
+                Unit
+            }
+
+            is ViewOnboarding.Email -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`step`, buf)
+                FfiConverterString.write(value.`title`, buf)
+                FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
+                FfiConverterTypeViewField.write(value.`field`, buf)
+                FfiConverterString.write(value.`action`, buf)
+                Unit
+            }
+
+            is ViewOnboarding.Code -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`step`, buf)
+                FfiConverterString.write(value.`title`, buf)
+                FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
+                FfiConverterSequenceTypeViewCodeCell.write(value.`cells`, buf)
+                FfiConverterOptionalString.write(value.`fault`, buf)
+                FfiConverterTypeViewResend.write(value.`resend`, buf)
+                Unit
+            }
+
+            is ViewOnboarding.Bank -> {
+                buf.putInt(4)
+                FfiConverterString.write(value.`step`, buf)
+                FfiConverterString.write(value.`title`, buf)
+                FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
+                FfiConverterSequenceTypeViewIconRow.write(value.`rows`, buf)
+                FfiConverterString.write(value.`action`, buf)
+                FfiConverterString.write(value.`legal`, buf)
+                Unit
+            }
+
+            is ViewOnboarding.Sync -> {
+                buf.putInt(5)
+                FfiConverterString.write(value.`step`, buf)
+                FfiConverterString.write(value.`title`, buf)
+                FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
+                FfiConverterDouble.write(value.`progress`, buf)
+                FfiConverterSequenceTypeViewIconRow.write(value.`rows`, buf)
+                Unit
+            }
+
+            is ViewOnboarding.Ready -> {
+                buf.putInt(6)
+                FfiConverterString.write(value.`title`, buf)
+                FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
+                FfiConverterSequenceTypeViewTally.write(value.`tally`, buf)
+                FfiConverterString.write(value.`another`, buf)
+                FfiConverterString.write(value.`open`, buf)
+                Unit
+            }
+
+            is ViewOnboarding.Failed -> {
+                buf.putInt(7)
+                FfiConverterString.write(value.`step`, buf)
+                FfiConverterString.write(value.`title`, buf)
+                FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
+                FfiConverterSequenceTypeViewIconRow.write(value.`rows`, buf)
+                FfiConverterString.write(value.`action`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
 enum class ViewRangeKind {
     THIS,
     LAST,
@@ -3959,10 +5233,160 @@ public object FfiConverterTypeViewRangeKind : FfiConverterRustBuffer<ViewRangeKi
 }
 
 /**
+ * Whether a new code can be asked for yet.
+ *
+ * Two states rather than a countdown string that is sometimes empty: while it
+ * is counting there is a line to read, and once it is not there is a button
+ * to press. They are not the same control.
+ */
+sealed class ViewResend {
+    /**
+     * `"Resend in 0:42"`, beside the way back to a mistyped address.
+     */
+    data class Waiting(
+        val `text`: kotlin.String,
+        /**
+         * `"Wrong address?"` — a typo in the step before is otherwise a dead
+         * end, because the code never arrives and nothing says why.
+         */
+        val `wrongAddress`: kotlin.String,
+    ) : ViewResend() {
+        companion object
+    }
+
+    /**
+     * `"Send a new code"`.
+     */
+    data class Ready(
+        val `label`: kotlin.String,
+    ) : ViewResend() {
+        companion object
+    }
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewResend : FfiConverterRustBuffer<ViewResend> {
+    override fun read(buf: ByteBuffer): ViewResend =
+        when (buf.getInt()) {
+            1 -> {
+                ViewResend.Waiting(
+                    FfiConverterString.read(buf),
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            2 -> {
+                ViewResend.Ready(
+                    FfiConverterString.read(buf),
+                )
+            }
+
+            else -> {
+                throw RuntimeException("invalid enum value, something is very wrong!!")
+            }
+        }
+
+    override fun allocationSize(value: ViewResend): ULong =
+        when (value) {
+            is ViewResend.Waiting -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`text`) +
+                        FfiConverterString.allocationSize(value.`wrongAddress`)
+                )
+            }
+
+            is ViewResend.Ready -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`label`)
+                )
+            }
+        }
+
+    override fun write(
+        value: ViewResend,
+        buf: ByteBuffer,
+    ) {
+        when (value) {
+            is ViewResend.Waiting -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`text`, buf)
+                FfiConverterString.write(value.`wrongAddress`, buf)
+                Unit
+            }
+
+            is ViewResend.Ready -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`label`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+/**
+ * What a row's icon means, which is the only thing that colours it.
+ */
+
+enum class ViewRowTone {
+    /**
+     * A statement, not a step. The bank screen's four facts.
+     */
+    PLAIN,
+    DONE,
+
+    /**
+     * Happening now, and the only row that spins.
+     */
+    RUNNING,
+
+    /**
+     * Not reached yet.
+     */
+    WAITING,
+
+    ;
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewRowTone : FfiConverterRustBuffer<ViewRowTone> {
+    override fun read(buf: ByteBuffer) =
+        try {
+            ViewRowTone.values()[buf.getInt() - 1]
+        } catch (e: IndexOutOfBoundsException) {
+            throw RuntimeException("invalid enum value, something is very wrong!!", e)
+        }
+
+    override fun allocationSize(value: ViewRowTone) = 4UL
+
+    override fun write(
+        value: ViewRowTone,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+/**
  * Everything on screen, in one value.
  *
  * One type rather than three optional ones: the view renders whichever arm it
  * is handed and holds no "which screen am I on" state of its own.
+ *
+ * [`Onboarding`](ViewScreen::Onboarding) is not one of [`Screen`]'s tabs and
+ * never will be — first run is a road with an end, not a place in the app you
+ * can navigate back to.
  */
 sealed class ViewScreen {
     data class Ledger(
@@ -3979,6 +5403,12 @@ sealed class ViewScreen {
 
     data class Balances(
         val `view`: uniffi.phone_state.ViewBalances,
+    ) : ViewScreen() {
+        companion object
+    }
+
+    data class Onboarding(
+        val `view`: uniffi.phone_state.ViewOnboarding,
     ) : ViewScreen() {
         companion object
     }
@@ -4007,6 +5437,12 @@ public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen> {
             3 -> {
                 ViewScreen.Balances(
                     FfiConverterTypeViewBalances.read(buf),
+                )
+            }
+
+            4 -> {
+                ViewScreen.Onboarding(
+                    FfiConverterTypeViewOnboarding.read(buf),
                 )
             }
 
@@ -4040,6 +5476,14 @@ public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen> {
                         FfiConverterTypeViewBalances.allocationSize(value.`view`)
                 )
             }
+
+            is ViewScreen.Onboarding -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypeViewOnboarding.allocationSize(value.`view`)
+                )
+            }
         }
 
     override fun write(
@@ -4062,6 +5506,12 @@ public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen> {
             is ViewScreen.Balances -> {
                 buf.putInt(3)
                 FfiConverterTypeViewBalances.write(value.`view`, buf)
+                Unit
+            }
+
+            is ViewScreen.Onboarding -> {
+                buf.putInt(4)
+                FfiConverterTypeViewOnboarding.write(value.`view`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -4128,6 +5578,38 @@ public object FfiConverterOptionalTypeViewDayCard : FfiConverterRustBuffer<ViewD
         } else {
             buf.put(1)
             FfiConverterTypeViewDayCard.write(value, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeViewDock : FfiConverterRustBuffer<ViewDock?> {
+    override fun read(buf: ByteBuffer): ViewDock? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeViewDock.read(buf)
+    }
+
+    override fun allocationSize(value: ViewDock?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeViewDock.allocationSize(value)
+        }
+    }
+
+    override fun write(
+        value: ViewDock?,
+        buf: ByteBuffer,
+    ) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeViewDock.write(value, buf)
         }
     }
 }
@@ -4275,6 +5757,34 @@ public object FfiConverterSequenceTypeViewCategoryChip : FfiConverterRustBuffer<
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeViewCodeCell : FfiConverterRustBuffer<List<ViewCodeCell>> {
+    override fun read(buf: ByteBuffer): List<ViewCodeCell> {
+        val len = buf.getInt()
+        return List<ViewCodeCell>(len) {
+            FfiConverterTypeViewCodeCell.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ViewCodeCell>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeViewCodeCell.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<ViewCodeCell>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeViewCodeCell.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeViewConnection : FfiConverterRustBuffer<List<ViewConnection>> {
     override fun read(buf: ByteBuffer): List<ViewConnection> {
         val len = buf.getInt()
@@ -4387,6 +5897,34 @@ public object FfiConverterSequenceTypeViewDockItem : FfiConverterRustBuffer<List
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeViewIconRow : FfiConverterRustBuffer<List<ViewIconRow>> {
+    override fun read(buf: ByteBuffer): List<ViewIconRow> {
+        val len = buf.getInt()
+        return List<ViewIconRow>(len) {
+            FfiConverterTypeViewIconRow.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ViewIconRow>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeViewIconRow.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<ViewIconRow>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeViewIconRow.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeViewMonthSection : FfiConverterRustBuffer<List<ViewMonthSection>> {
     override fun read(buf: ByteBuffer): List<ViewMonthSection> {
         val len = buf.getInt()
@@ -4408,6 +5946,34 @@ public object FfiConverterSequenceTypeViewMonthSection : FfiConverterRustBuffer<
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewMonthSection.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeViewRun : FfiConverterRustBuffer<List<ViewRun>> {
+    override fun read(buf: ByteBuffer): List<ViewRun> {
+        val len = buf.getInt()
+        return List<ViewRun>(len) {
+            FfiConverterTypeViewRun.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ViewRun>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeViewRun.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<ViewRun>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeViewRun.write(it, buf)
         }
     }
 }
@@ -4464,6 +6030,34 @@ public object FfiConverterSequenceTypeViewStreamRow : FfiConverterRustBuffer<Lis
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewStreamRow.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeViewTally : FfiConverterRustBuffer<List<ViewTally>> {
+    override fun read(buf: ByteBuffer): List<ViewTally> {
+        val len = buf.getInt()
+        return List<ViewTally>(len) {
+            FfiConverterTypeViewTally.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ViewTally>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeViewTally.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<ViewTally>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeViewTally.write(it, buf)
         }
     }
 }

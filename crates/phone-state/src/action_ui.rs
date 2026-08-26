@@ -18,7 +18,13 @@ pub enum ActionUi {
     /// state the diff applies to, and holding state above the boundary is the
     /// thing this design exists to prevent. Sending the whole screen means the
     /// view can be a pure function of the last action it saw.
-    Render { screen: ViewScreen, dock: ViewDock },
+    /// The dock is absent on a screen that is not one of its tabs — every
+    /// screen of first run. `None` rather than an empty dock: a dock with no
+    /// items would still be a strip of ground at the bottom of the phone.
+    Render {
+        screen: ViewScreen,
+        dock: Option<ViewDock>,
+    },
 
     /// Tell the user something went wrong, in these words.
     ShowError { message: String },

@@ -19,6 +19,7 @@
 /// nothing but `Debug`.
 use crate::ViewBalances;
 use crate::ViewLedger;
+use crate::ViewOnboarding;
 use crate::ViewRecurring;
 
 /// Which screen the app is on.
@@ -37,6 +38,10 @@ pub enum Screen {
 ///
 /// One type rather than three optional ones: the view renders whichever arm it
 /// is handed and holds no "which screen am I on" state of its own.
+///
+/// [`Onboarding`](ViewScreen::Onboarding) is not one of [`Screen`]'s tabs and
+/// never will be — first run is a road with an end, not a place in the app you
+/// can navigate back to.
 #[derive(Debug, Clone, uniffi::Enum)]
 #[expect(
     clippy::large_enum_variant,
@@ -49,4 +54,5 @@ pub enum ViewScreen {
     Ledger { view: ViewLedger },
     Recurring { view: ViewRecurring },
     Balances { view: ViewBalances },
+    Onboarding { view: ViewOnboarding },
 }

@@ -178,7 +178,7 @@ private struct Banner: View {
             Spacer(minLength: 0)
 
             Button("Retry") { runtime.ui(.refreshRequested) }
-                .buttonStyle(RaisedButton(small: true))
+                .buttonStyle(RaisedButton(size: .small))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

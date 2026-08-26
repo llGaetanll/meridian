@@ -83,6 +83,10 @@ means adding, changing or removing its example here.
 - `INFO phone_main::runtime_app snapshot asked for force=false`
   — the phone asking the server for everything. `force=true` is pull-to-refresh.
 - `WARN phone_main::runtime_app load failed message="could not reach the server at http://127.0.0.1:8082 — is `cargo run -p server-main` running?"`
+- `WARN phone_main::runtime_app first run is not drawn on the web action=StartBankLink`
+  — first run is a phone flow for now, and the web answers `LoadSession` as
+  already signed in so that it is never walked. A line here means that answer
+  changed and the web reached a road it cannot draw.
 - `INFO api quote{symbol=SPY range=1D} -> request id=2 source=yahoo method=GET url="/v8/finance/chart/SPY?period1=1785542400&period2=1785628800&interval=1m"`
 - `INFO api quote{symbol=SPY range=1D} <- response id=2 source=yahoo status=200 ms=412 body="{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"USD\",\"symbol\":\"SPY\"…"`
   — the body as it arrived, cut at 400 characters.

@@ -117,6 +117,63 @@ fn path(name: &str) -> AnyView {
         }
         .into_any(),
 
+        // First run's set. Drawn here rather than only in Swift because this
+        // file is the drawing both apps copy: an icon that exists on one
+        // platform is how two apps end up with two icon sets.
+        "mail" => view! {
+            <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
+            <path d="m3 7 9 6 9-6" />
+        }
+        .into_any(),
+
+        // Back, and only back. The dock's `chevron` points down; this one is
+        // the same stroke turned, so the two read as one family.
+        "back" => view! { <polyline points="15 5 8 12 15 19" /> }.into_any(),
+
+        "tick-circle" => view! {
+            <circle cx="12" cy="12" r="9" />
+            <polyline points="16 9.5 10.8 15 8 12.4" />
+        }
+        .into_any(),
+
+        "warn" => view! {
+            <circle cx="12" cy="12" r="9" />
+            <line x1="12" y1="7.5" x2="12" y2="13" />
+            <circle cx="12" cy="16.5" r="0.6" fill="currentColor" stroke="none" />
+        }
+        .into_any(),
+
+        "lock" => view! {
+            <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
+            <path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7" />
+        }
+        .into_any(),
+
+        "bank" => view! {
+            <path d="m3 9.5 9-5.5 9 5.5" />
+            <line x1="4" y1="20" x2="20" y2="20" />
+            <line x1="6.5" y1="12" x2="6.5" y2="17" />
+            <line x1="12" y1="12" x2="12" y2="17" />
+            <line x1="17.5" y1="12" x2="17.5" y2="17" />
+        }
+        .into_any(),
+
+        "trash" => view! {
+            <path d="M4.5 6.5h15" />
+            <path d="M9 6.5V4.8h6v1.7" />
+            <path d="M6.5 6.5 7.4 20h9.2l.9-13.5" />
+        }
+        .into_any(),
+
+        // One three-quarter arc and no faint track behind it. The turning is
+        // what says "working"; a second ring at a fifth of the opacity is a
+        // detail nothing reads at 18px, and it would have to be a second shape
+        // on a platform that strokes a glyph in one colour.
+        "spin" => view! { <path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5" /> }.into_any(),
+
+        // A step not reached yet: the tick's circle with nothing in it.
+        "dot" => view! { <circle cx="12" cy="12" r="8" /> }.into_any(),
+
         // An unknown name draws nothing rather than a "missing" glyph: a gap
         // is easier to spot in review than a box that looks deliberate.
         _ => ().into_any(),
