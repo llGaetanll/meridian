@@ -3,6 +3,10 @@
 - Be concise in your responses.
 - If a question can be answered by looking at the code, look at the code instead
   of asking the user.
+- **Never ask the user anything through a form.** No option pickers, no
+  multiple choice, no `AskUserQuestion`. When you need an answer or have a list
+  of questions, write them in plaintext in your reply and let the user answer in
+  their own words.
 - Never start the application yourself, the user is already running it. If the
   build is broken you can kill the user's instance and start it yourself, but
   otherwise you shouldn't need to.
