@@ -75,6 +75,17 @@ means adding, changing or removing its example here.
 - `INFO src_plaid transactions synced added=18 modified=0 removed=1`
   — a *diff*, not a total. A later sync answering `added=0` is normal and
   means nothing changed, not that the ledger is empty.
+- `INFO src_plaid link session opened update=false hosted=true expires=2026-08-26T10:30:00Z`
+  — a bank being attached, or `update=true` for one being repaired. Nothing is
+  created yet: a link session nobody finishes costs nothing.
+- `DEBUG src_plaid link session polled sessions=1 finished=true tokens=1`
+  — one line per poll of `/link/token/get`, which is how the public token is
+  collected without a public webhook URL. `DEBUG` because a single link is
+  several of these.
+- `INFO src_plaid item created item_id=8Pd5Zx…`
+  — **the line that says a Production Item slot was spent**, and there are ten.
+  The access token is deliberately not on it: it is a credential to somebody's
+  bank, and a log is a file that gets pasted into issues.
 - `WARN server_main::runtime_plaid recurring unavailable, continuing without it error="Plaid error PRODUCT_NOT_READY: …"`
   — recurring is derived from transactions, so a fresh Item has none yet. One
   thin screen rather than a failed sync.
