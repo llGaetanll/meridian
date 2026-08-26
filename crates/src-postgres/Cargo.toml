@@ -1,0 +1,13 @@
+[package]
+name = "src-postgres"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+sqlx = { workspace = true }
+tokio = { workspace = true }

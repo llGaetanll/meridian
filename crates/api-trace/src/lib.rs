@@ -39,6 +39,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 
 use tracing::level_filters::LevelFilter;
+use tracing_subscriber::filter::Targets;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
@@ -65,6 +66,15 @@ pub struct Config {
     /// A file to append lines to. Created if missing, along with its parent.
     #[cfg(not(target_arch = "wasm32"))]
     pub file: Option<std::path::PathBuf>,
+
+    /// Targets held to `WARN`, whatever [`Config::level`] says.
+    ///
+    /// For libraries that log at `INFO` about their own housekeeping. Every
+    /// line in `docs/LOGGING.md` is one we chose to write, and a dependency
+    /// narrating itself on every boot is how a log becomes something people
+    /// skim past. Held rather than silenced: if one of them has a genuine
+    /// warning, it still gets through.
+    pub quiet: &'static [&'static str],
 }
 
 impl Default for Config {
@@ -76,6 +86,7 @@ impl Default for Config {
             buffer: 4096,
             #[cfg(not(target_arch = "wasm32"))]
             file: Some(std::path::PathBuf::from("logs/meridian.log")),
+            quiet: &[],
         }
     }
 }
@@ -114,8 +125,14 @@ pub fn init(config: Config) {
         None => None,
     };
 
+    let mut filter = Targets::new().with_default(LevelFilter::from_level(config.level));
+
+    for target in config.quiet {
+        filter = filter.with_target(*target, LevelFilter::WARN);
+    }
+
     let installed = tracing_subscriber::registry()
-        .with(LevelFilter::from_level(config.level))
+        .with(filter)
         .with(OneLine::new(sinks))
         .try_init()
         .is_ok();

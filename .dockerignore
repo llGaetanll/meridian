@@ -1,0 +1,21 @@
+# Keep the build context small and the layers stable. Anything in here that
+# changed would invalidate the dependency cache for no reason — `target` alone
+# is several gigabytes of it.
+
+target/
+.git/
+logs/
+*.log
+
+# Secrets never enter an image. Compose passes them as environment at run
+# time, which is also the only way they stay out of `docker history`.
+.env
+.env.*
+!.env.example
+
+# Nothing the server is built from.
+swift/
+kotlin/
+sketches/
+docs/
+compile_commands.json

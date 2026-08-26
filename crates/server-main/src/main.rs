@@ -6,7 +6,13 @@ async fn main() -> anyhow::Result<()> {
 
     // Before anything else: a log that starts after the first request is a log
     // missing the request that broke.
-    api_trace::init(api_trace::Config::default());
+    api_trace::init(api_trace::Config {
+        // sqlx narrates its own housekeeping at INFO — "relation
+        // _sqlx_migrations already exists, skipping" on every single boot.
+        // True, and not a line anybody chose to write.
+        quiet: &["sqlx::postgres::notice"],
+        ..api_trace::Config::default()
+    });
 
     tracing::info!(
         version = env!("CARGO_PKG_VERSION"),

@@ -13,6 +13,22 @@ fn main() {
     println!("cargo:rerun-if-changed=../../.git/HEAD");
     println!("cargo:rerun-if-changed=../../.git/refs");
 
+    // An override first, for builds that cannot reach git. A container's build
+    // context excludes `.git` on purpose — including it would put the whole
+    // history into every image build — so the commit is passed in instead. A
+    // deployed binary whose log says `unknown` cannot be matched to the source
+    // that produced it, which is the one thing this stamp exists for.
+    println!("cargo:rerun-if-env-changed=MERIDIAN_SHA");
+
+    if let Some(sha) = std::env::var("MERIDIAN_SHA")
+        .ok()
+        .map(|sha| sha.trim().to_string())
+        .filter(|sha| !sha.is_empty() && sha != "unknown")
+    {
+        println!("cargo:rustc-env=MERIDIAN_SHA={sha}");
+        return;
+    }
+
     let sha = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()
