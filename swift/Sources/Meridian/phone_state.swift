@@ -1416,6 +1416,85 @@ public func FfiConverterTypeViewCategoryChip_lower(_ value: ViewCategoryChip) ->
 }
 
 
+/**
+ * One box of a six-digit code.
+ */
+public struct ViewCodeCell: Equatable, Hashable {
+    /**
+     * The digit, or empty.
+     */
+    public var digit: String
+    /**
+     * The box that takes the next digit. It carries the caret.
+     */
+    public var live: Bool
+    /**
+     * Set on every box at once — a rejected code is one wrong value, not six.
+     */
+    public var bad: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The digit, or empty.
+         */digit: String, 
+        /**
+         * The box that takes the next digit. It carries the caret.
+         */live: Bool, 
+        /**
+         * Set on every box at once — a rejected code is one wrong value, not six.
+         */bad: Bool) {
+        self.digit = digit
+        self.live = live
+        self.bad = bad
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewCodeCell: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewCodeCell: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewCodeCell {
+        return
+            try ViewCodeCell(
+                digit: FfiConverterString.read(from: &buf), 
+                live: FfiConverterBool.read(from: &buf), 
+                bad: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewCodeCell, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.digit, into: &buf)
+        FfiConverterBool.write(value.live, into: &buf)
+        FfiConverterBool.write(value.bad, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewCodeCell_lift(_ buf: RustBuffer) throws -> ViewCodeCell {
+    return try FfiConverterTypeViewCodeCell.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewCodeCell_lower(_ value: ViewCodeCell) -> RustBuffer {
+    return FfiConverterTypeViewCodeCell.lower(value)
+}
+
+
 public struct ViewConnection: Equatable, Hashable {
     public var id: String
     public var name: String
@@ -1870,6 +1949,93 @@ public func FfiConverterTypeViewDockItem_lower(_ value: ViewDockItem) -> RustBuf
 }
 
 
+/**
+ * Something to type into.
+ */
+public struct ViewField: Equatable, Hashable {
+    /**
+     * An icon name the view resolves in its own set.
+     */
+    public var icon: String
+    /**
+     * What is in it. Empty means the placeholder shows instead.
+     */
+    public var value: String
+    public var placeholder: String
+    /**
+     * What the server, or the machine, made of the value. `Some` is what
+     * draws the field wrong — never an empty field, which has not done
+     * anything yet.
+     */
+    public var fault: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * An icon name the view resolves in its own set.
+         */icon: String, 
+        /**
+         * What is in it. Empty means the placeholder shows instead.
+         */value: String, placeholder: String, 
+        /**
+         * What the server, or the machine, made of the value. `Some` is what
+         * draws the field wrong — never an empty field, which has not done
+         * anything yet.
+         */fault: String?) {
+        self.icon = icon
+        self.value = value
+        self.placeholder = placeholder
+        self.fault = fault
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewField: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewField: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewField {
+        return
+            try ViewField(
+                icon: FfiConverterString.read(from: &buf), 
+                value: FfiConverterString.read(from: &buf), 
+                placeholder: FfiConverterString.read(from: &buf), 
+                fault: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewField, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.icon, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+        FfiConverterString.write(value.placeholder, into: &buf)
+        FfiConverterOptionString.write(value.fault, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewField_lift(_ buf: RustBuffer) throws -> ViewField {
+    return try FfiConverterTypeViewField.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewField_lower(_ value: ViewField) -> RustBuffer {
+    return FfiConverterTypeViewField.lower(value)
+}
+
+
 public struct ViewFilter: Equatable, Hashable {
     public var categoriesOpen: Bool
     public var rangeOpen: Bool
@@ -1961,6 +2127,92 @@ public func FfiConverterTypeViewFilter_lift(_ buf: RustBuffer) throws -> ViewFil
 #endif
 public func FfiConverterTypeViewFilter_lower(_ value: ViewFilter) -> RustBuffer {
     return FfiConverterTypeViewFilter.lower(value)
+}
+
+
+/**
+ * An icon, a line, a line under it, and something on the right.
+ *
+ * Every list in this flow is this one row: what connecting a bank means, what
+ * the first sync has fetched, what is still true after a failure.
+ */
+public struct ViewIconRow: Equatable, Hashable {
+    /**
+     * An icon name the view resolves in its own set.
+     */
+    public var icon: String
+    public var tone: ViewRowTone
+    public var title: String
+    public var sub: String?
+    /**
+     * `"8"`, `"48 so far"`, `"waiting"` — what the row has to say about
+     * itself, on the right.
+     */
+    public var value: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * An icon name the view resolves in its own set.
+         */icon: String, tone: ViewRowTone, title: String, sub: String?, 
+        /**
+         * `"8"`, `"48 so far"`, `"waiting"` — what the row has to say about
+         * itself, on the right.
+         */value: String?) {
+        self.icon = icon
+        self.tone = tone
+        self.title = title
+        self.sub = sub
+        self.value = value
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewIconRow: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewIconRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewIconRow {
+        return
+            try ViewIconRow(
+                icon: FfiConverterString.read(from: &buf), 
+                tone: FfiConverterTypeViewRowTone.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                sub: FfiConverterOptionString.read(from: &buf), 
+                value: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewIconRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.icon, into: &buf)
+        FfiConverterTypeViewRowTone.write(value.tone, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterOptionString.write(value.sub, into: &buf)
+        FfiConverterOptionString.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewIconRow_lift(_ buf: RustBuffer) throws -> ViewIconRow {
+    return try FfiConverterTypeViewIconRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewIconRow_lower(_ value: ViewIconRow) -> RustBuffer {
+    return FfiConverterTypeViewIconRow.lower(value)
 }
 
 
@@ -2406,6 +2658,69 @@ public func FfiConverterTypeViewRecurring_lower(_ value: ViewRecurring) -> RustB
 }
 
 
+/**
+ * A stretch of body copy, and whether it is set strong.
+ *
+ * The sketch's `<b>`: the address on the code screen, Plaid's name on the
+ * bank screen. A list of runs rather than one string with markup in it,
+ * because the alternative is every platform learning to parse the same
+ * markup — and the alternative to *that* is losing the emphasis the sentence
+ * was written around.
+ */
+public struct ViewRun: Equatable, Hashable {
+    public var text: String
+    public var strong: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(text: String, strong: Bool) {
+        self.text = text
+        self.strong = strong
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewRun: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewRun: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewRun {
+        return
+            try ViewRun(
+                text: FfiConverterString.read(from: &buf), 
+                strong: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewRun, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterBool.write(value.strong, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewRun_lift(_ buf: RustBuffer) throws -> ViewRun {
+    return try FfiConverterTypeViewRun.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewRun_lower(_ value: ViewRun) -> RustBuffer {
+    return FfiConverterTypeViewRun.lower(value)
+}
+
+
 public struct ViewStreamGroup: Equatable, Hashable {
     /**
      * `"Transfer out"`.
@@ -2599,6 +2914,75 @@ public func FfiConverterTypeViewStreamRow_lift(_ buf: RustBuffer) throws -> View
 #endif
 public func FfiConverterTypeViewStreamRow_lower(_ value: ViewStreamRow) -> RustBuffer {
     return FfiConverterTypeViewStreamRow.lower(value)
+}
+
+
+/**
+ * One figure on the last screen, and what it is a figure for.
+ */
+public struct ViewTally: Equatable, Hashable {
+    /**
+     * `"48"`.
+     */
+    public var value: String
+    /**
+     * `"transactions, back to 23 May"`.
+     */
+    public var label: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"48"`.
+         */value: String, 
+        /**
+         * `"transactions, back to 23 May"`.
+         */label: String) {
+        self.value = value
+        self.label = label
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewTally: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewTally: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewTally {
+        return
+            try ViewTally(
+                value: FfiConverterString.read(from: &buf), 
+                label: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewTally, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.value, into: &buf)
+        FfiConverterString.write(value.label, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewTally_lift(_ buf: RustBuffer) throws -> ViewTally {
+    return try FfiConverterTypeViewTally.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewTally_lower(_ value: ViewTally) -> RustBuffer {
+    return FfiConverterTypeViewTally.lower(value)
 }
 
 
@@ -2822,6 +3206,41 @@ public enum ActionSource: Equatable, Hashable {
      */
     case loadSnapshot(force: Bool
     )
+    /**
+     * Read who the device says is signed in. The first thing the app asks
+     * for, because the answer decides whether it opens on the Ledger or on
+     * the first screen of first run.
+     */
+    case loadSession
+    /**
+     * Remember it, so that the next launch opens on the Ledger.
+     */
+    case saveSession(email: String
+    )
+    /**
+     * Send a six-digit code to this address.
+     */
+    case sendCode(email: String
+    )
+    case verifyCode(email: String, code: String
+    )
+    /**
+     * Ask the server for a `link_token` and open the `hosted_link_url` that
+     * comes back, which is Plaid's own page over the web.
+     *
+     * The app never holds a token of either kind: the server creates the link
+     * token and the server exchanges the public token, because the secret
+     * that signs both cannot ship inside an app (`docs/PLAID.md`).
+     */
+    case startBankLink
+    /**
+     * Follow the first sync, and report what lands.
+     *
+     * The work is the server's — it holds the `access_token` and runs
+     * `/transactions/sync` — so this asks to be told about it rather than to
+     * do it. Backgrounding the app while it runs is safe for the same reason.
+     */
+    case watchSync
 
 
 
@@ -2846,6 +3265,21 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
         case 1: return .loadSnapshot(force: try FfiConverterBool.read(from: &buf)
         )
         
+        case 2: return .loadSession
+        
+        case 3: return .saveSession(email: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 4: return .sendCode(email: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 5: return .verifyCode(email: try FfiConverterString.read(from: &buf), code: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 6: return .startBankLink
+        
+        case 7: return .watchSync
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -2858,6 +3292,34 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(1))
             FfiConverterBool.write(force, into: &buf)
             
+        
+        case .loadSession:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .saveSession(email):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(email, into: &buf)
+            
+        
+        case let .sendCode(email):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(email, into: &buf)
+            
+        
+        case let .verifyCode(email,code):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(email, into: &buf)
+            FfiConverterString.write(code, into: &buf)
+            
+        
+        case .startBankLink:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .watchSync:
+            writeInt(&buf, Int32(7))
+        
         }
     }
 }
@@ -2894,8 +3356,11 @@ public enum ActionUi: Equatable, Hashable {
      * state the diff applies to, and holding state above the boundary is the
      * thing this design exists to prevent. Sending the whole screen means the
      * view can be a pure function of the last action it saw.
+     * The dock is absent on a screen that is not one of its tabs — every
+     * screen of first run. `None` rather than an empty dock: a dock with no
+     * items would still be a strip of ground at the bottom of the phone.
      */
-    case render(screen: ViewScreen, dock: ViewDock
+    case render(screen: ViewScreen, dock: ViewDock?
     )
     /**
      * Tell the user something went wrong, in these words.
@@ -2923,7 +3388,7 @@ public struct FfiConverterTypeActionUi: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .render(screen: try FfiConverterTypeViewScreen.read(from: &buf), dock: try FfiConverterTypeViewDock.read(from: &buf)
+        case 1: return .render(screen: try FfiConverterTypeViewScreen.read(from: &buf), dock: try FfiConverterOptionTypeViewDock.read(from: &buf)
         )
         
         case 2: return .showError(message: try FfiConverterString.read(from: &buf)
@@ -2940,7 +3405,7 @@ public struct FfiConverterTypeActionUi: FfiConverterRustBuffer {
         case let .render(screen,dock):
             writeInt(&buf, Int32(1))
             FfiConverterTypeViewScreen.write(screen, into: &buf)
-            FfiConverterTypeViewDock.write(dock, into: &buf)
+            FfiConverterOptionTypeViewDock.write(dock, into: &buf)
             
         
         case let .showError(message):
@@ -3074,6 +3539,54 @@ public enum EventSource: Equatable, Hashable {
      */
     case loadFailed(message: String
     )
+    /**
+     * What the device had stored about who is signed in — the address the
+     * app last completed first run as, absent on a device that never has.
+     *
+     * Absent rather than an empty string: "nobody" and "somebody with no
+     * address" are different, and only one of them can happen.
+     */
+    case sessionLoaded(email: String?
+    )
+    /**
+     * A code went out.
+     */
+    case codeSent
+    /**
+     * The code was the right one.
+     */
+    case codeAccepted
+    /**
+     * It was not. `expired` separates too late from wrong: one asks you to
+     * look again, the other asks for a new code.
+     */
+    case codeRejected(expired: Bool
+    )
+    /**
+     * Plaid came back with a bank attached, and this is what it is called.
+     */
+    case bankLinked(institution: String
+    )
+    /**
+     * The bank sign-in ended with nothing — dismissed, failed, timed out.
+     * The common ending, not a rare one.
+     */
+    case bankAbandoned
+    /**
+     * How far the first sync has got, and what it has so far.
+     *
+     * The stage and the counts are separate facts: the transactions row reads
+     * `48 so far` while it is still running, so a count is not a claim that
+     * the stage is done.
+     */
+    case syncProgressed(stage: SyncStage, accounts: UInt32, transactions: UInt32, streams: UInt32
+    )
+    /**
+     * The whole history is in. `/transactions/sync` pages all of it the first
+     * time and almost nothing every time after, which is why this happens
+     * once per bank and never again.
+     */
+    case syncFinished
 
 
 
@@ -3101,6 +3614,26 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
         case 2: return .loadFailed(message: try FfiConverterString.read(from: &buf)
         )
         
+        case 3: return .sessionLoaded(email: try FfiConverterOptionString.read(from: &buf)
+        )
+        
+        case 4: return .codeSent
+        
+        case 5: return .codeAccepted
+        
+        case 6: return .codeRejected(expired: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 7: return .bankLinked(institution: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 8: return .bankAbandoned
+        
+        case 9: return .syncProgressed(stage: try FfiConverterTypeSyncStage.read(from: &buf), accounts: try FfiConverterUInt32.read(from: &buf), transactions: try FfiConverterUInt32.read(from: &buf), streams: try FfiConverterUInt32.read(from: &buf)
+        )
+        
+        case 10: return .syncFinished
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -3118,6 +3651,45 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
             FfiConverterString.write(message, into: &buf)
             
+        
+        case let .sessionLoaded(email):
+            writeInt(&buf, Int32(3))
+            FfiConverterOptionString.write(email, into: &buf)
+            
+        
+        case .codeSent:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .codeAccepted:
+            writeInt(&buf, Int32(5))
+        
+        
+        case let .codeRejected(expired):
+            writeInt(&buf, Int32(6))
+            FfiConverterBool.write(expired, into: &buf)
+            
+        
+        case let .bankLinked(institution):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(institution, into: &buf)
+            
+        
+        case .bankAbandoned:
+            writeInt(&buf, Int32(8))
+        
+        
+        case let .syncProgressed(stage,accounts,transactions,streams):
+            writeInt(&buf, Int32(9))
+            FfiConverterTypeSyncStage.write(stage, into: &buf)
+            FfiConverterUInt32.write(accounts, into: &buf)
+            FfiConverterUInt32.write(transactions, into: &buf)
+            FfiConverterUInt32.write(streams, into: &buf)
+            
+        
+        case .syncFinished:
+            writeInt(&buf, Int32(10))
+        
         }
     }
 }
@@ -3198,6 +3770,60 @@ public enum EventUi: Equatable, Hashable {
      */
     case txSelected(id: String
     )
+    /**
+     * The Welcome screen's one button. There is no Sign up and no Sign in:
+     * an address that exists signs in and one that does not signs up, so
+     * there is nothing to choose and no way to choose wrong.
+     */
+    case emailChosen
+    /**
+     * The address field, as it now reads.
+     *
+     * The whole value rather than one keystroke, so a paste, a backspace and
+     * a tap are the same event and the machine holds what the field holds.
+     */
+    case emailTyped(text: String
+    )
+    /**
+     * Continue, under the address.
+     */
+    case emailSubmitted
+    /**
+     * The code field, as it now reads. There is nothing to check before the
+     * sixth digit, so the sixth digit submits and there is no Continue.
+     */
+    case codeTyped(digits: String
+    )
+    /**
+     * Send a new code.
+     */
+    case resendRequested
+    /**
+     * The chevron, and the code screen's way back to a mistyped address.
+     */
+    case backPressed
+    /**
+     * Connect a bank, Try again, and Add another bank.
+     *
+     * One event rather than three, because it is one thing: whichever screen
+     * the tap came from, the next thing that happens is Plaid opening.
+     */
+    case bankConnectRequested
+    /**
+     * Open Meridian, on the last screen of first run.
+     */
+    case onboardingFinished
+    /**
+     * A second has passed, and nothing else happened.
+     *
+     * The resend countdown is the one thing in the app that changes while
+     * nobody is touching it, and it is a function of `now` — so this carries
+     * nothing and asks only to be redrawn against a newer clock. The runtime
+     * sends it while the code screen is up and not otherwise; a tick per
+     * second behind the Ledger would rebuild that list sixty times a minute
+     * for nothing.
+     */
+    case ticked
 
 
 
@@ -3247,6 +3873,26 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
         
         case 11: return .txSelected(id: try FfiConverterString.read(from: &buf)
         )
+        
+        case 12: return .emailChosen
+        
+        case 13: return .emailTyped(text: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 14: return .emailSubmitted
+        
+        case 15: return .codeTyped(digits: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 16: return .resendRequested
+        
+        case 17: return .backPressed
+        
+        case 18: return .bankConnectRequested
+        
+        case 19: return .onboardingFinished
+        
+        case 20: return .ticked
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3306,6 +3952,44 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
             writeInt(&buf, Int32(11))
             FfiConverterString.write(id, into: &buf)
             
+        
+        case .emailChosen:
+            writeInt(&buf, Int32(12))
+        
+        
+        case let .emailTyped(text):
+            writeInt(&buf, Int32(13))
+            FfiConverterString.write(text, into: &buf)
+            
+        
+        case .emailSubmitted:
+            writeInt(&buf, Int32(14))
+        
+        
+        case let .codeTyped(digits):
+            writeInt(&buf, Int32(15))
+            FfiConverterString.write(digits, into: &buf)
+            
+        
+        case .resendRequested:
+            writeInt(&buf, Int32(16))
+        
+        
+        case .backPressed:
+            writeInt(&buf, Int32(17))
+        
+        
+        case .bankConnectRequested:
+            writeInt(&buf, Int32(18))
+        
+        
+        case .onboardingFinished:
+            writeInt(&buf, Int32(19))
+        
+        
+        case .ticked:
+            writeInt(&buf, Int32(20))
+        
         }
     }
 }
@@ -3663,6 +4347,298 @@ public func FfiConverterTypeScreen_lower(_ value: Screen) -> RustBuffer {
 
 
 
+/**
+ * Which part of the first sync is running.
+ *
+ * In the order they happen, because that order is what the progress bar is a
+ * fraction of.
+ */
+
+public enum SyncStage: Equatable, Hashable {
+    
+    case accounts
+    case transactions
+    case streams
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SyncStage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSyncStage: FfiConverterRustBuffer {
+    typealias SwiftType = SyncStage
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SyncStage {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .accounts
+        
+        case 2: return .transactions
+        
+        case 3: return .streams
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SyncStage, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .accounts:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .transactions:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .streams:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSyncStage_lift(_ buf: RustBuffer) throws -> SyncStage {
+    return try FfiConverterTypeSyncStage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSyncStage_lower(_ value: SyncStage) -> RustBuffer {
+    return FfiConverterTypeSyncStage.lower(value)
+}
+
+
+
+/**
+ * Where the flow is, and everything that screen prints.
+ *
+ * An enum rather than one record of optional fields, for the same reason
+ * [`ViewScreen`](crate::ViewScreen) is one: the view draws the arm it is
+ * handed and holds no "which step am I on" of its own. The repeated `step`,
+ * `title` and `body` are the price of that, and a cheap one — a variant
+ * carries exactly what its screen has and no arm has to check whether a field
+ * applies to it.
+ */
+
+public enum ViewOnboarding: Equatable, Hashable {
+    
+    /**
+     * One door, not two. An address that exists signs in and one that does
+     * not signs up, so there is nothing to choose here and no way to choose
+     * wrong.
+     */
+    case welcome(title: String, body: [ViewRun], 
+        /**
+         * `"Continue with email"`.
+         */action: String, legal: String
+    )
+    /**
+     * The address, and nothing else on the screen.
+     */
+    case email(step: String, title: String, body: [ViewRun], field: ViewField, 
+        /**
+         * `"Continue"`. Under the field rather than on the bottom edge: the
+         * keyboard covers the bottom third the moment this opens.
+         */action: String
+    )
+    /**
+     * Six digits, and no Continue — there is nothing to check before the
+     * sixth, so the sixth submits.
+     */
+    case code(step: String, title: String, body: [ViewRun], cells: [ViewCodeCell], 
+        /**
+         * `"That code has expired. They last ten minutes."` Wrong and too
+         * late are different problems, one sentence apart.
+         */fault: String?, resend: ViewResend
+    )
+    /**
+     * What connecting a bank means, said plainly, and the button that does
+     * it. No skip: every screen in the app is a view of transactions, so an
+     * app that let someone past this would open on three empty tabs.
+     */
+    case bank(step: String, title: String, body: [ViewRun], rows: [ViewIconRow], action: String, legal: String
+    )
+    /**
+     * The one slow screen in the app, and it happens once per bank.
+     */
+    case sync(step: String, title: String, body: [ViewRun], 
+        /**
+         * How far along, 0..1 — geometry rather than a percentage to print,
+         * which is the exception `docs/FFI.md` carves out for a drawn figure.
+         */progress: Double, rows: [ViewIconRow]
+    )
+    /**
+     * Counts rather than a tick and a slogan: they are the first proof the
+     * thing works, and they set the expectation for the Ledger the next tap
+     * opens.
+     */
+    case ready(title: String, body: [ViewRun], tally: [ViewTally], 
+        /**
+         * `"Add another bank"` — most people have more than one, and the
+         * second connection will never be likelier than it is right now.
+         */another: String, 
+        /**
+         * `"Open Meridian"`.
+         */`open`: String
+    )
+    /**
+     * The common ending, not a rare one: people close the sheet to go and
+     * find a password. Nothing was created, and saying so plainly is the
+     * whole job.
+     */
+    case failed(step: String, title: String, body: [ViewRun], rows: [ViewIconRow], action: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ViewOnboarding: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
+    typealias SwiftType = ViewOnboarding
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewOnboarding {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .welcome(title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), action: try FfiConverterString.read(from: &buf), legal: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .email(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), field: try FfiConverterTypeViewField.read(from: &buf), action: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .code(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), cells: try FfiConverterSequenceTypeViewCodeCell.read(from: &buf), fault: try FfiConverterOptionString.read(from: &buf), resend: try FfiConverterTypeViewResend.read(from: &buf)
+        )
+        
+        case 4: return .bank(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf), legal: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 5: return .sync(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), progress: try FfiConverterDouble.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf)
+        )
+        
+        case 6: return .ready(title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), tally: try FfiConverterSequenceTypeViewTally.read(from: &buf), another: try FfiConverterString.read(from: &buf), open: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 7: return .failed(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ViewOnboarding, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .welcome(title,body,action,legal):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(title, into: &buf)
+            FfiConverterSequenceTypeViewRun.write(body, into: &buf)
+            FfiConverterString.write(action, into: &buf)
+            FfiConverterString.write(legal, into: &buf)
+            
+        
+        case let .email(step,title,body,field,action):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(step, into: &buf)
+            FfiConverterString.write(title, into: &buf)
+            FfiConverterSequenceTypeViewRun.write(body, into: &buf)
+            FfiConverterTypeViewField.write(field, into: &buf)
+            FfiConverterString.write(action, into: &buf)
+            
+        
+        case let .code(step,title,body,cells,fault,resend):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(step, into: &buf)
+            FfiConverterString.write(title, into: &buf)
+            FfiConverterSequenceTypeViewRun.write(body, into: &buf)
+            FfiConverterSequenceTypeViewCodeCell.write(cells, into: &buf)
+            FfiConverterOptionString.write(fault, into: &buf)
+            FfiConverterTypeViewResend.write(resend, into: &buf)
+            
+        
+        case let .bank(step,title,body,rows,action,legal):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(step, into: &buf)
+            FfiConverterString.write(title, into: &buf)
+            FfiConverterSequenceTypeViewRun.write(body, into: &buf)
+            FfiConverterSequenceTypeViewIconRow.write(rows, into: &buf)
+            FfiConverterString.write(action, into: &buf)
+            FfiConverterString.write(legal, into: &buf)
+            
+        
+        case let .sync(step,title,body,progress,rows):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(step, into: &buf)
+            FfiConverterString.write(title, into: &buf)
+            FfiConverterSequenceTypeViewRun.write(body, into: &buf)
+            FfiConverterDouble.write(progress, into: &buf)
+            FfiConverterSequenceTypeViewIconRow.write(rows, into: &buf)
+            
+        
+        case let .ready(title,body,tally,another,`open`):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(title, into: &buf)
+            FfiConverterSequenceTypeViewRun.write(body, into: &buf)
+            FfiConverterSequenceTypeViewTally.write(tally, into: &buf)
+            FfiConverterString.write(another, into: &buf)
+            FfiConverterString.write(`open`, into: &buf)
+            
+        
+        case let .failed(step,title,body,rows,action):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(step, into: &buf)
+            FfiConverterString.write(title, into: &buf)
+            FfiConverterSequenceTypeViewRun.write(body, into: &buf)
+            FfiConverterSequenceTypeViewIconRow.write(rows, into: &buf)
+            FfiConverterString.write(action, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewOnboarding_lift(_ buf: RustBuffer) throws -> ViewOnboarding {
+    return try FfiConverterTypeViewOnboarding.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewOnboarding_lower(_ value: ViewOnboarding) -> RustBuffer {
+    return FfiConverterTypeViewOnboarding.lower(value)
+}
+
+
+
 
 public enum ViewRangeKind: Equatable, Hashable {
     
@@ -3744,10 +4720,196 @@ public func FfiConverterTypeViewRangeKind_lower(_ value: ViewRangeKind) -> RustB
 
 
 /**
+ * Whether a new code can be asked for yet.
+ *
+ * Two states rather than a countdown string that is sometimes empty: while it
+ * is counting there is a line to read, and once it is not there is a button
+ * to press. They are not the same control.
+ */
+
+public enum ViewResend: Equatable, Hashable {
+    
+    /**
+     * `"Resend in 0:42"`, beside the way back to a mistyped address.
+     */
+    case waiting(text: String, 
+        /**
+         * `"Wrong address?"` — a typo in the step before is otherwise a dead
+         * end, because the code never arrives and nothing says why.
+         */wrongAddress: String
+    )
+    /**
+     * `"Send a new code"`.
+     */
+    case ready(label: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ViewResend: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewResend: FfiConverterRustBuffer {
+    typealias SwiftType = ViewResend
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewResend {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .waiting(text: try FfiConverterString.read(from: &buf), wrongAddress: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .ready(label: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ViewResend, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .waiting(text,wrongAddress):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(text, into: &buf)
+            FfiConverterString.write(wrongAddress, into: &buf)
+            
+        
+        case let .ready(label):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(label, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewResend_lift(_ buf: RustBuffer) throws -> ViewResend {
+    return try FfiConverterTypeViewResend.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewResend_lower(_ value: ViewResend) -> RustBuffer {
+    return FfiConverterTypeViewResend.lower(value)
+}
+
+
+
+/**
+ * What a row's icon means, which is the only thing that colours it.
+ */
+
+public enum ViewRowTone: Equatable, Hashable {
+    
+    /**
+     * A statement, not a step. The bank screen's four facts.
+     */
+    case plain
+    case done
+    /**
+     * Happening now, and the only row that spins.
+     */
+    case running
+    /**
+     * Not reached yet.
+     */
+    case waiting
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ViewRowTone: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewRowTone: FfiConverterRustBuffer {
+    typealias SwiftType = ViewRowTone
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewRowTone {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .plain
+        
+        case 2: return .done
+        
+        case 3: return .running
+        
+        case 4: return .waiting
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ViewRowTone, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .plain:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .done:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .running:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .waiting:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewRowTone_lift(_ buf: RustBuffer) throws -> ViewRowTone {
+    return try FfiConverterTypeViewRowTone.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewRowTone_lower(_ value: ViewRowTone) -> RustBuffer {
+    return FfiConverterTypeViewRowTone.lower(value)
+}
+
+
+
+/**
  * Everything on screen, in one value.
  *
  * One type rather than three optional ones: the view renders whichever arm it
  * is handed and holds no "which screen am I on" state of its own.
+ *
+ * [`Onboarding`](ViewScreen::Onboarding) is not one of [`Screen`]'s tabs and
+ * never will be — first run is a road with an end, not a place in the app you
+ * can navigate back to.
  */
 
 public enum ViewScreen: Equatable, Hashable {
@@ -3757,6 +4919,8 @@ public enum ViewScreen: Equatable, Hashable {
     case recurring(view: ViewRecurring
     )
     case balances(view: ViewBalances
+    )
+    case onboarding(view: ViewOnboarding
     )
 
 
@@ -3788,6 +4952,9 @@ public struct FfiConverterTypeViewScreen: FfiConverterRustBuffer {
         case 3: return .balances(view: try FfiConverterTypeViewBalances.read(from: &buf)
         )
         
+        case 4: return .onboarding(view: try FfiConverterTypeViewOnboarding.read(from: &buf)
+        )
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -3809,6 +4976,11 @@ public struct FfiConverterTypeViewScreen: FfiConverterRustBuffer {
         case let .balances(view):
             writeInt(&buf, Int32(3))
             FfiConverterTypeViewBalances.write(view, into: &buf)
+            
+        
+        case let .onboarding(view):
+            writeInt(&buf, Int32(4))
+            FfiConverterTypeViewOnboarding.write(view, into: &buf)
             
         }
     }
@@ -3873,6 +5045,30 @@ fileprivate struct FfiConverterOptionTypeViewDayCard: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeViewDayCard.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeViewDock: FfiConverterRustBuffer {
+    typealias SwiftType = ViewDock?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeViewDock.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeViewDock.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -4006,6 +5202,31 @@ fileprivate struct FfiConverterSequenceTypeViewCategoryChip: FfiConverterRustBuf
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeViewCodeCell: FfiConverterRustBuffer {
+    typealias SwiftType = [ViewCodeCell]
+
+    public static func write(_ value: [ViewCodeCell], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeViewCodeCell.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ViewCodeCell] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ViewCodeCell]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeViewCodeCell.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeViewConnection: FfiConverterRustBuffer {
     typealias SwiftType = [ViewConnection]
 
@@ -4106,6 +5327,31 @@ fileprivate struct FfiConverterSequenceTypeViewDockItem: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeViewIconRow: FfiConverterRustBuffer {
+    typealias SwiftType = [ViewIconRow]
+
+    public static func write(_ value: [ViewIconRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeViewIconRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ViewIconRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ViewIconRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeViewIconRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeViewMonthSection: FfiConverterRustBuffer {
     typealias SwiftType = [ViewMonthSection]
 
@@ -4123,6 +5369,31 @@ fileprivate struct FfiConverterSequenceTypeViewMonthSection: FfiConverterRustBuf
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeViewMonthSection.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeViewRun: FfiConverterRustBuffer {
+    typealias SwiftType = [ViewRun]
+
+    public static func write(_ value: [ViewRun], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeViewRun.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ViewRun] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ViewRun]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeViewRun.read(from: &buf))
         }
         return seq
     }
@@ -4173,6 +5444,31 @@ fileprivate struct FfiConverterSequenceTypeViewStreamRow: FfiConverterRustBuffer
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeViewStreamRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeViewTally: FfiConverterRustBuffer {
+    typealias SwiftType = [ViewTally]
+
+    public static func write(_ value: [ViewTally], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeViewTally.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ViewTally] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ViewTally]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeViewTally.read(from: &buf))
         }
         return seq
     }

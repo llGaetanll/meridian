@@ -17,7 +17,9 @@ use crate::EventSource;
 use crate::EventUi;
 use crate::Screen;
 use crate::StateLedger;
+use crate::StateOnboarding;
 use crate::screens;
+use crate::state_onboarding::Progress;
 
 /// Everything the app is, at one moment.
 ///
@@ -97,6 +99,19 @@ pub struct StateApp {
     /// Whether a snapshot has ever arrived. Distinguishes "still loading" from
     /// "loaded, and there is nothing".
     loaded: bool,
+
+    /// First run, until it has been walked. `None` means the app is the app.
+    ///
+    /// It starts *present*: a device the app has never run on is the
+    /// assumption, and a stored session is what clears it. The other way round
+    /// — absent until the store says there is no session — would draw an empty
+    /// Ledger for the frame between launching and the runtime answering, on
+    /// every launch, for the whole life of the app.
+    ///
+    /// A sub-machine for the same reason [`StateLedger`] is one: the address
+    /// being typed and the digits so far are read by nothing outside the flow,
+    /// and once the flow is through there is nothing left to read.
+    onboarding: Option<StateOnboarding>,
 }
 
 impl Default for StateApp {
@@ -114,6 +129,7 @@ impl Default for StateApp {
             ledger: StateLedger::default(),
             load_failed: None,
             loaded: false,
+            onboarding: Some(StateOnboarding::new()),
         }
     }
 }
@@ -162,8 +178,11 @@ impl StateApp {
     fn handle_event_ui(&mut self, event: &EventUi, actions: &mut Vec<Action>) {
         match event {
             EventUi::Started => {
+                // Who is signed in is asked for first, because the answer is
+                // what decides whether the app opens on the Ledger or on the
+                // first screen of first run. The snapshot follows from it.
                 actions.push(Action::ToSource {
-                    action: ActionSource::LoadSnapshot { force: false },
+                    action: ActionSource::LoadSession,
                 });
             }
 
@@ -216,6 +235,101 @@ impl StateApp {
                 // can already dispatch it, and so the log records the taps that
                 // will one day open one.
             }
+
+            // Everything first run owns is routed to its own machine. Each arm
+            // is guarded rather than asserted: an event for a flow that has
+            // finished is a stale tap, not a broken invariant, and dropping it
+            // is the right answer.
+            EventUi::EmailChosen => {
+                if let Some(flow) = &mut self.onboarding {
+                    flow.choose_email();
+                }
+            }
+
+            EventUi::EmailTyped { text } => {
+                if let Some(flow) = &mut self.onboarding {
+                    flow.type_email(text);
+                }
+            }
+
+            EventUi::EmailSubmitted => {
+                let email = self
+                    .onboarding
+                    .as_mut()
+                    .and_then(StateOnboarding::submit_email);
+
+                if let Some(email) = email {
+                    actions.push(Action::ToSource {
+                        action: ActionSource::SendCode { email },
+                    });
+                }
+            }
+
+            EventUi::CodeTyped { digits } => {
+                let filled = self
+                    .onboarding
+                    .as_mut()
+                    .and_then(|flow| flow.type_code(digits));
+
+                // The sixth digit submits: there is nothing to check before it,
+                // so a Continue button would only be a second tap.
+                if let Some((email, code)) = filled {
+                    actions.push(Action::ToSource {
+                        action: ActionSource::VerifyCode { email, code },
+                    });
+                }
+            }
+
+            EventUi::ResendRequested => {
+                let now = self.now();
+
+                let email = self.onboarding.as_mut().and_then(|flow| flow.resend(now));
+
+                if let Some(email) = email {
+                    actions.push(Action::ToSource {
+                        action: ActionSource::SendCode { email },
+                    });
+                }
+            }
+
+            EventUi::BackPressed => {
+                if let Some(flow) = &mut self.onboarding {
+                    flow.back();
+                }
+            }
+
+            EventUi::BankConnectRequested => {
+                if let Some(flow) = &mut self.onboarding {
+                    flow.connect_bank();
+
+                    actions.push(Action::ToSource {
+                        action: ActionSource::StartBankLink,
+                    });
+                }
+            }
+
+            EventUi::OnboardingFinished => {
+                // A road with an end: past this the machine holds no memory of
+                // the flow at all, which is why the address is lifted out
+                // before it goes.
+                if let Some(flow) = self.onboarding.take() {
+                    actions.push(Action::ToSource {
+                        action: ActionSource::SaveSession {
+                            email: flow.email().to_string(),
+                        },
+                    });
+
+                    actions.push(Action::ToSource {
+                        action: ActionSource::LoadSnapshot { force: false },
+                    });
+                }
+            }
+
+            EventUi::Ticked => {
+                // Nothing to decide. The countdown is a function of `now`,
+                // which arrived with this batch, so the render at the foot of
+                // this function is the whole of the work.
+            }
         }
 
         self.render(actions);
@@ -259,6 +373,96 @@ impl StateApp {
                 self.render(actions);
             }
 
+            EventSource::SessionLoaded { email } => {
+                // This only ever *ends* first run — see the field's own note on
+                // why it starts present. A device with nobody signed in stays
+                // on the Welcome screen it is already drawing.
+                if email.is_some() {
+                    self.onboarding = None;
+
+                    actions.push(Action::ToSource {
+                        action: ActionSource::LoadSnapshot { force: false },
+                    });
+                }
+
+                self.render(actions);
+            }
+
+            EventSource::CodeSent => {
+                let now = self.now();
+
+                if let Some(flow) = &mut self.onboarding {
+                    flow.code_sent(now);
+                }
+
+                self.render(actions);
+            }
+
+            EventSource::CodeAccepted => {
+                if let Some(flow) = &mut self.onboarding {
+                    flow.code_accepted();
+                }
+
+                self.render(actions);
+            }
+
+            EventSource::CodeRejected { expired } => {
+                if let Some(flow) = &mut self.onboarding {
+                    flow.code_rejected(*expired);
+                }
+
+                self.render(actions);
+            }
+
+            EventSource::BankLinked { institution } => {
+                if let Some(flow) = &mut self.onboarding {
+                    flow.bank_linked(institution);
+
+                    // The bank being attached is what starts the history
+                    // arriving, so the ask follows the news rather than the
+                    // runtime deciding a sync must be next.
+                    actions.push(Action::ToSource {
+                        action: ActionSource::WatchSync,
+                    });
+                }
+
+                self.render(actions);
+            }
+
+            EventSource::BankAbandoned => {
+                if let Some(flow) = &mut self.onboarding {
+                    flow.bank_abandoned();
+                }
+
+                self.render(actions);
+            }
+
+            EventSource::SyncProgressed {
+                stage,
+                accounts,
+                transactions,
+                streams,
+            } => {
+                if let Some(flow) = &mut self.onboarding {
+                    flow.sync_progressed(Progress {
+                        stage: *stage,
+                        accounts: *accounts,
+                        transactions: *transactions,
+                        streams: *streams,
+                    });
+                }
+
+                self.render(actions);
+            }
+
+            EventSource::SyncFinished => {
+                if let Some(flow) = &mut self.onboarding {
+                    flow.sync_finished();
+                }
+
+                self.render(actions);
+            }
+
             EventSource::LoadFailed { message } => {
                 self.load_failed = Some(message.clone());
 
@@ -283,7 +487,13 @@ impl StateApp {
         actions.push(Action::ToUi {
             action: ActionUi::Render {
                 screen: screens::screen(self),
-                dock: screens::dock(self.screen),
+
+                // No dock while first run is on screen: its screens are not
+                // tabs, and a dock under them would offer three empty ones.
+                dock: self
+                    .onboarding
+                    .is_none()
+                    .then(|| screens::dock(self.screen)),
             },
         });
     }
@@ -345,6 +555,11 @@ impl StateApp {
 
     pub(crate) fn loaded(&self) -> bool {
         self.loaded
+    }
+
+    /// The flow, while there is one. `None` once the app is the app.
+    pub(crate) fn onboarding(&self) -> Option<&StateOnboarding> {
+        self.onboarding.as_ref()
     }
 
     /// The entries this filter lets through, newest first.

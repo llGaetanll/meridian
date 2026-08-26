@@ -36,22 +36,8 @@ struct Split: View {
                 .padding(.horizontal, Self.inset)
                 .padding(.vertical, 12)
 
-                ZStack(alignment: .bottomLeading) {
-                    RowRule()
-
-                    GeometryReader { geometry in
-                        Rectangle()
-                            .fill(Theme.accentSoft)
-                            // No negative spread: on something four points
-                            // tall it would eat the whole glow.
-                            .shadow(color: Theme.accentSoft.opacity(0.55), radius: 5)
-                            .frame(width: max(3, geometry.size.width * slice.share), height: 4)
-                    }
-                    .frame(height: 4)
+                Track(share: slice.share)
                     .padding(.horizontal, Self.inset)
-                    .padding(.bottom, 1)
-                }
-                .frame(height: 5)
             }
         }
     }

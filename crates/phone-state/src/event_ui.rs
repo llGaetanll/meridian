@@ -42,6 +42,49 @@ pub enum EventUi {
 
     /// The user picked a transaction out of the list.
     TxSelected { id: String },
+
+    /// The Welcome screen's one button. There is no Sign up and no Sign in:
+    /// an address that exists signs in and one that does not signs up, so
+    /// there is nothing to choose and no way to choose wrong.
+    EmailChosen,
+
+    /// The address field, as it now reads.
+    ///
+    /// The whole value rather than one keystroke, so a paste, a backspace and
+    /// a tap are the same event and the machine holds what the field holds.
+    EmailTyped { text: String },
+
+    /// Continue, under the address.
+    EmailSubmitted,
+
+    /// The code field, as it now reads. There is nothing to check before the
+    /// sixth digit, so the sixth digit submits and there is no Continue.
+    CodeTyped { digits: String },
+
+    /// Send a new code.
+    ResendRequested,
+
+    /// The chevron, and the code screen's way back to a mistyped address.
+    BackPressed,
+
+    /// Connect a bank, Try again, and Add another bank.
+    ///
+    /// One event rather than three, because it is one thing: whichever screen
+    /// the tap came from, the next thing that happens is Plaid opening.
+    BankConnectRequested,
+
+    /// Open Meridian, on the last screen of first run.
+    OnboardingFinished,
+
+    /// A second has passed, and nothing else happened.
+    ///
+    /// The resend countdown is the one thing in the app that changes while
+    /// nobody is touching it, and it is a function of `now` — so this carries
+    /// nothing and asks only to be redrawn against a newer clock. The runtime
+    /// sends it while the code screen is up and not otherwise; a tick per
+    /// second behind the Ledger would rebuild that list sixty times a minute
+    /// for nothing.
+    Ticked,
 }
 
 /// Which half of the filter panel.

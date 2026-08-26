@@ -16,10 +16,33 @@ use phone_state::*;
 /// and the rest line up with what it shows.
 const NOW: Timestamp = Timestamp::from_secs(1_787_097_600);
 
+/// A machine past first run, which is where every test in this file starts.
+///
+/// The app assumes a device it has never run on, so saying who is signed in is
+/// what puts it on the Ledger — the same event the runtime sends on launch,
+/// once it has read the store. `tests/state_onboarding.rs` is the file that
+/// does not send it.
+fn app() -> StateApp {
+    let mut state = StateApp::new();
+    let mut actions = Vec::new();
+
+    state.handle_events(Timestamp::EPOCH, &[signed_in()], &mut actions);
+
+    state
+}
+
+fn signed_in() -> Event {
+    Event::FromSource {
+        event: EventSource::SessionLoaded {
+            email: Some("al@example.com".to_string()),
+        },
+    }
+}
+
 /// A machine with its clock set, ready for `eval!` — which reads the time from
 /// the machine rather than carrying one of its own.
 fn at_now() -> StateApp {
-    let mut state = StateApp::new();
+    let mut state = app();
     state.set_now(NOW);
     state
 }
@@ -63,7 +86,7 @@ fn range(kind: RangeSelection) -> Event {
 /// so this hands back the view and leaves `eval!` to the tests that are about
 /// the actions themselves.
 fn loaded_on(screen: Screen) -> (StateApp, ViewScreen) {
-    let mut state = StateApp::new();
+    let mut state = app();
     let mut actions = Vec::new();
 
     state.handle_events(
@@ -86,7 +109,7 @@ fn revealed_on(screen: Screen) -> ViewScreen {
 
 /// The same, with the figures covered.
 fn covered_on(screen: Screen) -> ViewScreen {
-    let mut state = StateApp::new();
+    let mut state = app();
     let mut actions = Vec::new();
 
     state.handle_events(
@@ -132,12 +155,29 @@ fn rows(ledger: &ViewLedger) -> Vec<&ViewTxRow> {
         .collect()
 }
 
+/// Who is signed in comes before anything else, because the answer is what
+/// decides whether the app opens on the Ledger or on the first screen of first
+/// run. Nothing is fetched until it comes back.
 #[test]
-fn starting_asks_for_a_snapshot() {
-    let mut state = at_now();
+fn starting_asks_who_is_signed_in() {
+    let mut state = StateApp::new();
+    state.set_now(NOW);
 
     eval!(&mut state,
         < ui(EventUi::Started),
+        > Action::ToSource { action: ActionSource::LoadSession },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+    );
+}
+
+/// And the answer is what asks for the data.
+#[test]
+fn a_session_opens_the_app_on_its_data() {
+    let mut state = StateApp::new();
+    state.set_now(NOW);
+
+    eval!(&mut state,
+        < signed_in(),
         > Action::ToSource { action: ActionSource::LoadSnapshot { force: false } },
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
@@ -158,7 +198,7 @@ fn pull_to_refresh_forces_a_fetch() {
 /// network. This is what makes the dock feel instant.
 #[test]
 fn switching_tabs_asks_for_nothing() {
-    let mut state = StateApp::new();
+    let mut state = app();
     let mut actions = Vec::new();
 
     state.handle_events(
@@ -299,7 +339,7 @@ fn a_purchase_reads_as_money_leaving() {
 /// Filtering is where most of the machine's decisions live, so these drive it
 /// through `eval!` and then read the screen the last action carried.
 fn filtered(events: Vec<Event>) -> ViewLedger {
-    let mut state = StateApp::new();
+    let mut state = app();
     let mut actions = Vec::new();
 
     let mut all = vec![ui(EventUi::Started), loaded(), open(Screen::Ledger)];
@@ -1018,7 +1058,7 @@ fn money_coming_in_is_grouped_after_everything_going_out() {
 /// "loading" rather than "nothing here".
 #[test]
 fn an_empty_app_says_it_is_loading() {
-    let mut state = StateApp::new();
+    let mut state = app();
     let mut actions = Vec::new();
 
     state.handle_events(
@@ -1037,8 +1077,8 @@ fn a_failed_load_tells_the_user_and_still_draws() {
     let mut state = at_now();
 
     eval!(&mut state,
-        < ui(EventUi::Started),
-        > Action::ToSource { action: ActionSource::LoadSnapshot { force: false } },
+        < ui(EventUi::RefreshRequested),
+        > Action::ToSource { action: ActionSource::LoadSnapshot { force: true } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromSource {
@@ -1055,7 +1095,7 @@ fn a_failed_load_tells_the_user_and_still_draws() {
 /// empty the app.
 #[test]
 fn a_failure_after_a_good_load_keeps_the_data() {
-    let mut state = StateApp::new();
+    let mut state = app();
     let mut actions = Vec::new();
 
     state.handle_events(
@@ -1083,7 +1123,7 @@ fn a_failure_after_a_good_load_keeps_the_data() {
 /// A snapshot we cannot read is a failed load, not a panic.
 #[test]
 fn an_unreadable_snapshot_does_not_crash() {
-    let mut state = StateApp::new();
+    let mut state = app();
     let mut actions = Vec::new();
 
     state.handle_events(
@@ -1124,7 +1164,7 @@ fn the_same_events_give_the_same_actions() {
     };
 
     let run = || {
-        let mut state = StateApp::new();
+        let mut state = app();
         let mut actions = Vec::new();
 
         state.handle_events(NOW, &events(), &mut actions);
@@ -1140,7 +1180,7 @@ fn the_same_events_give_the_same_actions() {
 #[test]
 fn the_machine_does_not_depend_on_when_it_runs() {
     let render = || {
-        let mut state = StateApp::new();
+        let mut state = app();
         let mut actions = Vec::new();
 
         state.handle_events(
@@ -1180,8 +1220,21 @@ fn every_ui_event_produces_a_render() {
             id: "whatever".to_string(),
         },
         EventUi::RefreshRequested,
+        EventUi::EmailChosen,
+        EventUi::EmailTyped {
+            text: "al@example.com".to_string(),
+        },
+        EventUi::EmailSubmitted,
+        EventUi::CodeTyped {
+            digits: "407".to_string(),
+        },
+        EventUi::ResendRequested,
+        EventUi::BackPressed,
+        EventUi::BankConnectRequested,
+        EventUi::OnboardingFinished,
+        EventUi::Ticked,
     ] {
-        let mut state = StateApp::new();
+        let mut state = app();
         let mut actions = Vec::new();
 
         let label = format!("{event:?}");
@@ -1213,7 +1266,7 @@ fn every_ui_event_produces_a_render() {
 /// wrong "in 3 days".
 #[test]
 fn the_servers_clock_wins_over_the_devices() {
-    let mut state = StateApp::new();
+    let mut state = app();
     let mut actions = Vec::new();
 
     // A device that thinks it is a year earlier than the server.

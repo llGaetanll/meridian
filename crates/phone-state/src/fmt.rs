@@ -5,6 +5,8 @@
 //! it did the first time: `"in 3 days"` is a function of two timestamps, and
 //! one of them arrived in an event.
 
+use std::time::Duration;
+
 use api_common::Timestamp;
 use api_common::format::fmt_money;
 
@@ -103,6 +105,17 @@ pub fn short_sync(ts: Timestamp, now: Timestamp) -> String {
     relative_time(ts, now).replace(" ago", "")
 }
 
+/// `"0:42"` — what is left of a countdown, in the shape a clock is read in.
+///
+/// Never `"0:00"`: the caller offers the button instead once there is nothing
+/// left to wait for, so a countdown that is still on screen has at least a
+/// second in it.
+pub fn countdown(left: Duration) -> String {
+    let secs = left.as_secs();
+
+    format!("{}:{:02}", secs / 60, secs % 60)
+}
+
 /// `"3 connections"`, `"1 connection"`.
 pub fn plural(count: usize, singular: &str, plural: &str) -> String {
     if count == 1 {
@@ -189,8 +202,6 @@ pub(crate) fn days_from_civil(y: i64, m: u32, d: u32) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use super::*;
 
     /// 2026-08-19, the day the sketch is drawn against.
@@ -270,6 +281,14 @@ mod tests {
         assert_eq!(money(86_541.74, true), "••••••");
         assert_eq!(money_signed(500.0, false), "+$500.00");
         assert_eq!(money_signed(-5.40, false), "−$5.40");
+    }
+
+    #[test]
+    fn a_countdown_pads_its_seconds() {
+        assert_eq!(countdown(Duration::from_secs(42)), "0:42");
+        assert_eq!(countdown(Duration::from_secs(9)), "0:09");
+        assert_eq!(countdown(Duration::from_secs(60)), "1:00");
+        assert_eq!(countdown(Duration::from_secs(605)), "10:05");
     }
 
     #[test]

@@ -7,10 +7,10 @@
 /// stay literally the same shapes.
 ///
 /// What it covers is what those icons use: `M L H V C S Q A Z`, upper and
-/// lower case, plus the `line`, `circle`, `polyline` and `polygon` elements as
-/// their own helpers. `T` is absent because nothing uses it, and malformed
-/// data stops the path rather than failing — an icon that comes out short is
-/// visible, and there is no input here that a user can get wrong.
+/// lower case, plus the `line`, `circle`, `rect`, `polyline` and `polygon`
+/// elements as their own helpers. `T` is absent because nothing uses it, and
+/// malformed data stops the path rather than failing — an icon that comes out
+/// short is visible, and there is no input here that a user can get wrong.
 
 import CoreGraphics
 import Foundation
@@ -155,6 +155,21 @@ enum Svg {
     static func line(_ x1: Double, _ y1: Double, _ x2: Double, _ y2: Double, to path: inout Path) {
         path.move(to: CGPoint(x: x1, y: y1))
         path.addLine(to: CGPoint(x: x2, y: y2))
+    }
+
+    /// `<rect x y width height rx>`, with the rounding SVG gives it.
+    static func rect(
+        _ x: Double,
+        _ y: Double,
+        _ width: Double,
+        _ height: Double,
+        _ radius: Double,
+        to path: inout Path
+    ) {
+        path.addRoundedRect(
+            in: CGRect(x: x, y: y, width: width, height: height),
+            cornerSize: CGSize(width: radius, height: radius)
+        )
     }
 
     static func circle(_ cx: Double, _ cy: Double, _ r: Double, to path: inout Path) {
