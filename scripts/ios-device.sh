@@ -31,8 +31,16 @@ cd "$(dirname "$0")/.."
 
 # Which phone. Any identifier `xcrun devicectl list devices` prints works — a
 # name, a UDID, an ECID. With one phone paired the default finds it.
+#
+# Matched by shape rather than by column, because three of the columns are free
+# text that can hold spaces — the name, the state ("connected" or "available
+# (paired)"), and the model, which prints as "iPhone 14 Pro (iPhone15,2)" on
+# some versions and "iPhone15,2" on others. Counting fields from either end
+# picks a different one depending on the phone. The identifier is the only
+# column with a fixed shape, so that is what is looked for.
 DEVICE=${1:-$(xcrun devicectl list devices --hide-headers 2>/dev/null \
-    | awk '$0 !~ /^-/ && NF { print $(NF-2); exit }')}
+    | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' \
+    | head -1)}
 
 BUNDLE_ID=com.meridian.phone
 DEPLOYMENT=17.0
@@ -87,10 +95,15 @@ fi
 # newest match wins, because a re-issued profile lands beside the one it
 # replaces rather than on top of it — free accounts re-issue weekly, so there
 # are usually several.
+#
+# Two directories because Xcode 16 moved them. It reads both, and a Mac that
+# has had more than one Xcode on it has profiles in both, so both are searched
+# rather than picking one and being wrong on half the machines.
 PROFILES=$HOME/Library/MobileDevice/Provisioning\ Profiles
+PROFILES_XCODE=$HOME/Library/Developer/Xcode/UserData/Provisioning\ Profiles
 PROFILE=
 
-for candidate in "$PROFILES"/*.mobileprovision; do
+for candidate in "$PROFILES"/*.mobileprovision "$PROFILES_XCODE"/*.mobileprovision; do
     [ -e "$candidate" ] || continue
 
     plist=$(security cms -D -i "$candidate" 2>/dev/null) || continue
