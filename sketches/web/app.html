@@ -1,0 +1,1059 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridian — Web, proposed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared/theme.css">
+<link rel="stylesheet" href="../shared/components.css">
+<link rel="stylesheet" href="canvas.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="screens.css">
+</head>
+<body>
+
+<!--
+  The three screens the app actually has, drawn for the web. The same page is
+  the desktop app in a window, which is why nothing here is a browser feature.
+
+  The windows scroll for real and the controls answer a click: chips toggle,
+  the range picks one, calendar days select, and the categories pack themselves
+  to fill the rail. None of it drives anything — it is here so the states can
+  be looked at rather than described.
+
+  Data is the Plaid Sandbox feed, the same figures the phone sketches use, so
+  the two can be held up against each other. The Balances numbers are the one
+  exception, as they are there: Citi, Fidelity and Amex are issues #11, #13 and
+  #12 and the figures are invented.
+-->
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-ledger" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="9" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></symbol>
+    <symbol id="i-recurring" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11a9 9 0 0 1 15-6.7L21 7"/><polyline points="21 3 21 7 17 7"/><path d="M21 13a9 9 0 0 1-15 6.7L3 17"/><polyline points="3 21 3 17 7 17"/></symbol>
+    <symbol id="i-balances" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.2 12 3l9 7.2"/><path d="M5.5 9.2V20a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1V9.2"/></symbol>
+    <symbol id="i-portfolio" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="2" y1="13" x2="22" y2="13"/></symbol>
+    <symbol id="i-markets" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></symbol>
+    <symbol id="i-updown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 9 12 5 16 9"/><polyline points="16 15 12 19 8 15"/></symbol>
+    <symbol id="i-caret" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 9 18 9 12 16"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+    <!-- Reconnect leaves the app: Plaid Link in update mode is a hosted page. -->
+    <symbol id="i-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4 12.5 11.5"/><path d="M18.5 14v5.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1H10"/></symbol>
+  </defs>
+</svg>
+
+<div class="canvas">
+
+  <div class="lede">
+    <h1>Web, proposed</h1>
+    <p>
+      Ledger, Recurring and Balances, at the width a laptop has. The controls
+      are <code>sketches/design-language.html</code> and not one of them is
+      restyled here; what changes between the phone and this is only ever what
+      the extra width is spent on.
+    </p>
+    <p>
+      It is spent on two things. A line the phone has to assemble into one
+      sentence gets columns — a transaction's category and account, an
+      account's type and what is available on it — because columns are what let
+      you compare two rows without reading either to the end. And the one
+      control that decides what a page says gets a column of its own: the
+      ledger's filter, the recurring calendar, the split of what you hold
+      across the banks that hold it. The rail scrolls with the page, not
+      against it — one scroller on the screen, and the sidebar is the only
+      thing that holds still.
+    </p>
+    <p>
+      That second one is what kills three phone controls outright. The filter
+      band, the sideways calendar and the swipe that turns it all exist because
+      a phone has one column of room, and none of them should be ported.
+    </p>
+  </div>
+
+  <section class="pair" id="shell">
+    <div class="pair-head">
+      <h2>The shell</h2>
+      <p>
+        A sidebar that says where you are, one scroller beside it, and half the
+        nav drawn and dimmed because the markets side is real work we have not
+        done. Below, the same shell three times.
+      </p>
+    </div>
+    <div class="pair-body">
+      <div class="notes">
+            <div class="n-item drop">
+              <div class="n-t">The page title</div>
+              <div class="n-d">The nav says where you are, lit in violet, so no page on the web opens on its own name. The phone needs its 30px title because its dock is three icons at the bottom of the screen.</div>
+            </div>
+            <div class="n-item">
+              <div class="n-t">Half the nav is drawn and dimmed</div>
+              <div class="n-d">Home, Portfolios and Markets are real work that is coming, and <code>sketches/desktop/</code> already draws them. Dimming them is the chip's own drawn-but-not-built state, and it is more honest than a nav that pretends the app is three pages and then has to grow.</div>
+            </div>
+            <div class="n-item drop">
+              <div class="n-t">Spending and Connections</div>
+              <div class="n-d">What the Spending sketch drew is what the Ledger's filter and Recurring's split now do. Connections live on Balances, next to the balances they carry — a page listing banks and saying nothing about their money is a settings screen.</div>
+            </div>
+            <div class="n-item">
+              <div class="n-t">Search is drawn and dead</div>
+              <div class="n-d">The same state the dock's search button is in on the phone: the sketches have never drawn the screen behind it.</div>
+            </div>
+            <div class="n-item">
+              <div class="n-t">One scroller</div>
+              <div class="n-d">The sidebar stays put and everything right of it moves together — the rail included.</div>
+            </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pair" id="ledger">
+    <div class="pair-head">
+      <h2>Ledger</h2>
+      <p>
+        The filter gets a column of its own, which takes the band with it and
+        puts a hero at the top of the list: a filter you can read at a glance
+        is a filter the list owes a figure to. The row spreads into columns,
+        and the day heading is the one thing on the page that pins.
+      </p>
+    </div>
+
+    <div class="pair-body">
+      <div class="col">
+        <div class="col-label">Nothing narrowed</div>
+        <div class="window">
+          <div class="window-bar">
+            <i></i><i></i><i></i>
+            <span class="window-url">meridian.app/ledger</span>
+          </div>
+          <div class="viewport">
+            <div class="shell ui">
+              <aside class="sidebar">
+                <div class="brand">
+                  <svg class="brand-mark" viewBox="0 0 200 200" fill="none" stroke="currentColor"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><defs><clipPath id="meridian-globe-clip"><circle cx="100" cy="100" r="93"/></clipPath></defs><g clip-path="url(#meridian-globe-clip)"><g stroke-width="14"><path d="M 181.753,73.308 C 171.596,42.2,126.76,28.932,81.61,43.674 C 36.459,58.415,8.09,95.584,18.247,126.692"/><path d="M 18.247,126.692 C 8.09,95.584,36.459,58.415,81.61,43.674 C 126.76,28.932,171.596,42.2,181.753,73.308"/><path d="M 118.172,15.942 C 108.574,13.867,92.658,49.819,82.622,96.243 C 72.586,142.667,72.23,181.983,81.828,184.058"/><path d="M 81.828,184.058 C 72.23,181.983,72.586,142.667,82.622,96.243 C 92.658,49.819,108.574,13.867,118.172,15.942"/><path d="M 14,100 C 14,133.585,52.504,160.811,100,160.811 C 147.496,160.811,186,133.585,186,100"/><path d="M 100,14 C 66.415,14,39.189,33.252,39.189,57 C 39.189,80.748,66.415,100,100,100 C 133.585,100,160.811,80.748,160.811,57 C 160.811,33.252,133.585,14,100,14"/></g><g stroke-width="14"><path d="M 147.342,171.797 C 166.464,159.188,160.77,116.822,134.624,77.17 C 108.477,37.517,71.78,15.595,52.658,28.203"/><path d="M 52.658,28.203 C 71.78,15.595,108.477,37.517,134.624,77.17 C 160.77,116.822,166.464,159.188,147.342,171.797"/></g></g><circle cx="100" cy="100" r="86" stroke-width="14"/></svg>
+                  <span>Meridian</span>
+                </div>
+
+                <nav class="nav">
+                  <a class="on" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-ledger"/></svg>Ledger</a>
+                  <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-recurring"/></svg>Recurring</a>
+                  <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-balances"/></svg>Balances</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-home"/></svg>Home</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-portfolio"/></svg>Portfolios</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-markets"/></svg>Markets</a>
+                </nav>
+
+                <div class="sidebar-foot">
+                  <nav class="nav">
+                    <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-settings"/></svg>Settings</a>
+                  </nav>
+                  <div class="account">
+                    <div class="avatar"><svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="av" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--violet-400)"/><stop offset="100%" stop-color="var(--violet-700)"/></linearGradient></defs><rect width="40" height="40" fill="url(#av)"/><circle cx="20" cy="14.8" r="7.2" fill="var(--bg)" opacity="0.34"/><path d="M4.6 40c0-8.6 6.9-13.6 15.4-13.6S35.4 31.4 35.4 40z" fill="var(--bg)" opacity="0.34"/></svg></div>
+                    <div class="account-id">
+                      <div class="account-name">Gaetan Almela</div>
+                      <div class="account-meta"><span class="status-dot"></span>4 connections live</div>
+                    </div>
+                    <span class="more"><svg viewBox="0 0 24 24"><use href="#i-updown"/></svg></span>
+                  </div>
+                </div>
+              </aside>
+
+              <div class="main">
+                <div class="content">
+                  <div class="searchrow">
+                    <div class="search dead">
+                      <svg viewBox="0 0 24 24"><use href="#i-search"/></svg>
+                      <span class="placeholder">Search merchants, accounts, streams…</span>
+                      <span class="kbd">⌘K</span>
+                    </div>
+                  </div>
+
+                  <div class="page">
+                    <div class="page-col">
+                      <div class="hero">
+                        <div class="k">All time · every category · 436 transactions</div>
+                        <div class="v num">−$12,478.34</div>
+                        <div class="diff"><span class="in"><b class="num">$8,412.90</b>in</span><span class="out"><b class="num">$20,891.24</b>out</span></div>
+                      </div>
+                      <div class="list">
+                        <div class="month">August 2026</div>
+                        <div class="day"><span>Wed, Aug 12</span><span class="sum num">−$30.40</span></div>
+                        <div class="tx pending"><span class="mark">UB</span><span class="tx-name">Uber</span><span class="tx-cat"><span class="t">Transportation</span><span class="pending-tag">Pending</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$5.40</span></div>
+                        <div class="tx"><span class="mark">CC</span><span class="tx-name">CREDIT CARD 3333 PAYMENT *//</span><span class="tx-cat"><span class="t">Loan payments</span></span><span class="tx-acct">Citi Checking ·4021</span><span class="tx-amt num">−$25.00</span></div>
+                        <div class="day"><span>Tue, Aug 11</span><span class="sum num">−$6,850.00</span></div>
+                        <div class="tx"><span class="mark">AC</span><span class="tx-name">ACH Electronic Credit — GUSTO PAY 123456</span><span class="tx-cat"><span class="t">Transfer out</span></span><span class="tx-acct">Citi Checking ·4021</span><span class="tx-amt num">−$5,850.00</span></div>
+                        <div class="tx"><span class="mark">CD</span><span class="tx-name">CD DEPOSIT .INITIAL.</span><span class="tx-cat"><span class="t">Transfer out</span></span><span class="tx-acct">Citi Accelerate Savings ·9930</span><span class="tx-amt num">−$1,000.00</span></div>
+                        <div class="day"><span>Mon, Aug 10</span><span class="sum num">+$421.50</span></div>
+                        <div class="tx"><span class="mark">UA</span><span class="tx-name">United Airlines</span><span class="tx-cat"><span class="t">Travel</span></span><span class="tx-acct">Amex Gold ·2004</span><span class="tx-amt num up">+$500.00</span></div>
+                        <div class="tx"><span class="mark">TO</span><span class="tx-name">Touchstone Climbing</span><span class="tx-cat"><span class="t">Personal care</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$78.50</span></div>
+                        <div class="day"><span>Sun, Aug 9</span><span class="sum num">−$16.33</span></div>
+                        <div class="tx"><span class="mark">MC</span><span class="tx-name">McDonald's</span><span class="tx-cat"><span class="t">Food &amp; drink</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$12.00</span></div>
+                        <div class="tx"><span class="mark">SB</span><span class="tx-name">Starbucks</span><span class="tx-cat"><span class="t">Food &amp; drink</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$4.33</span></div>
+                        <div class="day"><span>Sat, Aug 8</span><span class="sum num">−$89.40</span></div>
+                        <div class="tx"><span class="mark">FU</span><span class="tx-name">FUN</span><span class="tx-cat"><span class="t">Merchandise</span></span><span class="tx-acct">Citi Checking ·4021</span><span class="tx-amt num">−$89.40</span></div>
+                        <div class="day"><span>Fri, Aug 7</span><span class="sum num">−$500.00</span></div>
+                        <div class="tx"><span class="mark">MB</span><span class="tx-name">Madison Bicycle Shop</span><span class="tx-cat"><span class="t">Merchandise</span></span><span class="tx-acct">Amex Gold ·2004</span><span class="tx-amt num">−$500.00</span></div>
+                        <div class="day"><span>Wed, Aug 5</span><span class="sum num">−$5.40</span></div>
+                        <div class="tx"><span class="mark">UB</span><span class="tx-name">Uber</span><span class="tx-cat"><span class="t">Transportation</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$5.40</span></div>
+                        <div class="day"><span>Mon, Aug 3</span><span class="sum num">+$4.22</span></div>
+                        <div class="tx"><span class="mark">IN</span><span class="tx-name">INTRST PYMNT</span><span class="tx-cat"><span class="t">Transfer in</span></span><span class="tx-acct">Citi Accelerate Savings ·9930</span><span class="tx-amt num up">+$4.22</span></div>
+                        <div class="month">July 2026</div>
+                        <div class="day"><span>Thu, Jul 30</span><span class="sum num">−$78.50</span></div>
+                        <div class="tx"><span class="mark">TO</span><span class="tx-name">Touchstone Climbing</span><span class="tx-cat"><span class="t">Personal care</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$78.50</span></div>
+                        <div class="day"><span>Wed, Jul 29</span><span class="sum num">−$12.00</span></div>
+                        <div class="tx"><span class="mark">MC</span><span class="tx-name">McDonald's</span><span class="tx-cat"><span class="t">Food &amp; drink</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$12.00</span></div>
+                        <div class="day"><span>Tue, Jul 28</span><span class="sum num">−$2,078.50</span></div>
+                        <div class="tx"><span class="mark">AP</span><span class="tx-name">AUTOMATIC PAYMENT - THANK</span><span class="tx-cat"><span class="t">Transfer out</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$2,078.50</span></div>
+                      </div>
+                    </div>
+
+                    <aside class="rail">
+                      <div class="rail-sec">
+                        <div class="rail-head"><span class="rail-title">Categories</span></div>
+                        <div data-select="many" data-pack>
+                          <button class="chip"><span class="in"><span class="n">9</span>Transportation</span></button>
+                          <button class="chip"><span class="in"><span class="n">9</span>Food &amp; drink</span></button>
+                          <button class="chip"><span class="in"><span class="n">6</span>Travel</span></button>
+                          <button class="chip"><span class="in"><span class="n">6</span>Loan payments</span></button>
+                          <button class="chip"><span class="in"><span class="n">6</span>Transfer out</span></button>
+                          <button class="chip"><span class="in"><span class="n">3</span>Transfer in</span></button>
+                          <button class="chip"><span class="in"><span class="n">3</span>Merchandise</span></button>
+                          <button class="chip"><span class="in"><span class="n">3</span>Rent &amp; utilities</span></button>
+                          <button class="chip"><span class="in"><span class="n">3</span>Personal care</span></button>
+                        </div>
+                      </div>
+
+                      <div class="rail-sec">
+                        <div class="rail-head"><span class="rail-title">Time range</span></div>
+                        <div class="range" data-select="one">
+                          <div class="opt">This <i class="tok">month <svg><use href="#i-caret"/></svg></i></div>
+                          <div class="opt">Last <i class="tok fix">3 <svg><use href="#i-caret"/></svg></i> <i class="tok">months <svg><use href="#i-caret"/></svg></i></div>
+                          <div class="opt dead">Between <i class="tok">Jun 1 <svg><use href="#i-caret"/></svg></i> and <i class="tok">Aug 19 <svg><use href="#i-caret"/></svg></i></div>
+                          <div class="opt on">All time</div>
+                        </div>
+                      </div>
+
+                    </aside>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+            <div class="n-item drop">
+              <div class="n-t">The band</div>
+              <div class="n-d">On the phone the filter scrolls away and comes back as a summary strip you tap to get back to it. Here it has a column of its own, so what it is set to is never something the list has to say on its behalf. The band is a phone control and should stay one.</div>
+            </div>
+            <div class="n-item drop">
+              <div class="n-t">Clear</div>
+              <div class="n-d">Every chip and every range option already says whether it is on. A button whose only job is to put them all back is one more thing on a page that has no other button — and the range's own “All time” is the clear.</div>
+            </div>
+            <div class="n-item add">
+              <div class="n-t">A hero on the Ledger</div>
+              <div class="n-d">With the filter always on screen, the top of the list has to say what the filter comes to — otherwise the answer to “what did I spend on food this year” is a list you have to add up. <code>ViewLedger</code> needs the four fields <code>ViewRecurring</code> already has: a label, a figure, and the two flows.</div>
+            </div>
+            <div class="n-item add">
+              <div class="n-t">Two more columns</div>
+              <div class="n-d">Category and account each get a column instead of being a subtitle under the merchant, so the eye can run down one of them without reading the others. The account is the new field on <code>ViewTxRow</code>; the category is already there.</div>
+            </div>
+            <div class="n-item ask">
+              <div class="n-t">The filter goes by too</div>
+              <div class="n-d">One scroller means that three months down the list the rail is a screen behind you, which is the thing the phone's band is for. If a band ever comes back here it belongs at the top of the rail's column and not over the list — but the honest first answer is that a filter you set once and read down from may not need one.</div>
+            </div>
+            <div class="n-item">
+              <div class="n-t">The day heading still pins</div>
+              <div class="n-d">The same <code>position: sticky</code> the phone uses, and the only thing on the page that moves while you scroll. The rule belongs to the row above it, so a pinned heading does not drag a second line up with it.</div>
+            </div>
+            <div class="n-item">
+              <div class="n-t">A bug the narrow rail found</div>
+              <div class="n-d">The chip packer sorted its lines by the widest chip on each, meaning to put the fullest line at the top. The cheapest partition puts the <em>widest</em> chip on the <em>emptiest</em> line, so at 300px it hoisted one lonely chip above four full lines. It sorts by line span now — <code>shared/controls.js</code>, and the phone's two copies want the same fix.</div>
+            </div>
+            <div class="n-item ask">
+              <div class="n-t">Nine chips, or sixteen?</div>
+              <div class="n-d"><code>ViewFilter</code> sends all sixteen categories with their live counts. Nine fill five lines of a 300px rail; sixteen would fill nine. Either the rail is wider than the sidebar, or the empty ones stay collapsed until you ask.</div>
+            </div>
+      </div>
+    </div>
+
+    <div class="pair-body">
+      <div class="col">
+        <div class="col-label">Two categories, and scrolled — the day heading pinned</div>
+        <div class="window">
+          <div class="window-bar">
+            <i></i><i></i><i></i>
+            <span class="window-url">meridian.app/ledger</span>
+          </div>
+          <div class="viewport">
+            <div class="shell ui">
+              <aside class="sidebar">
+                <div class="brand">
+                  <svg class="brand-mark" viewBox="0 0 200 200" fill="none" stroke="currentColor"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><defs><clipPath id="meridian-globe-clip"><circle cx="100" cy="100" r="93"/></clipPath></defs><g clip-path="url(#meridian-globe-clip)"><g stroke-width="14"><path d="M 181.753,73.308 C 171.596,42.2,126.76,28.932,81.61,43.674 C 36.459,58.415,8.09,95.584,18.247,126.692"/><path d="M 18.247,126.692 C 8.09,95.584,36.459,58.415,81.61,43.674 C 126.76,28.932,171.596,42.2,181.753,73.308"/><path d="M 118.172,15.942 C 108.574,13.867,92.658,49.819,82.622,96.243 C 72.586,142.667,72.23,181.983,81.828,184.058"/><path d="M 81.828,184.058 C 72.23,181.983,72.586,142.667,82.622,96.243 C 92.658,49.819,108.574,13.867,118.172,15.942"/><path d="M 14,100 C 14,133.585,52.504,160.811,100,160.811 C 147.496,160.811,186,133.585,186,100"/><path d="M 100,14 C 66.415,14,39.189,33.252,39.189,57 C 39.189,80.748,66.415,100,100,100 C 133.585,100,160.811,80.748,160.811,57 C 160.811,33.252,133.585,14,100,14"/></g><g stroke-width="14"><path d="M 147.342,171.797 C 166.464,159.188,160.77,116.822,134.624,77.17 C 108.477,37.517,71.78,15.595,52.658,28.203"/><path d="M 52.658,28.203 C 71.78,15.595,108.477,37.517,134.624,77.17 C 160.77,116.822,166.464,159.188,147.342,171.797"/></g></g><circle cx="100" cy="100" r="86" stroke-width="14"/></svg>
+                  <span>Meridian</span>
+                </div>
+
+                <nav class="nav">
+                  <a class="on" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-ledger"/></svg>Ledger</a>
+                  <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-recurring"/></svg>Recurring</a>
+                  <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-balances"/></svg>Balances</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-home"/></svg>Home</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-portfolio"/></svg>Portfolios</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-markets"/></svg>Markets</a>
+                </nav>
+
+                <div class="sidebar-foot">
+                  <nav class="nav">
+                    <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-settings"/></svg>Settings</a>
+                  </nav>
+                  <div class="account">
+                    <div class="avatar"><svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="av" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--violet-400)"/><stop offset="100%" stop-color="var(--violet-700)"/></linearGradient></defs><rect width="40" height="40" fill="url(#av)"/><circle cx="20" cy="14.8" r="7.2" fill="var(--bg)" opacity="0.34"/><path d="M4.6 40c0-8.6 6.9-13.6 15.4-13.6S35.4 31.4 35.4 40z" fill="var(--bg)" opacity="0.34"/></svg></div>
+                    <div class="account-id">
+                      <div class="account-name">Gaetan Almela</div>
+                      <div class="account-meta"><span class="status-dot"></span>4 connections live</div>
+                    </div>
+                    <span class="more"><svg viewBox="0 0 24 24"><use href="#i-updown"/></svg></span>
+                  </div>
+                </div>
+              </aside>
+
+              <div class="main" data-scrolled="430">
+                <div class="content">
+                  <div class="searchrow">
+                    <div class="search dead">
+                      <svg viewBox="0 0 24 24"><use href="#i-search"/></svg>
+                      <span class="placeholder">Search merchants, accounts, streams…</span>
+                      <span class="kbd">⌘K</span>
+                    </div>
+                  </div>
+
+                  <div class="page">
+                    <div class="page-col">
+                      <div class="hero">
+                        <div class="k">All time · Food &amp; drink, Travel · 21 transactions</div>
+                        <div class="v num">−$1,284.31</div>
+                        <div class="diff"><span class="in"><b class="num">$500.00</b>in</span><span class="out"><b class="num">$1,784.31</b>out</span></div>
+                      </div>
+                      <div class="list">
+                        <div class="month">August 2026</div>
+                        <div class="day"><span>Mon, Aug 10</span><span class="sum num">+$500.00</span></div>
+                        <div class="tx"><span class="mark">UA</span><span class="tx-name">United Airlines</span><span class="tx-cat"><span class="t">Travel</span></span><span class="tx-acct">Amex Gold ·2004</span><span class="tx-amt num up">+$500.00</span></div>
+                        <div class="day"><span>Sun, Aug 9</span><span class="sum num">−$16.33</span></div>
+                        <div class="tx"><span class="mark">MC</span><span class="tx-name">McDonald's</span><span class="tx-cat"><span class="t">Food &amp; drink</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$12.00</span></div>
+                        <div class="tx"><span class="mark">SB</span><span class="tx-name">Starbucks</span><span class="tx-cat"><span class="t">Food &amp; drink</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$4.33</span></div>
+                        <div class="day"><span>Thu, Aug 6</span><span class="sum num">−$500.00</span></div>
+                        <div class="tx"><span class="mark">TE</span><span class="tx-name">Tectra Inc</span><span class="tx-cat"><span class="t">Food &amp; drink</span></span><span class="tx-acct">Citi Checking ·4021</span><span class="tx-amt num">−$500.00</span></div>
+                        <div class="day"><span>Tue, Aug 4</span><span class="sum num">−$89.40</span></div>
+                        <div class="tx"><span class="mark">SP</span><span class="tx-name">SparkFun</span><span class="tx-cat"><span class="t">Food &amp; drink</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$89.40</span></div>
+                        <div class="month">July 2026</div>
+                        <div class="day"><span>Wed, Jul 29</span><span class="sum num">−$12.00</span></div>
+                        <div class="tx"><span class="mark">MC</span><span class="tx-name">McDonald's</span><span class="tx-cat"><span class="t">Food &amp; drink</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$12.00</span></div>
+                        <div class="day"><span>Sat, Jul 25</span><span class="sum num">−$500.00</span></div>
+                        <div class="tx"><span class="mark">UA</span><span class="tx-name">United Airlines</span><span class="tx-cat"><span class="t">Travel</span></span><span class="tx-acct">Amex Gold ·2004</span><span class="tx-amt num">−$500.00</span></div>
+                        <div class="day"><span>Fri, Jul 24</span><span class="sum num">−$4.33</span></div>
+                        <div class="tx"><span class="mark">SB</span><span class="tx-name">Starbucks</span><span class="tx-cat"><span class="t">Food &amp; drink</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$4.33</span></div>
+                        <div class="day"><span>Tue, Jul 21</span><span class="sum num">−$89.40</span></div>
+                        <div class="tx"><span class="mark">TE</span><span class="tx-name">Tectra Inc</span><span class="tx-cat"><span class="t">Food &amp; drink</span></span><span class="tx-acct">Citi Checking ·4021</span><span class="tx-amt num">−$89.40</span></div>
+                        <div class="month">June 2026</div>
+                        <div class="day"><span>Mon, Jun 29</span><span class="sum num">−$12.00</span></div>
+                        <div class="tx"><span class="mark">MC</span><span class="tx-name">McDonald's</span><span class="tx-cat"><span class="t">Food &amp; drink</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$12.00</span></div>
+                        <div class="day"><span>Thu, Jun 25</span><span class="sum num">−$500.00</span></div>
+                        <div class="tx"><span class="mark">TE</span><span class="tx-name">Tectra Inc</span><span class="tx-cat"><span class="t">Food &amp; drink</span></span><span class="tx-acct">Citi Checking ·4021</span><span class="tx-amt num">−$500.00</span></div>
+                        <div class="day"><span>Mon, Jun 15</span><span class="sum num">−$4.33</span></div>
+                        <div class="tx"><span class="mark">SB</span><span class="tx-name">Starbucks</span><span class="tx-cat"><span class="t">Food &amp; drink</span></span><span class="tx-acct">Citi Double Cash ·1177</span><span class="tx-amt num">−$4.33</span></div>
+                      </div>
+                    </div>
+
+                    <aside class="rail">
+                      <div class="rail-sec">
+                        <div class="rail-head"><span class="rail-title">Categories</span></div>
+                        <div data-select="many" data-pack>
+                          <button class="chip"><span class="in"><span class="n">9</span>Transportation</span></button>
+                          <button class="chip on"><span class="in"><span class="n">9</span>Food &amp; drink</span></button>
+                          <button class="chip on"><span class="in"><span class="n">6</span>Travel</span></button>
+                          <button class="chip"><span class="in"><span class="n">6</span>Loan payments</span></button>
+                          <button class="chip"><span class="in"><span class="n">6</span>Transfer out</span></button>
+                          <button class="chip"><span class="in"><span class="n">3</span>Transfer in</span></button>
+                          <button class="chip"><span class="in"><span class="n">3</span>Merchandise</span></button>
+                          <button class="chip"><span class="in"><span class="n">3</span>Rent &amp; utilities</span></button>
+                          <button class="chip"><span class="in"><span class="n">3</span>Personal care</span></button>
+                        </div>
+                      </div>
+
+                      <div class="rail-sec">
+                        <div class="rail-head"><span class="rail-title">Time range</span></div>
+                        <div class="range" data-select="one">
+                          <div class="opt">This <i class="tok">month <svg><use href="#i-caret"/></svg></i></div>
+                          <div class="opt">Last <i class="tok fix">3 <svg><use href="#i-caret"/></svg></i> <i class="tok">months <svg><use href="#i-caret"/></svg></i></div>
+                          <div class="opt dead">Between <i class="tok">Jun 1 <svg><use href="#i-caret"/></svg></i> and <i class="tok">Aug 19 <svg><use href="#i-caret"/></svg></i></div>
+                          <div class="opt on">All time</div>
+                        </div>
+                      </div>
+
+                    </aside>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pair" id="recurring">
+    <div class="pair-head">
+      <h2>Recurring</h2>
+      <p>
+        The split is the page, and the calendar is the control beside it: a
+        whole month at once, centred between two arrows, no columns cut off at
+        the edges and no swipe. Pick a day and what landed on it appears under
+        the month, beside the streams it belongs to.
+      </p>
+    </div>
+
+    <div class="pair-body">
+      <div class="col">
+        <div class="col-label">Aug 10 picked</div>
+        <div class="window">
+          <div class="window-bar">
+            <i></i><i></i><i></i>
+            <span class="window-url">meridian.app/recurring</span>
+          </div>
+          <div class="viewport">
+            <div class="shell ui">
+              <aside class="sidebar">
+                <div class="brand">
+                  <svg class="brand-mark" viewBox="0 0 200 200" fill="none" stroke="currentColor"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><defs><clipPath id="meridian-globe-clip"><circle cx="100" cy="100" r="93"/></clipPath></defs><g clip-path="url(#meridian-globe-clip)"><g stroke-width="14"><path d="M 181.753,73.308 C 171.596,42.2,126.76,28.932,81.61,43.674 C 36.459,58.415,8.09,95.584,18.247,126.692"/><path d="M 18.247,126.692 C 8.09,95.584,36.459,58.415,81.61,43.674 C 126.76,28.932,171.596,42.2,181.753,73.308"/><path d="M 118.172,15.942 C 108.574,13.867,92.658,49.819,82.622,96.243 C 72.586,142.667,72.23,181.983,81.828,184.058"/><path d="M 81.828,184.058 C 72.23,181.983,72.586,142.667,82.622,96.243 C 92.658,49.819,108.574,13.867,118.172,15.942"/><path d="M 14,100 C 14,133.585,52.504,160.811,100,160.811 C 147.496,160.811,186,133.585,186,100"/><path d="M 100,14 C 66.415,14,39.189,33.252,39.189,57 C 39.189,80.748,66.415,100,100,100 C 133.585,100,160.811,80.748,160.811,57 C 160.811,33.252,133.585,14,100,14"/></g><g stroke-width="14"><path d="M 147.342,171.797 C 166.464,159.188,160.77,116.822,134.624,77.17 C 108.477,37.517,71.78,15.595,52.658,28.203"/><path d="M 52.658,28.203 C 71.78,15.595,108.477,37.517,134.624,77.17 C 160.77,116.822,166.464,159.188,147.342,171.797"/></g></g><circle cx="100" cy="100" r="86" stroke-width="14"/></svg>
+                  <span>Meridian</span>
+                </div>
+
+                <nav class="nav">
+                  <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-ledger"/></svg>Ledger</a>
+                  <a class="on" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-recurring"/></svg>Recurring</a>
+                  <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-balances"/></svg>Balances</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-home"/></svg>Home</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-portfolio"/></svg>Portfolios</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-markets"/></svg>Markets</a>
+                </nav>
+
+                <div class="sidebar-foot">
+                  <nav class="nav">
+                    <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-settings"/></svg>Settings</a>
+                  </nav>
+                  <div class="account">
+                    <div class="avatar"><svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="av" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--violet-400)"/><stop offset="100%" stop-color="var(--violet-700)"/></linearGradient></defs><rect width="40" height="40" fill="url(#av)"/><circle cx="20" cy="14.8" r="7.2" fill="var(--bg)" opacity="0.34"/><path d="M4.6 40c0-8.6 6.9-13.6 15.4-13.6S35.4 31.4 35.4 40z" fill="var(--bg)" opacity="0.34"/></svg></div>
+                    <div class="account-id">
+                      <div class="account-name">Gaetan Almela</div>
+                      <div class="account-meta"><span class="status-dot"></span>4 connections live</div>
+                    </div>
+                    <span class="more"><svg viewBox="0 0 24 24"><use href="#i-updown"/></svg></span>
+                  </div>
+                </div>
+              </aside>
+
+              <div class="main">
+                <div class="content">
+                  <div class="searchrow">
+                    <div class="search dead">
+                      <svg viewBox="0 0 24 24"><use href="#i-search"/></svg>
+                      <span class="placeholder">Search merchants, accounts, streams…</span>
+                      <span class="kbd">⌘K</span>
+                    </div>
+                  </div>
+
+                  <div class="page">
+                    <div class="page-col">
+                      <div class="hero">
+                        <div class="k">Every month</div>
+                        <div class="v num">−$3,767.18</div>
+                        <div class="diff"><span class="in"><b class="num">$4.22</b>in</span><span class="out"><b class="num">$3,771.40</b>out</span></div>
+                      </div>
+                      <div class="sec">
+                        <div class="sec-title"><span>Where it goes</span><span class="v num">−$3,771.40</span></div>
+                        <div class="split-row"><span class="nm">Transfer out</span><span class="amt num">$2,078.50</span><span class="track"><i style="width:55.1%"></i></span></div>
+                        <div class="split-row"><span class="nm">Food &amp; drink</span><span class="amt num">$589.40</span><span class="track"><i style="width:15.6%"></i></span></div>
+                        <div class="split-row"><span class="nm">Merchandise</span><span class="amt num">$500.00</span><span class="track"><i style="width:13.3%"></i></span></div>
+                        <div class="split-row"><span class="nm">Travel</span><span class="amt num">$500.00</span><span class="track"><i style="width:13.3%"></i></span></div>
+                        <div class="split-row"><span class="nm">Personal care</span><span class="amt num">$78.50</span><span class="track"><i style="width:2.1%"></i></span></div>
+                        <div class="split-row"><span class="nm">Loan payments</span><span class="amt num">$25.00</span><span class="track"><i style="width:0.7%"></i></span></div>
+                      </div>
+                      <div class="sec">
+                        <div class="sec-title"><span>Every stream</span><span class="v num">8</span></div>
+                        <div class="rec-head"><span class="nm">Transfer out</span><span class="sum">1 stream</span></div>
+                        <div class="rec"><span class="mark">AP</span><span class="rec-name">AUTOMATIC PAYMENT - THANK</span><span class="rec-freq">Monthly</span><span class="rec-when soon">next Aug 22 · in 3 days</span><span class="rec-amt num">−$2,078.50</span></div>
+                        <div class="rec-head"><span class="nm">Food &amp; drink</span><span class="sum">2 streams</span></div>
+                        <div class="rec"><span class="mark">TE</span><span class="rec-name">Tectra Inc</span><span class="rec-freq">Monthly</span><span class="rec-when">next Sep 12</span><span class="rec-amt num">−$500.00</span></div>
+                        <div class="rec"><span class="mark">MC</span><span class="rec-name">McDonald's</span><span class="rec-freq">Weekly</span><span class="rec-when soon">next Aug 21 · in 2 days</span><span class="rec-amt num">−$89.40</span></div>
+                        <div class="rec-head"><span class="nm">Merchandise</span><span class="sum">1 stream</span></div>
+                        <div class="rec"><span class="mark">MB</span><span class="rec-name">Madison Bicycle Shop</span><span class="rec-freq">Monthly</span><span class="rec-when">next Sep 7</span><span class="rec-amt num">−$500.00</span></div>
+                        <div class="rec-head"><span class="nm">Travel</span><span class="sum">1 stream</span></div>
+                        <div class="rec"><span class="mark">UA</span><span class="rec-name">United Airlines</span><span class="rec-freq">Monthly</span><span class="rec-when">next Sep 10</span><span class="rec-amt num">−$500.00</span></div>
+                        <div class="rec-head"><span class="nm">Personal care</span><span class="sum">1 stream</span></div>
+                        <div class="rec"><span class="mark">TO</span><span class="rec-name">Touchstone Climbing</span><span class="rec-freq">Monthly</span><span class="rec-when">next Aug 30</span><span class="rec-amt num">−$78.50</span></div>
+                        <div class="rec-head"><span class="nm">Loan payments</span><span class="sum">1 stream</span></div>
+                        <div class="rec"><span class="mark">CC</span><span class="rec-name">CREDIT CARD 3333 PAYMENT</span><span class="rec-freq">Monthly</span><span class="rec-when">next Sep 12</span><span class="rec-amt num">−$25.00</span></div>
+                        <div class="rec-head"><span class="nm">Transfer in</span><span class="sum">1 stream</span></div>
+                        <div class="rec"><span class="mark">IN</span><span class="rec-name">INTRST PYMNT</span><span class="rec-freq">Monthly</span><span class="rec-when">next Sep 3</span><span class="rec-amt num">+$4.22</span></div>
+                      </div>
+                    </div>
+
+                    <aside class="rail">
+                      <div class="rail-sec">
+                        <div class="rail-head cal-head">
+                          <button class="btn plain"><svg><use href="#i-prev"/></svg></button>
+                          <span class="cal-month">August 2026</span>
+                          <button class="btn plain"><svg><use href="#i-next"/></svg></button>
+                        </div>
+                        <div class="cal-grid" data-select="one">
+                          <div class="cal-wd">M</div>
+                          <div class="cal-wd">T</div>
+                          <div class="cal-wd">W</div>
+                          <div class="cal-wd">T</div>
+                          <div class="cal-wd">F</div>
+                          <div class="cal-wd">S</div>
+                          <div class="cal-wd">S</div>
+                          <div class="cal-day outside"><span class="n">27</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">28</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">29</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">30</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">31</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">1</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">2</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">3</span><span class="marks"><i></i></span></div>
+                          <div class="cal-day"><span class="n">4</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">5</span><span class="marks"><i></i></span></div>
+                          <div class="cal-day"><span class="n">6</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">7</span><span class="marks"><i></i></span></div>
+                          <div class="cal-day"><span class="n">8</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">9</span><span class="marks"></span></div>
+                          <div class="cal-day picked"><span class="n">10</span><span class="marks"><i></i><i></i></span></div>
+                          <div class="cal-day"><span class="n">11</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">12</span><span class="marks"><i></i></span></div>
+                          <div class="cal-day"><span class="n">13</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">14</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">15</span><span class="marks"><i></i></span></div>
+                          <div class="cal-day"><span class="n">16</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">17</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">18</span><span class="marks"><i></i></span></div>
+                          <div class="cal-day today"><span class="n">19</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">20</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">21</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">22</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">23</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">24</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">25</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">26</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">27</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">28</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">29</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">30</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">31</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">1</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">2</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">3</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">4</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">5</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">6</span><span class="marks"></span></div>
+                        </div>
+
+                        <div class="daycard">
+                          <div class="daycard-head"><span>Mon, Aug 10</span><span class="t">−$578.50</span></div>
+                          <div class="dayrow"><span class="nm">United Airlines</span><span class="amt num">−$500.00</span></div>
+                          <div class="dayrow"><span class="nm">Touchstone Climbing</span><span class="amt num">−$78.50</span></div>
+                        </div>
+                      </div>
+                    </aside>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+            <div class="n-item drop">
+              <div class="n-t">The swipe, and the columns either side</div>
+              <div class="n-d">Months run sideways on the phone because one month is all that fits, and the half-column peeking at each edge is what says so. A whole month fits the rail, so the month sits centred with an arrow on each side and nothing is cut off at the glass. The arrows are the plain button: framed, they would be two controls flanking a label rather than one line you step along.</div>
+            </div>
+            <div class="n-item">
+              <div class="n-t">One scroller, not two</div>
+              <div class="n-d">The rail moves with the page rather than holding still in it. A rail pinned under the same pointer as the page is two scroll areas and no way to tell which one a wheel will turn — we have had that fight already.</div>
+            </div>
+            <div class="n-item">
+              <div class="n-t">The stream row gets its parts back</div>
+              <div class="n-d"><code>frequency</code>, <code>when</code> and <code>soon</code> are already three fields on <code>ViewStreamRow</code>; the phone joins them into <code>sub</code> because it has one line. The web prints all three and needs nothing new.</div>
+            </div>
+            <div class="n-item">
+              <div class="n-t">Transfer in is in the list, not in the split</div>
+              <div class="n-d">“Where it goes” is where it goes. The one stream that brings money in is in the list below, in its own group, where it does not have to be a negative slice of a positive bar.</div>
+            </div>
+            <div class="n-item ask">
+              <div class="n-t">The marks are still mute</div>
+              <div class="n-d">A dot says a stream lands, never which. That is right on the phone, where the split is a screenful above. Here the split is beside it — worth asking whether hovering a day should light its row in the split.</div>
+            </div>
+      </div>
+    </div>
+
+    <div class="pair-body">
+      <div class="col">
+        <div class="col-label">Scrolled — every stream, grouped the way the split is</div>
+        <div class="window">
+          <div class="window-bar">
+            <i></i><i></i><i></i>
+            <span class="window-url">meridian.app/recurring</span>
+          </div>
+          <div class="viewport">
+            <div class="shell ui">
+              <aside class="sidebar">
+                <div class="brand">
+                  <svg class="brand-mark" viewBox="0 0 200 200" fill="none" stroke="currentColor"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><defs><clipPath id="meridian-globe-clip"><circle cx="100" cy="100" r="93"/></clipPath></defs><g clip-path="url(#meridian-globe-clip)"><g stroke-width="14"><path d="M 181.753,73.308 C 171.596,42.2,126.76,28.932,81.61,43.674 C 36.459,58.415,8.09,95.584,18.247,126.692"/><path d="M 18.247,126.692 C 8.09,95.584,36.459,58.415,81.61,43.674 C 126.76,28.932,171.596,42.2,181.753,73.308"/><path d="M 118.172,15.942 C 108.574,13.867,92.658,49.819,82.622,96.243 C 72.586,142.667,72.23,181.983,81.828,184.058"/><path d="M 81.828,184.058 C 72.23,181.983,72.586,142.667,82.622,96.243 C 92.658,49.819,108.574,13.867,118.172,15.942"/><path d="M 14,100 C 14,133.585,52.504,160.811,100,160.811 C 147.496,160.811,186,133.585,186,100"/><path d="M 100,14 C 66.415,14,39.189,33.252,39.189,57 C 39.189,80.748,66.415,100,100,100 C 133.585,100,160.811,80.748,160.811,57 C 160.811,33.252,133.585,14,100,14"/></g><g stroke-width="14"><path d="M 147.342,171.797 C 166.464,159.188,160.77,116.822,134.624,77.17 C 108.477,37.517,71.78,15.595,52.658,28.203"/><path d="M 52.658,28.203 C 71.78,15.595,108.477,37.517,134.624,77.17 C 160.77,116.822,166.464,159.188,147.342,171.797"/></g></g><circle cx="100" cy="100" r="86" stroke-width="14"/></svg>
+                  <span>Meridian</span>
+                </div>
+
+                <nav class="nav">
+                  <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-ledger"/></svg>Ledger</a>
+                  <a class="on" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-recurring"/></svg>Recurring</a>
+                  <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-balances"/></svg>Balances</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-home"/></svg>Home</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-portfolio"/></svg>Portfolios</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-markets"/></svg>Markets</a>
+                </nav>
+
+                <div class="sidebar-foot">
+                  <nav class="nav">
+                    <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-settings"/></svg>Settings</a>
+                  </nav>
+                  <div class="account">
+                    <div class="avatar"><svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="av" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--violet-400)"/><stop offset="100%" stop-color="var(--violet-700)"/></linearGradient></defs><rect width="40" height="40" fill="url(#av)"/><circle cx="20" cy="14.8" r="7.2" fill="var(--bg)" opacity="0.34"/><path d="M4.6 40c0-8.6 6.9-13.6 15.4-13.6S35.4 31.4 35.4 40z" fill="var(--bg)" opacity="0.34"/></svg></div>
+                    <div class="account-id">
+                      <div class="account-name">Gaetan Almela</div>
+                      <div class="account-meta"><span class="status-dot"></span>4 connections live</div>
+                    </div>
+                    <span class="more"><svg viewBox="0 0 24 24"><use href="#i-updown"/></svg></span>
+                  </div>
+                </div>
+              </aside>
+
+              <div class="main" data-scrolled="700">
+                <div class="content">
+                  <div class="searchrow">
+                    <div class="search dead">
+                      <svg viewBox="0 0 24 24"><use href="#i-search"/></svg>
+                      <span class="placeholder">Search merchants, accounts, streams…</span>
+                      <span class="kbd">⌘K</span>
+                    </div>
+                  </div>
+
+                  <div class="page">
+                    <div class="page-col">
+                      <div class="hero">
+                        <div class="k">Every month</div>
+                        <div class="v num">−$3,767.18</div>
+                        <div class="diff"><span class="in"><b class="num">$4.22</b>in</span><span class="out"><b class="num">$3,771.40</b>out</span></div>
+                      </div>
+                      <div class="sec">
+                        <div class="sec-title"><span>Where it goes</span><span class="v num">−$3,771.40</span></div>
+                        <div class="split-row"><span class="nm">Transfer out</span><span class="amt num">$2,078.50</span><span class="track"><i style="width:55.1%"></i></span></div>
+                        <div class="split-row"><span class="nm">Food &amp; drink</span><span class="amt num">$589.40</span><span class="track"><i style="width:15.6%"></i></span></div>
+                        <div class="split-row"><span class="nm">Merchandise</span><span class="amt num">$500.00</span><span class="track"><i style="width:13.3%"></i></span></div>
+                        <div class="split-row"><span class="nm">Travel</span><span class="amt num">$500.00</span><span class="track"><i style="width:13.3%"></i></span></div>
+                        <div class="split-row"><span class="nm">Personal care</span><span class="amt num">$78.50</span><span class="track"><i style="width:2.1%"></i></span></div>
+                        <div class="split-row"><span class="nm">Loan payments</span><span class="amt num">$25.00</span><span class="track"><i style="width:0.7%"></i></span></div>
+                      </div>
+                      <div class="sec">
+                        <div class="sec-title"><span>Every stream</span><span class="v num">8</span></div>
+                        <div class="rec-head"><span class="nm">Transfer out</span><span class="sum">1 stream</span></div>
+                        <div class="rec"><span class="mark">AP</span><span class="rec-name">AUTOMATIC PAYMENT - THANK</span><span class="rec-freq">Monthly</span><span class="rec-when soon">next Aug 22 · in 3 days</span><span class="rec-amt num">−$2,078.50</span></div>
+                        <div class="rec-head"><span class="nm">Food &amp; drink</span><span class="sum">2 streams</span></div>
+                        <div class="rec"><span class="mark">TE</span><span class="rec-name">Tectra Inc</span><span class="rec-freq">Monthly</span><span class="rec-when">next Sep 12</span><span class="rec-amt num">−$500.00</span></div>
+                        <div class="rec"><span class="mark">MC</span><span class="rec-name">McDonald's</span><span class="rec-freq">Weekly</span><span class="rec-when soon">next Aug 21 · in 2 days</span><span class="rec-amt num">−$89.40</span></div>
+                        <div class="rec-head"><span class="nm">Merchandise</span><span class="sum">1 stream</span></div>
+                        <div class="rec"><span class="mark">MB</span><span class="rec-name">Madison Bicycle Shop</span><span class="rec-freq">Monthly</span><span class="rec-when">next Sep 7</span><span class="rec-amt num">−$500.00</span></div>
+                        <div class="rec-head"><span class="nm">Travel</span><span class="sum">1 stream</span></div>
+                        <div class="rec"><span class="mark">UA</span><span class="rec-name">United Airlines</span><span class="rec-freq">Monthly</span><span class="rec-when">next Sep 10</span><span class="rec-amt num">−$500.00</span></div>
+                        <div class="rec-head"><span class="nm">Personal care</span><span class="sum">1 stream</span></div>
+                        <div class="rec"><span class="mark">TO</span><span class="rec-name">Touchstone Climbing</span><span class="rec-freq">Monthly</span><span class="rec-when">next Aug 30</span><span class="rec-amt num">−$78.50</span></div>
+                        <div class="rec-head"><span class="nm">Loan payments</span><span class="sum">1 stream</span></div>
+                        <div class="rec"><span class="mark">CC</span><span class="rec-name">CREDIT CARD 3333 PAYMENT</span><span class="rec-freq">Monthly</span><span class="rec-when">next Sep 12</span><span class="rec-amt num">−$25.00</span></div>
+                        <div class="rec-head"><span class="nm">Transfer in</span><span class="sum">1 stream</span></div>
+                        <div class="rec"><span class="mark">IN</span><span class="rec-name">INTRST PYMNT</span><span class="rec-freq">Monthly</span><span class="rec-when">next Sep 3</span><span class="rec-amt num">+$4.22</span></div>
+                      </div>
+                    </div>
+
+                    <aside class="rail">
+                      <div class="rail-sec">
+                        <div class="rail-head cal-head">
+                          <button class="btn plain"><svg><use href="#i-prev"/></svg></button>
+                          <span class="cal-month">August 2026</span>
+                          <button class="btn plain"><svg><use href="#i-next"/></svg></button>
+                        </div>
+                        <div class="cal-grid" data-select="one">
+                          <div class="cal-wd">M</div>
+                          <div class="cal-wd">T</div>
+                          <div class="cal-wd">W</div>
+                          <div class="cal-wd">T</div>
+                          <div class="cal-wd">F</div>
+                          <div class="cal-wd">S</div>
+                          <div class="cal-wd">S</div>
+                          <div class="cal-day outside"><span class="n">27</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">28</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">29</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">30</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">31</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">1</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">2</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">3</span><span class="marks"><i></i></span></div>
+                          <div class="cal-day"><span class="n">4</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">5</span><span class="marks"><i></i></span></div>
+                          <div class="cal-day"><span class="n">6</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">7</span><span class="marks"><i></i></span></div>
+                          <div class="cal-day"><span class="n">8</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">9</span><span class="marks"></span></div>
+                          <div class="cal-day picked"><span class="n">10</span><span class="marks"><i></i><i></i></span></div>
+                          <div class="cal-day"><span class="n">11</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">12</span><span class="marks"><i></i></span></div>
+                          <div class="cal-day"><span class="n">13</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">14</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">15</span><span class="marks"><i></i></span></div>
+                          <div class="cal-day"><span class="n">16</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">17</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">18</span><span class="marks"><i></i></span></div>
+                          <div class="cal-day today"><span class="n">19</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">20</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">21</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">22</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">23</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">24</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">25</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">26</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">27</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">28</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">29</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">30</span><span class="marks"></span></div>
+                          <div class="cal-day"><span class="n">31</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">1</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">2</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">3</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">4</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">5</span><span class="marks"></span></div>
+                          <div class="cal-day outside"><span class="n">6</span><span class="marks"></span></div>
+                        </div>
+
+                        <div class="daycard">
+                          <div class="daycard-head"><span>Mon, Aug 10</span><span class="t">−$578.50</span></div>
+                          <div class="dayrow"><span class="nm">United Airlines</span><span class="amt num">−$500.00</span></div>
+                          <div class="dayrow"><span class="nm">Touchstone Climbing</span><span class="amt num">−$78.50</span></div>
+                        </div>
+                      </div>
+                    </aside>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pair" id="balances">
+    <div class="pair-head">
+      <h2>Balances</h2>
+      <p>
+        The blocks are the phone's, with the account subtitle opened out into
+        the three columns it was assembled from. The rail answers the question
+        a page of six accounts raises and the blocks cannot: how much of what
+        you hold each bank is holding.
+      </p>
+    </div>
+
+    <div class="pair-body">
+      <div class="col">
+        <div class="col-label">Held</div>
+        <div class="window">
+          <div class="window-bar">
+            <i></i><i></i><i></i>
+            <span class="window-url">meridian.app/balances</span>
+          </div>
+          <div class="viewport">
+            <div class="shell ui">
+              <aside class="sidebar">
+                <div class="brand">
+                  <svg class="brand-mark" viewBox="0 0 200 200" fill="none" stroke="currentColor"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><defs><clipPath id="meridian-globe-clip"><circle cx="100" cy="100" r="93"/></clipPath></defs><g clip-path="url(#meridian-globe-clip)"><g stroke-width="14"><path d="M 181.753,73.308 C 171.596,42.2,126.76,28.932,81.61,43.674 C 36.459,58.415,8.09,95.584,18.247,126.692"/><path d="M 18.247,126.692 C 8.09,95.584,36.459,58.415,81.61,43.674 C 126.76,28.932,171.596,42.2,181.753,73.308"/><path d="M 118.172,15.942 C 108.574,13.867,92.658,49.819,82.622,96.243 C 72.586,142.667,72.23,181.983,81.828,184.058"/><path d="M 81.828,184.058 C 72.23,181.983,72.586,142.667,82.622,96.243 C 92.658,49.819,108.574,13.867,118.172,15.942"/><path d="M 14,100 C 14,133.585,52.504,160.811,100,160.811 C 147.496,160.811,186,133.585,186,100"/><path d="M 100,14 C 66.415,14,39.189,33.252,39.189,57 C 39.189,80.748,66.415,100,100,100 C 133.585,100,160.811,80.748,160.811,57 C 160.811,33.252,133.585,14,100,14"/></g><g stroke-width="14"><path d="M 147.342,171.797 C 166.464,159.188,160.77,116.822,134.624,77.17 C 108.477,37.517,71.78,15.595,52.658,28.203"/><path d="M 52.658,28.203 C 71.78,15.595,108.477,37.517,134.624,77.17 C 160.77,116.822,166.464,159.188,147.342,171.797"/></g></g><circle cx="100" cy="100" r="86" stroke-width="14"/></svg>
+                  <span>Meridian</span>
+                </div>
+
+                <nav class="nav">
+                  <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-ledger"/></svg>Ledger</a>
+                  <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-recurring"/></svg>Recurring</a>
+                  <a class="on" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-balances"/></svg>Balances</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-home"/></svg>Home</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-portfolio"/></svg>Portfolios</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-markets"/></svg>Markets</a>
+                </nav>
+
+                <div class="sidebar-foot">
+                  <nav class="nav">
+                    <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-settings"/></svg>Settings</a>
+                  </nav>
+                  <div class="account">
+                    <div class="avatar"><svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="av" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--violet-400)"/><stop offset="100%" stop-color="var(--violet-700)"/></linearGradient></defs><rect width="40" height="40" fill="url(#av)"/><circle cx="20" cy="14.8" r="7.2" fill="var(--bg)" opacity="0.34"/><path d="M4.6 40c0-8.6 6.9-13.6 15.4-13.6S35.4 31.4 35.4 40z" fill="var(--bg)" opacity="0.34"/></svg></div>
+                    <div class="account-id">
+                      <div class="account-name">Gaetan Almela</div>
+                      <div class="account-meta"><span class="status-dot"></span>4 connections live</div>
+                    </div>
+                    <span class="more"><svg viewBox="0 0 24 24"><use href="#i-updown"/></svg></span>
+                  </div>
+                </div>
+              </aside>
+
+              <div class="main">
+                <div class="content">
+                  <div class="searchrow">
+                    <div class="search dead">
+                      <svg viewBox="0 0 24 24"><use href="#i-search"/></svg>
+                      <span class="placeholder">Search merchants, accounts, streams…</span>
+                      <span class="kbd">⌘K</span>
+                    </div>
+                  </div>
+
+                  <div class="page">
+                    <div class="page-col">
+                      <div class="hero">
+                        <div class="hero-row">
+                          <div>
+                        <div class="k">Held</div>
+                        <div class="v num">$238,845.06</div>
+                          </div>
+                          <button class="btn primary dead"><svg><use href="#i-plus"/></svg>Add a bank</button>
+                        </div>
+                      </div>
+                      <div class="accounts">
+                        <div class="conn">
+                          <div class="conn-head"><span class="mark">CI</span><span class="conn-name">Citi</span></div>
+                          <div class="acct"><span class="acct-name">Citi Checking</span><span class="acct-kind">Checking ·4021</span><span class="acct-detail">$4,080.22 available</span><span class="acct-amt num">$4,180.22</span></div>
+                          <div class="acct"><span class="acct-name">Citi Accelerate Savings</span><span class="acct-kind">Savings ·9930</span><span class="acct-detail">4.10% APY</span><span class="acct-amt num">$22,500.00</span></div>
+                          <div class="conn-total"><span class="k">2 accounts held</span><span class="v num">$26,680.22</span></div>
+                        </div>
+                        <div class="conn">
+                          <div class="conn-head"><span class="mark">FI</span><span class="conn-name">Fidelity</span></div>
+                          <div class="acct"><span class="acct-name">Fidelity Brokerage</span><span class="acct-kind">Brokerage ·7742</span><span class="acct-detail"></span><span class="acct-amt num">$148,320.55</span></div>
+                          <div class="acct"><span class="acct-name">Fidelity Roth IRA</span><span class="acct-kind">Roth IRA ·3308</span><span class="acct-detail"></span><span class="acct-amt num">$61,904.18</span></div>
+                          <div class="conn-total"><span class="k">2 accounts held</span><span class="v num">$210,224.73</span></div>
+                        </div>
+                        <div class="conn">
+                          <div class="conn-head"><span class="mark">HS</span><span class="conn-name">Houndstooth Bank</span><button class="btn plain dead"><svg><use href="#i-ext"/></svg>Reconnect</button></div>
+                          <div class="acct"><span class="acct-name">Houndstooth Checking</span><span class="acct-kind">Checking ·6120</span><span class="acct-detail">last synced 6 days ago</span><span class="acct-amt num">$1,940.11</span></div>
+                          <div class="conn-total"><span class="k">1 account held</span><span class="v num">$1,940.11</span></div>
+                        </div>
+                      </div>
+                      <div class="sec">
+                        <div class="sec-title"><span>Owed</span><span class="v num down">−$3,090.95</span></div>
+                        <div class="conn">
+                          <div class="conn-head"><span class="mark">AX</span><span class="conn-name">American Express</span></div>
+                          <div class="acct"><span class="acct-name">Amex Gold</span><span class="acct-kind">Credit ·2004</span><span class="acct-detail">no preset limit</span><span class="acct-amt num">−$1,806.35</span></div>
+                          <div class="conn-total"><span class="k">1 account owed</span><span class="v num">−$1,806.35</span></div>
+                        </div>
+                        <div class="conn">
+                          <div class="conn-head"><span class="mark">CI</span><span class="conn-name">Citi</span></div>
+                          <div class="acct"><span class="acct-name">Citi Double Cash</span><span class="acct-kind">Credit ·1177</span><span class="acct-detail">$1,284.60 of $9,000.00 used</span><span class="acct-amt num">−$1,284.60</span></div>
+                          <div class="conn-total"><span class="k">1 account owed</span><span class="v num">−$1,284.60</span></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <aside class="rail">
+                      <div class="rail-sec">
+                        <div class="rail-head">
+                          <span class="rail-title">Where it sits</span>
+                          <span class="rail-title v">$238,845.06</span>
+                        </div>
+                        <div class="split-row"><span class="nm">Fidelity</span><span class="amt num">$210,224.73</span><span class="track"><i style="width:88.0%"></i></span></div>
+                        <div class="split-row"><span class="nm">Citi</span><span class="amt num">$26,680.22</span><span class="track"><i style="width:11.2%"></i></span></div>
+                        <div class="split-row"><span class="nm">Houndstooth Bank</span><span class="amt num">$1,940.11</span><span class="track"><i style="width:0.8%"></i></span></div>
+                      </div>
+
+                      <div class="rail-sec">
+                        <div class="rail-head">
+                          <span class="rail-title">Owed against it</span>
+                          <span class="rail-title v down">−$3,090.95</span>
+                        </div>
+                        <div class="split-row"><span class="nm">American Express</span><span class="amt num">$1,806.35</span><span class="track"><i style="width:58.4%"></i></span></div>
+                        <div class="split-row"><span class="nm">Citi</span><span class="amt num">$1,284.60</span><span class="track"><i style="width:41.6%"></i></span></div>
+                      </div>
+                    </aside>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+            <div class="n-item add">
+              <div class="n-t">The one violet button</div>
+              <div class="n-d">Adding a bank is the thing you come to this page to do, and Balances is the only one of the three with such a thing. Drawn dead until Plaid Link is wired, the same as Reconnect.</div>
+            </div>
+            <div class="n-item ask">
+              <div class="n-t">The subtitle wants to be columns</div>
+              <div class="n-d"><code>ViewAccountRow.subtitle</code> is one assembled sentence — “Checking ·4021 · $4,080.22 available” — which is right for one narrow line and wrong for a table. Two finished fields instead of one, <code>kind</code> and <code>detail</code>, and the phone joins them the way it already does.</div>
+            </div>
+            <div class="n-item add">
+              <div class="n-t">Where it sits</div>
+              <div class="n-d">The blocks down the page say what each bank holds. The rail says how much of your money each one <em>is</em>, which is the question a page of six accounts across four banks actually raises. It is the recurring split, reused.</div>
+            </div>
+            <div class="n-item">
+              <div class="n-t">Block totals stay grey</div>
+              <div class="n-d">Same as the phone: the account rows are the numbers, the block total is scaffolding, and the section heading is the only place on the page money takes a colour.</div>
+            </div>
+            <div class="n-item">
+              <div class="n-t">Citi is in both halves</div>
+              <div class="n-d">The current account is money you have and the card is money you owe, and they are one connection. Two blocks, one bank — and the rail says it twice too, for the same reason.</div>
+            </div>
+      </div>
+    </div>
+
+    <div class="pair-body">
+      <div class="col">
+        <div class="col-label">Scrolled to Owed</div>
+        <div class="window">
+          <div class="window-bar">
+            <i></i><i></i><i></i>
+            <span class="window-url">meridian.app/balances</span>
+          </div>
+          <div class="viewport">
+            <div class="shell ui">
+              <aside class="sidebar">
+                <div class="brand">
+                  <svg class="brand-mark" viewBox="0 0 200 200" fill="none" stroke="currentColor"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><defs><clipPath id="meridian-globe-clip"><circle cx="100" cy="100" r="93"/></clipPath></defs><g clip-path="url(#meridian-globe-clip)"><g stroke-width="14"><path d="M 181.753,73.308 C 171.596,42.2,126.76,28.932,81.61,43.674 C 36.459,58.415,8.09,95.584,18.247,126.692"/><path d="M 18.247,126.692 C 8.09,95.584,36.459,58.415,81.61,43.674 C 126.76,28.932,171.596,42.2,181.753,73.308"/><path d="M 118.172,15.942 C 108.574,13.867,92.658,49.819,82.622,96.243 C 72.586,142.667,72.23,181.983,81.828,184.058"/><path d="M 81.828,184.058 C 72.23,181.983,72.586,142.667,82.622,96.243 C 92.658,49.819,108.574,13.867,118.172,15.942"/><path d="M 14,100 C 14,133.585,52.504,160.811,100,160.811 C 147.496,160.811,186,133.585,186,100"/><path d="M 100,14 C 66.415,14,39.189,33.252,39.189,57 C 39.189,80.748,66.415,100,100,100 C 133.585,100,160.811,80.748,160.811,57 C 160.811,33.252,133.585,14,100,14"/></g><g stroke-width="14"><path d="M 147.342,171.797 C 166.464,159.188,160.77,116.822,134.624,77.17 C 108.477,37.517,71.78,15.595,52.658,28.203"/><path d="M 52.658,28.203 C 71.78,15.595,108.477,37.517,134.624,77.17 C 160.77,116.822,166.464,159.188,147.342,171.797"/></g></g><circle cx="100" cy="100" r="86" stroke-width="14"/></svg>
+                  <span>Meridian</span>
+                </div>
+
+                <nav class="nav">
+                  <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-ledger"/></svg>Ledger</a>
+                  <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-recurring"/></svg>Recurring</a>
+                  <a class="on" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-balances"/></svg>Balances</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-home"/></svg>Home</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-portfolio"/></svg>Portfolios</a>
+                  <a class="dead" href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-markets"/></svg>Markets</a>
+                </nav>
+
+                <div class="sidebar-foot">
+                  <nav class="nav">
+                    <a href="#"><svg class="icon" viewBox="0 0 24 24"><use href="#i-settings"/></svg>Settings</a>
+                  </nav>
+                  <div class="account">
+                    <div class="avatar"><svg viewBox="0 0 40 40" aria-hidden="true"><defs><linearGradient id="av" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--violet-400)"/><stop offset="100%" stop-color="var(--violet-700)"/></linearGradient></defs><rect width="40" height="40" fill="url(#av)"/><circle cx="20" cy="14.8" r="7.2" fill="var(--bg)" opacity="0.34"/><path d="M4.6 40c0-8.6 6.9-13.6 15.4-13.6S35.4 31.4 35.4 40z" fill="var(--bg)" opacity="0.34"/></svg></div>
+                    <div class="account-id">
+                      <div class="account-name">Gaetan Almela</div>
+                      <div class="account-meta"><span class="status-dot"></span>4 connections live</div>
+                    </div>
+                    <span class="more"><svg viewBox="0 0 24 24"><use href="#i-updown"/></svg></span>
+                  </div>
+                </div>
+              </aside>
+
+              <div class="main" data-scrolled="640">
+                <div class="content">
+                  <div class="searchrow">
+                    <div class="search dead">
+                      <svg viewBox="0 0 24 24"><use href="#i-search"/></svg>
+                      <span class="placeholder">Search merchants, accounts, streams…</span>
+                      <span class="kbd">⌘K</span>
+                    </div>
+                  </div>
+
+                  <div class="page">
+                    <div class="page-col">
+                      <div class="hero">
+                        <div class="hero-row">
+                          <div>
+                        <div class="k">Held</div>
+                        <div class="v num">$238,845.06</div>
+                          </div>
+                          <button class="btn primary dead"><svg><use href="#i-plus"/></svg>Add a bank</button>
+                        </div>
+                      </div>
+                      <div class="accounts">
+                        <div class="conn">
+                          <div class="conn-head"><span class="mark">CI</span><span class="conn-name">Citi</span></div>
+                          <div class="acct"><span class="acct-name">Citi Checking</span><span class="acct-kind">Checking ·4021</span><span class="acct-detail">$4,080.22 available</span><span class="acct-amt num">$4,180.22</span></div>
+                          <div class="acct"><span class="acct-name">Citi Accelerate Savings</span><span class="acct-kind">Savings ·9930</span><span class="acct-detail">4.10% APY</span><span class="acct-amt num">$22,500.00</span></div>
+                          <div class="conn-total"><span class="k">2 accounts held</span><span class="v num">$26,680.22</span></div>
+                        </div>
+                        <div class="conn">
+                          <div class="conn-head"><span class="mark">FI</span><span class="conn-name">Fidelity</span></div>
+                          <div class="acct"><span class="acct-name">Fidelity Brokerage</span><span class="acct-kind">Brokerage ·7742</span><span class="acct-detail"></span><span class="acct-amt num">$148,320.55</span></div>
+                          <div class="acct"><span class="acct-name">Fidelity Roth IRA</span><span class="acct-kind">Roth IRA ·3308</span><span class="acct-detail"></span><span class="acct-amt num">$61,904.18</span></div>
+                          <div class="conn-total"><span class="k">2 accounts held</span><span class="v num">$210,224.73</span></div>
+                        </div>
+                        <div class="conn">
+                          <div class="conn-head"><span class="mark">HS</span><span class="conn-name">Houndstooth Bank</span><button class="btn plain dead"><svg><use href="#i-ext"/></svg>Reconnect</button></div>
+                          <div class="acct"><span class="acct-name">Houndstooth Checking</span><span class="acct-kind">Checking ·6120</span><span class="acct-detail">last synced 6 days ago</span><span class="acct-amt num">$1,940.11</span></div>
+                          <div class="conn-total"><span class="k">1 account held</span><span class="v num">$1,940.11</span></div>
+                        </div>
+                      </div>
+                      <div class="sec">
+                        <div class="sec-title"><span>Owed</span><span class="v num down">−$3,090.95</span></div>
+                        <div class="conn">
+                          <div class="conn-head"><span class="mark">AX</span><span class="conn-name">American Express</span></div>
+                          <div class="acct"><span class="acct-name">Amex Gold</span><span class="acct-kind">Credit ·2004</span><span class="acct-detail">no preset limit</span><span class="acct-amt num">−$1,806.35</span></div>
+                          <div class="conn-total"><span class="k">1 account owed</span><span class="v num">−$1,806.35</span></div>
+                        </div>
+                        <div class="conn">
+                          <div class="conn-head"><span class="mark">CI</span><span class="conn-name">Citi</span></div>
+                          <div class="acct"><span class="acct-name">Citi Double Cash</span><span class="acct-kind">Credit ·1177</span><span class="acct-detail">$1,284.60 of $9,000.00 used</span><span class="acct-amt num">−$1,284.60</span></div>
+                          <div class="conn-total"><span class="k">1 account owed</span><span class="v num">−$1,284.60</span></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <aside class="rail">
+                      <div class="rail-sec">
+                        <div class="rail-head">
+                          <span class="rail-title">Where it sits</span>
+                          <span class="rail-title v">$238,845.06</span>
+                        </div>
+                        <div class="split-row"><span class="nm">Fidelity</span><span class="amt num">$210,224.73</span><span class="track"><i style="width:88.0%"></i></span></div>
+                        <div class="split-row"><span class="nm">Citi</span><span class="amt num">$26,680.22</span><span class="track"><i style="width:11.2%"></i></span></div>
+                        <div class="split-row"><span class="nm">Houndstooth Bank</span><span class="amt num">$1,940.11</span><span class="track"><i style="width:0.8%"></i></span></div>
+                      </div>
+
+                      <div class="rail-sec">
+                        <div class="rail-head">
+                          <span class="rail-title">Owed against it</span>
+                          <span class="rail-title v down">−$3,090.95</span>
+                        </div>
+                        <div class="split-row"><span class="nm">American Express</span><span class="amt num">$1,806.35</span><span class="track"><i style="width:58.4%"></i></span></div>
+                        <div class="split-row"><span class="nm">Citi</span><span class="amt num">$1,284.60</span><span class="track"><i style="width:41.6%"></i></span></div>
+                      </div>
+                    </aside>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script src="../shared/controls.js"></script>
+
+</body>
+</html>

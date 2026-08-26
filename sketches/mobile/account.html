@@ -8,29 +8,35 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../shared/theme.css">
+<link rel="stylesheet" href="../shared/components.css">
 <link rel="stylesheet" href="phone.css">
-<link rel="stylesheet" href="onboarding.css">
 </head>
 <body>
 
 <!--
   The account tab: who you are, which banks are attached, and the two ways
-  out. Deliberately small. Everything a setting could configure — ranges,
-  categories, what is hidden — already lives on the screen it affects, so
-  this tab is left with identity and connections, which belong nowhere else.
+  out. Deliberately small. Everything a setting could configure — the range,
+  the categories, what is hidden — already lives on the screen it affects, so
+  what is left for this tab is identity and connections, which belong nowhere
+  else.
 
-  It takes the fourth dock slot, the one Home left when it was retired, so
-  the dock's four columns stay four.
+  It takes a fourth dock slot, next to the three the app has.
+
+  Two screens hang off it, pushed rather than presented in a sheet: a bank,
+  and the confirmation for deleting the account. Both are a list of facts and
+  an action, which is a screen; a sheet would be a second kind of surface for
+  no gain, and the delete confirmation has a field in it, which rules out an
+  alert.
 
   Two things here are not taste. App Store review 5.1.1(v) requires an app
-  that creates accounts to delete them from inside the app, so "Delete
-  account" is not optional and cannot be a link to a web page. And a bank
-  the user removes has to take its transactions with it, or the ledger keeps
-  showing a bank they believe they disconnected.
+  that creates accounts to delete them from inside the app, so the delete
+  screen is not optional and cannot be a link to a web page. And a bank the
+  user removes has to take its transactions with it — otherwise the ledger
+  keeps showing rows from a bank they believe they disconnected, which is
+  also what the connect screen promised them.
 
-  Connections are the same `Connection` the Balances page already renders,
-  `ConnectionStatus` included — the reconnect row here and the one there are
-  one state in two places, not two.
+  Connections here are the same `Connection` and `ConnectionStatus` the
+  Balances page already renders: one state drawn in two places, not two.
 -->
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -48,8 +54,9 @@
     <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></symbol>
     <symbol id="i-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 5 16 12 9 19"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 5 8 12 15 19"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
-    <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="7.5" x2="12" y2="13"/><circle cx="12" cy="16.5" r="0.6" fill="currentColor"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4 12.5 11.5"/><path d="M18.5 14v5.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1H10"/></symbol>
   </defs>
 </svg>
 
@@ -58,7 +65,7 @@
   <!-- ══════════════════ Account ══════════════════ -->
   <section class="screen">
     <div class="screen-label">Account</div>
-    <div class="phone">
+    <div class="phone ui">
 
       <div class="statusbar">
         <span class="num">9:41</span>
@@ -66,68 +73,75 @@
       </div>
 
       <header class="header">
-        <div>
-          <div class="page-title">Account</div>
-        </div>
+        <div class="page-title">Account</div>
       </header>
 
       <main class="me">
 
-        <!-- No name, because we never asked for one. The address is the
-             account, and an initial is enough of a face. -->
+        <!-- No name and no avatar, because we never asked for a name and a
+             coloured initial is a face invented for someone who did not give
+             us one. The address is the account. -->
         <div class="me-who">
-          <div class="me-face">A</div>
-          <div>
-            <div class="me-mail">al@example.com</div>
-            <div class="me-since">Signed in · member since August 2026</div>
-          </div>
+          <div class="me-mail">al@example.com</div>
+          <div class="me-since">Member since August 2026</div>
         </div>
 
-        <!-- Banks, carrying the same status the Balances page shows. A
-             broken connection is the one thing in this app that stops the
-             numbers being true, so it says so on the row rather than
-             behind it. -->
-        <div class="hi">
-          <div class="hi-head"><span class="hi-title">Banks</span></div>
+        <!-- The marks are the same ones Balances puts beside a bank, so the
+             two lists read as the same banks. A broken connection is the one
+             thing in this app that stops the numbers being true, so the row
+             says so rather than hiding it behind the chevron. Fixing it is
+             on the bank's own screen, where the button can say what it does
+             and that it leaves the app. -->
+        <div class="me-head">Banks</div>
 
-          <div class="row">
-            <div class="conn-logo">FP</div>
-            <div class="rt">First Platypus Bank<div class="rs">8 accounts · synced 2m ago</div></div>
-            <svg class="go"><use href="#i-go"/></svg>
-          </div>
-
-          <div class="row warn">
-            <div class="conn-logo">HS</div>
-            <div class="rt">Houndstooth Bank<div class="rs">Sign-in expired · not syncing</div></div>
-            <svg class="go"><use href="#i-go"/></svg>
-          </div>
-
-          <div class="row">
-            <div class="conn-logo">TF</div>
-            <div class="rt">Tattersall Federal<div class="rs">4 accounts · synced 2m ago</div></div>
-            <svg class="go"><use href="#i-go"/></svg>
-          </div>
-
-          <div class="row act"><svg style="width:15px;height:15px"><use href="#i-plus"/></svg>Add a bank</div>
+        <div class="row">
+          <span class="mark">FP</span>
+          <div class="rt">First Platypus Bank<div class="rs">8 accounts · synced 2m ago</div></div>
+          <svg class="go"><use href="#i-go"/></svg>
+        </div>
+        <div class="row needs rule-row">
+          <span class="mark">HS</span>
+          <div class="rt">Houndstooth Bank<div class="rs">Sign-in expired · not syncing</div></div>
+          <svg class="go"><use href="#i-go"/></svg>
+        </div>
+        <div class="row rule-row">
+          <span class="mark">TF</span>
+          <div class="rt">Tattersall Federal<div class="rs">4 accounts · synced 2m ago</div></div>
+          <svg class="go"><use href="#i-go"/></svg>
         </div>
 
-        <!-- The two ways out, one harmless and one not, kept apart from the
-             banks above so neither is a mis-tap away from the other. -->
-        <div class="hi">
-          <div class="row"><div class="rt">Sign out</div></div>
-          <div class="row danger"><div class="rt">Delete account</div></div>
+        <div style="margin-top:14px">
+          <button class="btn lg block"><svg><use href="#i-plus"/></svg>Add a bank</button>
         </div>
 
-        <!-- Version and environment. Nobody reads it until something is
-             wrong, and then it is the first question we ask them — and
-             "Sandbox" on screen is the plainest guard there is against a
-             fixture being mistaken for real money. -->
-        <div class="me-since" style="text-align:center;margin-top:22px">Meridian 0.1 (114) · Plaid Sandbox</div>
+        <!--
+          Both of these stand up, because both do something — a flat row that
+          signed you out would be the one thing on the page that acts without
+          looking like it acts.
+
+          Neither is violet: there is no thing-you-are-here-to-do on this tab.
+          And Delete is not rose either. Rose is money owed, on a figure, and
+          a rose button here would be the first rose thing in the app that is
+          not a number. What makes deleting frightening is on the screen it
+          opens, in words, where there is room to say what goes.
+        -->
+        <div class="me-head">Session</div>
+
+        <div class="acts">
+          <button class="btn lg block">Sign out</button>
+          <button class="btn lg block">Delete account</button>
+        </div>
+
+        <!-- Nobody reads this until something is wrong, and then it is the
+             first thing we ask them for. "Sandbox" on screen is also the
+             plainest guard there is against a fixture being taken for real
+             money. -->
+        <div class="me-build">Meridian 0.1 (114) · Plaid Sandbox</div>
 
       </main>
 
       <div class="dockrow">
-        <nav class="dock glass">
+        <nav class="dock four glass">
           <a href="#"><svg><use href="#i-ledger"/></svg>Ledger</a>
           <a href="#"><svg><use href="#i-recurring"/></svg>Recurring</a>
           <a href="#"><svg><use href="#i-balances"/></svg>Balances</a>
@@ -142,74 +156,57 @@
   <!-- ══════════════════ One bank ══════════════════ -->
   <section class="screen">
     <div class="screen-label">Account · one bank</div>
-    <div class="phone">
+    <div class="phone ui">
 
       <div class="statusbar">
         <span class="num">9:41</span>
         <span class="glyphs"><svg viewBox="0 0 90 24" style="width:74px;height:16px"><use href="#i-status"/></svg></span>
       </div>
 
+      <div class="onb-back"><svg><use href="#i-back"/></svg></div>
+
       <header class="header">
-        <div>
-          <div class="page-title">Account</div>
-        </div>
+        <div class="page-title">Houndstooth Bank</div>
       </header>
 
-      <main class="me" style="filter:blur(1px);opacity:0.5">
-        <div class="me-who">
-          <div class="me-face">A</div>
-          <div>
-            <div class="me-mail">al@example.com</div>
-            <div class="me-since">Signed in · member since August 2026</div>
-          </div>
-        </div>
-        <div class="hi">
-          <div class="hi-head"><span class="hi-title">Banks</span></div>
-          <div class="row"><div class="conn-logo">FP</div><div class="rt">First Platypus Bank<div class="rs">8 accounts · synced 2m ago</div></div></div>
-          <div class="row warn"><div class="conn-logo">HS</div><div class="rt">Houndstooth Bank<div class="rs">Sign-in expired · not syncing</div></div></div>
-        </div>
-      </main>
-
       <!--
-        A sheet rather than a page: there is one screenful of facts and two
-        buttons, and a push would put a back chevron on it for no reason.
+        `ITEM_LOGIN_REQUIRED` is the state this screen exists for. Only Link
+        in update mode clears it, so Reconnect opens Hosted Link again
+        against the same Item — the same trip as first run, and not a second
+        connection. The icon says the tap leaves the app, which is the one
+        thing the label cannot say.
 
-        `ITEM_LOGIN_REQUIRED` is the state this sheet exists for. Only Link
-        in update mode clears it, so Reconnect opens Hosted Link again on the
-        same Item — the same trip as first run, without making a second
-        connection.
-
-        Remove says what it takes with it. A bank whose transactions stayed
-        in the ledger after removal would be the worst kind of quiet bug: the
-        user believes they disconnected, and the numbers still say otherwise.
+        Reconnect is the violet one here: on this screen there is a thing you
+        are here to do. Removing the bank is the quiet button, and the line
+        under it says what goes with it — a bank whose transactions stayed in
+        the ledger after removal is the worst kind of quiet bug, because the
+        user believes they disconnected and the numbers still say otherwise.
       -->
-      <div class="sheet-wrap">
-        <div class="sheet-dim"></div>
-        <div class="sheet">
-          <div class="sheet-grip"></div>
+      <main class="me">
 
-          <div style="display:flex;align-items:center;gap:12px">
-            <div class="conn-logo" style="width:38px;height:38px">HS</div>
-            <div>
-              <div class="sheet-title">Houndstooth Bank</div>
-              <div class="rs" style="color:var(--amber-300)">Sign-in expired</div>
-            </div>
-          </div>
-
-          <div class="sheet-body">Your bank asked for a fresh sign-in. Nothing has synced since it did.</div>
-
-          <div class="facts">
-            <div class="f"><span class="k">Accounts</span><span class="v">2</span></div>
-            <div class="f"><span class="k">Connected</span><span class="v">12 Aug 2026</span></div>
-            <div class="f"><span class="k">Last synced</span><span class="v">21 Aug 2026</span></div>
-            <div class="f"><span class="k">Transactions</span><span class="v">211</span></div>
-          </div>
-
-          <button class="btn primary">Reconnect</button>
-          <button class="btn bad">Remove this bank</button>
-          <div class="legal" style="margin-top:12px">Removing deletes its 211 transactions from Meridian.</div>
+        <div class="row">
+          <span class="mark">HS</span>
+          <div class="rt">Sign-in expired</div>
         </div>
-      </div>
+        <div class="me-since" style="margin-top:4px">
+          Your bank asked for a fresh sign-in. Nothing has synced since it did.
+        </div>
+
+        <div class="me-head">This connection</div>
+
+        <div class="row flat"><div class="rt">Accounts</div><span class="rv hard num">2</span></div>
+        <div class="row flat rule-row"><div class="rt">Transactions</div><span class="rv hard num">211</span></div>
+        <div class="row flat rule-row"><div class="rt">Connected</div><span class="rv hard">12 Aug 2026</span></div>
+        <div class="row flat rule-row"><div class="rt">Last synced</div><span class="rv hard">21 Aug 2026</span></div>
+
+        <div class="acts" style="margin-top:24px">
+          <button class="btn primary lg block"><svg><use href="#i-ext"/></svg>Reconnect</button>
+          <button class="btn lg block">Remove this bank</button>
+        </div>
+
+        <div class="legal">Removing deletes its 211 transactions from Meridian.</div>
+
+      </main>
 
     </div>
   </section>
@@ -217,74 +214,56 @@
   <!-- ══════════════════ Delete account ══════════════════ -->
   <section class="screen">
     <div class="screen-label">Account · delete</div>
-    <div class="phone">
+    <div class="phone ui">
 
       <div class="statusbar">
         <span class="num">9:41</span>
         <span class="glyphs"><svg viewBox="0 0 90 24" style="width:74px;height:16px"><use href="#i-status"/></svg></span>
       </div>
 
+      <div class="onb-back"><svg><use href="#i-back"/></svg></div>
+
       <header class="header">
-        <div>
-          <div class="page-title">Account</div>
-        </div>
+        <div class="page-title">Delete account</div>
       </header>
 
-      <main class="me" style="filter:blur(1px);opacity:0.5">
-        <div class="me-who">
-          <div class="me-face">A</div>
-          <div>
-            <div class="me-mail">al@example.com</div>
-            <div class="me-since">Signed in · member since August 2026</div>
-          </div>
-        </div>
-        <div class="hi">
-          <div class="row"><div class="rt">Sign out</div></div>
-          <div class="row danger"><div class="rt">Delete account</div></div>
-        </div>
-      </main>
-
       <!--
-        Required by App Store review, and worth doing properly anyway. The
-        sheet lists what goes rather than asking "are you sure?", because
-        what people actually want to know is whether the bank connections
+        Required by App Store review, and worth doing properly anyway. It
+        lists what goes rather than asking whether you are sure, because the
+        thing people actually want to know is whether the bank connections
         die with it. They do: `/item/remove` runs for each one.
 
-        Worth knowing on our side — removing an Item does not give the
-        Production slot back (docs/PLAID.md). That is our problem, not the
-        user's, but it is why this cannot be a soft delete that quietly
-        keeps the Items alive.
+        On our side, removing an Item does not give the Production slot back
+        (docs/PLAID.md). That is our problem and not the user's, but it is
+        why this cannot quietly be a soft delete that leaves the Items alive.
 
-        Typing DELETE, not a second "are you sure". One more tap teaches
-        people to tap twice; a word to type cannot happen by accident.
+        Typing the word, not a second Are you sure. One more tap teaches
+        people to tap twice; a word cannot be typed by accident. And the
+        violet button is the one that keeps the account — the loud button on
+        this screen should be the safe one, since a mis-tap here is the only
+        mistake in the app that cannot be undone.
       -->
-      <div class="sheet-wrap">
-        <div class="sheet-dim"></div>
-        <div class="sheet">
-          <div class="sheet-grip"></div>
+      <main class="me">
 
-          <div style="display:flex;align-items:center;gap:11px">
-            <svg style="width:24px;height:24px;color:var(--rose-400)"><use href="#i-warn"/></svg>
-            <div class="sheet-title">Delete your account</div>
-          </div>
-
-          <div class="sheet-body">This cannot be undone. It removes:</div>
-
-          <div class="facts">
-            <div class="f"><span class="k">Bank connections</span><span class="v">3</span></div>
-            <div class="f"><span class="k">Transactions</span><span class="v">1,204</span></div>
-            <div class="f"><span class="k">Your sign-in</span><span class="v">al@example.com</span></div>
-          </div>
-
-          <div class="field-label">Type DELETE to confirm</div>
-          <div class="field-box focus" style="height:48px"><span class="ph">DELETE<span class="caret"></span></span></div>
-
-          <div style="margin-top:14px">
-            <button class="btn bad">Delete everything</button>
-            <button class="btn ghost">Keep my account</button>
-          </div>
+        <div class="me-since" style="padding-top:2px">
+          This cannot be undone. It removes:
         </div>
-      </div>
+
+        <div style="margin-top:14px">
+          <div class="row flat"><div class="rt">Bank connections</div><span class="rv hard num">3</span></div>
+          <div class="row flat rule-row"><div class="rt">Transactions</div><span class="rv hard num">1,204</span></div>
+          <div class="row flat rule-row"><div class="rt">Your sign-in</div><span class="rv hard">al@example.com</span></div>
+        </div>
+
+        <div class="me-head">Type DELETE to confirm</div>
+        <span class="field on"><span class="in">DELETE<i class="caret"></i></span></span>
+
+        <div class="acts" style="margin-top:20px">
+          <button class="btn lg block">Delete everything</button>
+          <button class="btn primary lg block">Keep my account</button>
+        </div>
+
+      </main>
 
     </div>
   </section>

@@ -95,15 +95,26 @@
 /* A number sits in a fixed slot so the sentence does not jump from 3 to 12. */
 .ui .tok.fix { min-width: 30px; justify-content: center; }
 
-/* A row of chips.
+/* A row of chips, set like a justified paragraph — which is what it is.
 
-   Where the order carries no meaning, it is chosen to fill the measure. The
-   partition is costed by the square of what each line wastes and the cheapest
-   taken — greedy packing gets close and then leaves one line short, which is a
-   ragged edge you can see from across the room. The chips keep their own
-   widths; the space between them takes up the remainder. */
+   Where the order carries no meaning it is chosen to fill the measure, and
+   every line but the last is as full as it can be: the chips keep their own
+   widths and the space between them takes up the remainder, so the line is
+   flush at both edges. The line with the most room to spare is the one put
+   last, and it sits left at its natural spacing.
+
+   That last part is the whole rule. A short line stretched across the measure
+   is the ragged edge you can see from across the room — which is why the last
+   line of a paragraph is not justified either — so the packing leaves the
+   loosest line out of what it costs. The remainder is pushed onto that one
+   line rather than shared out over all of them, and the lines that are left
+   come out tight. `swift/Sources/MeridianApp/Ui/ChipRows.swift` is the
+   implementation the other platforms follow. */
 .ui .chip-rows { display: flex; flex-direction: column; gap: 8px; }
-.ui .chip-row { display: flex; gap: 8px; justify-content: space-between; }
+.ui .chip-row { display: flex; gap: 8px; }
+/* Every line but the last. Never a line with one chip on it: a lone chip
+   stretched across the measure is not a row. */
+.ui .chip-row.flush { justify-content: space-between; }
 
 /* The range: one outline, the options inside it, the live one filled.
 
@@ -233,6 +244,39 @@
   background: color-mix(in srgb, var(--violet-400) 55%, transparent);
 }
 
+/* A row.
+
+   An icon, a name, a second line under it, and something on the right. Every
+   list in the app that is not transactions is this one: what a bank
+   connection is, what the first sync has fetched, what connecting a bank
+   means, what is in an account.
+
+   One row rather than one per screen, because a list of facts and a list of
+   settings are the same shape — and three screens each inventing a row is how
+   the same list ends up three heights. */
+
+.ui .row {
+  display: flex; align-items: center; gap: 13px;
+  padding: 12px 0;
+}
+.ui .row.top { align-items: flex-start; }
+.ui .row > svg { width: 18px; height: 18px; flex: none; color: var(--text-faint); }
+.ui .row .rt { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 600; }
+.ui .row .rs {
+  font-size: 12.5px; font-weight: 400; color: var(--text-faint);
+  margin-top: 3px;
+}
+/* what a row has to say about itself, on the right */
+.ui .row .rv { flex: none; font-size: 12.5px; color: var(--text-faint); }
+/* a value being read rather than a note about the row */
+.ui .row .rv.hard { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.ui .row .go { width: 15px; height: 15px; color: var(--text-faint); }
+/* the one row in a list that needs doing something about */
+.ui .row.needs .rs { color: var(--amber-300); }
+/* a row that is only a name and a value, read down a column */
+.ui .row.flat { padding: 9px 0; }
+.ui .row.flat .rt { font-size: 13.5px; font-weight: 400; color: var(--text-muted); }
+
 /* A share, drawn on the rule under the thing it belongs to: square ends, no
    inset, standing on the line rather than straddling it, and starting at the
    measure the words are set to rather than at the edge of the glass. */
@@ -259,3 +303,111 @@
 }
 .ui .money.in { color: var(--up); }
 .ui .money.out { color: var(--down); }
+
+/* Drawn but not live, for a button — the same state the chip and the range
+   option have. The phone draws two of these already: Reconnect, which needs
+   Plaid Link in update mode, and the dock's search, which has no screen behind
+   it. A button that looked live and did nothing would be worse. */
+.ui .btn.dead {
+  cursor: default;
+  opacity: 0.45;
+  transform: none;
+}
+.ui .btn.dead:active { transform: none; }
+
+/* The mark.
+
+   Who a row is: a merchant's logo in the ledger, a bank's initials on
+   balances. A hairline square rather than a filled tile — filled, a column of
+   them reads as a column of buttons you could press. The slot is there whether
+   the logo arrived or not, so the text of every row starts on the same line. */
+
+.ui .mark {
+  display: grid; place-items: center;
+  width: 26px; height: 26px; flex: none;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  font-size: 10px; font-weight: 600;
+  color: var(--text-faint);
+}
+.ui .mark img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ui .mark.sm { width: 24px; height: 24px; }
+
+/* The button, at thumb size and across the measure.
+
+   A phone's one action is a target you hit without looking, and a 13px button
+   floating in the middle of a 390px screen is neither. `.lg` grows the type
+   and the padding, `.block` takes the width of whatever it is in. The edge,
+   the corner and the two violets are untouched: this is the same button, not
+   a phone button. */
+
+.ui .btn.lg {
+  font-size: 15px;
+  padding: 13px 18px;
+  border-radius: var(--r-md);
+}
+.ui .btn.lg svg { width: 16px; height: 16px; }
+.ui .btn.block { display: flex; width: 100%; justify-content: center; }
+
+/* The field.
+
+   The frame again, at the size of a thing you type into: the outer hairline,
+   three pixels of ground, and the well inset in them. Typing in it warms the
+   frame by exactly what selecting warms a chip's, so a live field and a
+   chosen chip are the same event happening on screen.
+
+   `.bad` is for a value the server rejected — a code that has expired, an
+   address that is not one. Never for an empty field: nothing has gone wrong
+   yet, and a form that turns red as you arrive at it is scolding you for
+   showing up. */
+
+.ui .field {
+  display: block;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+}
+.ui .field .in {
+  display: flex; align-items: center; gap: 10px;
+  height: 46px;
+  padding: 0 12px;
+  border-radius: 7px;
+  background: var(--bg-input);
+  font-size: 15px;
+  color: var(--text);
+}
+.ui .field .in > svg { width: 17px; height: 17px; flex: none; color: var(--text-faint); }
+/* What the field says when it is empty. */
+.ui .field .ph { color: var(--text-faint); }
+.ui .field.on { border-color: color-mix(in srgb, var(--violet-400) 34%, transparent); }
+.ui .field.bad { border-color: color-mix(in srgb, var(--rose-400) 40%, transparent); }
+.ui .field.bad .in { color: var(--rose-400); }
+
+/* The insertion point, drawn rather than blinking: a sketch has no focus, and
+   a still frame of a live field needs one to read as live. */
+.ui .caret {
+  display: inline-block;
+  width: 2px; height: 20px;
+  border-radius: 1px;
+  background: var(--violet-300);
+  vertical-align: -4px;
+}
+
+/* A code: as many fields as there are digits, one glyph each.
+
+   Set in the money face, because a code is read a digit at a time and
+   monospace keeps each one in its own slot — the same reason a column of
+   figures is set in it. A box per digit says how many are left without a
+   counter saying so. */
+
+.ui .code { display: flex; gap: 8px; }
+.ui .code .field { flex: 1; }
+.ui .code .in {
+  justify-content: center;
+  height: 54px;
+  padding: 0;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 22px; font-weight: 600;
+}
