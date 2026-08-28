@@ -32,11 +32,15 @@ use crate::Action;
 use crate::ActionClient;
 use crate::ActionProcess;
 use crate::ActionSource;
+use crate::ActionStore;
 use crate::Event;
 use crate::EventClient;
+use crate::EventProcess;
 use crate::EventSource;
+use crate::EventStore;
 use crate::EventTerminal;
 use crate::StateServer;
+use crate::project;
 use crate::runtime_plaid;
 use crate::runtime_plaid::PlaidConfig;
 use server_wire::WireSnapshot;
@@ -120,6 +124,15 @@ impl RuntimeServer {
             fetching: Mutex::new(()),
             shutdown: Notify::new(),
         });
+
+        // The first event, and the reason the boot sequence is replayable: the
+        // machine asks to be filled from the store rather than the runtime
+        // deciding to do it on its own initiative.
+        runtime
+            .dispatch(vec![Event::FromProcess {
+                event: EventProcess::Started,
+            }])
+            .await;
 
         let router = Router::new()
             .route("/snapshot", get(snapshot))
@@ -206,7 +219,8 @@ impl RuntimeServer {
     /// Boxed because the cycle `perform_actions -> fetch_plaid ->
     /// perform_actions` is recursion through an `async fn`, which needs an
     /// indirection to have a finite size. The recursion is one level deep in
-    /// practice: a fetch result only ever asks to serve.
+    /// practice: a fetch result asks to serve and to write, never to fetch
+    /// again — which `fetch_plaid` asserts rather than assumes.
     fn perform_actions<'a>(
         &'a self,
         actions: &'a [Action],
@@ -221,6 +235,7 @@ impl RuntimeServer {
     async fn perform_action(&self, action: &Action) {
         match action {
             Action::ToSource { action } => self.perform_action_source(action).await,
+            Action::ToStore { action } => self.perform_action_store(action).await,
             Action::ToProcess { action } => self.perform_action_process(action),
             // Serving is the response to the request that is already in hand,
             // so it is the absence of work here rather than a step: the handler
@@ -235,6 +250,169 @@ impl RuntimeServer {
         match action {
             ActionSource::FetchPlaid { cursor } => self.fetch_plaid(cursor.clone()).await,
         }
+    }
+
+    /// Everything the store is asked for.
+    ///
+    /// Each arm ends by feeding the outcome back in as an event, which is what
+    /// closes the loop: nothing here inspects an answer or decides anything
+    /// about it.
+    async fn perform_action_store(&self, action: &ActionStore) {
+        let Some(db) = &self.db else {
+            // No store configured. An empty read rather than silence, so the
+            // machine hears a definite answer and the log says which kind of
+            // nothing this was.
+            if matches!(action, ActionStore::LoadEverything) {
+                self.dispatch(vec![Event::FromStore {
+                    event: EventStore::Loaded {
+                        entries: Vec::new(),
+                        connections: Vec::new(),
+                        streams: Vec::new(),
+                        cursor: None,
+                        synced_at: None,
+                    },
+                }])
+                .await;
+            }
+
+            return;
+        };
+
+        match action {
+            ActionStore::LoadEverything => {
+                let event = match self.load_everything(db).await {
+                    Ok(event) => event,
+                    Err(e) => EventStore::LoadFailed {
+                        message: e.to_string(),
+                    },
+                };
+
+                self.dispatch(vec![Event::FromStore { event }]).await;
+            }
+
+            ActionStore::SaveFetched { .. } | ActionStore::SaveStatus { .. } => {
+                if let Err(e) = self.write(db, action).await {
+                    self.dispatch(vec![Event::FromStore {
+                        event: EventStore::SaveFailed {
+                            message: e.to_string(),
+                        },
+                    }])
+                    .await;
+                }
+            }
+        }
+    }
+
+    /// Read every Item back, and the ledger with it.
+    ///
+    /// The connections are assembled here rather than in the store, because a
+    /// connection is a *projection* — initials, a status — and `src-postgres`
+    /// returns records. The status rule is `project`'s, shared with the path
+    /// that builds one from a fresh balances response.
+    async fn load_everything(&self, db: &Db) -> Result<EventStore, src_postgres::PostgresError> {
+        let items = src_postgres::load_items(db).await?;
+
+        let mut connections = Vec::with_capacity(items.len());
+
+        for item in &items {
+            let accounts = src_postgres::load_accounts(db, &item.item_id).await?;
+
+            let name = item
+                .institution_name
+                .clone()
+                .or_else(|| item.institution_id.clone())
+                .unwrap_or_else(|| "Bank".to_string());
+
+            connections.push(api_ledger::Connection {
+                id: item.item_id.clone(),
+                initials: api_ledger::initials(&name),
+                name,
+                status: project::connection_status(item.error_code.as_deref(), item.synced_at),
+                accounts,
+            });
+        }
+
+        Ok(EventStore::Loaded {
+            entries: src_postgres::load_entries(db).await?,
+            streams: src_postgres::load_streams(db).await?,
+            // One Item today; the first is the one whose cursor a fetch
+            // resumes from. See `ITEM` in the machine.
+            cursor: items.first().and_then(|item| item.cursor.clone()),
+            synced_at: items.first().map(|item| item.synced_at),
+            connections,
+        })
+    }
+
+    /// The writes, in the order a failure can be recovered from.
+    ///
+    /// The cursor goes **last**, on purpose. If anything before it fails, the
+    /// cursor stays where it was and the next sync re-reads the same range —
+    /// which is safe, because applying a diff twice is a no-op. Writing it
+    /// first and then failing would skip that range forever.
+    async fn write(
+        &self,
+        db: &Db,
+        action: &ActionStore,
+    ) -> Result<(), src_postgres::PostgresError> {
+        match action {
+            ActionStore::SaveFetched {
+                item_id,
+                institution_name,
+                added,
+                modified,
+                removed,
+                accounts,
+                streams,
+                cursor,
+            } => {
+                // The access token is the runtime's, not the machine's: it
+                // lives beside the credentials and never enters an action or
+                // the event log.
+                let access_token = self
+                    .plaid
+                    .as_ref()
+                    .map(|config| config.access_token.clone())
+                    .unwrap_or_default();
+
+                src_postgres::save_item(
+                    db,
+                    &src_postgres::StoredItem {
+                        item_id: item_id.clone(),
+                        access_token,
+                        institution_id: None,
+                        institution_name: institution_name.clone(),
+                        cursor: None,
+                        error_code: None,
+                        synced_at: unix_now(),
+                    },
+                )
+                .await?;
+
+                src_postgres::save_accounts(db, item_id, accounts).await?;
+                src_postgres::apply_entries(db, item_id, added, modified, removed).await?;
+                src_postgres::save_streams(db, item_id, streams).await?;
+                src_postgres::save_cursor(db, item_id, cursor).await?;
+
+                tracing::debug!(
+                    item_id,
+                    added = added.len(),
+                    modified = modified.len(),
+                    removed = removed.len(),
+                    "written to the store",
+                );
+            }
+
+            ActionStore::SaveStatus {
+                item_id,
+                error_code,
+            } => {
+                src_postgres::save_error(db, item_id, error_code.as_deref()).await?;
+            }
+
+            ActionStore::LoadEverything => {}
+        }
+
+        Ok(())
     }
 
     fn perform_action_process(&self, action: &ActionProcess) {
@@ -305,13 +483,16 @@ impl RuntimeServer {
             state.handle_events(now, &[Event::FromSource { event }], &mut actions);
         }
 
-        // A fetch result only ever asks to serve, so there is nothing further
-        // to carry out. Asserted rather than assumed: a new action here would
-        // otherwise be dropped silently.
+        // What this protects is the claim on `perform_actions`: the recursion
+        // through it is one level deep. A fetch result may ask to serve, to
+        // write, or to report — anything but to fetch again, which is the one
+        // answer that would not terminate.
+        //
+        // Stated as what it forbids rather than as a list of what it allows.
+        // The allowlist version passed until the store was added, and then
+        // failed on an action that was perfectly fine.
         debug_assert!(
-            actions
-                .iter()
-                .all(|a| matches!(a, Action::ToClient { .. } | Action::ToProcess { .. })),
+            !actions.iter().any(|a| matches!(a, Action::ToSource { .. })),
             "a fetch result should not ask for another fetch",
         );
 

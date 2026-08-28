@@ -78,19 +78,14 @@ pub fn connection(balances: &BalancesResponse, synced_at: api_common::Timestamp)
         .or_else(|| balances.item.institution_id.clone())
         .unwrap_or_else(|| "Bank".to_string());
 
-    // Any Item error at all means this connection is not syncing, but only
-    // ITEM_LOGIN_REQUIRED is fixable by the user signing in again. Treating
-    // every error as login-required would send them round a loop that cannot
-    // help; treating none as it would hide the one action that works.
-    let status = match balances
-        .item
-        .error
-        .as_ref()
-        .and_then(|e| e.error_code.as_deref())
-    {
-        Some("ITEM_LOGIN_REQUIRED") => ConnectionStatus::LoginRequired,
-        _ => ConnectionStatus::Ok { synced_at },
-    };
+    let status = connection_status(
+        balances
+            .item
+            .error
+            .as_ref()
+            .and_then(|e| e.error_code.as_deref()),
+        synced_at,
+    );
 
     Connection {
         id: balances.item.item_id.clone(),
@@ -98,6 +93,26 @@ pub fn connection(balances: &BalancesResponse, synced_at: api_common::Timestamp)
         name,
         status,
         accounts: balances.accounts.iter().map(account).collect(),
+    }
+}
+
+/// Whether a connection is working, from the source's error code.
+///
+/// Any error at all means it is not syncing, but only `ITEM_LOGIN_REQUIRED` is
+/// fixable by the user signing in again. Treating every error as
+/// login-required would send them round a loop that cannot help; treating none
+/// as it would hide the one action that works.
+///
+/// Shared by the two ways a connection is built — from a fresh balances
+/// response, and from a row read back at startup — so the rule is stated once
+/// and cannot come out differently depending on where the data came from.
+pub fn connection_status(
+    error_code: Option<&str>,
+    synced_at: api_common::Timestamp,
+) -> ConnectionStatus {
+    match error_code {
+        Some("ITEM_LOGIN_REQUIRED") => ConnectionStatus::LoginRequired,
+        _ => ConnectionStatus::Ok { synced_at },
     }
 }
 
