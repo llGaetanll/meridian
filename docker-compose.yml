@@ -52,10 +52,14 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # Stamped into every log line. Unset locally is fine — you know what
-        # you built. A deploy must pass the real one:
+        # Stamped into every log line. `scripts/dev.sh` works it out and
+        # exports it, so anything driven through that has the real commit; a
+        # deploy, or a `docker compose` typed by hand, must pass its own:
         #
         #     MERIDIAN_SHA=$(git rev-parse --short HEAD) docker compose build server
+        #
+        # The default is what a build with no commit to give says on every
+        # line, and it is the answer this stamp exists to avoid.
         MERIDIAN_SHA: ${MERIDIAN_SHA:-unknown}
 
     depends_on:
