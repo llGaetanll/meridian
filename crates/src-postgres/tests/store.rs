@@ -44,13 +44,27 @@ async fn the_schema_applies_and_the_database_answers() {
         "every migration in the directory should have been applied",
     );
 
-    // And the one migration there is did what it says.
-    let items: i64 = sqlx::query_scalar("SELECT count(*) FROM items")
-        .fetch_one(&db)
+    // And the tables the migrations describe are there to be queried. Note
+    // what this does *not* assert: how many rows are in them. Cargo runs each
+    // test binary as its own process, in parallel, against this one database —
+    // so `tests/ledger.rs` may be writing while this reads, and a count here
+    // would fail on scheduling rather than on anything being wrong.
+    // Written out rather than looped: sqlx refuses a query built with
+    // `format!` — `SqlSafeStr` takes a `&'static str`, so a statement cannot
+    // be assembled from anything at run time without saying so explicitly.
+    // Four literals is a small price for that guard being on everywhere else.
+    sqlx::query("SELECT * FROM items LIMIT 0")
+        .fetch_all(&db)
         .await
-        .expect("0001 creates the items table");
+        .expect("0001 creates items");
 
-    assert_eq!(items, 0, "a fresh database holds no connections");
+    for query in [
+        sqlx::query("SELECT * FROM accounts LIMIT 0"),
+        sqlx::query("SELECT * FROM entries LIMIT 0"),
+        sqlx::query("SELECT * FROM streams LIMIT 0"),
+    ] {
+        query.fetch_all(&db).await.expect("0002 creates the ledger");
+    }
 }
 
 /// The server runs this on every boot, so it has to be a no-op against a

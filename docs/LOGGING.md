@@ -88,6 +88,18 @@ means adding, changing or removing its example here.
 - `INFO src_plaid transactions synced added=18 modified=0 removed=1`
   — a *diff*, not a total. A later sync answering `added=0` is normal and
   means nothing changed, not that the ledger is empty.
+- `INFO src_postgres::postgres_migrate schema is current migrations=2`
+  — on every boot. A no-op against a database that is already current, and a
+  loud failure against one where an applied migration has been edited.
+- `INFO src_postgres::postgres_item item removed with its history item_id=8Pd5Zx…`
+  — the accounts, transactions and streams went with it, by the cascade.
+- `WARN src_postgres::postgres_ledger entries that are not transfers were not stored skipped=1`
+  — the ledger table holds one movement per row and a trade has two. Nothing
+  produces trades today; the line is here so the day something does, it is a
+  message rather than a mystery.
+- `WARN src_postgres::postgres_ledger a timestamp fell outside postgres seconds=…`
+  — one row stored at the epoch rather than a whole sync failing over a date
+  no bank feed should have produced.
 - `INFO src_plaid link session opened update=false hosted=true expires=2026-08-26T10:30:00Z`
   — a bank being attached, or `update=true` for one being repaired. Nothing is
   created yet: a link session nobody finishes costs nothing.

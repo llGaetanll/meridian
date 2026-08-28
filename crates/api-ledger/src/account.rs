@@ -71,8 +71,15 @@ pub struct Account {
     /// e.g. "Plaid Checking".
     pub name: String,
 
-    /// What kind of account, already worded: "Checking", "401(k)", "HELOC".
-    pub kind: String,
+    /// The source's own subtype, raw: `"checking"`, `"401k"`, `"home equity"`.
+    ///
+    /// Not worded. Turning `"401k"` into `"401(k)"` is a decision about what a
+    /// screen says, so it belongs where every other such decision is made —
+    /// `phone-state`, by way of
+    /// [`account_kind_label`](../phone_state/fn.account_kind_label.html). Keeping
+    /// the raw value here means a change to that wording applies to data that
+    /// was stored months ago, with no migration.
+    pub subtype: Option<String>,
 
     /// The last four digits, without the dot the view puts in front.
     pub mask: Option<String>,
@@ -117,6 +124,20 @@ pub enum AccountGroup {
 }
 
 impl AccountGroup {
+    /// What the source calls it, and what gets written down.
+    ///
+    /// The exact inverse of [`AccountGroup::from_plaid`], so a group can go
+    /// into a database or across the wire and come back as itself.
+    pub fn as_plaid(&self) -> &'static str {
+        match self {
+            AccountGroup::Depository => "depository",
+            AccountGroup::Investment => "investment",
+            AccountGroup::Credit => "credit",
+            AccountGroup::Loan => "loan",
+            AccountGroup::Other => "other",
+        }
+    }
+
     pub fn from_plaid(kind: &str) -> Self {
         match kind {
             "depository" => AccountGroup::Depository,
@@ -125,46 +146,6 @@ impl AccountGroup {
             "loan" => AccountGroup::Loan,
             _ => AccountGroup::Other,
         }
-    }
-}
-
-/// Plaid's `subtype`, worded for a person.
-///
-/// Plaid sends `"401k"` and `"home equity"`; a screen should say `"401(k)"`
-/// and `"HELOC"`. One place decides that, and it is here rather than in three
-/// view layers.
-pub fn account_kind_label(subtype: Option<&str>, group: AccountGroup) -> String {
-    let subtype = match subtype {
-        Some(subtype) => subtype,
-        None => {
-            return match group {
-                AccountGroup::Depository => "Cash".to_string(),
-                AccountGroup::Investment => "Investment".to_string(),
-                AccountGroup::Credit => "Credit".to_string(),
-                AccountGroup::Loan => "Loan".to_string(),
-                AccountGroup::Other => "Account".to_string(),
-            };
-        }
-    };
-
-    match subtype {
-        "checking" => "Checking".to_string(),
-        "savings" => "Savings".to_string(),
-        "cd" => "CD".to_string(),
-        "money market" => "Money market".to_string(),
-        "credit card" => "Credit".to_string(),
-        "hsa" => "HSA".to_string(),
-        "cash management" => "Cash management".to_string(),
-        "401k" => "401(k)".to_string(),
-        "ira" => "IRA".to_string(),
-        "roth" => "Roth IRA".to_string(),
-        "student" => "Student loan".to_string(),
-        "mortgage" => "Mortgage".to_string(),
-        "auto" => "Auto loan".to_string(),
-        "home equity" => "HELOC".to_string(),
-        // Unknown subtypes are shown rather than hidden: "Sep Ira" reads
-        // better than nothing, and nothing would look like a bug.
-        other => title_case(other),
     }
 }
 
@@ -178,19 +159,6 @@ pub fn initials(name: &str) -> String {
         .collect()
 }
 
-fn title_case(s: &str) -> String {
-    s.split(' ')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,7 +167,7 @@ mod tests {
         Account {
             id: "a".into(),
             name: "Account".into(),
-            kind: "Checking".into(),
+            subtype: Some("checking".into()),
             mask: None,
             balance,
             available: None,
@@ -238,21 +206,19 @@ mod tests {
         assert_eq!(conn.owed(), -500.0);
     }
 
+    /// The inverse pair has to round-trip, or a group written down comes back
+    /// as something else.
     #[test]
-    fn subtypes_are_worded_for_a_person() {
-        assert_eq!(
-            account_kind_label(Some("401k"), AccountGroup::Investment),
-            "401(k)"
-        );
-        assert_eq!(
-            account_kind_label(Some("home equity"), AccountGroup::Loan),
-            "HELOC"
-        );
-        assert_eq!(
-            account_kind_label(Some("sep ira"), AccountGroup::Investment),
-            "Sep Ira"
-        );
-        assert_eq!(account_kind_label(None, AccountGroup::Credit), "Credit");
+    fn a_group_survives_being_written_down() {
+        for group in [
+            AccountGroup::Depository,
+            AccountGroup::Investment,
+            AccountGroup::Credit,
+            AccountGroup::Loan,
+            AccountGroup::Other,
+        ] {
+            assert_eq!(AccountGroup::from_plaid(group.as_plaid()), group);
+        }
     }
 
     #[test]

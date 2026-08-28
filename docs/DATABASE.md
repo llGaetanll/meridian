@@ -31,6 +31,18 @@ no Docker at all. A `DATABASE_URL` that is set and *wrong* is fatal, though:
 falling back would give a server that looks healthy while quietly keeping
 nothing.
 
+Its queries have tests that run against a real database, ignored by default so
+that `cargo test` still passes with no Docker:
+
+```sh
+cargo test -p src-postgres -- --ignored
+```
+
+They share the one database and `load_entries` is deliberately global, so they
+take a lock and start from empty. Note that cargo runs each *test binary* as
+its own process in parallel, which the lock does not reach — so a test in one
+file must not assert on how many rows are in a table another file writes to.
+
 `./scripts/db-shell.sh` opens `psql`. `\dt` lists the tables and
 `select * from _sqlx_migrations;` says which migrations this database has
 actually run — the first thing worth checking when the schema is not what you
