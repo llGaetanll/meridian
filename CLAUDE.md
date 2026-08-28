@@ -11,12 +11,41 @@
   build is broken you can kill the user's instance and start it yourself, but
   otherwise you shouldn't need to.
 
+## Running the stack
+
+The database and the server run under docker compose, and their logs belong in
+one tmux window that the user keeps open, running `./scripts/dev.sh` with no
+arguments. That window is the user's; do not start it, and do not read logs by
+starting a second one.
+
+**Never run `docker compose up`, and never start a service in a shell of your
+own.** Both tie the containers to a terminal nobody is watching, which is the
+problem this script exists to solve. Drive the stack with the one-shot
+subcommands, from wherever you are — each returns as soon as the daemon has
+done as asked, and the output appears in the user's window:
+
+```
+./scripts/dev.sh restart server    restart, same image
+./scripts/dev.sh build server      rebuild after a code change, and swap
+./scripts/dev.sh up                after a down
+./scripts/dev.sh down              stop and remove everything
+./scripts/dev.sh ps                what is actually running
+```
+
+A change to Rust needs `build`, not `restart` — `restart` runs the image that
+is already there, so the code you just wrote is not in it.
+
+To read logs, ask for the slice you want and let it return: `docker compose
+logs --since 2m server`. Never `-f`, which does not return.
+
 ## Style
 
 `docs/STYLE.md` holds the house rules a formatter cannot enforce: no banner
 comments, no panics in production code, how state machines are named and laid
 out, and how JSON is formatted. **Read it before writing code.** If you find
 yourself making a style decision it does not cover, add it there.
+
+**Commit messages are one title and at most two sentences.** STYLE.md has it.
 
 Two that catch people most often:
 

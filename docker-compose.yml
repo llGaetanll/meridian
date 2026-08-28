@@ -68,17 +68,17 @@ services:
       # server in a container and one on the host.
       DATABASE_URL: postgres://${POSTGRES_USER:-meridian}:${POSTGRES_PASSWORD:-meridian}@db:5432/${POSTGRES_DB:-meridian}
 
-      # Passed through rather than read from an `env_file`, so that a clone
-      # with no `.env` still comes up — compose fills these from `.env` when
-      # there is one and leaves them empty when there is not, and an empty
-      # PLAID_CLIENT_ID is the fixtures path rather than an error.
+      # Passed through rather than read from an `env_file`, so they are never
+      # baked into the image, where they would survive in `docker history` for
+      # anyone who pulled it.
       #
-      # Either way they are never baked into the image, where they would
-      # survive in `docker history` for anyone who pulled it.
-      PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:-}
-      PLAID_SECRET: ${PLAID_SECRET:-}
-      PLAID_ENV: ${PLAID_ENV:-sandbox}
-      PLAID_ACCESS_TOKEN: ${PLAID_ACCESS_TOKEN:-}
+      # No compose-level defaults: the server requires every one of these and
+      # exits naming what is missing, and a `:-sandbox` here would answer that
+      # question on behalf of whoever forgot to.
+      PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:?}
+      PLAID_SECRET: ${PLAID_SECRET:?}
+      PLAID_ENV: ${PLAID_ENV:?}
+      PLAID_COLLECT: ${PLAID_COLLECT:?}
 
     ports:
       # Every interface, because a real phone on the LAN is one of the clients

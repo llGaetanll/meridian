@@ -220,6 +220,15 @@ hand-written fixture instead.
   runtime, and its own wire types.
 - Spell words out. `server-main`, not `srv-main`.
 
+## Commit messages
+
+**One title, and at most two sentences under it.** The title says what changed;
+the description says why, only where the why is not obvious.
+
+Long commit messages read as thorough and are not. They restate the diff, argue
+with decisions already made, and bury the one sentence that mattered — and the
+next person greps the log rather than reading it.
+
 ## Before every commit
 
 Both of these, every time. The pre-commit hook runs the formatter, but it is not
