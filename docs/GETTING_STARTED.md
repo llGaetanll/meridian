@@ -48,7 +48,10 @@ cargo run -p server-main                  # applies migrations, then serves
 Without that middle line the server starts and serves an empty ledger, which is
 correct: no bank has been linked. [PLAID.md](PLAID.md) has the rest.
 
-`docker compose --profile server up` brings both up as they are deployed.
+`./scripts/dev.sh` brings both up as they are deployed and follows their logs.
+Give it a window and leave it there: it starts the containers detached, so
+`./scripts/dev.sh restart server` from any other shell lands its output back in
+that window rather than in whichever terminal ran it.
 [DATABASE.md](DATABASE.md) has the rest, including the one rule about
 migrations.
 
