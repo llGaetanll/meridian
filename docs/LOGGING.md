@@ -32,6 +32,8 @@ cannot reach git — a container, whose context excludes `.git` on purpose —
 takes it from `MERIDIAN_SHA` in the environment instead, and says `unknown` if
 it has neither. **A deployed build must pass it**: a log that cannot be matched
 to the source that produced it has lost most of what this line is for.
+`scripts/dev.sh` passes it for every local build, suffixed `-dirty` when the
+tree has changes the commit does not account for.
 
 A line's target is the module it came from — `server_main::runtime_server`,
 `web_main::io::markets` — unless it names one of the few that cut across
