@@ -8,6 +8,11 @@
 //! One variant, and it is the one that makes the boot sequence replayable:
 //! without it, reading state back at startup would be something the runtime
 //! did on its own initiative rather than something the machine asked for.
+//!
+//! It carries nothing. It used to say whether there was a store and whether
+//! the source was live, back when either could be absent. Neither can: the
+//! store is required and so are the credentials, so the only fact left is
+//! that the process started, which is the variant itself.
 
 #[derive(Debug)]
 pub enum EventProcess {
@@ -22,8 +27,5 @@ pub enum EventProcess {
     /// a runtime that inspects its own state to decide which events to emit is
     /// a runtime with behaviour in it — behaviour no `eval!` test can reach and
     /// no event log records.
-    Started {
-        /// Whether there is somewhere to persist to.
-        store: bool,
-    },
+    Started,
 }

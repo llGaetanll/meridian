@@ -27,34 +27,30 @@ environment that has not said which Plaid it means now reaches neither.
 
 Sandbox logins are `user_good` / `pass_good` at any institution.
 
-## Getting a Sandbox token
+## Linking a Sandbox bank
 
-Two calls, both free and unlimited — the ten-Item cap is Production-only, and
-nothing in Sandbox spends a slot. `ins_109508` is First Platypus Bank, which is
-what the fixtures were captured from.
+Until Hosted Link is built, this is how a bank gets onto the books:
 
 ```sh
-set -a; . ./.env; set +a
-
-PUBLIC_TOKEN=$(curl -sS -X POST https://sandbox.plaid.com/sandbox/public_token/create \
-  -H 'Content-Type: application/json' \
-  -d "{\"client_id\":\"$PLAID_CLIENT_ID\",\"secret\":\"$PLAID_SECRET\",
-       \"institution_id\":\"ins_109508\",\"initial_products\":[\"transactions\"]}" \
-  | jq -r .public_token)
-
-curl -sS -X POST https://sandbox.plaid.com/item/public_token/exchange \
-  -H 'Content-Type: application/json' \
-  -d "{\"client_id\":\"$PLAID_CLIENT_ID\",\"secret\":\"$PLAID_SECRET\",
-       \"public_token\":\"$PUBLIC_TOKEN\"}" | jq
+./scripts/db-init.sh                                  # once, if Postgres is not up
+cargo run -p server-main --example link_sandbox       # ins_109508 by default
+cargo run -p server-main --example link_sandbox -- ins_109509
 ```
 
-The `access_token` that comes back goes in `.env`. Sandbox generates
-transactions asynchronously, so a `/transactions/sync` in the first seconds can
-answer empty or `PRODUCT_NOT_READY`; run it again. Recurring streams are
-derived from transactions and are thin until those land.
+It creates a Sandbox Item and writes it to `items`, access token and all. The
+server picks it up at boot and syncs on the first request.
 
-`cargo run -p src-plaid --example sync_transactions` is the same call the
-server makes, and the quickest way to prove a token works.
+**It costs nothing.** `/sandbox/public_token/create` does not exist in
+Production, so there is no version of this call that can spend an Item slot.
+Run it as often as you like.
+
+What it skips is the middle of [the flow](#the-flow) — the part where a person
+signs into their bank on Plaid's page. Everything after that is the ordinary
+code path: the same `public_token`, the same exchange, the same Item.
+
+Sandbox generates transactions asynchronously, so a `/transactions/sync` in the
+first seconds after linking can answer empty or `PRODUCT_NOT_READY`. Ask again.
+Recurring streams are derived from transactions and stay thin until those land.
 
 ## The two environments
 
@@ -74,14 +70,22 @@ Three variables, never committed:
 export PLAID_CLIENT_ID=…      # one per team, same in both environments
 export PLAID_SECRET=…         # one per environment — Sandbox and Production differ
 export PLAID_ENV=sandbox      # required; `sandbox` or `production`, exactly
-export PLAID_ACCESS_TOKEN=…   # the Item to sync — see "Getting a Sandbox token"
 export PLAID_COLLECT=poll     # required; `poll` or `webhook`
 ```
+
+`DATABASE_URL` is required too, and for a reason that belongs here rather than
+in [DATABASE.md](DATABASE.md): **the access tokens live in Postgres**, one row
+per Item. A server without a database has no way to reach any bank.
 
 **Every variable is required and none has a default.** `server-main` starts
 with all of them or does not start. It used to fall back to captured fixtures
 when the credentials were missing, which meant an empty screen had two
 explanations and the log said the same thing for both.
+
+There is no `PLAID_ACCESS_TOKEN`. There was, and it was one hardcoded token for
+one institution — which is all an access token ever is, so a variable could
+only ever hold the first one. They come from the store now, keyed by `item_id`,
+which is what lets there be a second bank.
 
 `PLAID_COLLECT` is not `PLAID_ENV` and must not be folded into it. It says how
 a finished Link session reaches us — see [The flow](#the-flow) — and the two

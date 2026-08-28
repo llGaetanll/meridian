@@ -10,6 +10,7 @@
 //! by carrying out an action, which is what stops a caller from doing IO
 //! without an action asking for it.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::SystemTime;
@@ -43,25 +44,19 @@ use crate::PlaidCollect;
 use crate::StateServer;
 use crate::project;
 use crate::runtime_plaid;
-use crate::runtime_plaid::PlaidConfig;
 use server_wire::WireSnapshot;
+use src_plaid::PlaidCredentials;
 use src_postgres::Db;
 
 /// A different port from either front-end, so all three can run at once.
 const PORT: u16 = 8082;
 
 pub struct RuntimeServer {
-    /// The store, once there is one.
-    ///
-    /// `None` when `DATABASE_URL` is unset, which holds everything in memory
-    /// and loses it on restart.
-    ///
-    /// This is the last silent fallback in the server, and it is the odd one
-    /// out now that Plaid's credentials are required. It is left because the
-    /// machine already models it honestly — `EventProcess::Started` carries
-    /// it, and three `eval!` tests cover the storeless paths — rather than
-    /// because a server that quietly keeps nothing is a good idea.
-    db: Option<Db>,
+    /// The store. Required, and not optional in any sense: the access tokens
+    /// live in it, so a server without one has no way to reach any bank and
+    /// nothing to serve. It used to be optional and hold state in memory,
+    /// which was the last variable in the server with a fallback behind it.
+    db: Db,
 
     /// The machine.
     ///
@@ -80,9 +75,19 @@ pub struct RuntimeServer {
     /// the Plaid fetch, which `fetching` already serialises.
     state: RwLock<StateServer>,
 
-    /// Credentials. Not optional: without them there is nothing to serve, and
-    /// serving something plausible instead is what this server no longer does.
-    plaid: PlaidConfig,
+    /// The Plaid account these calls are made on behalf of. One per process;
+    /// it says which environment, and it signs every request.
+    credentials: PlaidCredentials,
+
+    /// Every Item's access token, by `item_id`, read from the store at boot
+    /// and added to as banks are linked.
+    ///
+    /// Here rather than in the machine, and deliberately: a token is a live
+    /// credential to somebody's bank account, and the machine's whole job is
+    /// to be logged and replayed. It never sees one. Actions name an Item and
+    /// the runtime looks the token up, which is why `ActionSource::FetchPlaid`
+    /// carries an `item_id`.
+    tokens: RwLock<HashMap<String, String>>,
 
     /// Which channel collects the result of a Link session. Held here because
     /// the link flow is not built yet; when it is, this becomes a fact on
@@ -122,23 +127,23 @@ impl RuntimeServer {
     ///
     /// The only public entry point.
     pub async fn run() -> anyhow::Result<()> {
+        // All of these are required, and each fails the process rather than
+        // degrading. Read before anything is served, so a server that cannot
+        // work says so in its first second rather than on its first request.
+        let credentials = PlaidCredentials::from_env()?;
+        let collect = PlaidCollect::from_env()?;
         let db = Self::open_store().await?;
 
-        // Both of these are required, and both fail the process rather than
-        // degrading. Read before the store is used for anything, so a server
-        // that cannot work says so in its first second.
-        let plaid = PlaidConfig::from_env()?;
-        let collect = PlaidCollect::from_env()?;
-
         tracing::info!(
-            env = plaid.credentials.env.as_str(),
+            env = credentials.env.as_str(),
             collect = collect.as_str(),
             "serving live plaid data",
         );
 
         let runtime = Arc::new(Self {
             state: RwLock::new(StateServer::new()),
-            plaid,
+            credentials,
+            tokens: RwLock::new(HashMap::new()),
             collect,
             db,
             fetching: Mutex::new(()),
@@ -150,9 +155,7 @@ impl RuntimeServer {
         // deciding to do it on its own initiative.
         runtime
             .dispatch(vec![Event::FromProcess {
-                event: EventProcess::Started {
-                    store: runtime.db.is_some(),
-                },
+                event: EventProcess::Started,
             }])
             .await;
 
@@ -216,18 +219,13 @@ impl RuntimeServer {
     /// whole thing up one command: the binary knows which schema it needs and
     /// says so to whatever database it is handed.
     ///
-    /// A `DATABASE_URL` that is set and wrong is fatal, deliberately. Falling
-    /// back to running without a store would be the worst of both — a server
-    /// that looks healthy while quietly keeping nothing.
-    async fn open_store() -> anyhow::Result<Option<Db>> {
-        let Ok(url) = std::env::var("DATABASE_URL") else {
-            tracing::info!(
-                store = "none",
-                "no DATABASE_URL, holding state in memory only",
-            );
-
-            return Ok(None);
-        };
+    /// A `DATABASE_URL` that is missing or wrong is fatal, deliberately. This
+    /// is where the access tokens live, so a server without a store cannot
+    /// reach a bank at all — and one that started anyway would look healthy
+    /// while quietly keeping nothing.
+    async fn open_store() -> anyhow::Result<Db> {
+        let url = std::env::var("DATABASE_URL")
+            .map_err(|_| anyhow::anyhow!("DATABASE_URL is not set"))?;
 
         let db = src_postgres::connect(&url).await?;
 
@@ -235,7 +233,7 @@ impl RuntimeServer {
 
         tracing::info!(store = "postgres", "store ready");
 
-        Ok(Some(db))
+        Ok(db)
     }
 
     /// Boxed because the cycle `perform_actions -> fetch_plaid ->
@@ -270,7 +268,9 @@ impl RuntimeServer {
 
     async fn perform_action_source(&self, action: &ActionSource) {
         match action {
-            ActionSource::FetchPlaid { cursor } => self.fetch_plaid(cursor.clone()).await,
+            ActionSource::FetchPlaid { item_id, cursor } => {
+                self.fetch_plaid(item_id, cursor.clone()).await
+            }
         }
     }
 
@@ -280,16 +280,7 @@ impl RuntimeServer {
     /// closes the loop: nothing here inspects an answer or decides anything
     /// about it.
     async fn perform_action_store(&self, action: &ActionStore) {
-        let Some(db) = &self.db else {
-            // Not a fallback, and not a decision: the machine is told at
-            // startup whether there is a store and does not ask a store that
-            // does not exist for anything. Reaching here means the two have
-            // disagreed, which is worth saying out loud rather than papering
-            // over with a plausible-looking empty answer.
-            tracing::error!(?action, "a store action arrived with no store");
-
-            return;
-        };
+        let db = &self.db;
 
         match action {
             ActionStore::LoadEverything => {
@@ -324,6 +315,16 @@ impl RuntimeServer {
     /// that builds one from a fresh balances response.
     async fn load_everything(&self, db: &Db) -> Result<EventStore, src_postgres::PostgresError> {
         let items = src_postgres::load_items(db).await?;
+
+        // The tokens go to the runtime and stop there. Everything below this
+        // line is a projection for a screen, and none of it carries one.
+        {
+            let mut tokens = self.write_tokens();
+
+            for item in &items {
+                tokens.insert(item.item_id.clone(), item.access_token.clone());
+            }
+        }
 
         let mut connections = Vec::with_capacity(items.len());
 
@@ -387,9 +388,19 @@ impl RuntimeServer {
                 cursor,
             } => {
                 // The access token is the runtime's, not the machine's: it
-                // lives beside the credentials and never enters an action or
-                // the event log.
-                let access_token = self.plaid.access_token.clone();
+                // never enters an action or the event log. Looked up rather
+                // than carried, for the same reason.
+                //
+                // Absent means a sync landed for an Item nothing linked, which
+                // cannot happen — the fetch that produced it needed the same
+                // token. Reported rather than defaulted: an empty string here
+                // would write a row claiming to be a bank connection with no
+                // credential behind it, which is worse than no row at all.
+                let Some(access_token) = self.token_for(item_id) else {
+                    tracing::error!(item_id, "a sync landed for an item with no token");
+
+                    return Ok(());
+                };
 
                 src_postgres::save_item(
                     db,
@@ -446,7 +457,7 @@ impl RuntimeServer {
     ///
     /// Nothing here inspects the answer or decides anything about it; that is
     /// what makes the loop closed.
-    async fn fetch_plaid(&self, cursor: Option<String>) {
+    async fn fetch_plaid(&self, item_id: &str, cursor: Option<String>) {
         // One fetch at a time. A burst of cold requests would otherwise all
         // miss and all call out.
         let Ok(_guard) = self.fetching.try_lock() else {
@@ -454,27 +465,47 @@ impl RuntimeServer {
             return;
         };
 
-        let event = match runtime_plaid::fetch_all(&self.plaid, cursor, unix_now()).await {
-            Ok(fetched) => EventSource::PlaidLoaded {
-                added: fetched.added,
-                modified: fetched.modified,
-                removed: fetched.removed,
-                connections: fetched.connections,
-                streams: fetched.streams,
-                cursor: fetched.cursor,
-            },
+        // The machine named an Item it read off its own connection list, and
+        // every connection there was built from a stored Item. Absent means
+        // those two have drifted, which is worth saying rather than guessing
+        // at.
+        let Some(access_token) = self.token_for(item_id) else {
+            tracing::error!(item_id, "asked to fetch an item with no token");
 
-            Err(e) => {
-                let code = match &e {
-                    src_plaid::PlaidError::Plaid { error_code, .. } => error_code.clone(),
-                    _ => "REQUEST_FAILED".to_string(),
-                };
+            self.dispatch(vec![Event::FromSource {
+                event: EventSource::PlaidFailed {
+                    code: String::from("NO_ACCESS_TOKEN"),
+                },
+            }])
+            .await;
 
-                tracing::warn!(error = %e, code, "plaid fetch failed");
-
-                EventSource::PlaidFailed { code }
-            }
+            return;
         };
+
+        let event =
+            match runtime_plaid::fetch_all(&self.credentials, &access_token, cursor, unix_now())
+                .await
+            {
+                Ok(fetched) => EventSource::PlaidLoaded {
+                    added: fetched.added,
+                    modified: fetched.modified,
+                    removed: fetched.removed,
+                    connections: fetched.connections,
+                    streams: fetched.streams,
+                    cursor: fetched.cursor,
+                },
+
+                Err(e) => {
+                    let code = match &e {
+                        src_plaid::PlaidError::Plaid { error_code, .. } => error_code.clone(),
+                        _ => "REQUEST_FAILED".to_string(),
+                    };
+
+                    tracing::warn!(error = %e, code, "plaid fetch failed");
+
+                    EventSource::PlaidFailed { code }
+                }
+            };
 
         let now = unix_now();
         let mut actions = Vec::new();
@@ -550,6 +581,35 @@ impl RuntimeServer {
         }
     }
 
+    /// One Item's access token, if we hold one.
+    fn token_for(&self, item_id: &str) -> Option<String> {
+        match self.tokens.read() {
+            Ok(tokens) => tokens.get(item_id).cloned(),
+            Err(poisoned) => {
+                tracing::error!(
+                    "the token map lock is poisoned — a thread panicked while holding it; \
+                     carrying on with the held data",
+                );
+
+                poisoned.into_inner().get(item_id).cloned()
+            }
+        }
+    }
+
+    fn write_tokens(&self) -> std::sync::RwLockWriteGuard<'_, HashMap<String, String>> {
+        match self.tokens.write() {
+            Ok(tokens) => tokens,
+            Err(poisoned) => {
+                tracing::error!(
+                    "the token map lock is poisoned — a thread panicked while holding it; \
+                     carrying on with the held data",
+                );
+
+                poisoned.into_inner()
+            }
+        }
+    }
+
     fn write_state(&self) -> std::sync::RwLockWriteGuard<'_, StateServer> {
         match self.state.write() {
             Ok(state) => state,
@@ -590,11 +650,7 @@ async fn snapshot(
 /// up` is checked with, so an optimistic answer here would defeat the point of
 /// having it.
 async fn health(State(runtime): State<Arc<RuntimeServer>>) -> (StatusCode, String) {
-    let Some(db) = &runtime.db else {
-        return (StatusCode::OK, String::from("ok store=none"));
-    };
-
-    match src_postgres::ping(db).await {
+    match src_postgres::ping(&runtime.db).await {
         Ok(()) => (StatusCode::OK, String::from("ok store=postgres")),
         Err(e) => {
             tracing::error!(error = %e, "the store is not answering");

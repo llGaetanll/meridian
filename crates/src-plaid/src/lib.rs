@@ -23,12 +23,14 @@ mod plaid_request_exchange;
 mod plaid_request_link_session;
 mod plaid_request_link_token;
 mod plaid_request_recurring;
+mod plaid_request_sandbox_public_token;
 mod plaid_request_sync;
 mod plaid_response_balances;
 mod plaid_response_exchange;
 mod plaid_response_link_session;
 mod plaid_response_link_token;
 mod plaid_response_recurring;
+mod plaid_response_sandbox_public_token;
 mod plaid_response_sync;
 mod plaid_transaction;
 
@@ -43,12 +45,14 @@ pub use plaid_request_exchange::*;
 pub use plaid_request_link_session::*;
 pub use plaid_request_link_token::*;
 pub use plaid_request_recurring::*;
+pub use plaid_request_sandbox_public_token::*;
 pub use plaid_request_sync::*;
 pub use plaid_response_balances::*;
 pub use plaid_response_exchange::*;
 pub use plaid_response_link_session::*;
 pub use plaid_response_link_token::*;
 pub use plaid_response_recurring::*;
+pub use plaid_response_sandbox_public_token::*;
 pub use plaid_response_sync::*;
 pub use plaid_transaction::*;
 
@@ -95,6 +99,25 @@ pub async fn link_session(
         tokens = res.public_tokens().len(),
         "link session polled",
     );
+
+    Ok(res)
+}
+
+/// Make an Item in Sandbox without anybody signing into anything.
+///
+/// The shortcut that keeps development honest rather than fast: what comes
+/// back is an ordinary `public_token`, so it is exchanged the ordinary way and
+/// the Item behind it syncs like any other. Sandbox only — the endpoint does
+/// not exist in Production, so this cannot spend an Item slot.
+pub async fn create_sandbox_public_token(
+    client: &PlaidClient,
+    institution_id: &str,
+) -> Result<SandboxPublicTokenResponse, PlaidError> {
+    let res: SandboxPublicTokenResponse = client
+        .send_request(&SandboxPublicTokenRequest::new(institution_id))
+        .await?;
+
+    tracing::info!(institution_id, "sandbox item created");
 
     Ok(res)
 }

@@ -26,17 +26,13 @@ seconds where an image rebuild is closer to twenty, so a database container and
 a server on the host is what you want while writing code — but the server
 container is the real target and is meant to stay working.
 
-**The database is not required to run the app.** With no `DATABASE_URL` the
-server holds its state in memory exactly as it always has, so a clean checkout
-still runs with no Docker at all. A `DATABASE_URL` that is set and *wrong* is
-fatal, though: falling back would give a server that looks healthy while
-quietly keeping nothing.
+**`DATABASE_URL` is required.** Not as policy — structurally: the Plaid access
+tokens live in `items`, one row per bank, so a server without a database has no
+credential to reach any bank with and nothing to serve.
 
-Plaid used to be optional in the same way, with the captured fixtures standing
-in for missing credentials. It is not any more — every `PLAID_*` variable is
-required and the server exits naming the one it is missing. See
-[PLAID.md](PLAID.md). That leaves `DATABASE_URL` as the last variable with a
-fallback behind it.
+It used to be optional, holding state in memory and losing it on restart. That
+went at the same time as the fixtures, and for the same reason: an empty screen
+should have one explanation.
 
 ## Tests
 
@@ -59,7 +55,7 @@ separating from two properties it does not touch:
 
 | | needs a database |
 | --- | --- |
-| Running the app | no — but it needs every `PLAID_*` variable |
+| Running the app | **yes** — the access tokens are in it |
 | `cargo build` | no — `.sqlx` holds every query's checked metadata |
 | `cargo test` | yes, one `./scripts/db-init.sh` away |
 
