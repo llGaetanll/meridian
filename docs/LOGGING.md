@@ -91,6 +91,18 @@ means adding, changing or removing its example here.
 - `INFO src_postgres::postgres_migrate schema is current migrations=2`
   — on every boot. A no-op against a database that is already current, and a
   loud failure against one where an applied migration has been edited.
+- `INFO server_main::state_server read back from the store entries=48 connections=1 streams=8`
+  — what a restart came back with, before anything is fetched. Zeroes are a
+  first run, not a failure.
+- `ERROR server_main::state_server could not read the store; starting empty message="connection refused"`
+  — survivable. An empty ledger is what a first run has, and the next request
+  fills it. Logged at ERROR because it means something is wrong even though
+  nothing broke.
+- `ERROR server_main::state_server could not write the store message=…`
+  — what was fetched is still in memory and still being served. The cursor not
+  having moved is what makes the next restart recover rather than skip.
+- `DEBUG server_main::runtime_server written to the store item_id=8Pd5Zx… added=48 modified=0 removed=0`
+  — one per sync. `DEBUG` because a healthy server writes on every refresh.
 - `INFO src_postgres::postgres_item item removed with its history item_id=8Pd5Zx…`
   — the accounts, transactions and streams went with it, by the cascade.
 - `WARN src_postgres::postgres_ledger entries that are not transfers were not stored skipped=1`

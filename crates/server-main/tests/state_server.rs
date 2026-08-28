@@ -9,6 +9,8 @@
 
 use api_common::Timestamp;
 use api_eval::eval;
+use api_ledger::Connection;
+use api_ledger::ConnectionStatus;
 use api_ledger::Entry;
 use api_ledger::Position;
 use api_ledger::Tx;
@@ -52,6 +54,39 @@ fn loaded(added: Vec<Entry>) -> Event {
 fn failed(code: &str) -> Event {
     Event::FromSource {
         event: EventSource::PlaidFailed { code: code.into() },
+    }
+}
+
+fn started() -> Event {
+    Event::FromProcess {
+        event: EventProcess::Started,
+    }
+}
+
+fn connection(id: &str, status: ConnectionStatus) -> Connection {
+    Connection {
+        id: id.to_string(),
+        name: "First Platypus Bank".to_string(),
+        initials: "FP".to_string(),
+        status,
+        accounts: vec![],
+    }
+}
+
+fn read_back(entries: Vec<Entry>, cursor: Option<&str>, synced_at: Option<Timestamp>) -> Event {
+    Event::FromStore {
+        event: EventStore::Loaded {
+            entries,
+            connections: vec![connection(
+                "item-1",
+                ConnectionStatus::Ok {
+                    synced_at: synced_at.unwrap_or(T0),
+                },
+            )],
+            streams: vec![],
+            cursor: cursor.map(str::to_string),
+            synced_at,
+        },
     }
 }
 
@@ -272,5 +307,156 @@ fn shutdown_is_idempotent() {
         < Event::FromTerminal { event: EventTerminal::SigInt },
         < Event::FromTerminal { event: EventTerminal::SigTerm },
         > Action::ToProcess { action: ActionProcess::Shutdown },
+    );
+}
+
+/// The store is read before anything is fetched. Whatever is on disk is what
+/// the last run ended with, and starting from it is the difference between a
+/// restart costing nothing and one re-downloading a history.
+#[test]
+fn starting_reads_the_store() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < started(),
+        > Action::ToStore { action: ActionStore::LoadEverything },
+    );
+}
+
+/// Reading it back asks for nothing. Nobody is waiting at boot, and the data
+/// is already what the next request would be served.
+#[test]
+fn a_read_store_asks_for_nothing() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < read_back(vec![entry("a"), entry("b")], Some("cursor-1"), Some(T0)),
+    );
+
+    assert_eq!(state.entries().len(), 2);
+    assert_eq!(state.connections().len(), 1);
+}
+
+/// The whole point of persisting: a restart inside the freshness window serves
+/// what it read instead of going straight back to Plaid for data it has.
+#[test]
+fn a_restart_with_fresh_data_does_not_go_back_to_plaid() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < read_back(vec![entry("a")], Some("cursor-1"), Some(T0)),
+
+        < requested(false),
+        > Action::ToClient { action: ActionClient::Serve },
+    );
+}
+
+/// And one with stale data does, resuming from the cursor it read rather than
+/// from the beginning.
+#[test]
+fn a_restart_with_stale_data_resumes_from_the_stored_cursor() {
+    let mut state = state();
+
+    let long_ago = Timestamp::from_secs(T0.as_secs() - 3_600);
+
+    eval!(&mut state,
+        < read_back(vec![entry("a")], Some("cursor-1"), Some(long_ago)),
+
+        < requested(false),
+        > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_) } },
+    );
+}
+
+/// A sync is served first and written second: the request in hand should not
+/// wait on a database round trip for data the server is already holding.
+#[test]
+fn a_sync_is_served_before_it_is_written() {
+    let mut state = state();
+
+    let fetched = Event::FromSource {
+        event: EventSource::PlaidLoaded {
+            added: vec![entry("a")],
+            modified: vec![],
+            removed: vec![],
+            connections: vec![connection("item-1", ConnectionStatus::Ok { synced_at: T0 })],
+            streams: vec![],
+            cursor: "cursor-2".into(),
+        },
+    };
+
+    eval!(&mut state,
+        < fetched,
+        > Action::ToClient { action: ActionClient::Serve },
+        > Action::ToStore { action: ActionStore::SaveFetched { .. } },
+    );
+}
+
+/// Nothing to write it against. A fetch that produced no connection is a
+/// fixture run or a failure, and inventing an Item id for it would put a row
+/// in the database that no bank corresponds to.
+#[test]
+fn a_sync_with_no_connection_writes_nothing() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < loaded(vec![entry("a")]),
+        > Action::ToClient { action: ActionClient::Serve },
+    );
+}
+
+/// An expired login has to outlive the process, or the server comes back up
+/// and asks Plaid the same question it was just refused.
+#[test]
+fn an_expired_login_is_remembered() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < read_back(vec![], Some("cursor-1"), Some(T0)),
+
+        < failed("ITEM_LOGIN_REQUIRED"),
+        > Action::ToProcess { action: ActionProcess::ReportLoginRequired },
+        > Action::ToStore { action: ActionStore::SaveStatus { .. } },
+        > Action::ToClient { action: ActionClient::Serve },
+    );
+}
+
+/// And one read back from the store is believed, so a restart does not undo
+/// the decision not to retry.
+#[test]
+fn an_expired_login_read_back_still_stops_the_retry() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromStore {
+            event: EventStore::Loaded {
+                entries: vec![],
+                connections: vec![connection("item-1", ConnectionStatus::LoginRequired)],
+                streams: vec![],
+                cursor: Some("cursor-1".to_string()),
+                synced_at: None,
+            },
+        },
+
+        // Not even a forced refresh: no amount of asking fixes a login.
+        < requested(true),
+        > Action::ToClient { action: ActionClient::Serve },
+    );
+
+    assert!(state.login_required());
+}
+
+/// A store that cannot be read is survivable. An empty ledger is what a first
+/// run has, and the next request fills it.
+#[test]
+fn a_store_that_cannot_be_read_still_serves() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromStore {
+            event: EventStore::LoadFailed { message: "connection refused".to_string() },
+        },
+
+        < requested(false),
+        > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None } },
     );
 }

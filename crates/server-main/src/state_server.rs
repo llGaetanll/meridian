@@ -14,6 +14,7 @@
 use api_common::Timestamp;
 use api_common::ratelimit::RateLimiter;
 use api_ledger::Connection;
+use api_ledger::ConnectionStatus;
 use api_ledger::Entry;
 use api_ledger::Ledger;
 use api_ledger::Stream;
@@ -25,9 +26,12 @@ use crate::Action;
 use crate::ActionClient;
 use crate::ActionProcess;
 use crate::ActionSource;
+use crate::ActionStore;
 use crate::Event;
 use crate::EventClient;
+use crate::EventProcess;
 use crate::EventSource;
+use crate::EventStore;
 use crate::EventTerminal;
 
 /// How long a snapshot is served before Plaid is asked again.
@@ -108,6 +112,8 @@ impl StateServer {
         match event {
             Event::FromClient { event } => self.handle_event_client(event, actions),
             Event::FromSource { event } => self.handle_event_source(event, actions),
+            Event::FromStore { event } => self.handle_event_store(event, actions),
+            Event::FromProcess { event } => self.handle_event_process(event, actions),
             Event::FromTerminal { event } => self.handle_event_terminal(event, actions),
         }
     }
@@ -159,9 +165,29 @@ impl StateServer {
                     "a successful sync should always return a cursor",
                 );
 
+                // Served before written: the request in hand should not wait
+                // on a database round trip for data the server is already
+                // holding.
                 actions.push(Action::ToClient {
                     action: ActionClient::Serve,
                 });
+
+                // One Item today, as `ITEM` says. When there is a second, the
+                // fetch itself becomes per-Item and this follows it.
+                if let Some(connection) = connections.first() {
+                    actions.push(Action::ToStore {
+                        action: ActionStore::SaveFetched {
+                            item_id: connection.id.clone(),
+                            institution_name: Some(connection.name.clone()),
+                            added: added.clone(),
+                            modified: modified.clone(),
+                            removed: removed.clone(),
+                            accounts: connection.accounts.clone(),
+                            streams: streams.clone(),
+                            cursor: cursor.clone(),
+                        },
+                    });
+                }
             }
 
             EventSource::PlaidFailed { code } => {
@@ -171,6 +197,17 @@ impl StateServer {
                     actions.push(Action::ToProcess {
                         action: ActionProcess::ReportLoginRequired,
                     });
+
+                    // Remembered across a restart, or the server comes back up
+                    // and asks Plaid the same question it was just refused.
+                    if let Some(connection) = self.connections.first() {
+                        actions.push(Action::ToStore {
+                            action: ActionStore::SaveStatus {
+                                item_id: connection.id.clone(),
+                                error_code: Some(code.clone()),
+                            },
+                        });
+                    }
                 }
 
                 // A failed fetch still counts as an attempt, so a Plaid outage
@@ -183,6 +220,72 @@ impl StateServer {
                 actions.push(Action::ToClient {
                     action: ActionClient::Serve,
                 });
+            }
+        }
+    }
+
+    fn handle_event_process(&mut self, event: &EventProcess, actions: &mut Vec<Action>) {
+        match event {
+            // Read before fetching. Whatever is on disk is what the last run
+            // ended with, and starting from it is the difference between a
+            // restart costing nothing and a restart re-downloading a history.
+            EventProcess::Started => actions.push(Action::ToStore {
+                action: ActionStore::LoadEverything,
+            }),
+        }
+    }
+
+    fn handle_event_store(&mut self, event: &EventStore, _actions: &mut Vec<Action>) {
+        match event {
+            EventStore::Loaded {
+                entries,
+                connections,
+                streams,
+                cursor,
+                synced_at,
+            } => {
+                // Assigned, not applied — unlike a Plaid sync. This is not a
+                // diff against what is held; it *is* what is held, read back.
+                // It only ever arrives once, before anything else has run.
+                debug_assert!(
+                    self.ledger.entries().is_empty(),
+                    "the store is read once, before anything is fetched",
+                );
+
+                self.ledger = Ledger::new(entries.clone());
+                self.connections = connections.clone();
+                self.streams = streams.clone();
+                self.cursor = cursor.clone();
+
+                // The stored time, not now: data read from disk is exactly as
+                // old as it was when it was written, and pretending otherwise
+                // would hold off the first fetch for a freshness window the
+                // data has already spent.
+                self.fetched_at = *synced_at;
+
+                self.login_required = connections
+                    .iter()
+                    .any(|c| matches!(c.status, ConnectionStatus::LoginRequired));
+
+                tracing::info!(
+                    entries = entries.len(),
+                    connections = connections.len(),
+                    streams = streams.len(),
+                    "read back from the store",
+                );
+            }
+
+            // Both of these carry on. Nothing to decide: an empty ledger is
+            // what a first run has, and the next fetch fills it. They are
+            // events rather than a line in the runtime because the log is
+            // meant to be a recording of the session, and "the store was
+            // unreachable" is part of the story.
+            EventStore::LoadFailed { message } => {
+                tracing::error!(message, "could not read the store; starting empty");
+            }
+
+            EventStore::SaveFailed { message } => {
+                tracing::error!(message, "could not write the store");
             }
         }
     }
