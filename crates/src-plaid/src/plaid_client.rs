@@ -23,16 +23,18 @@ pub struct PlaidCredentials {
 impl PlaidCredentials {
     /// Credentials from `PLAID_CLIENT_ID`, `PLAID_SECRET` and `PLAID_ENV`.
     ///
-    /// `PLAID_ENV` is the only optional one, and leaving it out means Sandbox.
+    /// All three are required. None of them has a sensible default — two are
+    /// secrets and the third decides whether this talks to real money — so an
+    /// environment that has not set them is one this cannot guess for.
     pub fn from_env() -> Result<Self, PlaidError> {
         let var = |key: &str| {
-            std::env::var(key).map_err(|_| PlaidError::InvalidUrl(format!("{key} is not set")))
+            std::env::var(key).map_err(|_| PlaidError::Config(format!("{key} is not set")))
         };
 
         Ok(Self {
             client_id: var("PLAID_CLIENT_ID")?,
             secret: var("PLAID_SECRET")?,
-            env: PlaidEnv::from_env(),
+            env: PlaidEnv::from_env()?,
         })
     }
 }

@@ -97,10 +97,14 @@ means adding, changing or removing its example here.
 - `INFO server_main meridian server starting version=0.1.0`
 - `INFO phone_main meridian phone starting version=0.1.0`
   — one per binary, each first thing in its own `main`.
-- `INFO server_main::runtime_server serving live sandbox data source=plaid`
-- `INFO server_main::runtime_server no PLAID_ACCESS_TOKEN, serving captured sandbox fixtures source=fixtures`
-  — which of the two the server is answering from, logged once at startup.
-  Only ever Sandbox; see [PLAID.md](PLAID.md).
+- `INFO server_main::runtime_server no DATABASE_URL, holding state in memory only store=none`
+- `INFO server_main::runtime_server store ready store=postgres`
+  — which of the two, once at startup. `DATABASE_URL` is the last variable in
+  the server with a fallback behind it; every `PLAID_*` one is required.
+- `INFO server_main::runtime_server serving live plaid data env=sandbox collect=poll`
+  — once at startup. There is no second form of this line any more: the server
+  starts with credentials or it does not start. Only ever Sandbox; see
+  [PLAID.md](PLAID.md).
 - `INFO server_main::runtime_server server listening port=8082`
 - `INFO web_main::io::markets quote{symbol=SPY range=1D} quote asked for`
 - `INFO src_plaid::plaid_client plaid client env=sandbox base_url=https://sandbox.plaid.com/`
@@ -120,11 +124,14 @@ means adding, changing or removing its example here.
   — on every boot. A no-op against a database that is already current, and a
   loud failure against one where an applied migration has been edited.
 - `ERROR server_main::runtime_server a store action arrived with no store action=LoadEverything`
-- `ERROR server_main::runtime_server asked to store an item with no credentials item_id=8Pd5Zx…`
-  — both mean the machine and the runtime disagree about what the process came
-  up with, which `EventProcess::Started` is supposed to have settled. Neither
-  is handled, on purpose: a plausible-looking fallback here would hide the
-  disagreement instead of reporting it.
+  — the machine and the runtime disagree about what the process came up with,
+  which `EventProcess::Started` is supposed to have settled. Not handled, on
+  purpose: a plausible-looking fallback here would hide the disagreement
+  instead of reporting it.
+
+  There used to be a second line of this shape, for being asked to store an
+  Item with no credentials. It is gone because the case is gone — credentials
+  are required, so there is no longer a way to be running without them.
 - `INFO server_main::state_server read back from the store entries=48 connections=1 streams=8`
   — what a restart came back with, before anything is fetched. Zeroes are a
   first run, not a failure.

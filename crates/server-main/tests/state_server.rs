@@ -57,19 +57,14 @@ fn failed(code: &str) -> Event {
     }
 }
 
-/// A server that came up with both a store and real credentials.
+/// A server that came up with a store.
 fn started() -> Event {
-    Event::FromProcess {
-        event: EventProcess::Started {
-            store: true,
-            live: true,
-        },
-    }
+    started_with(true)
 }
 
-fn started_with(store: bool, live: bool) -> Event {
+fn started_with(store: bool) -> Event {
     Event::FromProcess {
-        event: EventProcess::Started { store, live },
+        event: EventProcess::Started { store },
     }
 }
 
@@ -353,7 +348,7 @@ fn starting_without_a_store_asks_for_nothing() {
     let mut state = state();
 
     eval!(&mut state,
-        < started_with(false, true),
+        < started_with(false),
     );
 }
 
@@ -363,23 +358,7 @@ fn a_sync_with_no_store_is_served_and_not_written() {
     let mut state = state();
 
     eval!(&mut state,
-        < started_with(false, true),
-
-        < fetched("item-1", "cursor-2"),
-        > Action::ToClient { action: ActionClient::Serve },
-    );
-}
-
-/// Fixture data is worth serving and is not worth storing. The Item behind it
-/// has no credential and could never sync, so a row for it would claim to be a
-/// bank connection and not be one.
-#[test]
-fn a_fixtures_run_is_served_and_not_written() {
-    let mut state = state();
-
-    eval!(&mut state,
-        < started_with(true, false),
-        > Action::ToStore { action: ActionStore::LoadEverything },
+        < started_with(false),
 
         < fetched("item-1", "cursor-2"),
         > Action::ToClient { action: ActionClient::Serve },

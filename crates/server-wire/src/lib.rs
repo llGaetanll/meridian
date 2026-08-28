@@ -46,21 +46,6 @@ pub struct WireSnapshot {
     /// phone with a wrong date would render a confidently wrong screen.
     #[serde(default)]
     pub now: Timestamp,
-
-    /// Whether this came from the live Plaid Sandbox or from the fixtures.
-    /// Shown nowhere; logged, and useful when a number looks wrong.
-    #[serde(default)]
-    pub source: WireSource,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WireSource {
-    /// Fetched from Plaid Sandbox just now.
-    Live,
-    /// The captured Sandbox responses in `fixtures/`.
-    #[default]
-    Fixture,
 }
 
 impl WireSnapshot {
@@ -69,7 +54,6 @@ impl WireSnapshot {
         connections: &[Connection],
         streams: &[Stream],
         now: Timestamp,
-        source: WireSource,
     ) -> Self {
         Self {
             entries: entries.iter().map(WireEntry::from_entry).collect(),
@@ -79,7 +63,6 @@ impl WireSnapshot {
                 .collect(),
             streams: streams.iter().map(WireStream::from_stream).collect(),
             now,
-            source,
         }
     }
 }

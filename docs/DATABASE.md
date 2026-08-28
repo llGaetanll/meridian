@@ -26,12 +26,17 @@ seconds where an image rebuild is closer to twenty, so a database container and
 a server on the host is what you want while writing code — but the server
 container is the real target and is meant to stay working.
 
-**Nothing here is required to run the app.** With no `DATABASE_URL` the server
-holds its state in memory exactly as it always has, and with no Plaid
-credentials it serves the captured fixtures. A clean checkout still runs with
-no Docker at all. A `DATABASE_URL` that is set and *wrong* is fatal, though:
-falling back would give a server that looks healthy while quietly keeping
-nothing.
+**The database is not required to run the app.** With no `DATABASE_URL` the
+server holds its state in memory exactly as it always has, so a clean checkout
+still runs with no Docker at all. A `DATABASE_URL` that is set and *wrong* is
+fatal, though: falling back would give a server that looks healthy while
+quietly keeping nothing.
+
+Plaid used to be optional in the same way, with the captured fixtures standing
+in for missing credentials. It is not any more — every `PLAID_*` variable is
+required and the server exits naming the one it is missing. See
+[PLAID.md](PLAID.md). That leaves `DATABASE_URL` as the last variable with a
+fallback behind it.
 
 ## Tests
 
@@ -54,7 +59,7 @@ separating from two properties it does not touch:
 
 | | needs a database |
 | --- | --- |
-| Running the app | no — the fixtures fallback is unchanged |
+| Running the app | no — but it needs every `PLAID_*` variable |
 | `cargo build` | no — `.sqlx` holds every query's checked metadata |
 | `cargo test` | yes, one `./scripts/db-init.sh` away |
 

@@ -26,7 +26,6 @@ fn main() {
         &fetched.connections,
         &fetched.streams,
         api_common::Timestamp::EPOCH,
-        server_main::WireSource::Fixture,
     );
 
     let mut out = Vec::new();

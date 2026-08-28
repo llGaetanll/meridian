@@ -5,9 +5,13 @@
 //! happens here, and the only thing the phone ever sees is the transactions
 //! that come back.
 //!
-//! **Sandbox only.** `PlaidEnv` defaults to Sandbox and needs a deliberate
-//! `PLAID_ENV=production` to be anything else; nothing here sets it, and
-//! [`runtime_plaid::fetch_all`] checks the environment before it calls out.
+//! **Sandbox only.** `PLAID_ENV` is required and matched exactly — there is no
+//! default and nothing is inferred — and [`runtime_plaid::fetch_all`] checks
+//! the environment again before it calls out.
+//!
+//! Every variable this server reads is required. A server that starts without
+//! credentials and serves something plausible instead is a server whose empty
+//! screen has two explanations, and the log says the same thing for both.
 //!
 //! The crate is split the way every program in this workspace is: a state
 //! machine that decides ([`StateServer`]) and a runtime that acts
@@ -24,6 +28,7 @@ mod event_process;
 mod event_source;
 mod event_store;
 mod event_terminal;
+mod plaid_collect;
 mod project;
 mod runtime_plaid;
 mod runtime_server;
@@ -40,9 +45,9 @@ pub use event_process::EventProcess;
 pub use event_source::EventSource;
 pub use event_store::EventStore;
 pub use event_terminal::EventTerminal;
+pub use plaid_collect::PlaidCollect;
 pub use runtime_server::RuntimeServer;
 pub use server_wire::WireSnapshot;
-pub use server_wire::WireSource;
 pub use state_server::FRESH_FOR_SECS;
 pub use state_server::StateServer;
 
