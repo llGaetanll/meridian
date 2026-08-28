@@ -30,20 +30,23 @@ cargo run -p server-main                  # :8082
 cd crates/phone-main && trunk serve    # :8081
 ```
 
-**The server needs `.env` filled in.** Plaid's credentials, the environment,
-the access token and the collection channel are all required, and it exits
-saying which one is missing rather than starting and serving something
-plausible. [PLAID.md](PLAID.md) has the two curl calls that produce a Sandbox
-token.
+**The server needs `.env` filled in, and it needs Postgres.** Every variable is
+required — Plaid's credentials, the environment, the collection channel and
+`DATABASE_URL` — and it exits saying which one is missing rather than starting
+and serving something plausible.
 
-The database is the one thing still optional. With no `DATABASE_URL` the server
-holds everything in memory and loses it on restart. To run with one:
+Postgres is not optional because the Plaid access tokens live in it, one row
+per bank:
 
 ```
 cp .env.example .env
 ./scripts/db-init.sh                      # Postgres in a container
+cargo run -p server-main --example link_sandbox   # a bank to look at
 cargo run -p server-main                  # applies migrations, then serves
 ```
+
+Without that middle line the server starts and serves an empty ledger, which is
+correct: no bank has been linked. [PLAID.md](PLAID.md) has the rest.
 
 `docker compose --profile server up` brings both up as they are deployed.
 [DATABASE.md](DATABASE.md) has the rest, including the one rule about

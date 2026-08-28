@@ -42,12 +42,6 @@ use crate::EventTerminal;
 /// nothing.
 pub const FRESH_FOR_SECS: u64 = 30;
 
-/// The Item every call is currently for.
-///
-/// One connection today. When a second bank is added this becomes a field on
-/// whatever asks, and the rate limiter already keys on it.
-const ITEM: &str = "primary";
-
 /// Everything the server holds between requests.
 ///
 /// Fields are private: state changes only through
@@ -75,11 +69,6 @@ pub struct StateServer {
 
     /// Whether a shutdown has been asked for. Once set, no new work starts.
     shutting_down: bool,
-
-    /// Whether there is somewhere to persist to, as the runtime reported when
-    /// it started. Nothing is ever asked of a store that does not exist —
-    /// which is why the runtime needs no fallback for being asked.
-    store: bool,
 
     /// What Plaid will let us send. Consulted rather than guessed, and part of
     /// the machine because "may I call?" is arithmetic, not IO.
@@ -126,16 +115,24 @@ impl StateServer {
     fn handle_event_client(&mut self, event: &EventClient, actions: &mut Vec<Action>) {
         match event {
             EventClient::SnapshotRequested { force } => {
-                if self.should_fetch(*force) {
-                    actions.push(Action::ToSource {
+                // Which Item to sync, if there is one at all. No connection
+                // means no bank has been linked yet — a real state with one
+                // meaning, and the state first run exists to leave. There is
+                // nothing to ask Plaid about, so the empty ledger is served
+                // and the app draws its empty screen.
+                let item_id = self.connections.first().map(|c| c.id.clone());
+
+                match item_id.filter(|id| self.should_fetch(id, *force)) {
+                    Some(item_id) => actions.push(Action::ToSource {
                         action: ActionSource::FetchPlaid {
+                            item_id,
                             cursor: self.cursor.clone(),
                         },
-                    });
-                } else {
-                    actions.push(Action::ToClient {
+                    }),
+
+                    None => actions.push(Action::ToClient {
                         action: ActionClient::Serve,
-                    });
+                    }),
                 }
             }
         }
@@ -177,9 +174,10 @@ impl StateServer {
                     action: ActionClient::Serve,
                 });
 
-                // One Item today, as `ITEM` says. When there is a second, the
-                // fetch itself becomes per-Item and this follows it.
-                if let Some(connection) = connections.first().filter(|_| self.persists()) {
+                // One Item today. The fetch already names which, so when
+                // there is a second this follows the id on the event rather
+                // than reaching for the first connection.
+                if let Some(connection) = connections.first() {
                     actions.push(Action::ToStore {
                         action: ActionStore::SaveFetched {
                             item_id: connection.id.clone(),
@@ -205,7 +203,7 @@ impl StateServer {
 
                     // Remembered across a restart, or the server comes back up
                     // and asks Plaid the same question it was just refused.
-                    if let Some(connection) = self.connections.first().filter(|_| self.persists()) {
+                    if let Some(connection) = self.connections.first() {
                         actions.push(Action::ToStore {
                             action: ActionStore::SaveStatus {
                                 item_id: connection.id.clone(),
@@ -234,18 +232,10 @@ impl StateServer {
             // Read before fetching. Whatever is on disk is what the last run
             // ended with, and starting from it is the difference between a
             // restart costing nothing and a restart re-downloading a history.
-            EventProcess::Started { store } => {
-                self.store = *store;
-
-                // Nothing to read from is not a problem: the ledger is already
-                // empty and the first request fetches, which is exactly what a
-                // first run does. So there is nothing to ask for and nothing
-                // to wait on.
-                if *store {
-                    actions.push(Action::ToStore {
-                        action: ActionStore::LoadEverything,
-                    });
-                }
+            EventProcess::Started => {
+                actions.push(Action::ToStore {
+                    action: ActionStore::LoadEverything,
+                });
             }
         }
     }
@@ -327,21 +317,11 @@ impl StateServer {
         }
     }
 
-    /// Whether there is anywhere to write to.
-    ///
-    /// Used to also ask whether the source was real, because fixture data was
-    /// worth serving and was not worth storing. There is no fixture data any
-    /// more — the server starts with credentials or does not start — so the
-    /// question is down to one half.
-    fn persists(&self) -> bool {
-        self.store
-    }
-
     /// Whether to go back to Plaid.
     ///
     /// Pure, and reads the clock it was handed rather than one of its own —
     /// the whole reason this lives in a state machine.
-    fn should_fetch(&mut self, force: bool) -> bool {
+    fn should_fetch(&mut self, item_id: &str, force: bool) -> bool {
         // Nothing new starts once we are on the way out.
         if self.shutting_down {
             return false;
@@ -374,7 +354,7 @@ impl StateServer {
         .iter()
         .all(|endpoint| {
             self.limiter
-                .can_send(now, &PlaidRateCtx::new(*endpoint, ITEM))
+                .can_send(now, &PlaidRateCtx::new(*endpoint, item_id))
         })
     }
 

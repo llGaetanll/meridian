@@ -97,16 +97,19 @@ means adding, changing or removing its example here.
 - `INFO server_main meridian server starting version=0.1.0`
 - `INFO phone_main meridian phone starting version=0.1.0`
   — one per binary, each first thing in its own `main`.
-- `INFO server_main::runtime_server no DATABASE_URL, holding state in memory only store=none`
 - `INFO server_main::runtime_server store ready store=postgres`
-  — which of the two, once at startup. `DATABASE_URL` is the last variable in
-  the server with a fallback behind it; every `PLAID_*` one is required.
+  — once at startup. There is no second form: `DATABASE_URL` is required, and
+  a server without a store has no access tokens and so no bank to reach.
 - `INFO server_main::runtime_server serving live plaid data env=sandbox collect=poll`
   — once at startup. There is no second form of this line any more: the server
   starts with credentials or it does not start. Only ever Sandbox; see
   [PLAID.md](PLAID.md).
 - `INFO server_main::runtime_server server listening port=8082`
 - `INFO web_main::io::markets quote{symbol=SPY range=1D} quote asked for`
+- `INFO src_plaid sandbox item created institution_id=ins_109508`
+- `INFO src_plaid item created item_id=8Pd5Zx…`
+  — linking a bank. The access token is deliberately absent from both: it is a
+  credential, and a log is a file that gets pasted into issues.
 - `INFO src_plaid::plaid_client plaid client env=sandbox base_url=https://sandbox.plaid.com/`
   — which environment a session ran against, logged once when the client is
   built. See [PLAID.md](PLAID.md).
@@ -123,15 +126,16 @@ means adding, changing or removing its example here.
 - `INFO src_postgres::postgres_migrate schema is current migrations=2`
   — on every boot. A no-op against a database that is already current, and a
   loud failure against one where an applied migration has been edited.
-- `ERROR server_main::runtime_server a store action arrived with no store action=LoadEverything`
-  — the machine and the runtime disagree about what the process came up with,
-  which `EventProcess::Started` is supposed to have settled. Not handled, on
-  purpose: a plausible-looking fallback here would hide the disagreement
-  instead of reporting it.
+- `ERROR server_main::runtime_server asked to fetch an item with no token item_id=8Pd5Zx…`
+- `ERROR server_main::runtime_server a sync landed for an item with no token item_id=8Pd5Zx…`
+  — the machine named an Item the runtime holds no access token for, which
+  means its connection list and the store have drifted. Neither is handled on
+  purpose: a plausible-looking fallback would hide the disagreement instead of
+  reporting it.
 
-  There used to be a second line of this shape, for being asked to store an
-  Item with no credentials. It is gone because the case is gone — credentials
-  are required, so there is no longer a way to be running without them.
+  Two older lines of this shape are gone, because their cases are: being asked
+  to use a store that is not there, and storing an Item with no credentials.
+  Both the store and the credentials are required now.
 - `INFO server_main::state_server read back from the store entries=48 connections=1 streams=8`
   — what a restart came back with, before anything is fetched. Zeroes are a
   first run, not a failure.

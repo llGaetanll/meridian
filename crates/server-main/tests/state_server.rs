@@ -38,6 +38,12 @@ fn entry(id: &str) -> Entry {
     )
 }
 
+/// A sync landing, with no connection on it.
+///
+/// Deliberately thin: these are the ledger tests, and a connection would pull
+/// an `ActionStore::SaveFetched` into every one of them for no benefit.
+/// [`fetched`] is the variant that carries one, and the tests that need a bank
+/// to still be linked afterwards seed it with [`read_back`] instead.
 fn loaded(added: Vec<Entry>) -> Event {
     Event::FromSource {
         event: EventSource::PlaidLoaded {
@@ -57,14 +63,9 @@ fn failed(code: &str) -> Event {
     }
 }
 
-/// A server that came up with a store.
 fn started() -> Event {
-    started_with(true)
-}
-
-fn started_with(store: bool) -> Event {
     Event::FromProcess {
-        event: EventProcess::Started { store },
+        event: EventProcess::Started,
     }
 }
 
@@ -95,6 +96,19 @@ fn read_back(entries: Vec<Entry>, cursor: Option<&str>, synced_at: Option<Timest
     }
 }
 
+/// A store with nothing in it yet — no bank has been linked.
+fn read_back_empty() -> Event {
+    Event::FromStore {
+        event: EventStore::Loaded {
+            entries: vec![],
+            connections: vec![],
+            streams: vec![],
+            cursor: None,
+            synced_at: None,
+        },
+    }
+}
+
 fn fetched(item: &str, cursor: &str) -> Event {
     Event::FromSource {
         event: EventSource::PlaidLoaded {
@@ -114,14 +128,48 @@ fn requested(force: bool) -> Event {
     }
 }
 
+/// A linked bank and nothing synced yet: the first request goes to Plaid, from
+/// the beginning, naming the Item it read off the connection.
 #[test]
 fn the_first_request_goes_to_plaid() {
     let mut state = state();
 
     eval!(&mut state,
+        < read_back(vec![], None, None),
+
         < requested(false),
-        > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
     );
+
+    // The Item named on the action is read off the connection, so pinning the
+    // connection pins what the fetch will ask about. `eval!` patterns cannot
+    // carry a guard, and a `String` has no literal pattern to match against.
+    assert_eq!(state.connections()[0].id, "item-1");
+}
+
+/// No bank linked, so there is nothing to ask Plaid about.
+///
+/// Not an error and not an empty answer standing in for one: an Item is what a
+/// sync is *of*, and until first run has produced one the honest response is
+/// the empty ledger. Fetching anyway would be a call with no access token to
+/// make it with.
+#[test]
+fn a_server_with_no_bank_linked_serves_rather_than_fetching() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < started(),
+        > Action::ToStore { action: ActionStore::LoadEverything },
+
+        < read_back_empty(),
+
+        // Forced, which normally outranks everything short of a dead login.
+        < requested(true),
+        > Action::ToClient { action: ActionClient::Serve },
+    );
+
+    assert!(state.entries().is_empty());
+    assert!(state.connections().is_empty());
 }
 
 #[test]
@@ -141,9 +189,12 @@ fn a_fresh_snapshot_is_served_without_asking_plaid_again() {
 fn a_stale_snapshot_is_refetched() {
     let mut state = state();
 
+    // A real sync rather than a bare one: it leaves the connection behind that
+    // the next request reads its Item off.
     eval!(&mut state,
-        < loaded(vec![]),
+        < fetched("item-1", "cursor-1"),
         > Action::ToClient { action: ActionClient::Serve },
+        > Action::ToStore { action: ActionStore::SaveFetched { .. } },
     );
 
     // The point of the test: enough time has passed that the held snapshot
@@ -152,7 +203,7 @@ fn a_stale_snapshot_is_refetched() {
 
     eval!(&mut state,
         < requested(false),
-        > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_) } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
     );
 }
 
@@ -161,11 +212,12 @@ fn a_forced_request_refetches_however_fresh() {
     let mut state = state();
 
     eval!(&mut state,
-        < loaded(vec![]),
+        < fetched("item-1", "cursor-1"),
         > Action::ToClient { action: ActionClient::Serve },
+        > Action::ToStore { action: ActionStore::SaveFetched { .. } },
 
         < requested(true),
-        > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_) } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
     );
 }
 
@@ -286,6 +338,10 @@ fn a_burst_of_forced_refreshes_is_rate_limited() {
     let mut state = state();
     let mut actions = Vec::new();
 
+    // A linked bank, so that every refusal below is the limiter's doing and
+    // not "there is no Item to ask about".
+    state.handle_events(T0, &[read_back(vec![], None, None)], &mut actions);
+
     // BalanceGet allows 10/min, so the 11th forced refresh has no budget.
     let mut fetches = 0;
 
@@ -341,30 +397,6 @@ fn starting_reads_the_store() {
     );
 }
 
-/// No store, nothing asked of it. This used to be a branch in the runtime,
-/// which meant it could not be written down here at all.
-#[test]
-fn starting_without_a_store_asks_for_nothing() {
-    let mut state = state();
-
-    eval!(&mut state,
-        < started_with(false),
-    );
-}
-
-/// And nothing is written to a store that is not there, either.
-#[test]
-fn a_sync_with_no_store_is_served_and_not_written() {
-    let mut state = state();
-
-    eval!(&mut state,
-        < started_with(false),
-
-        < fetched("item-1", "cursor-2"),
-        > Action::ToClient { action: ActionClient::Serve },
-    );
-}
-
 /// Reading it back asks for nothing. Nobody is waiting at boot, and the data
 /// is already what the next request would be served.
 #[test]
@@ -405,7 +437,7 @@ fn a_restart_with_stale_data_resumes_from_the_stored_cursor() {
         < read_back(vec![entry("a")], Some("cursor-1"), Some(long_ago)),
 
         < requested(false),
-        > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_) } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
     );
 }
 
@@ -482,8 +514,13 @@ fn an_expired_login_read_back_still_stops_the_retry() {
     assert!(state.login_required());
 }
 
-/// A store that cannot be read is survivable. An empty ledger is what a first
-/// run has, and the next request fills it.
+/// A store that cannot be read is survivable: the server answers rather than
+/// falling over.
+///
+/// It answers with an empty ledger, and now serves rather than fetching —
+/// because the Items are in the store too, so a failed read leaves us knowing
+/// about no banks. That is the same shape as a first run, which is the right
+/// one: we cannot sync a bank we cannot name.
 #[test]
 fn a_store_that_cannot_be_read_still_serves() {
     let mut state = state();
@@ -494,6 +531,6 @@ fn a_store_that_cannot_be_read_still_serves() {
         },
 
         < requested(false),
-        > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None } },
+        > Action::ToClient { action: ActionClient::Serve },
     );
 }

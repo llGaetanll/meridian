@@ -34,60 +34,23 @@ pub struct Fetched {
     pub cursor: String,
 }
 
-/// The credentials and token a live fetch needs.
-pub struct PlaidConfig {
-    pub credentials: PlaidCredentials,
-    pub access_token: String,
-}
-
-impl PlaidConfig {
-    /// Read the environment, or say what is missing from it.
-    ///
-    /// Missing credentials used to mean the fixtures stood in, so that a clean
-    /// checkout ran the app with no `.env` at all. That is gone. What it
-    /// bought was a first five minutes; what it cost was that an empty screen
-    /// had two explanations and the log said the same thing for both, and that
-    /// every screen we judged was drawn from data no bank had ever sent.
-    ///
-    /// `PlaidCredentials::from_env` reads `PLAID_ENV`, which is required and
-    /// matched exactly. Nothing in this crate ever sets it.
-    pub fn from_env() -> Result<Self, PlaidError> {
-        let credentials = PlaidCredentials::from_env()?;
-
-        let access_token = std::env::var("PLAID_ACCESS_TOKEN")
-            .map_err(|_| PlaidError::Config(String::from("PLAID_ACCESS_TOKEN is not set")))?;
-
-        // Set-and-empty is its own mistake, and a likelier one than unset: it
-        // is what a `.env` line with nothing after the `=` produces.
-        if access_token.trim().is_empty() {
-            return Err(PlaidError::Config(String::from(
-                "PLAID_ACCESS_TOKEN is set but empty",
-            )));
-        }
-
-        Ok(Self {
-            credentials,
-            access_token,
-        })
-    }
-}
-
 /// Everything the app needs, in as few calls as Plaid allows.
 ///
 /// The three endpoints are independent, so a failure in the optional two does
 /// not sink the whole fetch: transactions are what the app is for, and a
 /// missing recurring list costs one screen rather than all of them.
 pub async fn fetch_all(
-    config: &PlaidConfig,
+    credentials: &PlaidCredentials,
+    access_token: &str,
     cursor: Option<String>,
     now: api_common::Timestamp,
 ) -> Result<Fetched, PlaidError> {
     // Guard rail, not decoration: nothing should be able to reach Production
     // by accident. An error rather than a panic — `docs/STYLE.md` — but the
     // effect is the same, because the caller has no way to proceed past it.
-    if config.credentials.env != PlaidEnv::Sandbox {
+    if credentials.env != PlaidEnv::Sandbox {
         tracing::error!(
-            env = config.credentials.env.as_str(),
+            env = credentials.env.as_str(),
             "refusing to call anything but the Plaid Sandbox — see docs/PLAID.md",
         );
 
@@ -97,12 +60,12 @@ pub async fn fetch_all(
     }
 
     let client = PlaidClient::new(PlaidCredentials {
-        client_id: config.credentials.client_id.clone(),
-        secret: config.credentials.secret.clone(),
-        env: config.credentials.env,
+        client_id: credentials.client_id.clone(),
+        secret: credentials.secret.clone(),
+        env: credentials.env,
     })?;
 
-    let token = &config.access_token;
+    let token = access_token;
 
     let sync = src_plaid::sync_transactions(&client, token, cursor).await?;
 
