@@ -13,4 +13,3 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 sqlx = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }

@@ -8,10 +8,12 @@ what the schema looks like.
 ## Running it
 
 ```sh
-cp .env.example .env         # once
+cp .env.example .env         # once — DATABASE_URL lives here
 ./scripts/db-init.sh         # brings Postgres up and waits until it answers
 cargo run -p server-main     # applies migrations, then serves
 ```
+
+`cargo test` needs the same two lines, and nothing else.
 
 Or the whole thing as it is deployed, in one command:
 
@@ -31,17 +33,54 @@ no Docker at all. A `DATABASE_URL` that is set and *wrong* is fatal, though:
 falling back would give a server that looks healthy while quietly keeping
 nothing.
 
-Its queries have tests that run against a real database, ignored by default so
-that `cargo test` still passes with no Docker:
+## Tests
+
+Its queries are tested against a real Postgres, and they run as part of
+`cargo test` — no flag, no opt-in. A test that has to be asked for is a test
+that rots.
+
+`#[sqlx::test]` gives each one its **own database**: it creates one, runs the
+migrator into it, hands the test a pool and drops it afterwards. So they are
+isolated from each other, and from the database you work in — **nothing a test
+does can reach a real access token.** A failing test leaves its database behind
+on purpose so you can go and look; sqlx sweeps those on the next run, and they
+show up as `_sqlx_test_*` in `\l` meanwhile.
+
+The isolation is at the database level, not the server: one container holds
+both, so `docker compose down -v` still takes everything.
+
+What this costs is that **`cargo test` needs Postgres running**. That is worth
+separating from two properties it does not touch:
+
+| | needs a database |
+| --- | --- |
+| Running the app | no — the fixtures fallback is unchanged |
+| `cargo build` | no — `.sqlx` holds every query's checked metadata |
+| `cargo test` | yes, one `./scripts/db-init.sh` away |
+
+An *app* that cannot start without a database would be a problem. A *test
+suite* that needs one is ordinary, and is the price of tests that run.
+
+## Checked queries
+
+Every statement goes through `sqlx::query!`, which hands the SQL to Postgres at
+compile time and asks it to describe it — so a typo, a column that does not
+exist, or a migration that dropped one out from under a query is a build error
+rather than something found at run time.
+
+That needs a database at build time, or the `.sqlx` cache at the repo root,
+which is committed. Regenerate it whenever a query changes:
 
 ```sh
-cargo test -p src-postgres -- --ignored
+cargo sqlx prepare --workspace
 ```
 
-They share the one database and `load_entries` is deliberately global, so they
-take a lock and start from empty. Note that cargo runs each *test binary* as
-its own process in parallel, which the lock does not reach — so a test in one
-file must not assert on how many rows are in a table another file writes to.
+It is on the pre-commit list in [STYLE.md](STYLE.md). Forgetting it gives a
+build that works on your machine and nowhere else.
+
+`DATABASE_URL` comes from `.env`, which sqlx reads for all three of the build
+macros, `#[sqlx::test]` and `cargo sqlx prepare`. So `cp .env.example .env` is
+part of setting up, and it is the only place that URL is written down.
 
 `./scripts/db-shell.sh` opens `psql`. `\dt` lists the tables and
 `select * from _sqlx_migrations;` says which migrations this database has

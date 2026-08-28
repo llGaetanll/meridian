@@ -1,0 +1,134 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, account_id, ts, currency, amount_minor, label, category,\n                logo_url, pending, supersedes\n         FROM entries ORDER BY ts DESC, id ASC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "entries",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "account_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "entries",
+            "name": "account_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "ts",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "entries",
+            "name": "ts"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "currency",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "entries",
+            "name": "currency"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "amount_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "entries",
+            "name": "amount_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "label",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "entries",
+            "name": "label"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "category",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "entries",
+            "name": "category"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "logo_url",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "entries",
+            "name": "logo_url"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "pending",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "entries",
+            "name": "pending"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "supersedes",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "entries",
+            "name": "supersedes"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "974b5fe75627fd4ebce57d87d810415cdf45293aa39bc9179b09c18f46cb09db"
+}

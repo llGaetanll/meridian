@@ -1,0 +1,124 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT account_id, name, subtype, account_group, mask, balance_minor,\n                available_minor, limit_minor, apy\n         FROM accounts WHERE item_id = $1 ORDER BY account_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "account_id",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "account_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "subtype",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "subtype"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "account_group",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "account_group"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "mask",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "mask"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "balance_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "balance_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "available_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "available_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "limit_minor",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "limit_minor"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "apy",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "accounts",
+            "name": "apy"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "507613111fc36c3e01ffc09a096c574e9ff3e58e2e4c487ef3f3bdb49a6cf1f2"
+}

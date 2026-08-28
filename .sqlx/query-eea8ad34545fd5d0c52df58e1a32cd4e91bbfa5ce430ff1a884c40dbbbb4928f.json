@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO streams (id, item_id, label, category, amount_minor, frequency, next_date)\n         SELECT id, $1, label, category, amount_minor, frequency, next_date\n         FROM UNNEST($2::text[], $3::text[], $4::text[], $5::int8[], $6::text[],\n                     $7::timestamptz[])\n              AS t(id, label, category, amount_minor, frequency, next_date)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "Int8Array",
+        "TextArray",
+        "TimestamptzArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "eea8ad34545fd5d0c52df58e1a32cd4e91bbfa5ce430ff1a884c40dbbbb4928f"
+}

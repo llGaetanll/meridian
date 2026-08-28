@@ -3,8 +3,15 @@
 //! Every statement that touches them is here, and the shapes that go in and
 //! out are `api-ledger`'s. Nothing in this file decides anything — which
 //! account is a debt, what a subtype is called, whether a stream is worth
-//! counting — those are all answered elsewhere, from the raw values these
+//! counting — those are answered elsewhere, from the raw values these
 //! functions carry.
+//!
+//! The bulk inserts go through `UNNEST` rather than a builder that pastes one
+//! `VALUES` clause per row. Two reasons, and the second is the real one: it is
+//! a single statement whatever the row count, so a first sync of ten thousand
+//! transactions is one round trip and there is no parameter ceiling to chunk
+//! around; and it is *static* SQL, so the compiler can check it against the
+//! schema like everything else here.
 
 use api_common::Timestamp;
 use api_ledger::Account;
@@ -16,26 +23,17 @@ use api_ledger::Stream;
 use api_ledger::Tx;
 use chrono::DateTime;
 use chrono::Utc;
-use sqlx::QueryBuilder;
-use sqlx::Row;
 
 use crate::Db;
 use crate::PostgresError;
 use crate::postgres_money::from_minor;
 use crate::postgres_money::to_minor;
 
-/// How many rows go into one statement.
-///
-/// Postgres takes at most 65535 parameters per statement, and the widest table
-/// here binds eleven per row. A thousand leaves room to add a column without
-/// anybody rediscovering that limit through a first sync failing.
-const CHUNK: usize = 1_000;
-
 /// A timestamp as Postgres holds it.
 ///
-/// The epoch is out of range only for values no bank feed produces, and a date
-/// that cannot be represented is stored as the epoch rather than failing a
-/// whole sync over one row.
+/// A date that cannot be represented is stored as the epoch rather than
+/// failing a whole sync over one row. Nothing a bank feed produces is
+/// anywhere near the edge.
 pub(crate) fn stamp(ts: Timestamp) -> DateTime<Utc> {
     DateTime::from_timestamp(ts.as_secs() as i64, 0).unwrap_or_else(|| {
         tracing::warn!(seconds = ts.as_secs(), "a timestamp fell outside postgres");
@@ -59,34 +57,47 @@ pub async fn save_accounts(
     item_id: &str,
     accounts: &[Account],
 ) -> Result<(), PostgresError> {
+    let ids: Vec<String> = accounts.iter().map(|a| a.id.clone()).collect();
+    let names: Vec<String> = accounts.iter().map(|a| a.name.clone()).collect();
+    let subtypes: Vec<Option<String>> = accounts.iter().map(|a| a.subtype.clone()).collect();
+    let groups: Vec<String> = accounts
+        .iter()
+        .map(|a| a.group.as_plaid().to_string())
+        .collect();
+    let masks: Vec<Option<String>> = accounts.iter().map(|a| a.mask.clone()).collect();
+    let balances: Vec<i64> = accounts.iter().map(|a| to_minor(a.balance)).collect();
+    let availables: Vec<Option<i64>> = accounts.iter().map(|a| a.available.map(to_minor)).collect();
+    let limits: Vec<Option<i64>> = accounts.iter().map(|a| a.limit.map(to_minor)).collect();
+    let apys: Vec<Option<f64>> = accounts.iter().map(|a| a.apy).collect();
+
     let mut tx = db.begin().await?;
 
-    sqlx::query("DELETE FROM accounts WHERE item_id = $1")
-        .bind(item_id)
+    sqlx::query!("DELETE FROM accounts WHERE item_id = $1", item_id)
         .execute(&mut *tx)
         .await?;
 
-    for chunk in accounts.chunks(CHUNK) {
-        let mut query = QueryBuilder::new(
-            "INSERT INTO accounts (account_id, item_id, name, subtype, account_group, mask, \
-             balance_minor, available_minor, limit_minor, apy) ",
-        );
-
-        query.push_values(chunk, |mut row, account| {
-            row.push_bind(&account.id)
-                .push_bind(item_id)
-                .push_bind(&account.name)
-                .push_bind(&account.subtype)
-                .push_bind(account.group.as_plaid())
-                .push_bind(&account.mask)
-                .push_bind(to_minor(account.balance))
-                .push_bind(account.available.map(to_minor))
-                .push_bind(account.limit.map(to_minor))
-                .push_bind(account.apy);
-        });
-
-        query.build().execute(&mut *tx).await?;
-    }
+    sqlx::query!(
+        "INSERT INTO accounts (account_id, item_id, name, subtype, account_group, mask,
+                               balance_minor, available_minor, limit_minor, apy)
+         SELECT account_id, $1, name, subtype, account_group, mask,
+                balance_minor, available_minor, limit_minor, apy
+         FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
+                     $7::int8[], $8::int8[], $9::int8[], $10::float8[])
+              AS t(account_id, name, subtype, account_group, mask,
+                   balance_minor, available_minor, limit_minor, apy)",
+        item_id,
+        &ids,
+        &names,
+        &subtypes as &[Option<String>],
+        &groups,
+        &masks as &[Option<String>],
+        &balances,
+        &availables as &[Option<i64>],
+        &limits as &[Option<i64>],
+        &apys as &[Option<f64>],
+    )
+    .execute(&mut *tx)
+    .await?;
 
     tx.commit().await?;
 
@@ -95,36 +106,29 @@ pub async fn save_accounts(
 
 /// An Item's accounts.
 pub async fn load_accounts(db: &Db, item_id: &str) -> Result<Vec<Account>, PostgresError> {
-    let rows = sqlx::query(
-        "SELECT account_id, name, subtype, account_group, mask, balance_minor, \
-         available_minor, limit_minor, apy
+    let rows = sqlx::query!(
+        "SELECT account_id, name, subtype, account_group, mask, balance_minor,
+                available_minor, limit_minor, apy
          FROM accounts WHERE item_id = $1 ORDER BY account_id",
+        item_id,
     )
-    .bind(item_id)
     .fetch_all(db)
     .await?;
 
-    rows.iter()
-        .map(|row| {
-            let group: String = row.try_get("account_group")?;
-
-            Ok(Account {
-                id: row.try_get("account_id")?,
-                name: row.try_get("name")?,
-                subtype: row.try_get("subtype")?,
-                mask: row.try_get("mask")?,
-                balance: from_minor(row.try_get("balance_minor")?),
-                available: row
-                    .try_get::<Option<i64>, _>("available_minor")?
-                    .map(from_minor),
-                limit: row
-                    .try_get::<Option<i64>, _>("limit_minor")?
-                    .map(from_minor),
-                apy: row.try_get("apy")?,
-                group: AccountGroup::from_plaid(&group),
-            })
+    Ok(rows
+        .into_iter()
+        .map(|row| Account {
+            id: row.account_id,
+            name: row.name,
+            subtype: row.subtype,
+            mask: row.mask,
+            balance: from_minor(row.balance_minor),
+            available: row.available_minor.map(from_minor),
+            limit: row.limit_minor.map(from_minor),
+            apy: row.apy,
+            group: AccountGroup::from_plaid(&row.account_group),
         })
-        .collect()
+        .collect())
 }
 
 /// Apply one sync's worth of changes.
@@ -150,78 +154,85 @@ pub async fn apply_entries(
     modified: &[Entry],
     removed: &[String],
 ) -> Result<(), PostgresError> {
-    let mut tx = db.begin().await?;
-
-    if !removed.is_empty() {
-        sqlx::query("DELETE FROM entries WHERE id = ANY($1)")
-            .bind(removed)
-            .execute(&mut *tx)
-            .await?;
-    }
-
-    let mut skipped = 0;
-
-    for chunk in modified
+    // A trade is two positions and a row holds one movement, so it has no
+    // shape here. Nothing produces trades today; the count is reported below
+    // so that the day something does, this is a message rather than a mystery.
+    let writable: Vec<&Entry> = modified
         .iter()
         .chain(added)
-        .collect::<Vec<_>>()
-        .chunks(CHUNK)
-    {
-        let writable: Vec<&&Entry> = chunk.iter().filter(|e| transfer(e).is_some()).collect();
+        .filter(|entry| transfer(entry).is_some())
+        .collect();
 
-        skipped += chunk.len() - writable.len();
+    let skipped = modified.len() + added.len() - writable.len();
 
-        if writable.is_empty() {
-            continue;
-        }
+    let ids: Vec<String> = writable.iter().map(|e| e.id.clone()).collect();
+    let account_ids: Vec<Option<String>> = writable.iter().map(|e| e.account_id.clone()).collect();
+    let timestamps: Vec<DateTime<Utc>> = writable.iter().map(|e| stamp(e.ts())).collect();
+    let currencies: Vec<String> = writable
+        .iter()
+        .map(|e| transfer(e).map(|(c, _)| c.to_string()).unwrap_or_default())
+        .collect();
+    let amounts: Vec<i64> = writable
+        .iter()
+        .map(|e| to_minor(transfer(e).map(|(_, a)| a).unwrap_or_default()))
+        .collect();
+    let labels: Vec<String> = writable.iter().map(|e| e.label.clone()).collect();
+    let categories: Vec<String> = writable
+        .iter()
+        .map(|e| e.category.as_plaid().to_string())
+        .collect();
+    let logos: Vec<Option<String>> = writable.iter().map(|e| e.logo_url.clone()).collect();
+    let pendings: Vec<bool> = writable.iter().map(|e| e.pending).collect();
+    let supersedes: Vec<Option<String>> = writable.iter().map(|e| e.supersedes.clone()).collect();
 
-        let mut query = QueryBuilder::new(
-            "INSERT INTO entries (id, item_id, account_id, ts, currency, amount_minor, \
-             label, category, logo_url, pending, supersedes) ",
-        );
+    let mut tx = db.begin().await?;
 
-        query.push_values(writable, |mut row, entry| {
-            // Checked by the filter above, so the fallback is unreachable
-            // rather than a guess.
-            let (currency, amount) = transfer(entry).unwrap_or(("", 0.0));
+    sqlx::query!("DELETE FROM entries WHERE id = ANY($1)", removed)
+        .execute(&mut *tx)
+        .await?;
 
-            row.push_bind(&entry.id)
-                .push_bind(item_id)
-                .push_bind(&entry.account_id)
-                .push_bind(stamp(entry.ts()))
-                .push_bind(currency.to_string())
-                .push_bind(to_minor(amount))
-                .push_bind(&entry.label)
-                .push_bind(entry.category.as_plaid())
-                .push_bind(&entry.logo_url)
-                .push_bind(entry.pending)
-                .push_bind(&entry.supersedes);
-        });
+    sqlx::query!(
+        "INSERT INTO entries (id, item_id, account_id, ts, currency, amount_minor,
+                              label, category, logo_url, pending, supersedes)
+         SELECT id, $1, account_id, ts, currency, amount_minor,
+                label, category, logo_url, pending, supersedes
+         FROM UNNEST($2::text[], $3::text[], $4::timestamptz[], $5::text[], $6::int8[],
+                     $7::text[], $8::text[], $9::text[], $10::bool[], $11::text[])
+              AS t(id, account_id, ts, currency, amount_minor,
+                   label, category, logo_url, pending, supersedes)
+         ON CONFLICT (id) DO UPDATE SET
+             item_id      = EXCLUDED.item_id,
+             account_id   = EXCLUDED.account_id,
+             ts           = EXCLUDED.ts,
+             currency     = EXCLUDED.currency,
+             amount_minor = EXCLUDED.amount_minor,
+             label        = EXCLUDED.label,
+             category     = EXCLUDED.category,
+             logo_url     = EXCLUDED.logo_url,
+             pending      = EXCLUDED.pending,
+             supersedes   = EXCLUDED.supersedes",
+        item_id,
+        &ids,
+        &account_ids as &[Option<String>],
+        &timestamps,
+        &currencies,
+        &amounts,
+        &labels,
+        &categories,
+        &logos as &[Option<String>],
+        &pendings,
+        &supersedes as &[Option<String>],
+    )
+    .execute(&mut *tx)
+    .await?;
 
-        query.push(
-            " ON CONFLICT (id) DO UPDATE SET
-                 item_id      = EXCLUDED.item_id,
-                 account_id   = EXCLUDED.account_id,
-                 ts           = EXCLUDED.ts,
-                 currency     = EXCLUDED.currency,
-                 amount_minor = EXCLUDED.amount_minor,
-                 label        = EXCLUDED.label,
-                 category     = EXCLUDED.category,
-                 logo_url     = EXCLUDED.logo_url,
-                 pending      = EXCLUDED.pending,
-                 supersedes   = EXCLUDED.supersedes",
-        );
-
-        query.build().execute(&mut *tx).await?;
-    }
-
-    // Plaid never updates a pending transaction in place: a posted one arrives
-    // with its own id pointing back at the old. Unless the old one goes, every
-    // purchase is counted twice for the days between authorisation and
-    // settlement, and the numbers stay plausible throughout.
-    sqlx::query(
+    // The source never updates a pending transaction in place: a posted one
+    // arrives with its own id pointing back at the old. Unless the old one
+    // goes, every purchase is counted twice for the days between authorisation
+    // and settlement, and the numbers stay plausible throughout.
+    sqlx::query!(
         "DELETE FROM entries WHERE id IN
-             (SELECT supersedes FROM entries WHERE supersedes IS NOT NULL)",
+             (SELECT supersedes FROM entries WHERE supersedes IS NOT NULL)"
     )
     .execute(&mut *tx)
     .await?;
@@ -229,9 +240,6 @@ pub async fn apply_entries(
     tx.commit().await?;
 
     if skipped > 0 {
-        // Only a brokerage feed produces these, and none is wired up. The line
-        // is here so that the day one is, this is a message rather than a
-        // mystery: the schema holds one movement per row and a trade has two.
         tracing::warn!(skipped, "entries that are not transfers were not stored");
     }
 
@@ -241,40 +249,36 @@ pub async fn apply_entries(
 /// The whole ledger, newest first — the order every screen shows.
 ///
 /// Ties break on id so the order is total: two transactions on the same day
-/// would otherwise come back differently run to run, and a list that reshuffles
-/// on refresh looks broken.
+/// would otherwise come back differently run to run, and a list that
+/// reshuffles on refresh looks broken.
 pub async fn load_entries(db: &Db) -> Result<Vec<Entry>, PostgresError> {
-    let rows = sqlx::query(
-        "SELECT id, account_id, ts, currency, amount_minor, label, category, \
-         logo_url, pending, supersedes
-         FROM entries ORDER BY ts DESC, id ASC",
+    let rows = sqlx::query!(
+        "SELECT id, account_id, ts, currency, amount_minor, label, category,
+                logo_url, pending, supersedes
+         FROM entries ORDER BY ts DESC, id ASC"
     )
     .fetch_all(db)
     .await?;
 
-    rows.iter()
-        .map(|row| {
-            let ts: DateTime<Utc> = row.try_get("ts")?;
-            let category: String = row.try_get("category")?;
-
-            Ok(Entry {
-                id: row.try_get("id")?,
-                tx: Tx::Transfer {
-                    ts: seconds(ts),
-                    pos: Position {
-                        asset: row.try_get("currency")?,
-                        qty: from_minor(row.try_get("amount_minor")?),
-                    },
+    Ok(rows
+        .into_iter()
+        .map(|row| Entry {
+            id: row.id,
+            tx: Tx::Transfer {
+                ts: seconds(row.ts),
+                pos: Position {
+                    asset: row.currency,
+                    qty: from_minor(row.amount_minor),
                 },
-                label: row.try_get("label")?,
-                account_id: row.try_get("account_id")?,
-                logo_url: row.try_get("logo_url")?,
-                category: Category::from_plaid(&category),
-                pending: row.try_get("pending")?,
-                supersedes: row.try_get("supersedes")?,
-            })
+            },
+            label: row.label,
+            account_id: row.account_id,
+            logo_url: row.logo_url,
+            category: Category::from_plaid(&row.category),
+            pending: row.pending,
+            supersedes: row.supersedes,
         })
-        .collect()
+        .collect())
 }
 
 /// Replace an Item's recurring streams.
@@ -282,31 +286,39 @@ pub async fn load_entries(db: &Db) -> Result<Vec<Entry>, PostgresError> {
 /// Wholesale, like the accounts: `/transactions/recurring/get` re-derives every
 /// stream from the whole history each time, so there is no diff to apply.
 pub async fn save_streams(db: &Db, item_id: &str, streams: &[Stream]) -> Result<(), PostgresError> {
+    let ids: Vec<String> = streams.iter().map(|s| s.id.clone()).collect();
+    let labels: Vec<String> = streams.iter().map(|s| s.label.clone()).collect();
+    let categories: Vec<String> = streams
+        .iter()
+        .map(|s| s.category.as_plaid().to_string())
+        .collect();
+    let amounts: Vec<i64> = streams.iter().map(|s| to_minor(s.amount)).collect();
+    let frequencies: Vec<String> = streams.iter().map(|s| s.frequency.clone()).collect();
+    let next_dates: Vec<Option<DateTime<Utc>>> =
+        streams.iter().map(|s| s.next_date.map(stamp)).collect();
+
     let mut tx = db.begin().await?;
 
-    sqlx::query("DELETE FROM streams WHERE item_id = $1")
-        .bind(item_id)
+    sqlx::query!("DELETE FROM streams WHERE item_id = $1", item_id)
         .execute(&mut *tx)
         .await?;
 
-    for chunk in streams.chunks(CHUNK) {
-        let mut query = QueryBuilder::new(
-            "INSERT INTO streams (id, item_id, label, category, amount_minor, \
-             frequency, next_date) ",
-        );
-
-        query.push_values(chunk, |mut row, stream| {
-            row.push_bind(&stream.id)
-                .push_bind(item_id)
-                .push_bind(&stream.label)
-                .push_bind(stream.category.as_plaid())
-                .push_bind(to_minor(stream.amount))
-                .push_bind(&stream.frequency)
-                .push_bind(stream.next_date.map(stamp));
-        });
-
-        query.build().execute(&mut *tx).await?;
-    }
+    sqlx::query!(
+        "INSERT INTO streams (id, item_id, label, category, amount_minor, frequency, next_date)
+         SELECT id, $1, label, category, amount_minor, frequency, next_date
+         FROM UNNEST($2::text[], $3::text[], $4::text[], $5::int8[], $6::text[],
+                     $7::timestamptz[])
+              AS t(id, label, category, amount_minor, frequency, next_date)",
+        item_id,
+        &ids,
+        &labels,
+        &categories,
+        &amounts,
+        &frequencies,
+        &next_dates as &[Option<DateTime<Utc>>],
+    )
+    .execute(&mut *tx)
+    .await?;
 
     tx.commit().await?;
 
@@ -316,38 +328,32 @@ pub async fn save_streams(db: &Db, item_id: &str, streams: &[Stream]) -> Result<
 /// Every stream. All of them are active: an inactive one is dropped before it
 /// ever reaches this crate, so nothing here has to decide.
 pub async fn load_streams(db: &Db) -> Result<Vec<Stream>, PostgresError> {
-    let rows = sqlx::query(
+    let rows = sqlx::query!(
         "SELECT id, label, category, amount_minor, frequency, next_date
-         FROM streams ORDER BY id",
+         FROM streams ORDER BY id"
     )
     .fetch_all(db)
     .await?;
 
-    rows.iter()
-        .map(|row| {
-            let category: String = row.try_get("category")?;
-
-            Ok(Stream {
-                id: row.try_get("id")?,
-                label: row.try_get("label")?,
-                logo_url: None,
-                category: Category::from_plaid(&category),
-                amount: from_minor(row.try_get("amount_minor")?),
-                frequency: row.try_get("frequency")?,
-                next_date: row
-                    .try_get::<Option<DateTime<Utc>>, _>("next_date")?
-                    .map(seconds),
-                is_active: true,
-            })
+    Ok(rows
+        .into_iter()
+        .map(|row| Stream {
+            id: row.id,
+            label: row.label,
+            logo_url: None,
+            category: Category::from_plaid(&row.category),
+            amount: from_minor(row.amount_minor),
+            frequency: row.frequency,
+            next_date: row.next_date.map(seconds),
+            is_active: true,
         })
-        .collect()
+        .collect())
 }
 
 /// The currency and amount of an entry, when it is a movement of one thing.
 ///
 /// `None` for a trade, which is two positions and does not fit a row that
-/// holds one. Nothing produces trades today; see the warning in
-/// [`apply_entries`].
+/// holds one.
 fn transfer(entry: &Entry) -> Option<(&str, f64)> {
     match &entry.tx {
         Tx::Transfer { pos, .. } => Some((&pos.asset, pos.qty)),

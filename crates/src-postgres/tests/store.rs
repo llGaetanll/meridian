@@ -1,35 +1,21 @@
-//! The store, against a real Postgres.
+//! The mechanism: that the schema applies and that the database answers.
 //!
-//! Ignored by default, because `cargo test` has to pass on a clean checkout
-//! with no Docker running — the same reason the server treats `DATABASE_URL`
-//! as optional. Run them with a database up:
+//! `#[sqlx::test]` has already run the migrator into a fresh database by the
+//! time these start, so what they check is that it produced what it claims to
+//! and that running it again is safe — which the server does on every boot.
+//!
+//! They need a server to create those databases on:
 //!
 //! ```sh
 //! ./scripts/db-init.sh
-//! cargo test -p src-postgres -- --ignored
+//! cargo test
 //! ```
-//!
-//! These are not tests of SQL we wrote. They are tests that the *mechanism*
-//! works: that the schema applies, that applying it twice is safe, and that a
-//! pool which exists is a pool that answers. Those three are what "one command
-//! and it comes up" actually rests on.
 
-const DEFAULT_URL: &str = "postgres://meridian:meridian@localhost:5432/meridian";
+use sqlx::PgPool;
 
-fn url() -> String {
-    std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_URL.to_string())
-}
-
-#[tokio::test]
-#[ignore = "needs a database: ./scripts/db-init.sh"]
-async fn the_schema_applies_and_the_database_answers() {
-    let db = src_postgres::connect(&url())
-        .await
-        .expect("postgres should be up — ./scripts/db-init.sh");
-
-    src_postgres::migrate(&db).await.expect("migrations run");
-
-    src_postgres::ping(&db).await.expect("and it answers");
+#[sqlx::test(migrator = "src_postgres::MIGRATOR")]
+async fn the_schema_applies_and_the_database_answers(db: PgPool) {
+    src_postgres::ping(&db).await.expect("it answers");
 
     // Every migration in the directory left a row behind. This is what
     // separates "the connection worked" from "the schema is actually there".
@@ -44,15 +30,10 @@ async fn the_schema_applies_and_the_database_answers() {
         "every migration in the directory should have been applied",
     );
 
-    // And the tables the migrations describe are there to be queried. Note
-    // what this does *not* assert: how many rows are in them. Cargo runs each
-    // test binary as its own process, in parallel, against this one database —
-    // so `tests/ledger.rs` may be writing while this reads, and a count here
-    // would fail on scheduling rather than on anything being wrong.
-    // Written out rather than looped: sqlx refuses a query built with
-    // `format!` — `SqlSafeStr` takes a `&'static str`, so a statement cannot
-    // be assembled from anything at run time without saying so explicitly.
-    // Four literals is a small price for that guard being on everywhere else.
+    // And the tables they describe are there to be queried. Written out rather
+    // than looped: sqlx takes a `&'static str`, so a statement cannot be built
+    // from anything at run time without saying so explicitly. Four literals is
+    // a small price for that guard being on everywhere else.
     sqlx::query("SELECT * FROM items LIMIT 0")
         .fetch_all(&db)
         .await
@@ -69,17 +50,9 @@ async fn the_schema_applies_and_the_database_answers() {
 
 /// The server runs this on every boot, so it has to be a no-op against a
 /// database that is already current rather than an error.
-#[tokio::test]
-#[ignore = "needs a database: ./scripts/db-init.sh"]
-async fn migrating_twice_changes_nothing() {
-    let db = src_postgres::connect(&url())
-        .await
-        .expect("postgres should be up — ./scripts/db-init.sh");
-
-    src_postgres::migrate(&db).await.expect("first run");
-    src_postgres::migrate(&db)
-        .await
-        .expect("second run is a no-op");
+#[sqlx::test(migrator = "src_postgres::MIGRATOR")]
+async fn migrating_twice_changes_nothing(db: PgPool) {
+    src_postgres::migrate(&db).await.expect("a second run");
 
     let applied: i64 = sqlx::query_scalar("SELECT count(*) FROM _sqlx_migrations")
         .fetch_one(&db)
