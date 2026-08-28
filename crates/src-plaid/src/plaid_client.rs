@@ -3,6 +3,7 @@ use serde_json::Value;
 
 use crate::PlaidEnv;
 use crate::PlaidError;
+use crate::PlaidHttpRequest;
 use crate::PlaidRequest;
 
 /// What this client is called in the logs.
@@ -83,24 +84,47 @@ impl PlaidClient {
         })
     }
 
-    /// `&(dyn PlaidRequest + Sync)` rather than `&dyn PlaidRequest`: without the
-    /// `Sync` bound the returned future is not `Send`, and a multi-threaded
-    /// runtime (the server's) cannot hold it across an await. Still dynamic,
-    /// so this stays one function rather than one per request type.
-    pub async fn send_request<Response: serde::de::DeserializeOwned>(
-        &self,
-        req: &(dyn PlaidRequest + Sync),
-    ) -> Result<Response, PlaidError> {
+    /// Build a request without sending it.
+    ///
+    /// Public because it is the half worth testing: the path, the base it
+    /// resolves against — which is what picks Sandbox or Production — and
+    /// which fields the body ends up carrying are all decided here, and none
+    /// of them needs a network to be checked.
+    pub fn build_request(&self, req: &dyn PlaidRequest) -> Result<PlaidHttpRequest, PlaidError> {
         let url = self
             .base_url
             .join(&req.path())
             .map_err(|e| PlaidError::InvalidUrl(e.to_string()))?;
 
-        let body = self.authenticated_body(req)?;
+        Ok(PlaidHttpRequest {
+            url,
+            body: self.authenticated_body(req)?,
+        })
+    }
 
-        // POST rather than GET, and the body stays out of the log: it holds
-        // the secret. The path says what was asked for.
-        let call = ApiCall::post(SOURCE, &url);
+    /// `&(dyn PlaidRequest + Sync)` rather than `&dyn PlaidRequest`: an `async
+    /// fn` holds its arguments for the whole body, and without the `Sync`
+    /// bound the returned future is not `Send` — which a multi-threaded
+    /// runtime (the server's) cannot hold across an await. Still dynamic, so
+    /// this stays one function rather than one per request type.
+    pub async fn send_request<Response: serde::de::DeserializeOwned>(
+        &self,
+        req: &(dyn PlaidRequest + Sync),
+    ) -> Result<Response, PlaidError> {
+        self.send(self.build_request(req)?).await
+    }
+
+    /// Put an already-built request on the wire.
+    async fn send<Response: serde::de::DeserializeOwned>(
+        &self,
+        request: PlaidHttpRequest,
+    ) -> Result<Response, PlaidError> {
+        let PlaidHttpRequest { url, body } = request;
+
+        // The body is logged exactly as it is sent, secret and all. See
+        // `ApiCall::post` for why that is worth what it costs, and
+        // `docs/LOGGING.md` for what has to change before Production.
+        let call = ApiCall::post(SOURCE, &url, &body.to_string());
 
         let response = match self.client.post(url).json(&body).send().await {
             Ok(response) => response,
@@ -145,9 +169,12 @@ impl PlaidClient {
 
     /// The request's body with `client_id` and `secret` added.
     ///
-    /// Credentials are put in here, at the last moment, rather than held on
-    /// the request types — so nothing that could be logged or cloned around
-    /// ever carries the secret.
+    /// Credentials go in here rather than on the request types, so a
+    /// `LinkTokenRequest` and its friends stay plain values that can be built,
+    /// cloned and asserted on with no secret anywhere near them.
+    ///
+    /// They do reach [`PlaidHttpRequest`], which is both what gets sent and
+    /// what gets logged. That is the deliberate part — `docs/LOGGING.md`.
     fn authenticated_body(&self, req: &dyn PlaidRequest) -> Result<Value, PlaidError> {
         let mut body = req.body();
 
@@ -238,16 +265,38 @@ mod tests {
         );
     }
 
+    /// The whole point of building being its own step: what would go on the
+    /// wire is a value, and a value can be asserted on with no network.
     #[test]
-    fn credentials_are_added_to_the_body() {
-        let body = client(crate::SANDBOX_BASE_URL)
-            .authenticated_body(&Sync)
+    fn a_built_request_carries_the_url_and_the_credentials() {
+        let built = client(crate::SANDBOX_BASE_URL)
+            .build_request(&Sync)
             .unwrap();
 
-        assert_eq!(body["client_id"], "test-id");
-        assert_eq!(body["secret"], "test-secret");
+        assert_eq!(
+            built.url.as_str(),
+            "https://sandbox.plaid.com/transactions/sync",
+        );
+
+        assert_eq!(built.body["client_id"], "test-id");
+        assert_eq!(built.body["secret"], "test-secret");
         // The request's own fields survive.
-        assert_eq!(body["access_token"], "access-sandbox-1");
+        assert_eq!(built.body["access_token"], "access-sandbox-1");
+    }
+
+    /// The base is what chooses the environment, so it is what a built request
+    /// has to carry. Getting this wrong is how a Sandbox secret reaches
+    /// Production and comes back as a puzzling 400.
+    #[test]
+    fn a_built_request_names_the_environment_it_is_for() {
+        let built = client(crate::PRODUCTION_BASE_URL)
+            .build_request(&Sync)
+            .unwrap();
+
+        assert_eq!(
+            built.url.as_str(),
+            "https://production.plaid.com/transactions/sync",
+        );
     }
 
     #[test]

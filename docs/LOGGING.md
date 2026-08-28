@@ -13,6 +13,7 @@ first thing in `main`, before anything worth logging happens.
   above.
 - **Every call to an external API is logged**, request and response both. A bug
   we cannot reproduce has to be fixed from the log alone.
+- **A POST body is logged exactly as it is sent** — see the warning below.
 - **Data served from the cache is logged too**, marked as cached. A log showing
   only the requests that went out would leave most of a session unaccounted
   for.
@@ -42,6 +43,31 @@ Requests and responses come in pairs sharing an `id`, so they can be matched up
 when several are in flight. `->` and `<-` mean only that: what left and what
 came back. What we then make of a response — whether it parses, whether it
 holds what we wanted — happened afterwards and gets its own line.
+
+## A log file is currently a credential
+
+**Request bodies are logged verbatim, and a Plaid body carries `client_id` and
+`secret` in it.** That secret is account-wide rather than per-user: anyone
+holding it can read every Item on the Plaid account. So a log file written by
+this build must not be pasted into an issue, attached to a ticket, or sent
+anywhere it would not be reasonable to send the credentials themselves.
+
+It is here on purpose. A response tells you what the far end thought you asked
+for; it never tells you what you actually sent, so a request carrying a field
+we did not intend is invisible from the response half of the pair. That is the
+failure mode that cannot be debugged after the fact, and while the Plaid
+integration is being built it is the one worth paying for.
+
+**What has to change before Production**, and neither has been done:
+
+- Redact `secret` — and anything else credential-shaped — on the way into the
+  line, rather than relying on nobody sharing the file.
+- Decide what an access token counts as. It is not in a request body today
+  because the server holds it, but `/item/public_token/exchange` answers with
+  one, and that is a *response* body, which is also logged.
+
+Everything above is Sandbox-only for now, where the credentials guard nothing
+real. It stops being true the moment `PLAID_ENV` says otherwise.
 
 ## Where lines go
 
@@ -80,11 +106,13 @@ means adding, changing or removing its example here.
 - `INFO src_plaid::plaid_client plaid client env=sandbox base_url=https://sandbox.plaid.com/`
   — which environment a session ran against, logged once when the client is
   built. See [PLAID.md](PLAID.md).
-- `INFO api -> request id=1 source=plaid method=POST url=https://sandbox.plaid.com/transactions/sync`
-  — the body is never logged: it carries the Plaid secret.
+- `INFO api -> request id=1 source=plaid method=POST url=https://sandbox.plaid.com/transactions/sync body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"cursor\":\"CAESJTM3…\",\"secret\":\"xxxx\"}"`
+  — the body as sent, credentials included. See the warning above.
 - `INFO api <- response id=1 source=plaid status=200 ms=284 body="{\"added\":[{\"account_id\":\"6Pd…"`
-- `INFO api -> request id=2 source=plaid method=POST url=https://sandbox.plaid.com/accounts/balance/get`
-- `INFO api -> request id=3 source=plaid method=POST url=https://sandbox.plaid.com/transactions/recurring/get`
+- `INFO api -> request id=2 source=plaid method=POST url=https://sandbox.plaid.com/accounts/balance/get body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}"`
+- `INFO api -> request id=3 source=plaid method=POST url=https://sandbox.plaid.com/transactions/recurring/get body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}"`
+  — a GET carries no `body` field at all, rather than an empty one. Yahoo and
+  CoinGecko lines below are the same shape as before.
 - `INFO src_plaid transactions synced added=18 modified=0 removed=1`
   — a *diff*, not a total. A later sync answering `added=0` is normal and
   means nothing changed, not that the ledger is empty.
