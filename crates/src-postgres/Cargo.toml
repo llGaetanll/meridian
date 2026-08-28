@@ -4,10 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+api-common = { path = "../api-common" }
+api-ledger = { path = "../api-ledger" }
+
 chrono = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
 sqlx = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }

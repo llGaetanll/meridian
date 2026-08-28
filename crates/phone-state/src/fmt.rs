@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use api_common::Timestamp;
 use api_common::format::fmt_money;
+use api_ledger::AccountGroup;
 
 const DAY: u64 = 86_400;
 
@@ -114,6 +115,58 @@ pub fn countdown(left: Duration) -> String {
     let secs = left.as_secs();
 
     format!("{}:{:02}", secs / 60, secs % 60)
+}
+
+/// A source's account subtype, worded for a person.
+///
+/// Plaid sends `"401k"` and `"home equity"`; a screen should say `"401(k)"`
+/// and `"HELOC"`. This is the only place that decides that, which is why it
+/// lives here with the rest of the wording rather than beside the data — the
+/// stored value stays raw, so changing a label here changes what a row from
+/// six months ago says too.
+pub fn account_kind(subtype: Option<&str>, group: AccountGroup) -> String {
+    let Some(subtype) = subtype else {
+        return match group {
+            AccountGroup::Depository => "Cash".to_string(),
+            AccountGroup::Investment => "Investment".to_string(),
+            AccountGroup::Credit => "Credit".to_string(),
+            AccountGroup::Loan => "Loan".to_string(),
+            AccountGroup::Other => "Account".to_string(),
+        };
+    };
+
+    match subtype {
+        "checking" => "Checking".to_string(),
+        "savings" => "Savings".to_string(),
+        "cd" => "CD".to_string(),
+        "money market" => "Money market".to_string(),
+        "credit card" => "Credit".to_string(),
+        "hsa" => "HSA".to_string(),
+        "cash management" => "Cash management".to_string(),
+        "401k" => "401(k)".to_string(),
+        "ira" => "IRA".to_string(),
+        "roth" => "Roth IRA".to_string(),
+        "student" => "Student loan".to_string(),
+        "mortgage" => "Mortgage".to_string(),
+        "auto" => "Auto loan".to_string(),
+        "home equity" => "HELOC".to_string(),
+        // An unknown subtype is shown rather than hidden: "Sep Ira" reads
+        // better than nothing, and nothing would look like a bug.
+        other => title_case(other),
+    }
+}
+
+fn title_case(s: &str) -> String {
+    s.split(' ')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// `"3 connections"`, `"1 connection"`.
@@ -289,6 +342,23 @@ mod tests {
         assert_eq!(countdown(Duration::from_secs(9)), "0:09");
         assert_eq!(countdown(Duration::from_secs(60)), "1:00");
         assert_eq!(countdown(Duration::from_secs(605)), "10:05");
+    }
+
+    #[test]
+    fn subtypes_are_worded_for_a_person() {
+        assert_eq!(
+            account_kind(Some("401k"), AccountGroup::Investment),
+            "401(k)"
+        );
+        assert_eq!(
+            account_kind(Some("home equity"), AccountGroup::Loan),
+            "HELOC"
+        );
+        assert_eq!(
+            account_kind(Some("sep ira"), AccountGroup::Investment),
+            "Sep Ira"
+        );
+        assert_eq!(account_kind(None, AccountGroup::Credit), "Credit");
     }
 
     #[test]

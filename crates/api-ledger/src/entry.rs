@@ -172,6 +172,34 @@ impl Category {
         }
     }
 
+    /// What the source calls it, and what gets written down.
+    ///
+    /// The exact inverse of [`Category::from_plaid`], so a category can go into
+    /// a database and come back as itself. `Unknown` has no Plaid value of its
+    /// own, so it takes its own name — it is a value we assign, not one Plaid
+    /// ever sends.
+    pub fn as_plaid(&self) -> &'static str {
+        match self {
+            Category::Income => "INCOME",
+            Category::TransferIn => "TRANSFER_IN",
+            Category::TransferOut => "TRANSFER_OUT",
+            Category::LoanPayments => "LOAN_PAYMENTS",
+            Category::BankFees => "BANK_FEES",
+            Category::Entertainment => "ENTERTAINMENT",
+            Category::FoodAndDrink => "FOOD_AND_DRINK",
+            Category::GeneralMerchandise => "GENERAL_MERCHANDISE",
+            Category::HomeImprovement => "HOME_IMPROVEMENT",
+            Category::Medical => "MEDICAL",
+            Category::PersonalCare => "PERSONAL_CARE",
+            Category::GeneralServices => "GENERAL_SERVICES",
+            Category::GovernmentAndNonProfit => "GOVERNMENT_AND_NON_PROFIT",
+            Category::Transportation => "TRANSPORTATION",
+            Category::Travel => "TRAVEL",
+            Category::RentAndUtilities => "RENT_AND_UTILITIES",
+            Category::Unknown => "UNKNOWN",
+        }
+    }
+
     /// What a row calls it. Sentence case, because it is read as a label and
     /// not as a constant.
     pub fn label(&self) -> &'static str {
@@ -257,6 +285,21 @@ mod tests {
                 "{primary} should have its own arm",
             );
         }
+    }
+
+    /// The inverse pair has to round-trip, or a category written down comes
+    /// back as something else — and `Unknown` is the arm worth pinning, since
+    /// it is the one with no Plaid value behind it.
+    #[test]
+    fn a_category_survives_being_written_down() {
+        for category in Category::ALL {
+            assert_eq!(Category::from_plaid(category.as_plaid()), category);
+        }
+
+        assert_eq!(
+            Category::from_plaid(Category::Unknown.as_plaid()),
+            Category::Unknown,
+        );
     }
 
     #[test]

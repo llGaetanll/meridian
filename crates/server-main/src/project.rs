@@ -19,7 +19,6 @@ use api_ledger::Entry;
 use api_ledger::Position;
 use api_ledger::Stream;
 use api_ledger::Tx;
-use api_ledger::account_kind_label;
 use api_ledger::initials;
 use src_plaid::BalancesResponse;
 use src_plaid::PlaidAccount;
@@ -107,13 +106,16 @@ pub fn connection(balances: &BalancesResponse, synced_at: api_common::Timestamp)
 /// The balance keeps Plaid's sign — positive — for both what is held and what
 /// is owed, because it is the account's `type` that says which, not the sign.
 /// See [`Account::is_debt`].
+///
+/// The subtype is carried across raw. Wording `"401k"` as `"401(k)"` is a
+/// decision about what a screen says, and `phone-state` makes those.
 pub fn account(a: &PlaidAccount) -> Account {
     let group = AccountGroup::from_plaid(&a.kind);
 
     Account {
         id: a.account_id.clone(),
         name: a.name.clone(),
-        kind: account_kind_label(a.subtype.as_deref(), group),
+        subtype: a.subtype.clone(),
         mask: a.mask.clone(),
         balance: a.balances.current.unwrap_or(0.0),
         // Only worth showing where it differs from the balance; on most
@@ -294,7 +296,7 @@ mod tests {
             .expect("the fixture has a mortgage");
 
         assert!(mortgage.is_debt());
-        assert_eq!(mortgage.kind, "Mortgage");
+        assert_eq!(mortgage.subtype.as_deref(), Some("mortgage"));
     }
 
     /// An APY of zero is nothing to say, so the row should not say it.

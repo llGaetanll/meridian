@@ -588,7 +588,7 @@
                 {
                     "id": "Ve8QqKPg4nhnlre99GL6cXNMgrvXZBi9pG8WG",
                     "name": "Plaid Checking",
-                    "kind": "Checking",
+                    "subtype": "checking",
                     "mask": "0000",
                     "balance": 110.0,
                     "available": 100.0,
@@ -599,7 +599,7 @@
                 {
                     "id": "w7Bpqra5ELIQeq144LpbsKon8VAKrjHPqn7re",
                     "name": "Plaid Saving",
-                    "kind": "Savings",
+                    "subtype": "savings",
                     "mask": "1111",
                     "balance": 210.0,
                     "available": 200.0,
@@ -610,7 +610,7 @@
                 {
                     "id": "5QZN5qeVpDckqGnKKewXUqrBz84qlRc53kP5N",
                     "name": "Plaid CD",
-                    "kind": "CD",
+                    "subtype": "cd",
                     "mask": "2222",
                     "balance": 1000.0,
                     "available": null,
@@ -621,7 +621,7 @@
                 {
                     "id": "37eaJmjv16I8QVXWWLwnh3yNKKZNQRcZM41Zk",
                     "name": "Plaid Credit Card",
-                    "kind": "Credit",
+                    "subtype": "credit card",
                     "mask": "3333",
                     "balance": 410.0,
                     "available": null,
@@ -632,7 +632,7 @@
                 {
                     "id": "xe3oKz4XlphmEDJAANo5IMprjjarWvu6JrG68",
                     "name": "Plaid Money Market",
-                    "kind": "Money market",
+                    "subtype": "money market",
                     "mask": "4444",
                     "balance": 43200.0,
                     "available": null,
@@ -643,7 +643,7 @@
                 {
                     "id": "dnPKZQWJEquvRBnqq1GbU9pJeeVJw7fJDVWJm",
                     "name": "Plaid IRA",
-                    "kind": "IRA",
+                    "subtype": "ira",
                     "mask": "5555",
                     "balance": 320.76,
                     "available": null,
@@ -654,7 +654,7 @@
                 {
                     "id": "aWaA7jg3pws57GWjj1QoSoawEEXwJgiZ1yWZx",
                     "name": "Plaid 401k",
-                    "kind": "401(k)",
+                    "subtype": "401k",
                     "mask": "6666",
                     "balance": 23631.9805,
                     "available": null,
@@ -665,7 +665,7 @@
                 {
                     "id": "4eQ4Zl7VLXh8lvZqq4r7hmyL33NLWohJnG1J7",
                     "name": "Plaid Student Loan",
-                    "kind": "Student loan",
+                    "subtype": "student",
                     "mask": "7777",
                     "balance": 65262.0,
                     "available": null,
@@ -676,7 +676,7 @@
                 {
                     "id": "NxQdPWznKpcoqdxmmXeVU7gRxxAR5WHynRDy5",
                     "name": "Plaid Mortgage",
-                    "kind": "Mortgage",
+                    "subtype": "mortgage",
                     "mask": "8888",
                     "balance": 56302.06,
                     "available": null,
@@ -687,7 +687,7 @@
                 {
                     "id": "PaM47G3Ezgfn7Ra88zoXclrQwwoQ5McoQqMov",
                     "name": "Plaid HSA",
-                    "kind": "HSA",
+                    "subtype": "hsa",
                     "mask": "9001",
                     "balance": 6009.0,
                     "available": null,
@@ -698,7 +698,7 @@
                 {
                     "id": "jqMd7oygExTbXWeJJLGNuy8RbbxRm1I6ZnX6a",
                     "name": "Plaid Cash Management",
-                    "kind": "Cash management",
+                    "subtype": "cash management",
                     "mask": "9002",
                     "balance": 12060.0,
                     "available": null,
@@ -709,7 +709,7 @@
                 {
                     "id": "7M1jXrZVqwh8rJgWWVlRh9kKppPK8EfdMD9dB",
                     "name": "Plaid Auto Loan",
-                    "kind": "Auto loan",
+                    "subtype": "auto",
                     "mask": "9003",
                     "balance": 23211.33,
                     "available": null,
@@ -720,7 +720,7 @@
                 {
                     "id": "ekjrwZAJEKComEJKKzrAUd6Maa1MqeFr7Ajrv",
                     "name": "Plaid Home Equity Line of Credit",
-                    "kind": "HELOC",
+                    "subtype": "home equity",
                     "mask": "9004",
                     "balance": 13500.5,
                     "available": 47647.5,
@@ -731,7 +731,7 @@
                 {
                     "id": "Q41NZnxWB8cnpVvyyo7Jc94mnnkmDLfw3b8w6",
                     "name": "Plaid Business Credit Card",
-                    "kind": "Credit",
+                    "subtype": "credit card",
                     "mask": "9999",
                     "balance": 5020.0,
                     "available": 4980.0,

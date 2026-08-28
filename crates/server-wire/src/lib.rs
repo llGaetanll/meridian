@@ -198,7 +198,10 @@ impl WireConnection {
 pub struct WireAccount {
     pub id: String,
     pub name: String,
-    pub kind: String,
+    /// The source's raw subtype, e.g. `"401k"`. Not worded — the phone words
+    /// it, the same as it words everything else it prints.
+    #[serde(default)]
+    pub subtype: Option<String>,
     #[serde(default)]
     pub mask: Option<String>,
     pub balance: f64,
@@ -217,7 +220,7 @@ impl WireAccount {
         Account {
             id: self.id.clone(),
             name: self.name.clone(),
-            kind: self.kind.clone(),
+            subtype: self.subtype.clone(),
             mask: self.mask.clone(),
             balance: self.balance,
             available: self.available,
@@ -231,13 +234,13 @@ impl WireAccount {
         Self {
             id: a.id.clone(),
             name: a.name.clone(),
-            kind: a.kind.clone(),
+            subtype: a.subtype.clone(),
             mask: a.mask.clone(),
             balance: a.balance,
             available: a.available,
             limit: a.limit,
             apy: a.apy,
-            group: group_name(a.group).to_string(),
+            group: a.group.as_plaid().to_string(),
         }
     }
 }
@@ -324,16 +327,6 @@ fn category_from_name(name: &str) -> Category {
         .unwrap_or(Category::Unknown)
 }
 
-fn group_name(g: AccountGroup) -> &'static str {
-    match g {
-        AccountGroup::Depository => "depository",
-        AccountGroup::Investment => "investment",
-        AccountGroup::Credit => "credit",
-        AccountGroup::Loan => "loan",
-        AccountGroup::Other => "other",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,22 +359,5 @@ mod tests {
                 "Entertainment",
             ],
         );
-    }
-
-    #[test]
-    fn group_names_are_stable() {
-        assert_eq!(group_name(AccountGroup::Depository), "depository");
-        assert_eq!(group_name(AccountGroup::Loan), "loan");
-
-        // The app parses these back with `AccountGroup::from_plaid`, so the
-        // names have to be the ones Plaid uses.
-        for group in [
-            AccountGroup::Depository,
-            AccountGroup::Investment,
-            AccountGroup::Credit,
-            AccountGroup::Loan,
-        ] {
-            assert_eq!(AccountGroup::from_plaid(group_name(group)), group);
-        }
     }
 }

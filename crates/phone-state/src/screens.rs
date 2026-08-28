@@ -409,7 +409,7 @@ fn connection_view(
 }
 
 fn account_row(account: &Account, masked: bool) -> ViewAccountRow {
-    let mut parts = vec![account.kind.clone()];
+    let mut parts = vec![fmt::account_kind(account.subtype.as_deref(), account.group)];
 
     if let Some(mask) = &account.mask {
         parts.push(format!("·{mask}"));
