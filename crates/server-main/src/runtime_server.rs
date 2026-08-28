@@ -130,7 +130,10 @@ impl RuntimeServer {
         // deciding to do it on its own initiative.
         runtime
             .dispatch(vec![Event::FromProcess {
-                event: EventProcess::Started,
+                event: EventProcess::Started {
+                    store: runtime.db.is_some(),
+                    live: runtime.plaid.is_some(),
+                },
             }])
             .await;
 
@@ -259,21 +262,12 @@ impl RuntimeServer {
     /// about it.
     async fn perform_action_store(&self, action: &ActionStore) {
         let Some(db) = &self.db else {
-            // No store configured. An empty read rather than silence, so the
-            // machine hears a definite answer and the log says which kind of
-            // nothing this was.
-            if matches!(action, ActionStore::LoadEverything) {
-                self.dispatch(vec![Event::FromStore {
-                    event: EventStore::Loaded {
-                        entries: Vec::new(),
-                        connections: Vec::new(),
-                        streams: Vec::new(),
-                        cursor: None,
-                        synced_at: None,
-                    },
-                }])
-                .await;
-            }
+            // Not a fallback, and not a decision: the machine is told at
+            // startup whether there is a store and does not ask a store that
+            // does not exist for anything. Reaching here means the two have
+            // disagreed, which is worth saying out loud rather than papering
+            // over with a plausible-looking empty answer.
+            tracing::error!(?action, "a store action arrived with no store");
 
             return;
         };
@@ -332,6 +326,14 @@ impl RuntimeServer {
             });
         }
 
+        // One Item today, as `ITEM` in the machine says, which is why a single
+        // cursor is a faithful answer rather than a choice made here. The day
+        // that stops being true this is the line that says so.
+        debug_assert!(
+            items.len() <= 1,
+            "a second Item needs per-Item state, not a cursor picked here",
+        );
+
         Ok(EventStore::Loaded {
             entries: src_postgres::load_entries(db).await?,
             streams: src_postgres::load_streams(db).await?,
@@ -368,11 +370,19 @@ impl RuntimeServer {
                 // The access token is the runtime's, not the machine's: it
                 // lives beside the credentials and never enters an action or
                 // the event log.
-                let access_token = self
-                    .plaid
-                    .as_ref()
-                    .map(|config| config.access_token.clone())
-                    .unwrap_or_default();
+                //
+                // The machine only asks for a write when it was told there is
+                // a live source, so this is present. Reported rather than
+                // defaulted if it is not: an empty string here would be a row
+                // claiming to be a bank connection with no credential behind
+                // it, which is worse than no row at all.
+                let Some(config) = &self.plaid else {
+                    tracing::error!(item_id, "asked to store an item with no credentials");
+
+                    return Ok(());
+                };
+
+                let access_token = config.access_token.clone();
 
                 src_postgres::save_item(
                     db,

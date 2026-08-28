@@ -57,9 +57,19 @@ fn failed(code: &str) -> Event {
     }
 }
 
+/// A server that came up with both a store and real credentials.
 fn started() -> Event {
     Event::FromProcess {
-        event: EventProcess::Started,
+        event: EventProcess::Started {
+            store: true,
+            live: true,
+        },
+    }
+}
+
+fn started_with(store: bool, live: bool) -> Event {
+    Event::FromProcess {
+        event: EventProcess::Started { store, live },
     }
 }
 
@@ -86,6 +96,19 @@ fn read_back(entries: Vec<Entry>, cursor: Option<&str>, synced_at: Option<Timest
             streams: vec![],
             cursor: cursor.map(str::to_string),
             synced_at,
+        },
+    }
+}
+
+fn fetched(item: &str, cursor: &str) -> Event {
+    Event::FromSource {
+        event: EventSource::PlaidLoaded {
+            added: vec![entry("a")],
+            modified: vec![],
+            removed: vec![],
+            connections: vec![connection(item, ConnectionStatus::Ok { synced_at: T0 })],
+            streams: vec![],
+            cursor: cursor.into(),
         },
     }
 }
@@ -323,6 +346,46 @@ fn starting_reads_the_store() {
     );
 }
 
+/// No store, nothing asked of it. This used to be a branch in the runtime,
+/// which meant it could not be written down here at all.
+#[test]
+fn starting_without_a_store_asks_for_nothing() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < started_with(false, true),
+    );
+}
+
+/// And nothing is written to a store that is not there, either.
+#[test]
+fn a_sync_with_no_store_is_served_and_not_written() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < started_with(false, true),
+
+        < fetched("item-1", "cursor-2"),
+        > Action::ToClient { action: ActionClient::Serve },
+    );
+}
+
+/// Fixture data is worth serving and is not worth storing. The Item behind it
+/// has no credential and could never sync, so a row for it would claim to be a
+/// bank connection and not be one.
+#[test]
+fn a_fixtures_run_is_served_and_not_written() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < started_with(true, false),
+        > Action::ToStore { action: ActionStore::LoadEverything },
+
+        < fetched("item-1", "cursor-2"),
+        > Action::ToClient { action: ActionClient::Serve },
+    );
+}
+
 /// Reading it back asks for nothing. Nobody is waiting at boot, and the data
 /// is already what the next request would be served.
 #[test]
@@ -373,19 +436,11 @@ fn a_restart_with_stale_data_resumes_from_the_stored_cursor() {
 fn a_sync_is_served_before_it_is_written() {
     let mut state = state();
 
-    let fetched = Event::FromSource {
-        event: EventSource::PlaidLoaded {
-            added: vec![entry("a")],
-            modified: vec![],
-            removed: vec![],
-            connections: vec![connection("item-1", ConnectionStatus::Ok { synced_at: T0 })],
-            streams: vec![],
-            cursor: "cursor-2".into(),
-        },
-    };
-
     eval!(&mut state,
-        < fetched,
+        < started(),
+        > Action::ToStore { action: ActionStore::LoadEverything },
+
+        < fetched("item-1", "cursor-2"),
         > Action::ToClient { action: ActionClient::Serve },
         > Action::ToStore { action: ActionStore::SaveFetched { .. } },
     );
@@ -411,6 +466,9 @@ fn an_expired_login_is_remembered() {
     let mut state = state();
 
     eval!(&mut state,
+        < started(),
+        > Action::ToStore { action: ActionStore::LoadEverything },
+
         < read_back(vec![], Some("cursor-1"), Some(T0)),
 
         < failed("ITEM_LOGIN_REQUIRED"),

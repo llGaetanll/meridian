@@ -76,6 +76,16 @@ pub struct StateServer {
     /// Whether a shutdown has been asked for. Once set, no new work starts.
     shutting_down: bool,
 
+    /// Whether there is somewhere to persist to, as the runtime reported when
+    /// it started. Nothing is ever asked of a store that does not exist —
+    /// which is why the runtime needs no fallback for being asked.
+    store: bool,
+
+    /// Whether the source is a real one, reported the same way. See
+    /// [`EventProcess::Started`](crate::EventProcess::Started): fixture data is
+    /// served and not stored.
+    live: bool,
+
     /// What Plaid will let us send. Consulted rather than guessed, and part of
     /// the machine because "may I call?" is arithmetic, not IO.
     limiter: PlaidRateLimiter,
@@ -174,7 +184,7 @@ impl StateServer {
 
                 // One Item today, as `ITEM` says. When there is a second, the
                 // fetch itself becomes per-Item and this follows it.
-                if let Some(connection) = connections.first() {
+                if let Some(connection) = connections.first().filter(|_| self.persists()) {
                     actions.push(Action::ToStore {
                         action: ActionStore::SaveFetched {
                             item_id: connection.id.clone(),
@@ -200,7 +210,7 @@ impl StateServer {
 
                     // Remembered across a restart, or the server comes back up
                     // and asks Plaid the same question it was just refused.
-                    if let Some(connection) = self.connections.first() {
+                    if let Some(connection) = self.connections.first().filter(|_| self.persists()) {
                         actions.push(Action::ToStore {
                             action: ActionStore::SaveStatus {
                                 item_id: connection.id.clone(),
@@ -229,9 +239,20 @@ impl StateServer {
             // Read before fetching. Whatever is on disk is what the last run
             // ended with, and starting from it is the difference between a
             // restart costing nothing and a restart re-downloading a history.
-            EventProcess::Started => actions.push(Action::ToStore {
-                action: ActionStore::LoadEverything,
-            }),
+            EventProcess::Started { store, live } => {
+                self.store = *store;
+                self.live = *live;
+
+                // Nothing to read from is not a problem: the ledger is already
+                // empty and the first request fetches, which is exactly what a
+                // first run does. So there is nothing to ask for and nothing
+                // to wait on.
+                if *store {
+                    actions.push(Action::ToStore {
+                        action: ActionStore::LoadEverything,
+                    });
+                }
+            }
         }
     }
 
@@ -310,6 +331,15 @@ impl StateServer {
                 });
             }
         }
+    }
+
+    /// Whether anything is worth writing down.
+    ///
+    /// Both halves have to hold. Without a store there is nowhere to put it,
+    /// and without a live source what there is to put is fixture data — which
+    /// is worth serving and is not a bank connection.
+    fn persists(&self) -> bool {
+        self.store && self.live
     }
 
     /// Whether to go back to Plaid.
