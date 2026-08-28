@@ -1,11 +1,10 @@
 //! The Items: one row per bank connection.
 //!
-//! Everything here is Plaid's own fact about a connection — the token, the
-//! cursor, the institution, whether it is still healthy. What a *screen* makes
-//! of that is somebody else's business.
+//! Everything here is the source's own fact about a connection — the token,
+//! the cursor, the institution, whether it is still healthy. What a *screen*
+//! makes of that is somebody else's business.
 
 use api_common::Timestamp;
-use sqlx::Row;
 
 use crate::Db;
 use crate::PostgresError;
@@ -13,9 +12,9 @@ use crate::postgres_ledger::seconds;
 
 /// One bank connection, as it is stored.
 ///
-/// Not [`api_ledger::Connection`], which is the same connection *projected*
-/// for a screen — it carries initials and a worded status and no access token.
-/// This is the record; that is the view of it.
+/// Not [`api_ledger::Connection`], which is the same connection *projected* for
+/// a screen — that one carries initials and a worded status and no access
+/// token. This is the record; that is a view of it.
 #[derive(Debug, Clone)]
 pub struct StoredItem {
     pub item_id: String,
@@ -33,7 +32,7 @@ pub struct StoredItem {
     /// beginning, which is correct and merely slow.
     pub cursor: Option<String>,
 
-    /// Plaid's `error_code` when the connection needs a person, most often
+    /// The source's error code when the connection needs a person, most often
     /// `ITEM_LOGIN_REQUIRED`. `None` is healthy.
     pub error_code: Option<String>,
 
@@ -45,11 +44,11 @@ pub struct StoredItem {
 /// Write an Item, replacing whatever was there.
 ///
 /// An upsert rather than an insert: linking the same bank twice is something
-/// people do, and Plaid hands back the same `item_id` for it. The cursor is
-/// deliberately *not* touched here — it moves only through
-/// [`save_cursor`], so re-saving an Item cannot quietly rewind a sync.
+/// people do, and the source hands back the same `item_id` for it. The cursor
+/// is deliberately *not* touched here — it moves only through [`save_cursor`],
+/// so re-saving an Item cannot quietly rewind a sync.
 pub async fn save_item(db: &Db, item: &StoredItem) -> Result<(), PostgresError> {
-    sqlx::query(
+    sqlx::query!(
         "INSERT INTO items (item_id, access_token, institution_id, institution_name, error_code, updated_at)
          VALUES ($1, $2, $3, $4, $5, now())
          ON CONFLICT (item_id) DO UPDATE SET
@@ -58,12 +57,12 @@ pub async fn save_item(db: &Db, item: &StoredItem) -> Result<(), PostgresError> 
              institution_name = EXCLUDED.institution_name,
              error_code       = EXCLUDED.error_code,
              updated_at       = now()",
+        item.item_id,
+        item.access_token,
+        item.institution_id,
+        item.institution_name,
+        item.error_code,
     )
-    .bind(&item.item_id)
-    .bind(&item.access_token)
-    .bind(&item.institution_id)
-    .bind(&item.institution_name)
-    .bind(&item.error_code)
     .execute(db)
     .await?;
 
@@ -72,27 +71,26 @@ pub async fn save_item(db: &Db, item: &StoredItem) -> Result<(), PostgresError> 
 
 /// Every Item, oldest first, so the connection list is stable across restarts.
 pub async fn load_items(db: &Db) -> Result<Vec<StoredItem>, PostgresError> {
-    let rows = sqlx::query(
+    let rows = sqlx::query!(
         "SELECT item_id, access_token, institution_id, institution_name, cursor, error_code, updated_at
          FROM items
-         ORDER BY created_at",
+         ORDER BY created_at"
     )
     .fetch_all(db)
     .await?;
 
-    rows.iter()
-        .map(|row| {
-            Ok(StoredItem {
-                item_id: row.try_get("item_id")?,
-                access_token: row.try_get("access_token")?,
-                institution_id: row.try_get("institution_id")?,
-                institution_name: row.try_get("institution_name")?,
-                cursor: row.try_get("cursor")?,
-                error_code: row.try_get("error_code")?,
-                synced_at: seconds(row.try_get("updated_at")?),
-            })
+    Ok(rows
+        .into_iter()
+        .map(|row| StoredItem {
+            item_id: row.item_id,
+            access_token: row.access_token,
+            institution_id: row.institution_id,
+            institution_name: row.institution_name,
+            cursor: row.cursor,
+            error_code: row.error_code,
+            synced_at: seconds(row.updated_at),
         })
-        .collect()
+        .collect())
 }
 
 /// Move the cursor.
@@ -102,11 +100,13 @@ pub async fn load_items(db: &Db) -> Result<Vec<StoredItem>, PostgresError> {
 /// history, and rewinding it re-adds transactions the ledger already holds.
 /// Keeping it out of [`save_item`] means neither can happen by accident.
 pub async fn save_cursor(db: &Db, item_id: &str, cursor: &str) -> Result<(), PostgresError> {
-    sqlx::query("UPDATE items SET cursor = $2, updated_at = now() WHERE item_id = $1")
-        .bind(item_id)
-        .bind(cursor)
-        .execute(db)
-        .await?;
+    sqlx::query!(
+        "UPDATE items SET cursor = $2, updated_at = now() WHERE item_id = $1",
+        item_id,
+        cursor,
+    )
+    .execute(db)
+    .await?;
 
     Ok(())
 }
@@ -117,11 +117,13 @@ pub async fn save_error(
     item_id: &str,
     error_code: Option<&str>,
 ) -> Result<(), PostgresError> {
-    sqlx::query("UPDATE items SET error_code = $2, updated_at = now() WHERE item_id = $1")
-        .bind(item_id)
-        .bind(error_code)
-        .execute(db)
-        .await?;
+    sqlx::query!(
+        "UPDATE items SET error_code = $2, updated_at = now() WHERE item_id = $1",
+        item_id,
+        error_code,
+    )
+    .execute(db)
+    .await?;
 
     Ok(())
 }
@@ -132,8 +134,7 @@ pub async fn save_error(
 /// schema declares. That is what keeps the promise the app makes on the screen
 /// where it asks to connect one: removing a bank deletes its history.
 pub async fn remove_item(db: &Db, item_id: &str) -> Result<(), PostgresError> {
-    sqlx::query("DELETE FROM items WHERE item_id = $1")
-        .bind(item_id)
+    sqlx::query!("DELETE FROM items WHERE item_id = $1", item_id)
         .execute(db)
         .await?;
 

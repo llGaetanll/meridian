@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO items (item_id, access_token, institution_id, institution_name, error_code, updated_at)\n         VALUES ($1, $2, $3, $4, $5, now())\n         ON CONFLICT (item_id) DO UPDATE SET\n             access_token     = EXCLUDED.access_token,\n             institution_id   = EXCLUDED.institution_id,\n             institution_name = EXCLUDED.institution_name,\n             error_code       = EXCLUDED.error_code,\n             updated_at       = now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5048922fb21116bebe6419abb031094d21976d2db63560471ac32dd4b6142806"
+}

@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO accounts (account_id, item_id, name, subtype, account_group, mask,\n                               balance_minor, available_minor, limit_minor, apy)\n         SELECT account_id, $1, name, subtype, account_group, mask,\n                balance_minor, available_minor, limit_minor, apy\n         FROM UNNEST($2::text[], $3::text[], $4::text[], $5::text[], $6::text[],\n                     $7::int8[], $8::int8[], $9::int8[], $10::float8[])\n              AS t(account_id, name, subtype, account_group, mask,\n                   balance_minor, available_minor, limit_minor, apy)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "Int8Array",
+        "Int8Array",
+        "Int8Array",
+        "Float8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "55792ca0ee5533c11dd500a68716de12dcd359a365f98db703c8dadb7ad9dcf4"
+}

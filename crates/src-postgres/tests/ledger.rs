@@ -1,18 +1,19 @@
 //! The queries, against a real Postgres.
 //!
-//! Ignored by default — `cargo test` has to pass on a clean checkout with no
-//! Docker, the same reason the server treats `DATABASE_URL` as optional:
+//! `#[sqlx::test]` gives each of these its **own database**: it creates one,
+//! runs our migrator into it, hands over a pool, and drops it afterwards. So
+//! they are isolated from each other and — the part that matters — from the
+//! database you actually work in. Nothing here can touch a real access token.
+//!
+//! A failing test leaves its database behind on purpose, so you can go and
+//! look at what it left. sqlx sweeps those on the next run.
+//!
+//! They need a server to create those databases on:
 //!
 //! ```sh
 //! ./scripts/db-init.sh
-//! cargo test -p src-postgres -- --ignored
+//! cargo test
 //! ```
-//!
-//! These read and write the same tables, and `load_entries` is deliberately
-//! global — the server wants the whole ledger — so they take a lock and start
-//! from an empty database rather than depending on each other's leftovers.
-
-use std::sync::OnceLock;
 
 use api_common::Timestamp;
 use api_ledger::Account;
@@ -22,44 +23,13 @@ use api_ledger::Entry;
 use api_ledger::Position;
 use api_ledger::Stream;
 use api_ledger::Tx;
-use src_postgres::Db;
+use sqlx::PgPool;
 use src_postgres::StoredItem;
-use tokio::sync::Mutex;
-use tokio::sync::MutexGuard;
-
-const DEFAULT_URL: &str = "postgres://meridian:meridian@localhost:5432/meridian";
 
 const ITEM: &str = "item-test";
 
 /// 2026-08-19, the day the fixtures are drawn against.
 const NOW: Timestamp = Timestamp::from_secs(1_787_097_600);
-
-/// One test at a time, on an empty database.
-///
-/// The guard is returned rather than dropped so it is held for the whole test:
-/// two of these interleaving would each see the other's rows through
-/// `load_entries`, and the failure would depend on scheduling.
-async fn alone() -> (MutexGuard<'static, ()>, Db) {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-    let guard = LOCK.get_or_init(|| Mutex::new(())).lock().await;
-
-    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_URL.to_string());
-
-    let db = src_postgres::connect(&url)
-        .await
-        .expect("postgres should be up — ./scripts/db-init.sh");
-
-    src_postgres::migrate(&db).await.expect("migrations run");
-
-    // Items cascade, so this clears everything.
-    sqlx::query("DELETE FROM items")
-        .execute(&db)
-        .await
-        .expect("a clean slate");
-
-    (guard, db)
-}
 
 fn item() -> StoredItem {
     StoredItem {
@@ -92,11 +62,8 @@ fn entry(id: &str, amount: f64) -> Entry {
     }
 }
 
-#[tokio::test]
-#[ignore = "needs a database: ./scripts/db-init.sh"]
-async fn an_item_round_trips() {
-    let (_guard, db) = alone().await;
-
+#[sqlx::test(migrator = "src_postgres::MIGRATOR")]
+async fn an_item_round_trips(db: PgPool) {
     src_postgres::save_item(&db, &item()).await.unwrap();
 
     let items = src_postgres::load_items(&db).await.unwrap();
@@ -114,11 +81,8 @@ async fn an_item_round_trips() {
 /// The cursor is the only record of how far a sync got. Re-saving an Item —
 /// which happens whenever a bank is relinked — must not rewind it, or the next
 /// sync re-fetches a history the ledger already holds.
-#[tokio::test]
-#[ignore = "needs a database: ./scripts/db-init.sh"]
-async fn saving_an_item_again_does_not_rewind_the_cursor() {
-    let (_guard, db) = alone().await;
-
+#[sqlx::test(migrator = "src_postgres::MIGRATOR")]
+async fn saving_an_item_again_does_not_rewind_the_cursor(db: PgPool) {
     src_postgres::save_item(&db, &item()).await.unwrap();
     src_postgres::save_cursor(&db, ITEM, "cursor-abc")
         .await
@@ -131,11 +95,8 @@ async fn saving_an_item_again_does_not_rewind_the_cursor() {
     assert_eq!(items[0].cursor.as_deref(), Some("cursor-abc"));
 }
 
-#[tokio::test]
-#[ignore = "needs a database: ./scripts/db-init.sh"]
-async fn accounts_round_trip_with_their_money_intact() {
-    let (_guard, db) = alone().await;
-
+#[sqlx::test(migrator = "src_postgres::MIGRATOR")]
+async fn accounts_round_trip_with_their_money_intact(db: PgPool) {
     src_postgres::save_item(&db, &item()).await.unwrap();
 
     let accounts = vec![Account {
@@ -163,11 +124,8 @@ async fn accounts_round_trip_with_their_money_intact() {
 /// The bug that made one transaction appear three times: a sync that re-sends
 /// an entry the ledger already holds. The upsert is what makes applying the
 /// same diff twice a no-op.
-#[tokio::test]
-#[ignore = "needs a database: ./scripts/db-init.sh"]
-async fn applying_the_same_entries_twice_stores_them_once() {
-    let (_guard, db) = alone().await;
-
+#[sqlx::test(migrator = "src_postgres::MIGRATOR")]
+async fn applying_the_same_entries_twice_stores_them_once(db: PgPool) {
     src_postgres::save_item(&db, &item()).await.unwrap();
 
     let added = vec![entry("a", -25.0), entry("b", -4.33)];
@@ -185,11 +143,8 @@ async fn applying_the_same_entries_twice_stores_them_once() {
     assert_eq!(entries.iter().filter(|e| e.id == "a").count(), 1);
 }
 
-#[tokio::test]
-#[ignore = "needs a database: ./scripts/db-init.sh"]
-async fn a_modified_entry_replaces_its_old_self() {
-    let (_guard, db) = alone().await;
-
+#[sqlx::test(migrator = "src_postgres::MIGRATOR")]
+async fn a_modified_entry_replaces_its_old_self(db: PgPool) {
     src_postgres::save_item(&db, &item()).await.unwrap();
 
     src_postgres::apply_entries(&db, ITEM, &[entry("a", -25.0)], &[], &[])
@@ -213,11 +168,8 @@ async fn a_modified_entry_replaces_its_old_self() {
 /// Trap two from docs/PLAID.md. A posted transaction arrives with a new id
 /// pointing at the pending one it replaces, and unless the pending one goes
 /// every purchase is counted twice for the days between the two.
-#[tokio::test]
-#[ignore = "needs a database: ./scripts/db-init.sh"]
-async fn a_posted_entry_drops_the_pending_one_it_replaces() {
-    let (_guard, db) = alone().await;
-
+#[sqlx::test(migrator = "src_postgres::MIGRATOR")]
+async fn a_posted_entry_drops_the_pending_one_it_replaces(db: PgPool) {
     src_postgres::save_item(&db, &item()).await.unwrap();
 
     let mut pending = entry("pending-1", -25.0);
@@ -240,11 +192,8 @@ async fn a_posted_entry_drops_the_pending_one_it_replaces() {
     assert_eq!(entries[0].id, "posted-1");
 }
 
-#[tokio::test]
-#[ignore = "needs a database: ./scripts/db-init.sh"]
-async fn a_retracted_entry_is_removed() {
-    let (_guard, db) = alone().await;
-
+#[sqlx::test(migrator = "src_postgres::MIGRATOR")]
+async fn a_retracted_entry_is_removed(db: PgPool) {
     src_postgres::save_item(&db, &item()).await.unwrap();
 
     src_postgres::apply_entries(&db, ITEM, &[entry("a", -25.0), entry("b", -4.33)], &[], &[])
@@ -262,11 +211,8 @@ async fn a_retracted_entry_is_removed() {
 }
 
 /// Newest first, which is the order every screen shows.
-#[tokio::test]
-#[ignore = "needs a database: ./scripts/db-init.sh"]
-async fn entries_come_back_newest_first() {
-    let (_guard, db) = alone().await;
-
+#[sqlx::test(migrator = "src_postgres::MIGRATOR")]
+async fn entries_come_back_newest_first(db: PgPool) {
     src_postgres::save_item(&db, &item()).await.unwrap();
 
     let older = Entry {
@@ -290,11 +236,8 @@ async fn entries_come_back_newest_first() {
     assert_eq!(entries[1].id, "older");
 }
 
-#[tokio::test]
-#[ignore = "needs a database: ./scripts/db-init.sh"]
-async fn streams_round_trip() {
-    let (_guard, db) = alone().await;
-
+#[sqlx::test(migrator = "src_postgres::MIGRATOR")]
+async fn streams_round_trip(db: PgPool) {
     src_postgres::save_item(&db, &item()).await.unwrap();
 
     let streams = vec![Stream {
@@ -319,11 +262,8 @@ async fn streams_round_trip() {
 
 /// The promise the app makes on the screen where it asks to connect a bank:
 /// removing one takes its history with it.
-#[tokio::test]
-#[ignore = "needs a database: ./scripts/db-init.sh"]
-async fn removing_a_bank_deletes_everything_that_came_through_it() {
-    let (_guard, db) = alone().await;
-
+#[sqlx::test(migrator = "src_postgres::MIGRATOR")]
+async fn removing_a_bank_deletes_everything_that_came_through_it(db: PgPool) {
     src_postgres::save_item(&db, &item()).await.unwrap();
     src_postgres::apply_entries(&db, ITEM, &[entry("a", -25.0)], &[], &[])
         .await

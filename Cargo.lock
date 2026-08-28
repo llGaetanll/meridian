@@ -3033,7 +3033,6 @@ dependencies = [
  "api-ledger",
  "chrono",
  "sqlx",
- "tokio",
  "tracing",
 ]
 

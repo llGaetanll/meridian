@@ -228,11 +228,18 @@ a substitute for checking:
 ```sh
 cargo +nightly fmt --all
 cargo clippy --workspace --all-targets
+cargo sqlx prepare --workspace     # only when a SQL query changed
 ```
 
 **Nightly**, because `rustfmt.toml` uses unstable options — stable `cargo fmt`
 silently skips them and leaves the formatting half-applied, which shows up as
 noise in the next diff.
+
+`cargo sqlx prepare` regenerates `.sqlx`, the checked-query cache at the repo
+root. Every `sqlx::query!` is verified against the live schema at compile time,
+and that cache is what lets a clean checkout build with no database at all —
+so a query changed without regenerating it is a build that works on your
+machine and nowhere else. Only needed when the SQL or the schema moved.
 
 **No lints anywhere.** Not "no new lints" — none. A warning that is genuinely
 wrong gets `#[expect(lint, reason = "…")]` with the reason written out, so the
