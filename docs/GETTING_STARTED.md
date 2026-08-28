@@ -30,12 +30,14 @@ cargo run -p server-main                  # :8082
 cd crates/phone-main && trunk serve    # :8081
 ```
 
-With no `.env` the server answers from the captured Sandbox fixtures in
-`crates/server-main/fixtures/` instead of calling out, so the app runs from a
-clean checkout. Fill in `.env` to get live Sandbox data.
+**The server needs `.env` filled in.** Plaid's credentials, the environment,
+the access token and the collection channel are all required, and it exits
+saying which one is missing rather than starting and serving something
+plausible. [PLAID.md](PLAID.md) has the two curl calls that produce a Sandbox
+token.
 
-The database is optional in the same way. With no `DATABASE_URL` the server
-holds everything in memory, as it always has. To run with one:
+The database is the one thing still optional. With no `DATABASE_URL` the server
+holds everything in memory and loses it on restart. To run with one:
 
 ```
 cp .env.example .env

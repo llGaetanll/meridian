@@ -15,11 +15,46 @@ which allows **10 Production Items** — one Item is roughly one bank login — 
 the account is finished, permanently. Sandbox has no such limit and no real
 credentials in it, so every piece of development happens there.
 
-The default is structural, not a promise: `PLAID_ENV` unset means Sandbox, and
-Production takes a deliberate `PLAID_ENV=production`. The lazy path is the safe
-one, and there is no way to reach real data by forgetting something.
+`PLAID_ENV` is **required**, and matched exactly: `sandbox` or `production`,
+and anything else — unset, empty, `Sandbox`, `dev`, a leftover from another
+project — fails the process on the way up.
+
+This used to be a default. Unset meant Sandbox, on the reasoning that the lazy
+path should be the harmless one. The reasoning was right and the mechanism was
+wrong: a default is a decision made by whoever did not look, and it made a
+whole family of mistakes indistinguishable from a correct configuration. An
+environment that has not said which Plaid it means now reaches neither.
 
 Sandbox logins are `user_good` / `pass_good` at any institution.
+
+## Getting a Sandbox token
+
+Two calls, both free and unlimited — the ten-Item cap is Production-only, and
+nothing in Sandbox spends a slot. `ins_109508` is First Platypus Bank, which is
+what the fixtures were captured from.
+
+```sh
+set -a; . ./.env; set +a
+
+PUBLIC_TOKEN=$(curl -sS -X POST https://sandbox.plaid.com/sandbox/public_token/create \
+  -H 'Content-Type: application/json' \
+  -d "{\"client_id\":\"$PLAID_CLIENT_ID\",\"secret\":\"$PLAID_SECRET\",
+       \"institution_id\":\"ins_109508\",\"initial_products\":[\"transactions\"]}" \
+  | jq -r .public_token)
+
+curl -sS -X POST https://sandbox.plaid.com/item/public_token/exchange \
+  -H 'Content-Type: application/json' \
+  -d "{\"client_id\":\"$PLAID_CLIENT_ID\",\"secret\":\"$PLAID_SECRET\",
+       \"public_token\":\"$PUBLIC_TOKEN\"}" | jq
+```
+
+The `access_token` that comes back goes in `.env`. Sandbox generates
+transactions asynchronously, so a `/transactions/sync` in the first seconds can
+answer empty or `PRODUCT_NOT_READY`; run it again. Recurring streams are
+derived from transactions and are thin until those land.
+
+`cargo run -p src-plaid --example sync_transactions` is the same call the
+server makes, and the quickest way to prove a token works.
 
 ## The two environments
 
@@ -36,10 +71,22 @@ mentions one is out of date about more than that.
 Three variables, never committed:
 
 ```sh
-export PLAID_CLIENT_ID=…    # one per team, same in both environments
-export PLAID_SECRET=…       # one per environment — Sandbox and Production differ
-export PLAID_ENV=sandbox    # or unset, which means the same thing
+export PLAID_CLIENT_ID=…      # one per team, same in both environments
+export PLAID_SECRET=…         # one per environment — Sandbox and Production differ
+export PLAID_ENV=sandbox      # required; `sandbox` or `production`, exactly
+export PLAID_ACCESS_TOKEN=…   # the Item to sync — see "Getting a Sandbox token"
+export PLAID_COLLECT=poll     # required; `poll` or `webhook`
 ```
+
+**Every variable is required and none has a default.** `server-main` starts
+with all of them or does not start. It used to fall back to captured fixtures
+when the credentials were missing, which meant an empty screen had two
+explanations and the log said the same thing for both.
+
+`PLAID_COLLECT` is not `PLAID_ENV` and must not be folded into it. It says how
+a finished Link session reaches us — see [The flow](#the-flow) — and the two
+are independent: polling against Production is sensible, and so is a webhook
+against Sandbox once there is a tunnel to receive it.
 
 They live in the Dashboard under
 [developers/keys](https://dashboard.plaid.com/developers/keys).

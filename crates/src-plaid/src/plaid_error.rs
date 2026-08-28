@@ -12,6 +12,13 @@ pub enum PlaidError {
     // Malformed base url or request path
     InvalidUrl(String),
 
+    /// The environment did not say something it had to say, or said it wrong.
+    ///
+    /// Its own variant rather than an `InvalidUrl` carrying a sentence about a
+    /// variable: this is the one error that is always the operator's to fix,
+    /// and never the network's or Plaid's. See `PlaidEnv::from_env`.
+    Config(String),
+
     /// Plaid answered with an error of its own. It uses the body rather than
     /// the status to say what went wrong, and `error_code` is the part worth
     /// matching on — `ITEM_LOGIN_REQUIRED` means the user has to reconnect,
@@ -41,6 +48,7 @@ impl std::fmt::Display for PlaidError {
             PlaidError::JsonError(e) => write!(f, "JSON parsing error: {}", e),
             PlaidError::TooManyRequests => write!(f, "Rate limit exceeded"),
             PlaidError::InvalidUrl(e) => write!(f, "Invalid url: {}", e),
+            PlaidError::Config(e) => write!(f, "Configuration error: {}", e),
             PlaidError::Plaid {
                 error_code,
                 error_message,
@@ -54,9 +62,10 @@ impl std::error::Error for PlaidError {
         match self {
             PlaidError::ReqwestError(e) => Some(e),
             PlaidError::JsonError(e) => Some(e),
-            PlaidError::TooManyRequests | PlaidError::InvalidUrl(_) | PlaidError::Plaid { .. } => {
-                None
-            }
+            PlaidError::TooManyRequests
+            | PlaidError::InvalidUrl(_)
+            | PlaidError::Config(_)
+            | PlaidError::Plaid { .. } => None,
         }
     }
 }

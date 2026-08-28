@@ -39,12 +39,12 @@ use crate::EventProcess;
 use crate::EventSource;
 use crate::EventStore;
 use crate::EventTerminal;
+use crate::PlaidCollect;
 use crate::StateServer;
 use crate::project;
 use crate::runtime_plaid;
 use crate::runtime_plaid::PlaidConfig;
 use server_wire::WireSnapshot;
-use server_wire::WireSource;
 use src_postgres::Db;
 
 /// A different port from either front-end, so all three can run at once.
@@ -53,10 +53,14 @@ const PORT: u16 = 8082;
 pub struct RuntimeServer {
     /// The store, once there is one.
     ///
-    /// `None` when `DATABASE_URL` is unset, and that stays a supported way to
-    /// run: a clean checkout with no `.env` serves the captured fixtures and
-    /// needs neither Plaid nor Postgres. The moment it holds real data that
-    /// changes, but an app you cannot start is an app nobody reads the code of.
+    /// `None` when `DATABASE_URL` is unset, which holds everything in memory
+    /// and loses it on restart.
+    ///
+    /// This is the last silent fallback in the server, and it is the odd one
+    /// out now that Plaid's credentials are required. It is left because the
+    /// machine already models it honestly — `EventProcess::Started` carries
+    /// it, and three `eval!` tests cover the storeless paths — rather than
+    /// because a server that quietly keeps nothing is a good idea.
     db: Option<Db>,
 
     /// The machine.
@@ -76,8 +80,23 @@ pub struct RuntimeServer {
     /// the Plaid fetch, which `fetching` already serialises.
     state: RwLock<StateServer>,
 
-    /// Credentials, if there are any. Absent means the fixtures stand in.
-    plaid: Option<PlaidConfig>,
+    /// Credentials. Not optional: without them there is nothing to serve, and
+    /// serving something plausible instead is what this server no longer does.
+    plaid: PlaidConfig,
+
+    /// Which channel collects the result of a Link session. Held here because
+    /// the link flow is not built yet; when it is, this becomes a fact on
+    /// `EventProcess::Started` and the machine decides what to do about it.
+    /// Read and validated at startup regardless, so a misconfigured server
+    /// says so on the way up rather than on the day somebody links a bank.
+    ///
+    /// `expect` rather than `allow`: the day the link flow reads this, the
+    /// attribute itself starts warning and asks to be deleted.
+    #[expect(
+        dead_code,
+        reason = "read once the link flow lands; validated and logged at startup meanwhile"
+    )]
+    collect: PlaidCollect,
 
     /// Only one fetch may be in flight. Without this, a burst of cold requests
     /// all miss the cache and all call Plaid.
@@ -105,21 +124,22 @@ impl RuntimeServer {
     pub async fn run() -> anyhow::Result<()> {
         let db = Self::open_store().await?;
 
-        let plaid = PlaidConfig::from_env();
+        // Both of these are required, and both fail the process rather than
+        // degrading. Read before the store is used for anything, so a server
+        // that cannot work says so in its first second.
+        let plaid = PlaidConfig::from_env()?;
+        let collect = PlaidCollect::from_env()?;
 
-        match &plaid {
-            Some(_) => {
-                tracing::info!(source = "plaid", "serving live sandbox data")
-            }
-            None => tracing::info!(
-                source = "fixtures",
-                "no PLAID_ACCESS_TOKEN, serving captured sandbox fixtures",
-            ),
-        }
+        tracing::info!(
+            env = plaid.credentials.env.as_str(),
+            collect = collect.as_str(),
+            "serving live plaid data",
+        );
 
         let runtime = Arc::new(Self {
             state: RwLock::new(StateServer::new()),
             plaid,
+            collect,
             db,
             fetching: Mutex::new(()),
             shutdown: Notify::new(),
@@ -132,7 +152,6 @@ impl RuntimeServer {
             .dispatch(vec![Event::FromProcess {
                 event: EventProcess::Started {
                     store: runtime.db.is_some(),
-                    live: runtime.plaid.is_some(),
                 },
             }])
             .await;
@@ -370,19 +389,7 @@ impl RuntimeServer {
                 // The access token is the runtime's, not the machine's: it
                 // lives beside the credentials and never enters an action or
                 // the event log.
-                //
-                // The machine only asks for a write when it was told there is
-                // a live source, so this is present. Reported rather than
-                // defaulted if it is not: an empty string here would be a row
-                // claiming to be a bank connection with no credential behind
-                // it, which is worse than no row at all.
-                let Some(config) = &self.plaid else {
-                    tracing::error!(item_id, "asked to store an item with no credentials");
-
-                    return Ok(());
-                };
-
-                let access_token = config.access_token.clone();
+                let access_token = self.plaid.access_token.clone();
 
                 src_postgres::save_item(
                     db,
@@ -447,41 +454,25 @@ impl RuntimeServer {
             return;
         };
 
-        let event = match &self.plaid {
-            Some(config) => match runtime_plaid::fetch_all(config, cursor, unix_now()).await {
-                Ok(fetched) => EventSource::PlaidLoaded {
-                    added: fetched.added,
-                    modified: fetched.modified,
-                    removed: fetched.removed,
-                    connections: fetched.connections,
-                    streams: fetched.streams,
-                    cursor: fetched.cursor,
-                },
-
-                Err(e) => {
-                    let code = match &e {
-                        src_plaid::PlaidError::Plaid { error_code, .. } => error_code.clone(),
-                        _ => "REQUEST_FAILED".to_string(),
-                    };
-
-                    tracing::warn!(error = %e, code, "plaid fetch failed");
-
-                    EventSource::PlaidFailed { code }
-                }
+        let event = match runtime_plaid::fetch_all(&self.plaid, cursor, unix_now()).await {
+            Ok(fetched) => EventSource::PlaidLoaded {
+                added: fetched.added,
+                modified: fetched.modified,
+                removed: fetched.removed,
+                connections: fetched.connections,
+                streams: fetched.streams,
+                cursor: fetched.cursor,
             },
 
-            // No credentials: the fixtures stand in, and the app runs anyway.
-            None => {
-                let fetched = runtime_plaid::fetch_fixtures(unix_now());
+            Err(e) => {
+                let code = match &e {
+                    src_plaid::PlaidError::Plaid { error_code, .. } => error_code.clone(),
+                    _ => "REQUEST_FAILED".to_string(),
+                };
 
-                EventSource::PlaidLoaded {
-                    added: fetched.added,
-                    modified: fetched.modified,
-                    removed: fetched.removed,
-                    connections: fetched.connections,
-                    streams: fetched.streams,
-                    cursor: fetched.cursor,
-                }
+                tracing::warn!(error = %e, code, "plaid fetch failed");
+
+                EventSource::PlaidFailed { code }
             }
         };
 
@@ -515,22 +506,10 @@ impl RuntimeServer {
     /// the caller: an `RwLockReadGuard` alive across an `.await` makes the
     /// handler's future `!Send`, which axum will not accept.
     fn project_snapshot(&self) -> WireSnapshot {
-        let source = if self.plaid.is_some() {
-            WireSource::Live
-        } else {
-            WireSource::Fixture
-        };
-
         let now = unix_now();
         let state = self.read_state();
 
-        WireSnapshot::new(
-            state.entries(),
-            state.connections(),
-            state.streams(),
-            now,
-            source,
-        )
+        WireSnapshot::new(state.entries(), state.connections(), state.streams(), now)
     }
 
     /// Wait for the machine to ask for a shutdown, having first turned the

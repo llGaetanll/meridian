@@ -25,15 +25,5 @@ pub enum EventProcess {
     Started {
         /// Whether there is somewhere to persist to.
         store: bool,
-
-        /// Whether the source is a real one.
-        ///
-        /// False means the captured fixtures are standing in. What they
-        /// produce is worth *serving* — that is the whole point of them, and
-        /// it is what lets the app run from a clean checkout — but it is not a
-        /// bank connection, and the Item behind it has no credential and could
-        /// never sync. Storing it would put a row in the database that claims
-        /// to be a bank and is not.
-        live: bool,
     },
 }

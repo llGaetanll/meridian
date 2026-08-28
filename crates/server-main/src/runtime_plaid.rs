@@ -41,23 +41,31 @@ pub struct PlaidConfig {
 }
 
 impl PlaidConfig {
-    /// Read the environment, or report why a live fetch is not possible.
+    /// Read the environment, or say what is missing from it.
     ///
-    /// Missing credentials are not an error: the server falls back to the
-    /// fixtures, so a clean checkout with no `.env` still runs the app.
-    pub fn from_env() -> Option<Self> {
-        let access_token = std::env::var("PLAID_ACCESS_TOKEN").ok()?;
+    /// Missing credentials used to mean the fixtures stood in, so that a clean
+    /// checkout ran the app with no `.env` at all. That is gone. What it
+    /// bought was a first five minutes; what it cost was that an empty screen
+    /// had two explanations and the log said the same thing for both, and that
+    /// every screen we judged was drawn from data no bank had ever sent.
+    ///
+    /// `PlaidCredentials::from_env` reads `PLAID_ENV`, which is required and
+    /// matched exactly. Nothing in this crate ever sets it.
+    pub fn from_env() -> Result<Self, PlaidError> {
+        let credentials = PlaidCredentials::from_env()?;
 
-        // `PlaidCredentials::from_env` reads PLAID_ENV, which defaults to
-        // Sandbox and needs the literal string "production" to be anything
-        // else. Nothing in this crate ever sets it.
-        let credentials = PlaidCredentials::from_env().ok()?;
+        let access_token = std::env::var("PLAID_ACCESS_TOKEN")
+            .map_err(|_| PlaidError::Config(String::from("PLAID_ACCESS_TOKEN is not set")))?;
 
+        // Set-and-empty is its own mistake, and a likelier one than unset: it
+        // is what a `.env` line with nothing after the `=` produces.
         if access_token.trim().is_empty() {
-            return None;
+            return Err(PlaidError::Config(String::from(
+                "PLAID_ACCESS_TOKEN is set but empty",
+            )));
         }
 
-        Some(Self {
+        Ok(Self {
             credentials,
             access_token,
         })
@@ -126,9 +134,11 @@ pub async fn fetch_all(
 
 /// The same thing, from the captured Sandbox responses.
 ///
-/// This is what makes the app runnable with no credentials at all — and it is
-/// the same code path afterwards, so a screen that works on fixtures works on
-/// live data.
+/// **Nothing the server serves comes through here any more.** The only caller
+/// is `examples/snapshot.rs`, which generates the corpus `phone-state`'s tests
+/// read — a real job, and one that wants a fixed answer rather than a live
+/// one. The server itself has no fallback: it starts with credentials or it
+/// does not start.
 ///
 /// The fixtures are compiled in, so a parse failure is a build-time mistake
 /// rather than anything a user can cause. It still does not panic: an empty

@@ -824,6 +824,5 @@
             "is_active": true
         }
     ],
-    "now": 0,
-    "source": "fixture"
+    "now": 0
 }

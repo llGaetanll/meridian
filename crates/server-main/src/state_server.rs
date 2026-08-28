@@ -81,11 +81,6 @@ pub struct StateServer {
     /// which is why the runtime needs no fallback for being asked.
     store: bool,
 
-    /// Whether the source is a real one, reported the same way. See
-    /// [`EventProcess::Started`](crate::EventProcess::Started): fixture data is
-    /// served and not stored.
-    live: bool,
-
     /// What Plaid will let us send. Consulted rather than guessed, and part of
     /// the machine because "may I call?" is arithmetic, not IO.
     limiter: PlaidRateLimiter,
@@ -239,9 +234,8 @@ impl StateServer {
             // Read before fetching. Whatever is on disk is what the last run
             // ended with, and starting from it is the difference between a
             // restart costing nothing and a restart re-downloading a history.
-            EventProcess::Started { store, live } => {
+            EventProcess::Started { store } => {
                 self.store = *store;
-                self.live = *live;
 
                 // Nothing to read from is not a problem: the ledger is already
                 // empty and the first request fetches, which is exactly what a
@@ -333,13 +327,14 @@ impl StateServer {
         }
     }
 
-    /// Whether anything is worth writing down.
+    /// Whether there is anywhere to write to.
     ///
-    /// Both halves have to hold. Without a store there is nowhere to put it,
-    /// and without a live source what there is to put is fixture data — which
-    /// is worth serving and is not a bank connection.
+    /// Used to also ask whether the source was real, because fixture data was
+    /// worth serving and was not worth storing. There is no fixture data any
+    /// more — the server starts with credentials or does not start — so the
+    /// question is down to one half.
     fn persists(&self) -> bool {
-        self.store && self.live
+        self.store
     }
 
     /// Whether to go back to Plaid.
