@@ -91,6 +91,12 @@ means adding, changing or removing its example here.
 - `INFO src_postgres::postgres_migrate schema is current migrations=2`
   — on every boot. A no-op against a database that is already current, and a
   loud failure against one where an applied migration has been edited.
+- `ERROR server_main::runtime_server a store action arrived with no store action=LoadEverything`
+- `ERROR server_main::runtime_server asked to store an item with no credentials item_id=8Pd5Zx…`
+  — both mean the machine and the runtime disagree about what the process came
+  up with, which `EventProcess::Started` is supposed to have settled. Neither
+  is handled, on purpose: a plausible-looking fallback here would hide the
+  disagreement instead of reporting it.
 - `INFO server_main::state_server read back from the store entries=48 connections=1 streams=8`
   — what a restart came back with, before anything is fetched. Zeroes are a
   first run, not a failure.

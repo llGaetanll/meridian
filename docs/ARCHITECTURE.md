@@ -137,6 +137,27 @@ log both. Whatever the IO produces re-enters as the next event, which is what
 closes the loop. Only `run` is public — everything else is reachable solely by
 carrying out an action, so nothing can do IO without an action asking for it.
 
+### The line a runtime does not cross
+
+**A runtime chooses *how* to carry out an action. It never chooses whether to,
+or what to report back.**
+
+Ordering five writes so the cursor lands last is *how* — it is the mechanics of
+one action, and the machine neither knows nor cares. Checking whether a
+database was configured and, if not, emitting a different event, is *whether*
+and *what*: it is behaviour, it lives outside the machine, no `eval!` test can
+reach it and no event log records it happening.
+
+The fix is always the same, and it is worth recognising the shape: **the
+runtime reports a fact, the machine decides what to do about it.** Whether
+there is a store, whether credentials exist, what a source answered — those are
+facts, and they arrive as events. Everything downstream of a fact is a
+decision, and decisions live in one place.
+
+The symptom to watch for is a runtime reading its own state in order to pick an
+event to send. `if self.db.is_some()` is the tell. Nothing about that is
+visible in a log, and nothing about it can be replayed.
+
 `server-main` writes this out as a real loop over requests;
 `crates/phone-main/src/runtime_app.rs` is the same thing driven by user
 interaction rather than by a `loop`, because a browser app is woken rather than
