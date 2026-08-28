@@ -15,6 +15,7 @@
 mod plaid_client;
 mod plaid_env;
 mod plaid_error;
+mod plaid_http_request;
 mod plaid_ratelimit;
 mod plaid_request;
 mod plaid_request_balances;
@@ -34,6 +35,7 @@ mod plaid_transaction;
 pub use plaid_client::*;
 pub use plaid_env::*;
 pub use plaid_error::*;
+pub use plaid_http_request::*;
 pub use plaid_ratelimit::*;
 pub use plaid_request::*;
 pub use plaid_request_balances::*;

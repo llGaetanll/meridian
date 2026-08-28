@@ -40,29 +40,56 @@ impl ApiCall {
     /// `source` names the API ("yahoo", "coingecko") and `url` is the request
     /// as sent, query string and all, so it can be replayed from the log.
     pub fn get(source: &'static str, url: impl Display) -> Self {
-        Self::new(source, "GET", url)
+        Self::new(source, "GET", url, None)
     }
 
-    /// The same, for an API that only answers POSTs.
+    /// The same, for an API that only answers POSTs, and the body it carries.
     ///
-    /// The body is deliberately not logged. A POST to Plaid carries the
-    /// secret in its body, and a log is the one place it must never end up.
-    /// What was asked for is recoverable from the path.
-    pub fn post(source: &'static str, url: impl Display) -> Self {
-        Self::new(source, "POST", url)
+    /// **The body is logged verbatim, credentials and all.** A response tells
+    /// you what the far end thought you asked for; it never tells you what you
+    /// actually sent, so a request carrying a field we did not intend is
+    /// invisible from the other half of the pair. That is the failure that
+    /// cannot be debugged after the fact, and it is why this is worth what it
+    /// costs.
+    ///
+    /// What it costs is that a log file is now a credential: Plaid's secret
+    /// rides in every body, and it is account-wide rather than per-user.
+    /// `docs/LOGGING.md` says so, and says what has to change before anything
+    /// runs against Production.
+    pub fn post(source: &'static str, url: impl Display, body: &str) -> Self {
+        Self::new(source, "POST", url, Some(body))
     }
 
-    fn new(source: &'static str, method: &'static str, url: impl Display) -> Self {
+    fn new(
+        source: &'static str,
+        method: &'static str,
+        url: impl Display,
+        body: Option<&str>,
+    ) -> Self {
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
 
-        tracing::info!(
-            target: TARGET,
-            id,
-            source,
-            method,
-            url = %url,
-            "-> request",
-        );
+        // Two calls rather than one with an empty field. `tracing` fixes an
+        // event's fields at the callsite, so the alternative is every GET
+        // carrying a `body=""` that reads as a request that sent one.
+        match body {
+            Some(body) => tracing::info!(
+                target: TARGET,
+                id,
+                source,
+                method,
+                url = %url,
+                body,
+                "-> request",
+            ),
+            None => tracing::info!(
+                target: TARGET,
+                id,
+                source,
+                method,
+                url = %url,
+                "-> request",
+            ),
+        }
 
         Self {
             id,

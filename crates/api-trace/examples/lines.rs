@@ -22,7 +22,8 @@ fn main() {
 
     tracing::info!(target: "web_main", version = "0.1.0", "meridian starting");
 
-    // Plaid, which is POST and whose body is never logged: it holds the secret.
+    // Plaid, which is POST and whose body *is* logged, secret included. A
+    // deliberate and temporary trade — docs/LOGGING.md says what it costs.
     tracing::info!(
         target: "src_plaid::plaid_client",
         env = "sandbox",
@@ -30,8 +31,12 @@ fn main() {
         "plaid client",
     );
 
-    ApiCall::post("plaid", "https://sandbox.plaid.com/transactions/sync")
-        .response(200, "{\"added\":[{\"account_id\":\"6Pd…");
+    ApiCall::post(
+        "plaid",
+        "https://sandbox.plaid.com/transactions/sync",
+        "{\"access_token\":\"access-sandbox-1\",\"cursor\":\"CAESJTM3…\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}",
+    )
+    .response(200, "{\"added\":[{\"account_id\":\"6Pd…");
 
     tracing::info!(
         target: "src_plaid",
