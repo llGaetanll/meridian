@@ -59,6 +59,14 @@ const PORT: u16 = 8082;
 /// about how much a single leaked seed is worth.
 const RESEED_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// How often the machine is handed everything that has arrived since.
+///
+/// The sleep is what decides how much a batch collects, and it costs one of
+/// itself per turn — a link takes three, so this multiplies. Small enough that
+/// three of them are lost in the noise of one Plaid round trip, which is what
+/// a turn is really waiting on.
+const TURN_EVERY: std::time::Duration = std::time::Duration::from_millis(2);
+
 pub struct RuntimeServer {
     /// The store. Required, and not optional in any sense: the access tokens
     /// live in it, so a server without one has no way to reach any bank and
@@ -183,16 +191,13 @@ impl RuntimeServer {
         // The first event, and the reason the boot sequence is replayable: the
         // machine asks to be filled from the store rather than the runtime
         // deciding to do it on its own initiative.
-        runtime
-            .dispatch(vec![
-                Event::FromProcess {
-                    event: EventProcess::Seeded { seed: fresh_seed() },
-                },
-                Event::FromProcess {
-                    event: EventProcess::Started,
-                },
-            ])
-            .await;
+        runtime.exchange.push(Event::FromProcess {
+            event: EventProcess::Seeded { seed: fresh_seed() },
+        });
+
+        runtime.exchange.push(Event::FromProcess {
+            event: EventProcess::Started,
+        });
 
         // Reseeded on a timer, which is what bounds the damage of a leaked
         // log: a seed tells you the codes drawn before the next one and no
@@ -213,11 +218,32 @@ impl RuntimeServer {
                     return;
                 };
 
-                runtime
-                    .dispatch(vec![Event::FromProcess {
-                        event: EventProcess::Seeded { seed: fresh_seed() },
-                    }])
-                    .await;
+                runtime.exchange.push(Event::FromProcess {
+                    event: EventProcess::Seeded { seed: fresh_seed() },
+                });
+            }
+        });
+
+        // The loop, and the only caller of `handle_events`. Polling rather
+        // than waking on a push: this is the whole implementation, and a few
+        // milliseconds is invisible next to the Plaid call a turn is usually
+        // waiting on. A longer sleep only means more events land in one batch.
+        //
+        // Weak, like the reseed task, so it cannot keep the server alive past
+        // its own shutdown.
+        let turning = Arc::downgrade(&runtime);
+
+        tokio::spawn(async move {
+            let mut ticks = tokio::time::interval(TURN_EVERY);
+
+            loop {
+                ticks.tick().await;
+
+                let Some(runtime) = turning.upgrade() else {
+                    return;
+                };
+
+                runtime.turn().await;
             }
         });
 
@@ -245,45 +271,79 @@ impl RuntimeServer {
 
     /// Ask the machine something on a route's behalf, and wait for its answer.
     ///
-    /// The one way a handler reaches the machine. The id is minted here, so no
-    /// route has to know there is one.
+    /// The one way a handler reaches the machine.
     pub(crate) async fn request(&self, event: EventRouter) -> Option<ActionRouter> {
-        let request_id = self.exchange.opening();
-
-        let actions = self
-            .dispatch(vec![Event::FromRouter { request_id, event }])
-            .await;
-
-        self.exchange.answer(request_id, actions)
+        self.exchange.request(event).await
     }
 
-    /// Feed events in, carry out what comes back.
+    /// One turn: everything queued since the last one, handed to the machine
+    /// together, and the actions it decided on carried out.
     ///
-    /// The loop the architecture describes, one turn at a time: a request is
-    /// the event source here rather than a `loop`, because axum owns the outer
-    /// loop and hands us one batch per connection.
-    pub(crate) async fn dispatch(&self, events: Vec<Event>) -> Vec<Action> {
+    /// This is the loop `docs/ARCHITECTURE.md` describes, and it is the only
+    /// caller of `handle_events`. A batch is whatever arrived while the last
+    /// turn was running, so the machine sees three banks reporting as one
+    /// batch rather than three — which is what makes it worth batching at all.
+    async fn turn(self: &Arc<Self>) {
+        let events = self.exchange.drain();
+
         if events.is_empty() {
-            return Vec::new();
+            return;
         }
 
         let now = unix_now();
         let mut actions = Vec::new();
 
+        // The guard is held across `handle_events` and nothing else. It is
+        // pure and synchronous, so this is microseconds and never spans an
+        // `.await` — the IO below happens with the lock long since dropped.
         {
             let mut state = self.write_state();
             state.handle_events(now, &events, &mut actions);
         }
 
-        tracing::debug!(?events, ?actions, "handled");
+        tracing::debug!(?events, ?actions, "turn");
 
-        // What performing them caused, joined onto what caused it. A handler
-        // reads its outcome off this, and the outcome of a link is three
-        // dispatches deep — poll, exchange, linked — so a turn that returned
-        // only its own actions would report every sign-in as a failure.
-        let caused = self.perform_actions(&actions).await;
+        for action in actions {
+            self.begin(action).await;
+        }
+    }
 
-        actions.into_iter().chain(caused).collect()
+    /// Set one action going.
+    ///
+    /// A call to a source is spawned and not waited for: one that takes a
+    /// second would otherwise stall every other route's turns, and whatever it
+    /// produces arrives back on the queue as an ordinary event.
+    ///
+    /// A write is **awaited**, and that is load-bearing rather than an
+    /// oversight. The machine emits `SaveFetched` and then `Serve` in one
+    /// turn, and the route reads the store the moment it is told to — so
+    /// letting the answer overtake the write would serve the rows the sync was
+    /// about to replace. Waiting here is what orders them, until the store
+    /// reports back with an event of its own and the machine can wait itself.
+    async fn begin(self: &Arc<Self>, action: Action) {
+        match action {
+            // The answer somebody is parked on. There is no IO in handing it
+            // over, and by now everything it was waiting on has happened.
+            Action::ToRouter { request_id, action } => {
+                self.exchange.deliver(request_id, action);
+            }
+
+            Action::ToStore { .. } | Action::ToProcess { .. } => {
+                let caused = self.perform_action(&action).await;
+
+                self.exchange.push_all(caused);
+            }
+
+            Action::ToSource { .. } | Action::ToEmail { .. } => {
+                let runtime = Arc::clone(self);
+
+                tokio::spawn(async move {
+                    let caused = runtime.perform_action(&action).await;
+
+                    runtime.exchange.push_all(caused);
+                });
+            }
+        }
     }
 
     /// Connect to Postgres and bring the schema up to date, if there is one to
@@ -311,36 +371,22 @@ impl RuntimeServer {
         Ok(db)
     }
 
-    /// Boxed because the cycle `perform_actions -> fetch_plaid ->
-    /// perform_actions` is recursion through an `async fn`, which needs an
-    /// indirection to have a finite size. The recursion is one level deep in
-    /// practice: a fetch result asks to serve and to write, never to fetch
-    /// again — which `fetch_plaid` asserts rather than assumes.
-    fn perform_actions<'a>(
-        &'a self,
-        actions: &'a [Action],
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Action>> + Send + 'a>> {
-        Box::pin(async move {
-            let mut caused = Vec::new();
-
-            for action in actions {
-                caused.extend(self.perform_action(action).await);
-            }
-
-            caused
-        })
-    }
-
-    async fn perform_action(&self, action: &Action) -> Vec<Action> {
+    /// Carry one action out, and report what came of it.
+    ///
+    /// Whatever it produces is an *event*, never another action: deciding what
+    /// to do about an answer is the machine's job, and returning actions from
+    /// here would be this function deciding instead. That is also what
+    /// flattened the loop — there is no recursion left to bound.
+    async fn perform_action(&self, action: &Action) -> Vec<Event> {
         match action {
             Action::ToSource { action } => return self.perform_action_source(action).await,
-            Action::ToStore { action } => self.perform_action_store(action).await,
+            Action::ToStore { action } => return self.perform_action_store(action).await,
             Action::ToProcess { action } => self.perform_action_process(action),
             Action::ToEmail { action } => self.perform_action_email(action).await,
-            // The answer to a request already in hand, so it is the absence
-            // of work here rather than a step: the handler reads its outcome
-            // off the actions once they are done.
-            Action::ToRouter { .. } => {}
+            // Handed to the route parked on it, before ever reaching here.
+            Action::ToRouter { .. } => {
+                unreachable!("a router action is delivered rather than performed")
+            }
         }
 
         Vec::new()
@@ -382,7 +428,7 @@ impl RuntimeServer {
     /// Each of these ends by feeding what came back in as the next event, so
     /// they answer with the actions that produced — which is how a handler
     /// several dispatches away learns what happened.
-    async fn perform_action_source(&self, action: &ActionSource) -> Vec<Action> {
+    async fn perform_action_source(&self, action: &ActionSource) -> Vec<Event> {
         match action {
             ActionSource::FetchPlaid {
                 call_id,
@@ -409,7 +455,7 @@ impl RuntimeServer {
     }
 
     /// Open a Link session and report the page that hosts it.
-    async fn open_link(&self, call_id: crate::CallId, user_id: Uuid) -> Vec<Action> {
+    async fn open_link(&self, call_id: crate::CallId, user_id: Uuid) -> Vec<Event> {
         let event = match runtime_plaid::open_link(&self.credentials, &user_id.to_string()).await {
             Ok((link_token, Some(hosted_link_url))) => EventSource::LinkOpened {
                 call_id,
@@ -440,14 +486,14 @@ impl RuntimeServer {
             }
         };
 
-        self.dispatch(vec![Event::FromSource { event }]).await
+        vec![Event::FromSource { event }]
     }
 
     /// Ask what became of every Link session the machine named.
     ///
     /// One call each, and one event for all of them. Which sessions to ask
     /// about is the machine's decision; how many requests that takes is not.
-    async fn poll_links(&self, call_id: crate::CallId, link_tokens: &[String]) -> Vec<Action> {
+    async fn poll_links(&self, call_id: crate::CallId, link_tokens: &[String]) -> Vec<Event> {
         let mut polls = Vec::with_capacity(link_tokens.len());
 
         for link_token in link_tokens {
@@ -475,10 +521,9 @@ impl RuntimeServer {
             polls.push(poll);
         }
 
-        self.dispatch(vec![Event::FromSource {
+        vec![Event::FromSource {
             event: EventSource::LinksPolled { call_id, polls },
-        }])
-        .await
+        }]
     }
 
     /// Trade a `public_token` for the permanent one.
@@ -495,7 +540,7 @@ impl RuntimeServer {
         call_id: crate::CallId,
         link_token: &str,
         public_token: &str,
-    ) -> Vec<Action> {
+    ) -> Vec<Event> {
         let event = match runtime_plaid::exchange(&self.credentials, public_token).await {
             Ok((item_id, access_token)) => {
                 self.write_tokens().insert(item_id.clone(), access_token);
@@ -517,7 +562,7 @@ impl RuntimeServer {
             }
         };
 
-        self.dispatch(vec![Event::FromSource { event }]).await
+        vec![Event::FromSource { event }]
     }
 
     /// Everything the store is asked for.
@@ -525,7 +570,7 @@ impl RuntimeServer {
     /// Each arm ends by feeding the outcome back in as an event, which is what
     /// closes the loop: nothing here inspects an answer or decides anything
     /// about it.
-    async fn perform_action_store(&self, action: &ActionStore) {
+    async fn perform_action_store(&self, action: &ActionStore) -> Vec<Event> {
         let db = &self.db;
 
         match action {
@@ -535,19 +580,19 @@ impl RuntimeServer {
                 expires_at,
             } => {
                 if let Err(e) = src_postgres::save_code(db, email, code_sha256, *expires_at).await {
-                    self.report_save_failed(e).await;
+                    return Self::save_failed(e);
                 }
             }
 
             ActionStore::RecordAttempt { email } => {
                 if let Err(e) = src_postgres::record_attempt(db, email).await {
-                    self.report_save_failed(e).await;
+                    return Self::save_failed(e);
                 }
             }
 
             ActionStore::DeleteCode { email } => {
                 if let Err(e) = src_postgres::delete_code(db, email).await {
-                    self.report_save_failed(e).await;
+                    return Self::save_failed(e);
                 }
             }
 
@@ -573,7 +618,7 @@ impl RuntimeServer {
                 };
 
                 if let Err(e) = created.await {
-                    self.report_save_failed(e).await;
+                    return Self::save_failed(e);
                 }
             }
 
@@ -582,13 +627,13 @@ impl RuntimeServer {
                 user_id,
             } => {
                 if let Err(e) = src_postgres::save_link(db, link_token, *user_id).await {
-                    self.report_save_failed(e).await;
+                    return Self::save_failed(e);
                 }
             }
 
             ActionStore::CollectLink { link_token } => {
                 if let Err(e) = src_postgres::collect_link(db, link_token).await {
-                    self.report_save_failed(e).await;
+                    return Self::save_failed(e);
                 }
             }
 
@@ -597,21 +642,18 @@ impl RuntimeServer {
                 link_token,
             } => {
                 if let Err(e) = self.save_linked_item(db, item_id, link_token).await {
-                    self.report_save_failed(e).await;
+                    return Self::save_failed(e);
                 }
             }
 
             ActionStore::SaveFetched { .. } | ActionStore::SaveStatus { .. } => {
                 if let Err(e) = self.write(db, action).await {
-                    self.dispatch(vec![Event::FromStore {
-                        event: EventStore::SaveFailed {
-                            message: e.to_string(),
-                        },
-                    }])
-                    .await;
+                    return Self::save_failed(e);
                 }
             }
         }
+
+        Vec::new()
     }
 
     /// Write a newly linked bank.
@@ -660,13 +702,12 @@ impl RuntimeServer {
 
     /// A failed write, as the event that says so. The machine logs it and
     /// carries on; what it must not do is find out by a silence.
-    async fn report_save_failed(&self, e: src_postgres::PostgresError) {
-        self.dispatch(vec![Event::FromStore {
+    fn save_failed(e: src_postgres::PostgresError) -> Vec<Event> {
+        vec![Event::FromStore {
             event: EventStore::SaveFailed {
                 message: e.to_string(),
             },
-        }])
-        .await;
+        }]
     }
 
     /// One user's banks, as the store holds them.
@@ -868,7 +909,7 @@ impl RuntimeServer {
         call_id: crate::CallId,
         item_id: &str,
         cursor: Option<String>,
-    ) -> Vec<Action> {
+    ) -> Vec<Event> {
         // One fetch at a time. A burst of cold requests would otherwise all
         // miss and all call out.
         let Ok(_guard) = self.fetching.try_lock() else {
@@ -883,15 +924,13 @@ impl RuntimeServer {
         let Some(access_token) = self.token_for(item_id) else {
             tracing::error!(item_id, "asked to fetch an item with no token");
 
-            return self
-                .dispatch(vec![Event::FromSource {
-                    event: EventSource::PlaidFailed {
-                        call_id,
-                        item_id: item_id.to_string(),
-                        code: String::from("NO_ACCESS_TOKEN"),
-                    },
-                }])
-                .await;
+            return vec![Event::FromSource {
+                event: EventSource::PlaidFailed {
+                    call_id,
+                    item_id: item_id.to_string(),
+                    code: String::from("NO_ACCESS_TOKEN"),
+                },
+            }];
         };
 
         let event =
@@ -925,30 +964,7 @@ impl RuntimeServer {
                 }
             };
 
-        let now = unix_now();
-        let mut actions = Vec::new();
-
-        {
-            let mut state = self.write_state();
-            state.handle_events(now, &[Event::FromSource { event }], &mut actions);
-        }
-
-        // What this protects is the claim on `perform_actions`: the recursion
-        // through it is one level deep. A fetch result may ask to serve, to
-        // write, or to report — anything but to fetch again, which is the one
-        // answer that would not terminate.
-        //
-        // Stated as what it forbids rather than as a list of what it allows.
-        // The allowlist version passed until the store was added, and then
-        // failed on an action that was perfectly fine.
-        debug_assert!(
-            !actions.iter().any(|a| matches!(a, Action::ToSource { .. })),
-            "a fetch result should not ask for another fetch",
-        );
-
-        let caused = self.perform_actions(&actions).await;
-
-        actions.into_iter().chain(caused).collect()
+        vec![Event::FromSource { event }]
     }
 
     /// Everything the app knows, as of now.
@@ -992,7 +1008,7 @@ impl RuntimeServer {
             event = signal_received() => {
                 // The signal is not the decision. The machine gets to say what
                 // happens next, which is what makes shutdown replayable.
-                self.dispatch(vec![Event::FromTerminal { event }]).await;
+                self.exchange.push(Event::FromTerminal { event });
             }
             _ = notified => {}
         }
