@@ -23,11 +23,17 @@ pub enum ActionSource {
     /// that is free to repeat.
     OpenLink { user_id: uuid::Uuid },
 
-    /// Ask what became of a Link session.
+    /// Ask what became of every Link session this user has open.
     ///
     /// The completion redirect closes the sheet and carries no token, so the
     /// result is collected rather than delivered. See `docs/PLAID.md`.
-    PollLink { link_token: String },
+    ///
+    /// All of them in one action, rather than one action each, because the
+    /// route asked one question — "did any of my sessions land a bank?" — and
+    /// one question gets one answer. Fanning out to N calls is the runtime's
+    /// business, and doing it here would be N answers to a handler that can
+    /// only send one.
+    PollLinks { link_tokens: Vec<String> },
 
     /// Trade a `public_token` for the permanent one.
     ///

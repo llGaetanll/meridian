@@ -342,6 +342,7 @@ fn asking_for_a_code_stores_a_hash_and_sends_the_code() {
         < code_requested("alex@example.com"),
         > Action::ToStore { action: ActionStore::SaveCode { .. } },
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
+        > Action::ToRouter { action: ActionRouter::Accepted },
     );
 }
 
@@ -381,14 +382,18 @@ fn the_same_seed_produces_the_same_code() {
 
 /// No entropy, no credentials. A predictable sign-in code is a way into
 /// somebody's bank, so an unseeded machine refuses rather than filling in
-/// anything derivable — and this is the test that says the refusal is silent
-/// to the caller and total.
+/// anything derivable — and this is the test that says nothing is stored and
+/// nothing is sent.
+///
+/// It answers rather than going quiet. A route parks until its own action
+/// comes back, so a refusal with no action is a request that never returns.
 #[test]
 fn an_unseeded_machine_will_not_mint_a_code() {
     let mut state = state();
 
     eval!(&mut state,
         < code_requested("alex@example.com"),
+        > Action::ToRouter { action: ActionRouter::Unavailable },
     );
 }
 
@@ -469,10 +474,12 @@ const USER: uuid::Uuid = uuid::Uuid::nil();
 
 fn link_polled(finished: bool, tokens: Vec<&str>) -> Event {
     Event::FromSource {
-        event: EventSource::LinkPolled {
-            link_token: "link-1".to_string(),
-            finished,
-            public_tokens: tokens.into_iter().map(str::to_string).collect(),
+        event: EventSource::LinksPolled {
+            polls: vec![server_main::LinkPoll {
+                link_token: "link-1".to_string(),
+                finished,
+                public_tokens: tokens.into_iter().map(str::to_string).collect(),
+            }],
         },
     }
 }
@@ -590,7 +597,35 @@ fn every_open_session_is_polled() {
                 pending: vec!["link-1".to_string(), "link-2".to_string()],
             },
         },
-        > Action::ToSource { action: ActionSource::PollLink { .. } },
-        > Action::ToSource { action: ActionSource::PollLink { .. } },
+        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+    );
+}
+
+/// One question, one answer. The route can only send one response, so however
+/// many sessions were asked about, exactly one action comes back for it — the
+/// invariant the whole request/reply pairing rests on.
+#[test]
+fn many_sessions_still_produce_one_answer() {
+    let mut state = state();
+
+    let polled = |tokens: Vec<&str>| Event::FromSource {
+        event: EventSource::LinksPolled {
+            polls: tokens
+                .into_iter()
+                .map(|link_token| server_main::LinkPoll {
+                    link_token: link_token.to_string(),
+                    finished: true,
+                    public_tokens: Vec::new(),
+                })
+                .collect(),
+        },
+    };
+
+    eval!(&mut state,
+        < polled(vec!["link-1", "link-2", "link-3"]),
+        > Action::ToStore { action: ActionStore::CollectLink { .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { .. } },
+        > Action::ToRouter { action: ActionRouter::NotLinked },
     );
 }

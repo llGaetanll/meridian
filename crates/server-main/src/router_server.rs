@@ -110,11 +110,27 @@ async fn auth_request(
         return StatusCode::NO_CONTENT;
     }
 
-    runtime
+    let actions = runtime
         .dispatch(vec![Event::FromRouter {
             event: EventRouter::CodeRequested { email },
         }])
         .await;
+
+    // Read off what the machine decided rather than assumed. `Unavailable` is
+    // the machine refusing to mint a code it has no entropy for, and answering
+    // 204 to that would leave somebody waiting for an email that is not coming.
+    let unavailable = actions.iter().any(|action| {
+        matches!(
+            action,
+            Action::ToRouter {
+                action: ActionRouter::Unavailable
+            }
+        )
+    });
+
+    if unavailable {
+        return StatusCode::SERVICE_UNAVAILABLE;
+    }
 
     StatusCode::NO_CONTENT
 }
