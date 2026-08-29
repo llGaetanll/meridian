@@ -41,6 +41,10 @@ fn entry(id: &str) -> Entry {
     )
 }
 
+/// The first call id the machine hands out, which is what a snapshot's fetch
+/// draws. Tests feed an answer back on it.
+const CALL: server_main::CallId = 1;
+
 /// A bank as the store holds it, ready to be decided about.
 fn facts(synced_at: Option<Timestamp>, login_required: bool) -> ItemFacts {
     ItemFacts {
@@ -51,8 +55,11 @@ fn facts(synced_at: Option<Timestamp>, login_required: bool) -> ItemFacts {
     }
 }
 
+/// A request id per call, so a test that drives two of them can tell their
+/// answers apart. The machine only relays it, so which number is arbitrary.
 fn requested(force: bool, items: Vec<ItemFacts>) -> Event {
     Event::FromRouter {
+        request_id: 1,
         event: EventRouter::SnapshotRequested { force, items },
     }
 }
@@ -60,6 +67,7 @@ fn requested(force: bool, items: Vec<ItemFacts>) -> Event {
 fn loaded(added: Vec<Entry>) -> Event {
     Event::FromSource {
         event: EventSource::PlaidLoaded {
+            call_id: CALL,
             item_id: ITEM.to_string(),
             added,
             modified: vec![],
@@ -74,6 +82,7 @@ fn loaded(added: Vec<Entry>) -> Event {
 fn failed(code: &str) -> Event {
     Event::FromSource {
         event: EventSource::PlaidFailed {
+            call_id: CALL,
             item_id: ITEM.to_string(),
             code: code.into(),
         },
@@ -88,7 +97,7 @@ fn a_bank_that_has_never_synced_is_fetched() {
     eval!(&mut state,
         < requested(false, vec![facts(None, false)]),
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
-        > Action::ToRouter { action: ActionRouter::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
 
@@ -102,7 +111,7 @@ fn a_user_with_no_banks_is_just_served() {
     eval!(&mut state,
         // Forced, which normally outranks everything short of a dead login.
         < requested(true, vec![]),
-        > Action::ToRouter { action: ActionRouter::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
 
@@ -112,7 +121,7 @@ fn a_fresh_bank_is_served_without_asking_plaid_again() {
 
     eval!(&mut state,
         < requested(false, vec![facts(Some(T0), false)]),
-        > Action::ToRouter { action: ActionRouter::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
 
@@ -127,7 +136,7 @@ fn a_stale_bank_is_refetched_from_its_cursor() {
     eval!(&mut state,
         < requested(false, vec![facts(Some(long_ago), false)]),
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
-        > Action::ToRouter { action: ActionRouter::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
 
@@ -138,7 +147,7 @@ fn a_forced_request_refetches_however_fresh() {
     eval!(&mut state,
         < requested(true, vec![facts(Some(T0), false)]),
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
-        > Action::ToRouter { action: ActionRouter::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
 
@@ -149,7 +158,7 @@ fn a_login_required_bank_is_not_retried_even_when_forced() {
 
     eval!(&mut state,
         < requested(true, vec![facts(Some(T0), true)]),
-        > Action::ToRouter { action: ActionRouter::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
 
@@ -169,7 +178,7 @@ fn each_bank_is_decided_about_on_its_own() {
     eval!(&mut state,
         < requested(false, vec![facts(None, false), dead]),
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
-        > Action::ToRouter { action: ActionRouter::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
 
@@ -277,7 +286,7 @@ fn shutting_down_stops_new_work() {
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
         < requested(true, vec![facts(None, false)]),
-        > Action::ToRouter { action: ActionRouter::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 
     assert!(state.shutting_down());
@@ -306,6 +315,7 @@ fn seeded() -> Event {
 
 fn code_requested(email: &str) -> Event {
     Event::FromRouter {
+        request_id: 1,
         event: EventRouter::CodeRequested {
             email: email.to_string(),
         },
@@ -314,6 +324,7 @@ fn code_requested(email: &str) -> Event {
 
 fn code_submitted(email: &str, code: &str, stored: Option<StoredCode>) -> Event {
     Event::FromRouter {
+        request_id: 1,
         event: EventRouter::CodeSubmitted {
             email: email.to_string(),
             code: code.to_string(),
@@ -342,7 +353,7 @@ fn asking_for_a_code_stores_a_hash_and_sends_the_code() {
         < code_requested("alex@example.com"),
         > Action::ToStore { action: ActionStore::SaveCode { .. } },
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
-        > Action::ToRouter { action: ActionRouter::Accepted },
+        > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }
 
@@ -393,7 +404,7 @@ fn an_unseeded_machine_will_not_mint_a_code() {
 
     eval!(&mut state,
         < code_requested("alex@example.com"),
-        > Action::ToRouter { action: ActionRouter::Unavailable },
+        > Action::ToRouter { action: ActionRouter::Unavailable, .. },
     );
 }
 
@@ -407,7 +418,7 @@ fn the_right_code_signs_you_in_and_spends_itself() {
         < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 0, 600))),
         > Action::ToStore { action: ActionStore::CreateSession { .. } },
         > Action::ToStore { action: ActionStore::DeleteCode { .. } },
-        > Action::ToRouter { action: ActionRouter::SignedIn { .. } },
+        > Action::ToRouter { action: ActionRouter::SignedIn { .. }, .. },
     );
 }
 
@@ -422,7 +433,7 @@ fn a_wrong_code_only_counts_a_guess() {
 
         < code_submitted("alex@example.com", "654321", Some(stored_code("123456", 0, 600))),
         > Action::ToStore { action: ActionStore::RecordAttempt { .. } },
-        > Action::ToRouter { action: ActionRouter::Rejected },
+        > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
 
@@ -437,7 +448,7 @@ fn an_expired_code_is_rejected_and_still_counts() {
 
         < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 0, 0))),
         > Action::ToStore { action: ActionStore::RecordAttempt { .. } },
-        > Action::ToRouter { action: ActionRouter::Rejected },
+        > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
 
@@ -451,7 +462,7 @@ fn an_exhausted_code_rejects_the_right_answer() {
 
         < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 5, 600))),
         > Action::ToStore { action: ActionStore::RecordAttempt { .. } },
-        > Action::ToRouter { action: ActionRouter::Rejected },
+        > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
 
@@ -466,7 +477,7 @@ fn an_address_with_no_code_is_rejected_the_same_way() {
         < seeded(),
 
         < code_submitted("alex@example.com", "123456", None),
-        > Action::ToRouter { action: ActionRouter::Rejected },
+        > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
 
@@ -475,11 +486,62 @@ const USER: uuid::Uuid = uuid::Uuid::nil();
 fn link_polled(finished: bool, tokens: Vec<&str>) -> Event {
     Event::FromSource {
         event: EventSource::LinksPolled {
+            call_id: CALL,
             polls: vec![server_main::LinkPoll {
                 link_token: "link-1".to_string(),
                 finished,
                 public_tokens: tokens.into_iter().map(str::to_string).collect(),
             }],
+        },
+    }
+}
+
+/// The whole point of the id. Two routes asking at once are answered on their
+/// own ids, so a handler can find its own — before this, a batch was scanned
+/// for the first matching action, which would hand somebody another person's
+/// session token.
+#[test]
+fn two_routes_asking_at_once_get_their_own_answers() {
+    let mut state = state();
+    let mut actions = Vec::new();
+
+    let asking = |request_id| Event::FromRouter {
+        request_id,
+        event: EventRouter::SnapshotRequested {
+            force: false,
+            items: vec![],
+        },
+    };
+
+    state.handle_events(T0, &[asking(7), asking(9)], &mut actions);
+
+    let answered: Vec<_> = actions
+        .iter()
+        .filter_map(|action| match action {
+            Action::ToRouter { request_id, .. } => Some(*request_id),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(answered, vec![7, 9], "each route is answered on its own id");
+}
+
+/// Asking to connect a bank, which is what puts a route behind every answer
+/// below. A source event with no request in front of it is an answer to a
+/// question nobody asked, and the machine drops it.
+fn link_requested() -> Event {
+    Event::FromRouter {
+        request_id: 1,
+        event: EventRouter::LinkRequested { user_id: USER },
+    }
+}
+
+/// The sheet closing, with these sessions open.
+fn link_closed(pending: Vec<&str>) -> Event {
+    Event::FromRouter {
+        request_id: 1,
+        event: EventRouter::LinkClosed {
+            pending: pending.into_iter().map(str::to_string).collect(),
         },
     }
 }
@@ -491,8 +553,8 @@ fn connecting_a_bank_opens_a_link_session() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { event: EventRouter::LinkRequested { user_id: USER } },
-        > Action::ToSource { action: ActionSource::OpenLink { .. } },
+        < link_requested(),
+        > Action::ToSource { action: ActionSource::OpenLink { call_id: CALL, .. } },
     );
 }
 
@@ -505,15 +567,19 @@ fn a_session_is_written_down_before_its_url_is_handed_over() {
     let mut state = state();
 
     eval!(&mut state,
+        < link_requested(),
+        > Action::ToSource { action: ActionSource::OpenLink { .. } },
+
         < Event::FromSource {
             event: EventSource::LinkOpened {
+                call_id: CALL,
                 user_id: USER,
                 link_token: "link-1".to_string(),
                 hosted_link_url: "https://secure.plaid.com/x".to_string(),
             },
         },
         > Action::ToStore { action: ActionStore::SaveLink { .. } },
-        > Action::ToRouter { action: ActionRouter::LinkOpened { .. } },
+        > Action::ToRouter { action: ActionRouter::LinkOpened { .. }, .. },
     );
 }
 
@@ -525,6 +591,9 @@ fn a_public_token_is_exchanged_even_before_the_session_finishes() {
     let mut state = state();
 
     eval!(&mut state,
+        < link_closed(vec!["link-1"]),
+        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+
         < link_polled(false, vec!["public-1"]),
         > Action::ToSource { action: ActionSource::ExchangePublicToken { .. } },
     );
@@ -537,9 +606,12 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
     let mut state = state();
 
     eval!(&mut state,
+        < link_closed(vec!["link-1"]),
+        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+
         < link_polled(true, vec![]),
         > Action::ToStore { action: ActionStore::CollectLink { .. } },
-        > Action::ToRouter { action: ActionRouter::NotLinked },
+        > Action::ToRouter { action: ActionRouter::NotLinked, .. },
     );
 }
 
@@ -550,8 +622,11 @@ fn an_open_session_is_left_pending() {
     let mut state = state();
 
     eval!(&mut state,
+        < link_closed(vec!["link-1"]),
+        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+
         < link_polled(false, vec![]),
-        > Action::ToRouter { action: ActionRouter::NotLinked },
+        > Action::ToRouter { action: ActionRouter::NotLinked, .. },
     );
 }
 
@@ -561,15 +636,22 @@ fn a_linked_bank_is_stored_and_its_session_closed() {
     let mut state = state();
 
     eval!(&mut state,
+        < link_closed(vec!["link-1"]),
+        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+
+        < link_polled(false, vec!["public-1"]),
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 2, .. } },
+
         < Event::FromSource {
             event: EventSource::ItemLinked {
+                call_id: 2,
                 link_token: "link-1".to_string(),
                 item_id: "item-9".to_string(),
             },
         },
         > Action::ToStore { action: ActionStore::SaveItem { .. } },
         > Action::ToStore { action: ActionStore::CollectLink { .. } },
-        > Action::ToRouter { action: ActionRouter::Linked },
+        > Action::ToRouter { action: ActionRouter::Linked, .. },
     );
 }
 
@@ -580,8 +662,8 @@ fn closing_a_sheet_with_no_session_open_asks_nothing() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { event: EventRouter::LinkClosed { pending: vec![] } },
-        > Action::ToRouter { action: ActionRouter::NotLinked },
+        < link_closed(vec![]),
+        > Action::ToRouter { action: ActionRouter::NotLinked, .. },
     );
 }
 
@@ -592,11 +674,7 @@ fn every_open_session_is_polled() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter {
-            event: EventRouter::LinkClosed {
-                pending: vec!["link-1".to_string(), "link-2".to_string()],
-            },
-        },
+        < link_closed(vec!["link-1", "link-2"]),
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
     );
 }
@@ -610,6 +688,7 @@ fn many_sessions_still_produce_one_answer() {
 
     let polled = |tokens: Vec<&str>| Event::FromSource {
         event: EventSource::LinksPolled {
+            call_id: CALL,
             polls: tokens
                 .into_iter()
                 .map(|link_token| server_main::LinkPoll {
@@ -622,10 +701,13 @@ fn many_sessions_still_produce_one_answer() {
     };
 
     eval!(&mut state,
+        < link_closed(vec!["link-1", "link-2", "link-3"]),
+        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+
         < polled(vec!["link-1", "link-2", "link-3"]),
         > Action::ToStore { action: ActionStore::CollectLink { .. } },
         > Action::ToStore { action: ActionStore::CollectLink { .. } },
         > Action::ToStore { action: ActionStore::CollectLink { .. } },
-        > Action::ToRouter { action: ActionRouter::NotLinked },
+        > Action::ToRouter { action: ActionRouter::NotLinked, .. },
     );
 }

@@ -4,6 +4,7 @@ use api_ledger::Connection;
 use api_ledger::Entry;
 use api_ledger::Stream;
 
+use crate::CallId;
 use crate::LinkPoll;
 
 #[derive(Debug)]
@@ -16,6 +17,7 @@ pub enum EventSource {
     /// is nothing in the machine to assign them over, which is what retired
     /// the trap in `docs/PLAID.md` rather than guarding against it.
     PlaidLoaded {
+        call_id: CallId,
         item_id: String,
         added: Vec<Entry>,
         modified: Vec<Entry>,
@@ -31,10 +33,15 @@ pub enum EventSource {
 
     /// Plaid did not answer, or answered with an error. `code` is Plaid's own
     /// `error_code` where there was one.
-    PlaidFailed { item_id: String, code: String },
+    PlaidFailed {
+        call_id: CallId,
+        item_id: String,
+        code: String,
+    },
 
     /// A Link session is open, and this is the page that hosts it.
     LinkOpened {
+        call_id: CallId,
         user_id: uuid::Uuid,
         link_token: String,
         hosted_link_url: String,
@@ -42,13 +49,20 @@ pub enum EventSource {
 
     /// What every Link session polled together has come to, one
     /// [`LinkPoll`] each and in the order they were asked about.
-    LinksPolled { polls: Vec<LinkPoll> },
+    LinksPolled {
+        call_id: CallId,
+        polls: Vec<LinkPoll>,
+    },
 
     /// A bank is attached. Carries no access token: that stays in the runtime,
     /// beside the credentials it belongs with.
-    ItemLinked { link_token: String, item_id: String },
+    ItemLinked {
+        call_id: CallId,
+        link_token: String,
+        item_id: String,
+    },
 
     /// The Link flow did not produce a bank. Dismissed, failed, or timed out —
     /// the common ending, not a rare one.
-    LinkAbandoned { link_token: String },
+    LinkAbandoned { call_id: CallId, link_token: String },
 }
