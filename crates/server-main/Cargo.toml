@@ -26,6 +26,7 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+uuid = { workspace = true }
 api-common = { path = "../api-common" }
 api-ledger = { path = "../api-ledger" }
 api-eval = { path = "../api-eval" }

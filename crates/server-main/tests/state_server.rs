@@ -464,3 +464,133 @@ fn an_address_with_no_code_is_rejected_the_same_way() {
         > Action::ToClient { action: ActionClient::Rejected },
     );
 }
+
+const USER: uuid::Uuid = uuid::Uuid::nil();
+
+fn link_polled(finished: bool, tokens: Vec<&str>) -> Event {
+    Event::FromSource {
+        event: EventSource::LinkPolled {
+            link_token: "link-1".to_string(),
+            finished,
+            public_tokens: tokens.into_iter().map(str::to_string).collect(),
+        },
+    }
+}
+
+/// Asking to connect a bank opens a session and nothing else. Nothing is
+/// created at Plaid's end, so there is nothing yet to write down.
+#[test]
+fn connecting_a_bank_opens_a_link_session() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromClient { event: EventClient::LinkRequested { user_id: USER } },
+        > Action::ToSource { action: ActionSource::OpenLink { .. } },
+    );
+}
+
+/// The session is written down *before* its URL is handed over. The other
+/// order leaves a window in which a session could be finished that we have no
+/// record of asking for — which is what stops one account collecting a bank
+/// another account connected.
+#[test]
+fn a_session_is_written_down_before_its_url_is_handed_over() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromSource {
+            event: EventSource::LinkOpened {
+                user_id: USER,
+                link_token: "link-1".to_string(),
+                hosted_link_url: "https://secure.plaid.com/x".to_string(),
+            },
+        },
+        > Action::ToStore { action: ActionStore::SaveLink { .. } },
+        > Action::ToClient { action: ActionClient::LinkOpened { .. } },
+    );
+}
+
+/// A token is the answer whether or not the session says it has finished:
+/// somebody partway through adding a second bank has produced a real Item
+/// already.
+#[test]
+fn a_public_token_is_exchanged_even_before_the_session_finishes() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < link_polled(false, vec!["public-1"]),
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { .. } },
+    );
+}
+
+/// Finished with nothing: they closed the sheet. An outcome, not a failure,
+/// and the session is marked done so it is not polled forever.
+#[test]
+fn a_session_that_ends_with_nothing_is_collected_and_reported() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < link_polled(true, vec![]),
+        > Action::ToStore { action: ActionStore::CollectLink { .. } },
+        > Action::ToClient { action: ActionClient::NotLinked },
+    );
+}
+
+/// Still open — somebody is still typing their password. Left pending, so the
+/// next close asks again rather than giving up on a bank they did connect.
+#[test]
+fn an_open_session_is_left_pending() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < link_polled(false, vec![]),
+        > Action::ToClient { action: ActionClient::NotLinked },
+    );
+}
+
+/// The bank is stored and the session closed, in that order.
+#[test]
+fn a_linked_bank_is_stored_and_its_session_closed() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromSource {
+            event: EventSource::ItemLinked {
+                link_token: "link-1".to_string(),
+                item_id: "item-9".to_string(),
+            },
+        },
+        > Action::ToStore { action: ActionStore::SaveItem { .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { .. } },
+        > Action::ToClient { action: ActionClient::Linked },
+    );
+}
+
+/// Closing the sheet with nothing open asks Plaid nothing. There is no session
+/// to collect, so there is no call worth making.
+#[test]
+fn closing_a_sheet_with_no_session_open_asks_nothing() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromClient { event: EventClient::LinkClosed { pending: vec![] } },
+        > Action::ToClient { action: ActionClient::NotLinked },
+    );
+}
+
+/// Every session the user has open is asked about, so somebody who backed out
+/// of one bank and connected another does not lose the one that worked.
+#[test]
+fn every_open_session_is_polled() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromClient {
+            event: EventClient::LinkClosed {
+                pending: vec!["link-1".to_string(), "link-2".to_string()],
+            },
+        },
+        > Action::ToSource { action: ActionSource::PollLink { .. } },
+        > Action::ToSource { action: ActionSource::PollLink { .. } },
+    );
+}

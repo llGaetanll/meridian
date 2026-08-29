@@ -120,6 +120,37 @@ impl StateServer {
 
     fn handle_event_client(&mut self, event: &EventClient, actions: &mut Vec<Action>) {
         match event {
+            // Free to ask for, and creates nothing at Plaid's end — a session
+            // nobody finishes costs nothing and expires on its own. So there
+            // is nothing to rate limit here that is not already covered by
+            // issue #23.
+            EventClient::LinkRequested { user_id } => {
+                actions.push(Action::ToSource {
+                    action: ActionSource::OpenLink { user_id: *user_id },
+                });
+            }
+
+            EventClient::LinkClosed { pending } => {
+                // Nothing open. Somebody closed a sheet we have no record of,
+                // or collected this one already — either way there is nothing
+                // to go and ask about.
+                if pending.is_empty() {
+                    actions.push(Action::ToClient {
+                        action: ActionClient::NotLinked,
+                    });
+
+                    return;
+                }
+
+                for link_token in pending {
+                    actions.push(Action::ToSource {
+                        action: ActionSource::PollLink {
+                            link_token: link_token.clone(),
+                        },
+                    });
+                }
+            }
+
             EventClient::CodeRequested { email } => {
                 // No entropy, no credentials. Refused rather than filled in
                 // with anything derivable — a predictable sign-in code is a
@@ -280,6 +311,105 @@ impl StateServer {
                         streams: streams.clone(),
                         cursor: cursor.clone(),
                     },
+                });
+            }
+
+            EventSource::LinkOpened {
+                user_id,
+                link_token,
+                hosted_link_url,
+            } => {
+                // Written down before the URL is handed over. The other order
+                // leaves a window where somebody could finish a session we
+                // have no record of asking for.
+                actions.push(Action::ToStore {
+                    action: ActionStore::SaveLink {
+                        link_token: link_token.clone(),
+                        user_id: *user_id,
+                    },
+                });
+
+                actions.push(Action::ToClient {
+                    action: ActionClient::LinkOpened {
+                        url: hosted_link_url.clone(),
+                    },
+                });
+            }
+
+            EventSource::LinkPolled {
+                link_token,
+                finished,
+                public_tokens,
+            } => {
+                // A token is the answer whether or not the session says it has
+                // finished: somebody who added one bank and is partway through
+                // a second has produced a real Item already.
+                if let Some(public_token) = public_tokens.first() {
+                    actions.push(Action::ToSource {
+                        action: ActionSource::ExchangePublicToken {
+                            link_token: link_token.clone(),
+                            public_token: public_token.clone(),
+                        },
+                    });
+
+                    return;
+                }
+
+                // Finished with nothing: they closed the sheet. An outcome,
+                // not a failure — and the session is marked done so it is not
+                // polled again forever.
+                if *finished {
+                    actions.push(Action::ToStore {
+                        action: ActionStore::CollectLink {
+                            link_token: link_token.clone(),
+                        },
+                    });
+
+                    actions.push(Action::ToClient {
+                        action: ActionClient::NotLinked,
+                    });
+
+                    return;
+                }
+
+                // Still open — somebody is still typing their password. Left
+                // pending, so the next close asks again.
+                actions.push(Action::ToClient {
+                    action: ActionClient::NotLinked,
+                });
+            }
+
+            EventSource::ItemLinked {
+                link_token,
+                item_id,
+            } => {
+                actions.push(Action::ToStore {
+                    action: ActionStore::SaveItem {
+                        item_id: item_id.clone(),
+                        link_token: link_token.clone(),
+                    },
+                });
+
+                actions.push(Action::ToStore {
+                    action: ActionStore::CollectLink {
+                        link_token: link_token.clone(),
+                    },
+                });
+
+                actions.push(Action::ToClient {
+                    action: ActionClient::Linked,
+                });
+            }
+
+            EventSource::LinkAbandoned { link_token } => {
+                actions.push(Action::ToStore {
+                    action: ActionStore::CollectLink {
+                        link_token: link_token.clone(),
+                    },
+                });
+
+                actions.push(Action::ToClient {
+                    action: ActionClient::NotLinked,
                 });
             }
 

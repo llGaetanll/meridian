@@ -150,6 +150,14 @@ means adding, changing or removing its example here.
   [PLAID.md](PLAID.md).
 - `INFO server_main::runtime_server server listening port=8082`
 - `INFO web_main::io::markets quote{symbol=SPY range=1D} quote asked for`
+- `INFO src_plaid link session opened update=false hosted=true expires=2026-08-29T01:57:48Z`
+- `DEBUG src_plaid link session polled sessions=1 finished=true tokens=1`
+- `INFO server_main::runtime_server bank linked item_id=8Pd5Zx… user_id=e8b13a2b…`
+- `WARN server_main::runtime_server could not open a link session error="Plaid error INVALID_FIELD: …"`
+- `ERROR server_main::runtime_server a bank was linked against no session link_token=link-sandbox-…`
+  — the Item exists at Plaid's end and we cannot say whose it is. Not handled:
+  guessing an owner is the one mistake in this file that would put somebody
+  else's transactions on your screen.
 - `INFO src_plaid sandbox item created institution_id=ins_109508`
 - `INFO src_plaid item created item_id=8Pd5Zx…`
   — linking a bank. The access token is deliberately absent from both: it is a

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE link_sessions SET collected_at = now() WHERE link_token = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ef954b29581958b4456b0d609618f447590c5a3d73ec06baa51378f7771698fe"
+}

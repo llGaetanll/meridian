@@ -236,6 +236,8 @@ impl RuntimeServer {
             .route("/snapshot", get(snapshot))
             .route("/auth/request", post(auth_request))
             .route("/auth/verify", post(auth_verify))
+            .route("/link/start", post(link_start))
+            .route("/link/finish", post(link_finish))
             .route("/health", get(health))
             // The phone app is served by trunk on another port, so every
             // request it makes is cross-origin. This is a development server on
@@ -283,9 +285,13 @@ impl RuntimeServer {
 
         tracing::debug!(?events, ?actions, "handled");
 
-        self.perform_actions(&actions).await;
+        // What performing them caused, joined onto what caused it. A handler
+        // reads its outcome off this, and the outcome of a link is three
+        // dispatches deep — poll, exchange, linked — so a turn that returned
+        // only its own actions would report every sign-in as a failure.
+        let caused = self.perform_actions(&actions).await;
 
-        actions
+        actions.into_iter().chain(caused).collect()
     }
 
     /// Connect to Postgres and bring the schema up to date, if there is one to
@@ -321,17 +327,21 @@ impl RuntimeServer {
     fn perform_actions<'a>(
         &'a self,
         actions: &'a [Action],
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Action>> + Send + 'a>> {
         Box::pin(async move {
+            let mut caused = Vec::new();
+
             for action in actions {
-                self.perform_action(action).await;
+                caused.extend(self.perform_action(action).await);
             }
+
+            caused
         })
     }
 
-    async fn perform_action(&self, action: &Action) {
+    async fn perform_action(&self, action: &Action) -> Vec<Action> {
         match action {
-            Action::ToSource { action } => self.perform_action_source(action).await,
+            Action::ToSource { action } => return self.perform_action_source(action).await,
             Action::ToStore { action } => self.perform_action_store(action).await,
             Action::ToProcess { action } => self.perform_action_process(action),
             Action::ToEmail { action } => self.perform_action_email(action).await,
@@ -340,6 +350,8 @@ impl RuntimeServer {
             // handler reads the outcome off the actions once they are done.
             Action::ToClient { .. } => {}
         }
+
+        Vec::new()
     }
 
     /// Get a sign-in code to a person, or say where it went instead.
@@ -375,12 +387,111 @@ impl RuntimeServer {
         }
     }
 
-    async fn perform_action_source(&self, action: &ActionSource) {
+    /// Each of these ends by feeding what came back in as the next event, so
+    /// they answer with the actions that produced — which is how a handler
+    /// several dispatches away learns what happened.
+    async fn perform_action_source(&self, action: &ActionSource) -> Vec<Action> {
         match action {
             ActionSource::FetchPlaid { item_id, cursor } => {
                 self.fetch_plaid(item_id, cursor.clone()).await
             }
+
+            ActionSource::OpenLink { user_id } => self.open_link(*user_id).await,
+
+            ActionSource::PollLink { link_token } => self.poll_link(link_token).await,
+
+            ActionSource::ExchangePublicToken {
+                link_token,
+                public_token,
+            } => self.exchange_public_token(link_token, public_token).await,
         }
+    }
+
+    /// Open a Link session and report the page that hosts it.
+    async fn open_link(&self, user_id: Uuid) -> Vec<Action> {
+        let event = match runtime_plaid::open_link(&self.credentials, &user_id.to_string()).await {
+            Ok((link_token, Some(hosted_link_url))) => EventSource::LinkOpened {
+                user_id,
+                link_token,
+                hosted_link_url,
+            },
+
+            // A link token with no hosted URL means the request did not ask
+            // for Hosted Link, which it always does. Reported rather than
+            // guessed at: there is no URL to send anybody to.
+            Ok((link_token, None)) => {
+                tracing::error!("plaid answered a link token with no hosted url");
+
+                EventSource::LinkAbandoned { link_token }
+            }
+
+            Err(e) => {
+                tracing::warn!(error = %e, "could not open a link session");
+
+                EventSource::LinkAbandoned {
+                    link_token: String::new(),
+                }
+            }
+        };
+
+        self.dispatch(vec![Event::FromSource { event }]).await
+    }
+
+    /// Ask what became of a Link session.
+    async fn poll_link(&self, link_token: &str) -> Vec<Action> {
+        let event = match runtime_plaid::poll_link(&self.credentials, link_token).await {
+            Ok((finished, public_tokens)) => EventSource::LinkPolled {
+                link_token: link_token.to_string(),
+                finished,
+                public_tokens,
+            },
+
+            Err(e) => {
+                tracing::warn!(error = %e, "could not poll a link session");
+
+                // Not abandoned: a failed poll says nothing about the session,
+                // and giving up here would lose a bank somebody did connect.
+                EventSource::LinkPolled {
+                    link_token: link_token.to_string(),
+                    finished: false,
+                    public_tokens: Vec::new(),
+                }
+            }
+        };
+
+        self.dispatch(vec![Event::FromSource { event }]).await
+    }
+
+    /// Trade a `public_token` for the permanent one.
+    ///
+    /// **The one call in this server whose effect cannot be undone.** In
+    /// Production it spends an Item slot and `/item/remove` does not give it
+    /// back; `fetch_all`'s Sandbox guard is what keeps that unreachable today.
+    ///
+    /// The access token goes into the runtime's map and no further. It never
+    /// becomes an event, because an event carrying one would put a bank
+    /// credential in the log.
+    async fn exchange_public_token(&self, link_token: &str, public_token: &str) -> Vec<Action> {
+        let event = match runtime_plaid::exchange(&self.credentials, public_token).await {
+            Ok((item_id, access_token)) => {
+                self.write_tokens().insert(item_id.clone(), access_token);
+
+                EventSource::ItemLinked {
+                    link_token: link_token.to_string(),
+                    item_id,
+                }
+            }
+
+            Err(e) => {
+                tracing::warn!(error = %e, "could not exchange a public token");
+
+                EventSource::LinkAbandoned {
+                    link_token: link_token.to_string(),
+                }
+            }
+        };
+
+        self.dispatch(vec![Event::FromSource { event }]).await
     }
 
     /// Everything the store is asked for.
@@ -440,6 +551,30 @@ impl RuntimeServer {
                 }
             }
 
+            ActionStore::SaveLink {
+                link_token,
+                user_id,
+            } => {
+                if let Err(e) = src_postgres::save_link(db, link_token, *user_id).await {
+                    self.report_save_failed(e).await;
+                }
+            }
+
+            ActionStore::CollectLink { link_token } => {
+                if let Err(e) = src_postgres::collect_link(db, link_token).await {
+                    self.report_save_failed(e).await;
+                }
+            }
+
+            ActionStore::SaveItem {
+                item_id,
+                link_token,
+            } => {
+                if let Err(e) = self.save_linked_item(db, item_id, link_token).await {
+                    self.report_save_failed(e).await;
+                }
+            }
+
             ActionStore::SaveFetched { .. } | ActionStore::SaveStatus { .. } => {
                 if let Err(e) = self.write(db, action).await {
                     self.dispatch(vec![Event::FromStore {
@@ -451,6 +586,50 @@ impl RuntimeServer {
                 }
             }
         }
+    }
+
+    /// Write a newly linked bank.
+    ///
+    /// The owner comes from the Link session rather than from the action: the
+    /// session was written down against whoever asked for it, before its URL
+    /// was ever handed over, which is what stops one account collecting a bank
+    /// another account connected.
+    async fn save_linked_item(
+        &self,
+        db: &Db,
+        item_id: &str,
+        link_token: &str,
+    ) -> Result<(), src_postgres::PostgresError> {
+        let Some(access_token) = self.token_for(item_id) else {
+            tracing::error!(item_id, "a bank was linked with no token held for it");
+
+            return Ok(());
+        };
+
+        let Some(user_id) = src_postgres::user_for_link(db, link_token).await? else {
+            tracing::error!(link_token, "a bank was linked against no session");
+
+            return Ok(());
+        };
+
+        src_postgres::save_item(
+            db,
+            &src_postgres::StoredItem {
+                item_id: item_id.to_string(),
+                user_id,
+                access_token,
+                institution_id: None,
+                institution_name: None,
+                cursor: None,
+                error_code: None,
+                synced_at: Timestamp::EPOCH,
+            },
+        )
+        .await?;
+
+        tracing::info!(item_id, %user_id, "bank linked");
+
+        Ok(())
     }
 
     /// A failed write, as the event that says so. The machine logs it and
@@ -600,7 +779,10 @@ impl RuntimeServer {
             ActionStore::SaveCode { .. }
             | ActionStore::RecordAttempt { .. }
             | ActionStore::DeleteCode { .. }
-            | ActionStore::CreateSession { .. } => {}
+            | ActionStore::CreateSession { .. }
+            | ActionStore::SaveLink { .. }
+            | ActionStore::CollectLink { .. }
+            | ActionStore::SaveItem { .. } => {}
         }
 
         Ok(())
@@ -620,12 +802,12 @@ impl RuntimeServer {
     ///
     /// Nothing here inspects the answer or decides anything about it; that is
     /// what makes the loop closed.
-    async fn fetch_plaid(&self, item_id: &str, cursor: Option<String>) {
+    async fn fetch_plaid(&self, item_id: &str, cursor: Option<String>) -> Vec<Action> {
         // One fetch at a time. A burst of cold requests would otherwise all
         // miss and all call out.
         let Ok(_guard) = self.fetching.try_lock() else {
             tracing::debug!("a fetch is already in flight");
-            return;
+            return Vec::new();
         };
 
         // The machine named an Item it read off its own connection list, and
@@ -635,15 +817,14 @@ impl RuntimeServer {
         let Some(access_token) = self.token_for(item_id) else {
             tracing::error!(item_id, "asked to fetch an item with no token");
 
-            self.dispatch(vec![Event::FromSource {
-                event: EventSource::PlaidFailed {
-                    item_id: item_id.to_string(),
-                    code: String::from("NO_ACCESS_TOKEN"),
-                },
-            }])
-            .await;
-
-            return;
+            return self
+                .dispatch(vec![Event::FromSource {
+                    event: EventSource::PlaidFailed {
+                        item_id: item_id.to_string(),
+                        code: String::from("NO_ACCESS_TOKEN"),
+                    },
+                }])
+                .await;
         };
 
         let event =
@@ -696,7 +877,9 @@ impl RuntimeServer {
             "a fetch result should not ask for another fetch",
         );
 
-        self.perform_actions(&actions).await;
+        let caused = self.perform_actions(&actions).await;
+
+        actions.into_iter().chain(caused).collect()
     }
 
     /// Everything the app knows, as of now.
@@ -943,6 +1126,91 @@ async fn auth_verify(
 
     Ok(Json(AuthVerified {
         token: token.ok_or(StatusCode::UNAUTHORIZED)?,
+    }))
+}
+
+/// What `POST /link/start` answers with: the page to open.
+#[derive(Debug, serde::Serialize)]
+struct LinkStarted {
+    url: String,
+}
+
+/// `POST /link/start` — open a Link session for the signed-in user.
+///
+/// Answers with Plaid's own hosted page. Nothing is created at Plaid's end by
+/// this, so it is safe to call again if somebody backs out.
+async fn link_start(
+    State(runtime): State<Arc<RuntimeServer>>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<LinkStarted>, StatusCode> {
+    let user_id = runtime.authenticate(&headers).await?;
+
+    let actions = runtime
+        .dispatch(vec![Event::FromClient {
+            event: EventClient::LinkRequested { user_id },
+        }])
+        .await;
+
+    let url = actions.into_iter().find_map(|action| match action {
+        Action::ToClient {
+            action: ActionClient::LinkOpened { url },
+        } => Some(url),
+        _ => None,
+    });
+
+    Ok(Json(LinkStarted {
+        url: url.ok_or(StatusCode::BAD_GATEWAY)?,
+    }))
+}
+
+/// What `POST /link/finish` answers with.
+#[derive(Debug, serde::Serialize)]
+struct LinkFinished {
+    /// Whether a bank is now attached. False is the ordinary outcome of
+    /// somebody closing the sheet, not an error.
+    linked: bool,
+}
+
+/// `POST /link/finish` — collect whatever the Link session came to.
+///
+/// Called when the web sheet closes. The redirect that closed it carries no
+/// token (`docs/PLAID.md`), so this is what goes and asks Plaid; with
+/// `PLAID_COLLECT=webhook` the same collection would arrive on its own and
+/// this becomes a read of what already happened.
+async fn link_finish(
+    State(runtime): State<Arc<RuntimeServer>>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<LinkFinished>, StatusCode> {
+    let user_id = runtime.authenticate(&headers).await?;
+
+    // The sessions this user has open, read before deciding — the same shape
+    // as everywhere else: the machine keeps nothing, so the facts arrive with
+    // the request.
+    let pending = src_postgres::pending_links(&runtime.db, user_id)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "could not read this user's link sessions");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .into_iter()
+        .map(|link| link.link_token)
+        .collect();
+
+    let actions = runtime
+        .dispatch(vec![Event::FromClient {
+            event: EventClient::LinkClosed { pending },
+        }])
+        .await;
+
+    Ok(Json(LinkFinished {
+        linked: actions.iter().any(|action| {
+            matches!(
+                action,
+                Action::ToClient {
+                    action: ActionClient::Linked
+                }
+            )
+        }),
     }))
 }
 

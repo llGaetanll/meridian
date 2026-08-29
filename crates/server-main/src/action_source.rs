@@ -15,4 +15,28 @@ pub enum ActionSource {
         item_id: String,
         cursor: Option<String>,
     },
+
+    /// Open a Link session and get the page that hosts it.
+    ///
+    /// Creates nothing at Plaid's end — a session nobody finishes costs
+    /// nothing and expires on its own — so this is the one call in the flow
+    /// that is free to repeat.
+    OpenLink { user_id: uuid::Uuid },
+
+    /// Ask what became of a Link session.
+    ///
+    /// The completion redirect closes the sheet and carries no token, so the
+    /// result is collected rather than delivered. See `docs/PLAID.md`.
+    PollLink { link_token: String },
+
+    /// Trade a `public_token` for the permanent one.
+    ///
+    /// **The call that spends a Production Item slot**, and the only action in
+    /// the server whose effect cannot be undone. The access token it yields
+    /// stays in the runtime: it never comes back as an event, because an event
+    /// carrying one would put a bank credential in the log.
+    ExchangePublicToken {
+        link_token: String,
+        public_token: String,
+    },
 }

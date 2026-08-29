@@ -1,16 +1,18 @@
 //! Link a Sandbox bank and write the Item to the store.
 //!
 //! ```sh
-//! cargo run -p server-main --example link_sandbox
-//! cargo run -p server-main --example link_sandbox -- ins_109509
+//! cargo run -p server-main --example link_sandbox -- alex@example.com
+//! cargo run -p server-main --example link_sandbox -- alex@example.com ins_109509
 //! ```
 //!
-//! **This is a stand-in for first run, not a fixture.** It performs the same
-//! two calls the real flow ends with — exchange a `public_token`, store what
-//! comes back — and the Item it leaves behind is an ordinary one that syncs
-//! like any other. What it skips is the part in the middle, where a person
-//! signs into their bank on Plaid's own page. That is Hosted Link, it is the
-//! next slice, and until it exists this is how a bank gets onto the books.
+//! **A shortcut, not a fixture.** It performs the same two calls the real flow
+//! ends with — exchange a `public_token`, store what comes back — and leaves
+//! an ordinary Item that syncs like any other. What it skips is the part in
+//! the middle, where a person signs into their bank on Plaid's own page.
+//!
+//! Hosted Link is built now (`/link/start` and `/link/finish`), so this is no
+//! longer the only way a bank gets onto the books — it is the way that needs
+//! no browser, which is what makes it useful from a terminal and in a script.
 //!
 //! It costs nothing. `/sandbox/public_token/create` does not exist in
 //! Production, so there is no version of this that can spend an Item slot.
@@ -35,8 +37,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..api_trace::Config::default()
     });
 
-    let institution_id = std::env::args()
+    // Whose bank it is. Required and not defaulted: an Item belongs to
+    // somebody, and guessing who would put a bank on the wrong account.
+    let email = std::env::args()
         .nth(1)
+        .ok_or("usage: link_sandbox <email> [institution_id]")?;
+
+    let institution_id = std::env::args()
+        .nth(2)
         .unwrap_or_else(|| DEFAULT_INSTITUTION.to_string());
 
     let credentials = PlaidCredentials::from_env()?;
@@ -54,12 +62,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = src_postgres::connect(&url).await?;
     src_postgres::migrate(&db).await?;
 
-    // The same user the server serves, so the bank shows up where you look for
-    // it. Both read this variable, and both will stop once a session says who
-    // is asking.
-    let email =
-        std::env::var("MERIDIAN_USER_EMAIL").map_err(|_| "MERIDIAN_USER_EMAIL is not set")?;
-
+    // Made if they do not exist, the same as signing in for the first time
+    // does. So this works before anybody has ever asked for a code.
     let user_id = src_postgres::upsert_user(&db, &email).await?;
 
     let client = PlaidClient::new(credentials)?;

@@ -16,6 +16,15 @@ pub enum ActionClient {
     /// the only place it crosses.
     SignedIn { token: String },
 
+    /// Send them to Plaid's page to sign into their bank.
+    LinkOpened { url: String },
+
+    /// The Link flow ended with a bank attached.
+    Linked,
+
+    /// It ended without one, which is ordinary.
+    NotLinked,
+
     /// The code was not good. Deliberately carries no reason: wrong, expired
     /// and exhausted are logged and are not told apart to the caller, because
     /// only somebody working through guesses benefits from knowing which.

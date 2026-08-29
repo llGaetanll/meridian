@@ -15,6 +15,7 @@
 
 mod postgres_item;
 mod postgres_ledger;
+mod postgres_link;
 mod postgres_login;
 mod postgres_migrate;
 mod postgres_money;
@@ -35,6 +36,11 @@ pub use postgres_ledger::load_entries;
 pub use postgres_ledger::load_streams;
 pub use postgres_ledger::save_accounts;
 pub use postgres_ledger::save_streams;
+pub use postgres_link::PendingLink;
+pub use postgres_link::collect_link;
+pub use postgres_link::pending_links;
+pub use postgres_link::save_link;
+pub use postgres_link::user_for_link;
 pub use postgres_login::StoredCode;
 pub use postgres_login::delete_code;
 pub use postgres_login::load_code;
