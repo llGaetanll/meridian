@@ -1,10 +1,11 @@
 use api_trace::ApiCall;
+use api_trace::Source;
 
 use crate::GcError;
 use crate::GcRequest;
 
 /// What this client is called in the logs.
-const SOURCE: &str = "coingecko";
+const SOURCE: Source = Source::new("coingecko");
 
 pub struct CoinGeckoClient {
     client: reqwest::Client,

@@ -1,10 +1,11 @@
 use api_trace::ApiCall;
+use api_trace::Source;
 
 use crate::YError;
 use crate::YRequest;
 
 /// What this client is called in the logs.
-const SOURCE: &str = "yahoo";
+const SOURCE: Source = Source::new("yahoo");
 
 /// Yahoo's own host. Reachable from native builds (desktop, mobile); browsers
 /// have to go through a proxy instead — see [`YahooClient::with_base_url`].

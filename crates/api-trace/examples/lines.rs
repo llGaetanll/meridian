@@ -11,6 +11,14 @@
 use api_trace::ApiCall;
 use api_trace::Config;
 use api_trace::Level;
+use api_trace::Source;
+use api_trace::scrub;
+
+// The same sources the clients declare, so what prints here is what a real
+// session prints — Plaid's pretty-printed response included, which is the
+// thing `compact_json` exists to squeeze.
+const PLAID: Source = Source::new("plaid").through(&[scrub::compact_json]);
+const YAHOO: Source = Source::new("yahoo");
 
 fn main() {
     api_trace::init(Config {
@@ -32,11 +40,14 @@ fn main() {
     );
 
     ApiCall::post(
-        "plaid",
+        PLAID,
         "https://sandbox.plaid.com/transactions/sync",
         "{\"access_token\":\"access-sandbox-1\",\"cursor\":\"CAESJTM3…\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}",
     )
-    .response(200, "{\"added\":[{\"account_id\":\"6Pd…");
+    .response(
+        200,
+        "{\n    \"added\": [\n        {\n            \"account_id\": \"6Pd…\"\n        }\n    ]\n}",
+    );
 
     tracing::info!(
         target: "src_plaid",
@@ -52,7 +63,7 @@ fn main() {
     tracing::info!(target: "web_main::io::markets", "quote asked for");
 
     ApiCall::get(
-        "yahoo",
+        YAHOO,
         "/v8/finance/chart/SPY?period1=1785542400&period2=1785628800&interval=1m",
     )
     .response(
@@ -78,14 +89,14 @@ fn main() {
         "source substituted an interval",
     );
 
-    ApiCall::get("yahoo", "/v8/finance/chart/SPY").failed("Network error: operation timed out");
+    ApiCall::get(YAHOO, "/v8/finance/chart/SPY").failed("Network error: operation timed out");
 
-    ApiCall::get("yahoo", "/v8/finance/chart/SPY")
+    ApiCall::get(YAHOO, "/v8/finance/chart/SPY")
         .response(200, "<html>\n  <body>Too Many Requests</body>\n</html>")
         .parse_error("missing field `chart`");
 
     // Never given an outcome: what a cancelled request looks like.
-    let _ = ApiCall::get("yahoo", "/v8/finance/chart/QQQ");
+    let _ = ApiCall::get(YAHOO, "/v8/finance/chart/QQQ");
 
     tracing::warn!(
         target: "trace",

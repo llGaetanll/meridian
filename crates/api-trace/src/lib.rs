@@ -32,7 +32,9 @@ mod call;
 mod clock;
 mod layer;
 mod line;
+pub mod scrub;
 mod sink;
+mod source;
 mod style;
 
 use std::sync::Arc;
@@ -45,6 +47,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 pub use call::ApiCall;
 pub use call::TARGET as API;
+pub use source::Source;
 pub use tracing::Level;
 
 use crate::layer::OneLine;

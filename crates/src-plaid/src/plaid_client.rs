@@ -1,4 +1,6 @@
 use api_trace::ApiCall;
+use api_trace::Source;
+use api_trace::scrub;
 use serde_json::Value;
 
 use crate::PlaidEnv;
@@ -6,8 +8,15 @@ use crate::PlaidError;
 use crate::PlaidHttpRequest;
 use crate::PlaidRequest;
 
-/// What this client is called in the logs.
-const SOURCE: &str = "plaid";
+/// What this client is called in the logs, and how its bodies get there.
+///
+/// Plaid pretty-prints, so a response arrives as four-space-indented JSON and
+/// spends most of the 400 characters a line is cut to on indentation — a
+/// `/accounts/balance/get` body got as far as the second account's name. The
+/// rules are also where redaction goes when the secret in every request body
+/// stops being acceptable; it is the same seam, applied to fields instead of
+/// spaces.
+const SOURCE: Source = Source::new("plaid").through(&[scrub::compact_json]);
 
 /// Plaid's credentials, and the environment they belong to.
 ///
@@ -123,9 +132,10 @@ impl PlaidClient {
     ) -> Result<Response, PlaidError> {
         let PlaidHttpRequest { url, body } = request;
 
-        // The body is logged exactly as it is sent, secret and all. See
-        // `ApiCall::post` for why that is worth what it costs, and
-        // `docs/LOGGING.md` for what has to change before Production.
+        // The body is logged as it is sent, secret and all — `SOURCE`'s rules
+        // reformat it and nothing more, so far. See `ApiCall::post` for why
+        // that is worth what it costs, and `docs/LOGGING.md` for what has to
+        // change before Production.
         let call = ApiCall::post(SOURCE, &url, &body.to_string());
 
         let response = match self.client.post(url).json(&body).send().await {
