@@ -1,27 +1,61 @@
-//! The people the banks belong to.
+//! The people the banks belong to, and how they prove it.
 
 use uuid::Uuid;
 
 use crate::Db;
 use crate::PostgresError;
 
-/// Find the user with this address, or make one.
+/// Find the user who signs in with this address, or make one.
 ///
-/// Matched on `lower(email)`, which is what the unique index is on: nobody
-/// thinks of `Alex@example.com` as a second account. The address is stored as
-/// it was typed, because the capital is theirs.
+/// The lookup is on `identities`, not on `users`: a credential is a row, so
+/// that the same person arriving later by Apple or Google is another row
+/// against the same user rather than a second account. `users.email` is the
+/// address we write *to*, which is a different question and may drift from the
+/// one they sign in with.
+///
+/// Matched on `lower(email)`, because nobody thinks of `Alex@example.com` as a
+/// second account. Stored as typed, because the capital is theirs.
+///
+/// One transaction, so two requests racing on a new address cannot leave a
+/// user with no way to sign in: the loser's identity insert hits the primary
+/// key and takes its half-made user down with it.
 pub async fn upsert_user(db: &Db, email: &str) -> Result<Uuid, PostgresError> {
-    // `DO UPDATE` rather than `DO NOTHING`: nothing needs updating, but only
-    // an update makes the conflicting row visible to RETURNING, and a second
-    // SELECT to find what we just conflicted with is a race.
-    let row = sqlx::query!(
-        "INSERT INTO users (email) VALUES ($1)
-         ON CONFLICT (lower(email)) DO UPDATE SET email = users.email
-         RETURNING user_id",
-        email,
+    let subject = email.trim().to_lowercase();
+
+    let mut tx = db.begin().await?;
+
+    let existing = sqlx::query!(
+        "SELECT user_id FROM identities WHERE provider = 'email' AND subject = $1",
+        subject,
     )
-    .fetch_one(db)
+    .fetch_optional(&mut *tx)
     .await?;
 
-    Ok(row.user_id)
+    let user_id = match existing {
+        Some(row) => row.user_id,
+
+        None => {
+            let row = sqlx::query!(
+                "INSERT INTO users (email) VALUES ($1) RETURNING user_id",
+                email,
+            )
+            .fetch_one(&mut *tx)
+            .await?;
+
+            sqlx::query!(
+                "INSERT INTO identities (provider, subject, user_id)
+                 VALUES ('email', $1, $2)",
+                subject,
+                row.user_id,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            row.user_id
+        }
+    };
+
+    tx.commit().await?;
+
+    Ok(user_id)
 }

@@ -28,6 +28,7 @@ mod event_process;
 mod event_source;
 mod event_store;
 mod event_terminal;
+mod login_code;
 mod plaid_collect;
 mod project;
 mod runtime_plaid;
