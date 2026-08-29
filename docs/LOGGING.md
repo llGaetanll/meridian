@@ -85,6 +85,40 @@ Under docker that test is wrong: stdout is a pipe to the daemon, but the thing
 reading the other end is `docker compose logs` in a terminal. `CLICOLOR_FORCE`
 says so, and docker-compose.yml sets it. `NO_COLOR` still beats it.
 
+## Rules a body passes through
+
+A request or response body is logged as it crossed the network, because that is
+the only version that can answer "what did we actually send". But it goes
+through an ordered list of rules on the way — `api_trace::scrub` — and a source
+picks the ones that apply to it:
+
+```rust
+const SOURCE: Source = Source::new("plaid").through(&[scrub::compact_json]);
+```
+
+Each rule is a function of the body and a `Context` — the source, the endpoint,
+and whether this is the request or the response — and returns the body the next
+rule sees. Rules compose because they are ordered, and they live on the source
+so that adding one covers every call it makes.
+
+`compact_json` is the only rule so far. Plaid pretty-prints its responses, and a
+line is cut at 400 characters, so most of what we were keeping was indentation —
+a balance response got as far as the second account's name. It squeezes
+whitespace between tokens, leaves whitespace inside strings alone, and leaves a
+body that does not start with `{` or `[` entirely alone, because an HTML error
+page is at its most useful when it is least mangled.
+
+Rules run on the way to the log and nowhere else. The body that gets parsed is
+the one that came off the wire — a caller passes a body in by reference and
+never gets one back, and `Scrub` cannot be run from outside `api-trace` at all.
+That matters most for the rule we have not written yet: a redaction that leaked
+into the request path would put the word `REDACTED` where a secret belonged.
+
+**A rule may not change what a body means.** Reformatting says the same thing in
+less space; redaction — the next rule, and why this seam exists at all — says
+plainly that something was removed. A rule that quietly rewrote a value would
+leave a log that is worse than no log, because it would still be believed.
+
 Level is INFO by default. `DEBUG` adds cancelled requests.
 
 A few targets are held to `WARN` whatever the level says — `Config::quiet`.
@@ -122,6 +156,8 @@ means adding, changing or removing its example here.
 - `INFO api -> request id=1 source=plaid method=POST url=https://sandbox.plaid.com/transactions/sync body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"cursor\":\"CAESJTM3…\",\"secret\":\"xxxx\"}"`
   — the body as sent, credentials included. See the warning above.
 - `INFO api <- response id=1 source=plaid status=200 ms=284 body="{\"added\":[{\"account_id\":\"6Pd…"`
+  — Plaid pretty-prints, and this is the same body with the whitespace taken
+  back out. See [Rules a body passes through](#rules-a-body-passes-through).
 - `INFO api -> request id=2 source=plaid method=POST url=https://sandbox.plaid.com/accounts/balance/get body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}"`
 - `INFO api -> request id=3 source=plaid method=POST url=https://sandbox.plaid.com/transactions/recurring/get body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}"`
   — a GET carries no `body` field at all, rather than an empty one. Yahoo and
