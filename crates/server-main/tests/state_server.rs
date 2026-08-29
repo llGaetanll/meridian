@@ -97,6 +97,9 @@ fn a_bank_that_has_never_synced_is_fetched() {
     eval!(&mut state,
         < requested(false, vec![facts(None, false)]),
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
+
+        < loaded(vec![]),
+        > Action::ToStore { action: ActionStore::SaveFetched { .. } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -136,6 +139,9 @@ fn a_stale_bank_is_refetched_from_its_cursor() {
     eval!(&mut state,
         < requested(false, vec![facts(Some(long_ago), false)]),
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
+
+        < loaded(vec![]),
+        > Action::ToStore { action: ActionStore::SaveFetched { .. } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -147,6 +153,9 @@ fn a_forced_request_refetches_however_fresh() {
     eval!(&mut state,
         < requested(true, vec![facts(Some(T0), false)]),
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
+
+        < loaded(vec![]),
+        > Action::ToStore { action: ActionStore::SaveFetched { .. } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -178,7 +187,57 @@ fn each_bank_is_decided_about_on_its_own() {
     eval!(&mut state,
         < requested(false, vec![facts(None, false), dead]),
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
+
+        < loaded(vec![]),
+        > Action::ToStore { action: ActionStore::SaveFetched { .. } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
+    );
+}
+
+/// The route is answered once, after the last bank reports — not alongside the
+/// fetches. It reads the store the moment it is told to, so being told earlier
+/// would serve the very rows the sync was about to replace.
+#[test]
+fn a_snapshot_is_answered_after_its_last_bank() {
+    let mut state = state();
+
+    let second = ItemFacts {
+        item_id: "item-2".to_string(),
+        cursor: None,
+        synced_at: None,
+        login_required: false,
+    };
+
+    let reported = |call_id| Event::FromSource {
+        event: EventSource::PlaidFailed {
+            call_id,
+            item_id: ITEM.to_string(),
+            code: "REQUEST_FAILED".to_string(),
+        },
+    };
+
+    eval!(&mut state,
+        < requested(false, vec![facts(None, false), second]),
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 2, .. } },
+
+        // One bank in. Still nothing to say: the other is outstanding.
+        < reported(1),
+
+        < reported(2),
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
+    );
+}
+
+/// A sync nobody asked for answers nobody. The store is written and that is
+/// all — which is what a sync on a timer will be.
+#[test]
+fn a_sync_nobody_asked_for_serves_nobody() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < loaded(vec![entry("a")]),
+        > Action::ToStore { action: ActionStore::SaveFetched { .. } },
     );
 }
 

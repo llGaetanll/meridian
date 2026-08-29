@@ -299,27 +299,38 @@ impl StateServer {
             }
 
             EventRouter::SnapshotRequested { force, items } => {
-                for item in items {
-                    if self.should_fetch(item, *force) {
-                        actions.push(Action::ToSource {
-                            action: ActionSource::FetchPlaid {
-                                call_id: self.call(),
-                                item_id: item.item_id.clone(),
-                                cursor: item.cursor.clone(),
-                            },
-                        });
-                    }
+                let asked: Vec<_> = items
+                    .iter()
+                    .filter(|item| self.should_fetch(item, *force))
+                    .map(|item| (item.item_id.clone(), item.cursor.clone()))
+                    .collect();
+
+                // Nothing to wait for, so answer now. A user with no banks
+                // gets the empty ledger rather than an error — that is what
+                // "no bank linked yet" looks like, and it is the state first
+                // run exists to leave.
+                if asked.is_empty() {
+                    actions.push(Action::ToRouter {
+                        request_id,
+                        action: ActionRouter::Serve,
+                    });
+
+                    return;
                 }
 
-                // Always, and last. Whatever was fetched has been written by
-                // the time this is carried out, and a user with no banks gets
-                // the empty ledger rather than an error — that is what "no
-                // bank linked yet" looks like, and it is the state first run
-                // exists to leave.
-                actions.push(Action::ToRouter {
-                    request_id,
-                    action: ActionRouter::Serve,
-                });
+                // Otherwise the answer waits for the last bank to report. The
+                // route reads the store the moment it is told to, so telling
+                // it before the fetches have landed would serve the rows they
+                // were about to replace.
+                for (item_id, cursor) in asked {
+                    actions.push(Action::ToSource {
+                        action: ActionSource::FetchPlaid {
+                            call_id: self.calling(request_id),
+                            item_id,
+                            cursor,
+                        },
+                    });
+                }
             }
         }
     }
@@ -357,10 +368,7 @@ impl StateServer {
                     },
                 });
 
-                // Nobody has to be waiting on a sync. A route that asked for
-                // one is, a timer is not, and the answer is the same either
-                // way — so the entry is retired and no one is told.
-                self.waiting.remove(call_id);
+                self.serve_once_every_bank_has_reported(*call_id, actions);
             }
 
             EventSource::LinkOpened {
@@ -492,7 +500,9 @@ impl StateServer {
                 item_id,
                 code,
             } => {
-                self.waiting.remove(call_id);
+                // A bank that failed has still reported, so the route waiting
+                // on it is not left hanging for one that will never answer.
+                self.serve_once_every_bank_has_reported(*call_id, actions);
 
                 if code == "ITEM_LOGIN_REQUIRED" {
                     actions.push(Action::ToProcess {
@@ -558,6 +568,27 @@ impl StateServer {
                 });
             }
         }
+    }
+
+    /// Answer a waiting snapshot, once the last bank it asked about is in.
+    ///
+    /// Nobody waiting is the ordinary case for a sync nothing asked for — a
+    /// timer, later — so an absent entry is silent here, unlike
+    /// [`answered`](Self::answered).
+    fn serve_once_every_bank_has_reported(&mut self, call_id: CallId, actions: &mut Vec<Action>) {
+        let Some(request_id) = self.waiting.remove(&call_id) else {
+            return;
+        };
+
+        // Somebody with three banks gets one answer, after the third.
+        if self.waiting.values().any(|waiter| *waiter == request_id) {
+            return;
+        }
+
+        actions.push(Action::ToRouter {
+            request_id,
+            action: ActionRouter::Serve,
+        });
     }
 
     /// A fresh [`CallId`], noted as owed to the route that is waiting.

@@ -257,6 +257,19 @@ means adding, changing or removing its example here.
 - `DEBUG api quote{symbol=SPY range=1W} request cancelled id=5 source=yahoo ms=12`
   — the request was dropped before an answer, which is what switching range
   mid-fetch looks like from here.
+- `DEBUG server_main::runtime_server turn events=[FromRouter { request_id: 3, event: SnapshotRequested { .. } }] actions=[ToSource { action: FetchPlaid { call_id: 1, .. } }]`
+  — one per turn of the loop, both vectors paired. A quiet server logs none of
+  these: a turn with nothing queued does not happen.
+- `ERROR server_main::state_server a source answered a call nobody is waiting on call_id=7`
+  — an answer to a question we have no record of asking, which cannot happen
+  while every call is minted in the machine. Dropped rather than guessed at:
+  there is no route to send it to and picking one would hand somebody another
+  person's bank.
+- `ERROR server_main::router_exchange a route asked something nothing answered request_id=3`
+  — every router event owes exactly one action back, so this is a machine that
+  went quiet on a request rather than an outcome.
+- `DEBUG server_main::router_exchange a route hung up before its answer arrived request_id=3`
+  — an ordinary dropped connection.
 - `WARN trace log file unavailable error="logs/meridian.log: permission denied"`
 - `ERROR panic panicked at=crates/web-main/src/pages/markets.rs:112 message="…"`
 - `INFO server_main::runtime_server shutting down` / `INFO server_main::runtime_server server stopped`
