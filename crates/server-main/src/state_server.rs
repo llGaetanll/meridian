@@ -97,6 +97,14 @@ pub struct StateServer {
     /// on the event.
     waiting: HashMap<CallId, RequestId>,
 
+    /// Answers that are decided but not yet owed.
+    ///
+    /// A route reads the store the moment it is told to, so an answer released
+    /// while a write is still in flight serves the rows that write was about to
+    /// replace. Everything a request set going has to land first — which is
+    /// one rule rather than a note on each route to remember to wait.
+    held: HashMap<RequestId, ActionRouter>,
+
     /// When the current batch is being handled.
     now: Timestamp,
 }
@@ -162,10 +170,7 @@ impl StateServer {
                 // or collected this one already — either way there is nothing
                 // to go and ask about.
                 if pending.is_empty() {
-                    actions.push(Action::ToRouter {
-                        request_id,
-                        action: ActionRouter::NotLinked,
-                    });
+                    self.answer(request_id, ActionRouter::NotLinked, actions);
 
                     return;
                 }
@@ -186,10 +191,7 @@ impl StateServer {
                 let Some(rng) = self.rng.as_mut() else {
                     tracing::error!("asked for a sign-in code before the machine was seeded");
 
-                    actions.push(Action::ToRouter {
-                        request_id,
-                        action: ActionRouter::Unavailable,
-                    });
+                    self.answer(request_id, ActionRouter::Unavailable, actions);
 
                     return;
                 };
@@ -204,6 +206,7 @@ impl StateServer {
                 // them may ever hold the plaintext.
                 actions.push(Action::ToStore {
                     action: ActionStore::SaveCode {
+                        call_id: self.calling(request_id),
                         email: email.clone(),
                         code_sha256: login_code::hash(&code),
                         expires_at,
@@ -217,10 +220,7 @@ impl StateServer {
                     },
                 });
 
-                actions.push(Action::ToRouter {
-                    request_id,
-                    action: ActionRouter::Accepted,
-                });
+                self.answer(request_id, ActionRouter::Accepted, actions);
             }
 
             EventRouter::CodeSubmitted {
@@ -232,10 +232,7 @@ impl StateServer {
                 // other: telling them apart would say which addresses have a
                 // sign-in in flight.
                 let Some(stored) = stored else {
-                    actions.push(Action::ToRouter {
-                        request_id,
-                        action: ActionRouter::Rejected,
-                    });
+                    self.answer(request_id, ActionRouter::Rejected, actions);
 
                     return;
                 };
@@ -248,16 +245,14 @@ impl StateServer {
                     // an unlimited number of guesses at the next code.
                     actions.push(Action::ToStore {
                         action: ActionStore::RecordAttempt {
+                            call_id: self.calling(request_id),
                             email: email.clone(),
                         },
                     });
 
                     tracing::warn!(email, ?verdict, "a sign-in code was rejected");
 
-                    actions.push(Action::ToRouter {
-                        request_id,
-                        action: ActionRouter::Rejected,
-                    });
+                    self.answer(request_id, ActionRouter::Rejected, actions);
 
                     return;
                 }
@@ -265,10 +260,7 @@ impl StateServer {
                 let Some(rng) = self.rng.as_mut() else {
                     tracing::error!("a code was accepted before the machine was seeded");
 
-                    actions.push(Action::ToRouter {
-                        request_id,
-                        action: ActionRouter::Rejected,
-                    });
+                    self.answer(request_id, ActionRouter::Rejected, actions);
 
                     return;
                 };
@@ -277,6 +269,7 @@ impl StateServer {
 
                 actions.push(Action::ToStore {
                     action: ActionStore::CreateSession {
+                        call_id: self.calling(request_id),
                         email: email.clone(),
                         token_sha256: session_token::hash(&token),
                         expires_at: Timestamp::from_secs(
@@ -288,14 +281,12 @@ impl StateServer {
                 // Single use, and spent only once it has bought something.
                 actions.push(Action::ToStore {
                     action: ActionStore::DeleteCode {
+                        call_id: self.calling(request_id),
                         email: email.clone(),
                     },
                 });
 
-                actions.push(Action::ToRouter {
-                    request_id,
-                    action: ActionRouter::SignedIn { token },
-                });
+                self.answer(request_id, ActionRouter::SignedIn { token }, actions);
             }
 
             EventRouter::SnapshotRequested { force, items } => {
@@ -305,23 +296,6 @@ impl StateServer {
                     .map(|item| (item.item_id.clone(), item.cursor.clone()))
                     .collect();
 
-                // Nothing to wait for, so answer now. A user with no banks
-                // gets the empty ledger rather than an error — that is what
-                // "no bank linked yet" looks like, and it is the state first
-                // run exists to leave.
-                if asked.is_empty() {
-                    actions.push(Action::ToRouter {
-                        request_id,
-                        action: ActionRouter::Serve,
-                    });
-
-                    return;
-                }
-
-                // Otherwise the answer waits for the last bank to report. The
-                // route reads the store the moment it is told to, so telling
-                // it before the fetches have landed would serve the rows they
-                // were about to replace.
                 for (item_id, cursor) in asked {
                     actions.push(Action::ToSource {
                         action: ActionSource::FetchPlaid {
@@ -331,6 +305,13 @@ impl StateServer {
                         },
                     });
                 }
+
+                // Decided here and released when the last of those has landed
+                // and been written. A user with no banks asked for nothing, so
+                // it goes out on this turn — the empty ledger rather than an
+                // error, which is what "no bank linked yet" looks like and the
+                // state first run exists to leave.
+                self.answer(request_id, ActionRouter::Serve, actions);
             }
         }
     }
@@ -352,8 +333,14 @@ impl StateServer {
                 streams,
                 cursor,
             } => {
+                // The wait moves from the fetch to the write it caused, so
+                // the route is answered once the rows are actually there
+                // rather than once Plaid has spoken.
+                let writing = self.passing(*call_id);
+
                 actions.push(Action::ToStore {
                     action: ActionStore::SaveFetched {
+                        call_id: writing,
                         item_id: item_id.clone(),
                         institution_name: connection.as_ref().map(|c| c.name.clone()),
                         added: added.clone(),
@@ -367,8 +354,6 @@ impl StateServer {
                         cursor: cursor.clone(),
                     },
                 });
-
-                self.serve_once_every_bank_has_reported(*call_id, actions);
             }
 
             EventSource::LinkOpened {
@@ -386,17 +371,19 @@ impl StateServer {
                 // have no record of asking for.
                 actions.push(Action::ToStore {
                     action: ActionStore::SaveLink {
+                        call_id: self.calling(request_id),
                         link_token: link_token.clone(),
                         user_id: *user_id,
                     },
                 });
 
-                actions.push(Action::ToRouter {
+                self.answer(
                     request_id,
-                    action: ActionRouter::LinkOpened {
+                    ActionRouter::LinkOpened {
                         url: hosted_link_url.clone(),
                     },
-                });
+                    actions,
+                );
             }
 
             EventSource::LinksPolled { call_id, polls } => {
@@ -436,15 +423,13 @@ impl StateServer {
                 for poll in polls.iter().filter(|poll| poll.finished) {
                     actions.push(Action::ToStore {
                         action: ActionStore::CollectLink {
+                            call_id: self.calling(request_id),
                             link_token: poll.link_token.clone(),
                         },
                     });
                 }
 
-                actions.push(Action::ToRouter {
-                    request_id,
-                    action: ActionRouter::NotLinked,
-                });
+                self.answer(request_id, ActionRouter::NotLinked, actions);
             }
 
             EventSource::ItemLinked {
@@ -458,6 +443,7 @@ impl StateServer {
 
                 actions.push(Action::ToStore {
                     action: ActionStore::SaveItem {
+                        call_id: self.calling(request_id),
                         item_id: item_id.clone(),
                         link_token: link_token.clone(),
                     },
@@ -465,14 +451,12 @@ impl StateServer {
 
                 actions.push(Action::ToStore {
                     action: ActionStore::CollectLink {
+                        call_id: self.calling(request_id),
                         link_token: link_token.clone(),
                     },
                 });
 
-                actions.push(Action::ToRouter {
-                    request_id,
-                    action: ActionRouter::Linked,
-                });
+                self.answer(request_id, ActionRouter::Linked, actions);
             }
 
             EventSource::LinkAbandoned {
@@ -485,14 +469,12 @@ impl StateServer {
 
                 actions.push(Action::ToStore {
                     action: ActionStore::CollectLink {
+                        call_id: self.calling(request_id),
                         link_token: link_token.clone(),
                     },
                 });
 
-                actions.push(Action::ToRouter {
-                    request_id,
-                    action: ActionRouter::NotLinked,
-                });
+                self.answer(request_id, ActionRouter::NotLinked, actions);
             }
 
             EventSource::PlaidFailed {
@@ -500,10 +482,6 @@ impl StateServer {
                 item_id,
                 code,
             } => {
-                // A bank that failed has still reported, so the route waiting
-                // on it is not left hanging for one that will never answer.
-                self.serve_once_every_bank_has_reported(*call_id, actions);
-
                 if code == "ITEM_LOGIN_REQUIRED" {
                     actions.push(Action::ToProcess {
                         action: ActionProcess::ReportLoginRequired,
@@ -513,11 +491,18 @@ impl StateServer {
                     // the same question it was just refused.
                     actions.push(Action::ToStore {
                         action: ActionStore::SaveStatus {
+                            call_id: self.passing(*call_id),
                             item_id: item_id.clone(),
                             error_code: Some(code.clone()),
                         },
                     });
+
+                    return;
                 }
+
+                // Nothing to write, so a bank that failed has reported and the
+                // route is not left hanging for one that will never answer.
+                self.landed(*call_id, actions);
             }
         }
     }
@@ -535,17 +520,18 @@ impl StateServer {
         }
     }
 
-    fn handle_event_store(&mut self, event: &EventStore, _actions: &mut Vec<Action>) {
+    fn handle_event_store(&mut self, event: &EventStore, actions: &mut Vec<Action>) {
         match event {
-            // Both carry on. They are events rather than a line in the runtime
-            // because the log is meant to be a recording of the session, and
-            // "the store was unreachable" is part of the story.
-            EventStore::LoadFailed { message } => {
-                tracing::error!(message, "could not read the store");
-            }
+            EventStore::Written { call_id } => self.landed(*call_id, actions),
 
-            EventStore::SaveFailed { message } => {
+            // Reported rather than silent — the log is meant to be a recording
+            // of the session, and "the store would not take it" is part of the
+            // story — and then it ends the wait like a write that worked.
+            // Holding a route for a write that failed would hold it forever.
+            EventStore::SaveFailed { call_id, message } => {
                 tracing::error!(message, "could not write the store");
+
+                self.landed(*call_id, actions);
             }
         }
     }
@@ -570,25 +556,56 @@ impl StateServer {
         }
     }
 
-    /// Answer a waiting snapshot, once the last bank it asked about is in.
+    /// What a route is owed, sent the moment nothing it started is still out.
     ///
-    /// Nobody waiting is the ordinary case for a sync nothing asked for — a
-    /// timer, later — so an absent entry is silent here, unlike
-    /// [`answered`](Self::answered).
-    fn serve_once_every_bank_has_reported(&mut self, call_id: CallId, actions: &mut Vec<Action>) {
+    /// Every answer goes through here rather than onto `actions` directly, so
+    /// no route has to remember what it ought to wait for.
+    fn answer(&mut self, request_id: RequestId, action: ActionRouter, actions: &mut Vec<Action>) {
+        if self.outstanding(request_id) {
+            self.held.insert(request_id, action);
+
+            return;
+        }
+
+        actions.push(Action::ToRouter { request_id, action });
+    }
+
+    /// One call has landed. Release the answer it was the last thing holding.
+    ///
+    /// Silent when nothing was waiting: that is the ordinary shape of a sync
+    /// nobody asked for, unlike [`answered`](Self::answered).
+    fn landed(&mut self, call_id: CallId, actions: &mut Vec<Action>) {
         let Some(request_id) = self.waiting.remove(&call_id) else {
             return;
         };
 
-        // Somebody with three banks gets one answer, after the third.
-        if self.waiting.values().any(|waiter| *waiter == request_id) {
+        // Somebody with three banks is answered after the third, not the first.
+        if self.outstanding(request_id) {
             return;
         }
 
-        actions.push(Action::ToRouter {
-            request_id,
-            action: ActionRouter::Serve,
-        });
+        let Some(action) = self.held.remove(&request_id) else {
+            return;
+        };
+
+        actions.push(Action::ToRouter { request_id, action });
+    }
+
+    /// Whether this route started anything that has not come back.
+    fn outstanding(&self, request_id: RequestId) -> bool {
+        self.waiting.values().any(|waiter| *waiter == request_id)
+    }
+
+    /// A fresh [`CallId`] that inherits whatever `call_id` was holding.
+    ///
+    /// One call causing the next is the ordinary shape here — a fetch is
+    /// written, a poll is exchanged — and the route waits for the end of that
+    /// chain, not for its first link.
+    fn passing(&mut self, call_id: CallId) -> CallId {
+        match self.waiting.remove(&call_id) {
+            Some(request_id) => self.calling(request_id),
+            None => self.call(),
+        }
     }
 
     /// A fresh [`CallId`], noted as owed to the route that is waiting.

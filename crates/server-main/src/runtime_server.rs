@@ -78,6 +78,11 @@ const PLAID_AT_ONCE: usize = 4;
 /// per person signing in, and they are not waiting on it.
 const EMAIL_AT_ONCE: usize = 2;
 
+/// How many writes may be in flight at once. Bounded by what the Postgres
+/// pool will hand out either way; this is what stops a burst queueing there
+/// instead, where it is invisible.
+const STORE_AT_ONCE: usize = 8;
+
 pub struct RuntimeServer {
     /// The store. Required, and not optional in any sense: the access tokens
     /// live in it, so a server without one has no way to reach any bank and
@@ -151,6 +156,11 @@ pub struct RuntimeServer {
     /// Every sign-in email. Its own pool so a slow bank cannot use up the room
     /// a sign-in needs — the whole reason there is one per source.
     email: SourcePool,
+
+    /// Every write. The store is a source like any other now: it is asked to
+    /// do something and reports back that it did, and the machine holds the
+    /// route's answer until it has.
+    store: SourcePool,
 }
 
 impl RuntimeServer {
@@ -193,6 +203,7 @@ impl RuntimeServer {
         let runtime = Arc::new(Self {
             plaid: SourcePool::new("plaid", PLAID_AT_ONCE, Arc::clone(&exchange)),
             email: SourcePool::new("email", EMAIL_AT_ONCE, Arc::clone(&exchange)),
+            store: SourcePool::new("store", STORE_AT_ONCE, Arc::clone(&exchange)),
             exchange,
             state: RwLock::new(StateServer::new()),
             credentials,
@@ -259,7 +270,7 @@ impl RuntimeServer {
                     return;
                 };
 
-                runtime.turn().await;
+                runtime.turn();
             }
         });
 
@@ -299,7 +310,7 @@ impl RuntimeServer {
     /// caller of `handle_events`. A batch is whatever arrived while the last
     /// turn was running, so the machine sees three banks reporting as one
     /// batch rather than three — which is what makes it worth batching at all.
-    async fn turn(self: &Arc<Self>) {
+    fn turn(self: &Arc<Self>) {
         let events = self.exchange.drain();
 
         if events.is_empty() {
@@ -320,7 +331,7 @@ impl RuntimeServer {
         tracing::debug!(?events, ?actions, "turn");
 
         for action in actions {
-            self.begin(action).await;
+            self.begin(action);
         }
     }
 
@@ -333,36 +344,28 @@ impl RuntimeServer {
 
     /// Set one action going.
     ///
-    /// A call to a source is spawned and not waited for: one that takes a
-    /// second would otherwise stall every other route's turns, and whatever it
-    /// produces arrives back on the queue as an ordinary event.
-    ///
-    /// A write is **awaited**, and that is load-bearing rather than an
-    /// oversight. The machine emits `SaveFetched` and then `Serve` in one
-    /// turn, and the route reads the store the moment it is told to — so
-    /// letting the answer overtake the write would serve the rows the sync was
-    /// about to replace. Waiting here is what orders them, until the store
-    /// reports back with an event of its own and the machine can wait itself.
-    async fn begin(self: &Arc<Self>, action: Action) {
+    /// **Nothing here waits.** Every call goes to the pool for its source and
+    /// comes back as an event whenever it lands, which is what keeps one slow
+    /// bank out of every other route's turns. Which pool is the only thing
+    /// decided: a bank, an email and the store are three sources, so a slow
+    /// one cannot crowd out the others.
+    fn begin(self: &Arc<Self>, action: Action) {
         match action {
             // The answer somebody is parked on. There is no IO in handing it
-            // over, and by now everything it was waiting on has happened.
+            // over, and by now everything it was waiting on has landed — the
+            // machine held it until the last write reported.
             Action::ToRouter { request_id, action } => {
                 self.exchange.deliver(request_id, action);
             }
 
-            Action::ToStore { .. } | Action::ToProcess { .. } => {
-                let caused = self.perform_action(&action).await;
-
-                self.exchange.push_all(caused);
-            }
-
-            // Handed to the pool for that source and not waited for. Which
-            // pool is the only thing decided here: a bank and an email are
-            // different sources, so a slow one cannot crowd out the other.
             Action::ToSource { .. } => self.calling(&self.plaid, action),
 
             Action::ToEmail { .. } => self.calling(&self.email, action),
+
+            Action::ToStore { .. } => self.calling(&self.store, action),
+
+            // No IO and nothing to wait for: a notify and a log line.
+            Action::ToProcess { action } => self.perform_action_process(&action),
         }
     }
 
@@ -401,11 +404,11 @@ impl RuntimeServer {
         match action {
             Action::ToSource { action } => return self.perform_action_source(action).await,
             Action::ToStore { action } => return self.perform_action_store(action).await,
-            Action::ToProcess { action } => self.perform_action_process(action),
             Action::ToEmail { action } => self.perform_action_email(action).await,
-            // Handed to the route parked on it, before ever reaching here.
-            Action::ToRouter { .. } => {
-                unreachable!("a router action is delivered rather than performed")
+            // Both are handled where the action is set going: an answer goes
+            // to the route parked on it, and a process action is a notify.
+            Action::ToRouter { .. } | Action::ToProcess { .. } => {
+                unreachable!("delivered rather than performed")
             }
         }
 
@@ -587,36 +590,52 @@ impl RuntimeServer {
 
     /// Everything the store is asked for.
     ///
-    /// Each arm ends by feeding the outcome back in as an event, which is what
-    /// closes the loop: nothing here inspects an answer or decides anything
-    /// about it.
+    /// Whether it landed, as the event that says so.
+    ///
+    /// One report for every write, against the call that asked for it. The
+    /// machine holds a route's answer until this arrives, so a write that
+    /// reported nothing would be a request that never returns — which is why
+    /// the failure is an event too, rather than a line in a log.
     async fn perform_action_store(&self, action: &ActionStore) -> Vec<Event> {
+        let call_id = action.call_id();
+
+        let event = match self.write_store(action).await {
+            Ok(()) => EventStore::Written { call_id },
+
+            Err(e) => EventStore::SaveFailed {
+                call_id,
+                message: e.to_string(),
+            },
+        };
+
+        vec![Event::FromStore { event }]
+    }
+
+    /// The write itself. Nothing here inspects an answer or decides anything
+    /// about it; `perform_action_store` turns the outcome into the event.
+    async fn write_store(&self, action: &ActionStore) -> Result<(), src_postgres::PostgresError> {
         let db = &self.db;
 
         match action {
             ActionStore::SaveCode {
+                call_id: _,
                 email,
                 code_sha256,
                 expires_at,
             } => {
-                if let Err(e) = src_postgres::save_code(db, email, code_sha256, *expires_at).await {
-                    return Self::save_failed(e);
-                }
+                src_postgres::save_code(db, email, code_sha256, *expires_at).await?;
             }
 
-            ActionStore::RecordAttempt { email } => {
-                if let Err(e) = src_postgres::record_attempt(db, email).await {
-                    return Self::save_failed(e);
-                }
+            ActionStore::RecordAttempt { call_id: _, email } => {
+                src_postgres::record_attempt(db, email).await?;
             }
 
-            ActionStore::DeleteCode { email } => {
-                if let Err(e) = src_postgres::delete_code(db, email).await {
-                    return Self::save_failed(e);
-                }
+            ActionStore::DeleteCode { call_id: _, email } => {
+                src_postgres::delete_code(db, email).await?;
             }
 
             ActionStore::CreateSession {
+                call_id: _,
                 email,
                 token_sha256,
                 expires_at,
@@ -637,43 +656,38 @@ impl RuntimeServer {
                     Ok::<(), src_postgres::PostgresError>(())
                 };
 
-                if let Err(e) = created.await {
-                    return Self::save_failed(e);
-                }
+                created.await?;
             }
 
             ActionStore::SaveLink {
+                call_id: _,
                 link_token,
                 user_id,
             } => {
-                if let Err(e) = src_postgres::save_link(db, link_token, *user_id).await {
-                    return Self::save_failed(e);
-                }
+                src_postgres::save_link(db, link_token, *user_id).await?;
             }
 
-            ActionStore::CollectLink { link_token } => {
-                if let Err(e) = src_postgres::collect_link(db, link_token).await {
-                    return Self::save_failed(e);
-                }
+            ActionStore::CollectLink {
+                call_id: _,
+                link_token,
+            } => {
+                src_postgres::collect_link(db, link_token).await?;
             }
 
             ActionStore::SaveItem {
+                call_id: _,
                 item_id,
                 link_token,
             } => {
-                if let Err(e) = self.save_linked_item(db, item_id, link_token).await {
-                    return Self::save_failed(e);
-                }
+                self.save_linked_item(db, item_id, link_token).await?;
             }
 
             ActionStore::SaveFetched { .. } | ActionStore::SaveStatus { .. } => {
-                if let Err(e) = self.write(db, action).await {
-                    return Self::save_failed(e);
-                }
+                self.write(db, action).await?;
             }
         }
 
-        Vec::new()
+        Ok(())
     }
 
     /// Write a newly linked bank.
@@ -718,16 +732,6 @@ impl RuntimeServer {
         tracing::info!(item_id, %user_id, "bank linked");
 
         Ok(())
-    }
-
-    /// A failed write, as the event that says so. The machine logs it and
-    /// carries on; what it must not do is find out by a silence.
-    fn save_failed(e: src_postgres::PostgresError) -> Vec<Event> {
-        vec![Event::FromStore {
-            event: EventStore::SaveFailed {
-                message: e.to_string(),
-            },
-        }]
     }
 
     /// One user's banks, as the store holds them.
@@ -844,6 +848,7 @@ impl RuntimeServer {
     ) -> Result<(), src_postgres::PostgresError> {
         match action {
             ActionStore::SaveFetched {
+                call_id: _,
                 item_id,
                 institution_name,
                 added,
@@ -890,6 +895,7 @@ impl RuntimeServer {
             }
 
             ActionStore::SaveStatus {
+                call_id: _,
                 item_id,
                 error_code,
             } => {

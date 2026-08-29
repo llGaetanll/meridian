@@ -204,13 +204,10 @@ means adding, changing or removing its example here.
 - `INFO src_resend email sent id=… to=alex@example.com`
   — what a restart came back with, before anything is fetched. Zeroes are a
   first run, not a failure.
-- `ERROR server_main::state_server could not read the store; starting empty message="connection refused"`
-  — survivable. An empty ledger is what a first run has, and the next request
-  fills it. Logged at ERROR because it means something is wrong even though
-  nothing broke.
 - `ERROR server_main::state_server could not write the store message=…`
-  — what was fetched is still in memory and still being served. The cursor not
-  having moved is what makes the next restart recover rather than skip.
+  — the route waiting on it is answered anyway and serves the rows we already
+  had, because a request held for a write that failed is held forever. The
+  cursor not having moved is what makes the next sync recover rather than skip.
 - `DEBUG server_main::runtime_server written to the store item_id=8Pd5Zx… added=48 modified=0 removed=0`
   — one per sync. `DEBUG` because a healthy server writes on every refresh.
 - `INFO src_postgres::postgres_item item removed with its history item_id=8Pd5Zx…`
