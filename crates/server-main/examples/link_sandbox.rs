@@ -54,6 +54,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let db = src_postgres::connect(&url).await?;
     src_postgres::migrate(&db).await?;
 
+    // The same user the server serves, so the bank shows up where you look for
+    // it. Both read this variable, and both will stop once a session says who
+    // is asking.
+    let email =
+        std::env::var("MERIDIAN_USER_EMAIL").map_err(|_| "MERIDIAN_USER_EMAIL is not set")?;
+
+    let user_id = src_postgres::upsert_user(&db, &email).await?;
+
     let client = PlaidClient::new(credentials)?;
 
     let created = src_plaid::create_sandbox_public_token(&client, &institution_id).await?;
@@ -66,6 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &db,
         &src_postgres::StoredItem {
             item_id: exchanged.item_id.clone(),
+            user_id,
             access_token: exchanged.access_token,
             institution_id: Some(institution_id.clone()),
             institution_name: None,
@@ -78,7 +87,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // The token is not printed. It is a credential, and this is the one place
     // it would be easy to paste somewhere by accident.
-    println!("\nlinked {institution_id} as item {}", exchanged.item_id);
+    println!(
+        "\nlinked {institution_id} as item {} for {email}",
+        exchanged.item_id
+    );
     println!("start the server and it will sync on the first request\n");
 
     Ok(())

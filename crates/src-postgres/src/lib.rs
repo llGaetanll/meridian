@@ -18,6 +18,7 @@ mod postgres_ledger;
 mod postgres_migrate;
 mod postgres_money;
 mod postgres_pool;
+mod postgres_user;
 
 pub use postgres_item::StoredItem;
 pub use postgres_item::load_items;
@@ -37,3 +38,4 @@ pub use postgres_pool::Db;
 pub use postgres_pool::PostgresError;
 pub use postgres_pool::connect;
 pub use postgres_pool::ping;
+pub use postgres_user::upsert_user;

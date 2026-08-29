@@ -10,6 +10,7 @@ api-ledger = { path = "../api-ledger" }
 chrono = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 sqlx = { workspace = true }

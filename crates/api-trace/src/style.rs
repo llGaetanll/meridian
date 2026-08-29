@@ -23,16 +23,30 @@ pub enum Paint {
 }
 
 impl Paint {
-    /// What the console should use: colour only for a terminal that asked for
-    /// it. A redirected stdout is a file by another name, and `NO_COLOR` is
-    /// the user saying no.
+    /// What the console should use. A terminal gets colour; a redirected
+    /// stdout is a file by another name and does not. `NO_COLOR` and
+    /// `CLICOLOR_FORCE` are the two ways of overriding that guess.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn console() -> Self {
         use std::io::IsTerminal;
 
-        let wanted = std::env::var_os("NO_COLOR").is_none();
+        // First, and final. Everything below is this process guessing at who
+        // is watching; this is being told.
+        if std::env::var_os("NO_COLOR").is_some() {
+            return Self::Off;
+        }
 
-        if wanted && std::io::stdout().is_terminal() {
+        // The terminal test cannot see past a container. A server under docker
+        // writes to a pipe the daemon is capturing, so the test says no and
+        // means it — but what it is really being asked is whether anyone will
+        // render the codes, and `docker compose logs` does, in a terminal, on
+        // the other end of that pipe. Whoever set up the pipe knows that and
+        // we do not, so they get to say. See docker-compose.yml.
+        if forced() {
+            return Self::Ansi;
+        }
+
+        if std::io::stdout().is_terminal() {
             Self::Ansi
         } else {
             Self::Off
@@ -68,6 +82,15 @@ impl Paint {
             out.push_str(RESET);
         }
     }
+}
+
+/// `CLICOLOR_FORCE`, read the way everything else reads it: set, non-empty, and
+/// not `0`. The counterpart to `NO_COLOR`, and spelled the same as it is
+/// everywhere else so that one variable covers a whole compose file rather
+/// than just us.
+#[cfg(not(target_arch = "wasm32"))]
+fn forced() -> bool {
+    std::env::var_os("CLICOLOR_FORCE").is_some_and(|value| !value.is_empty() && value != "0")
 }
 
 /// One colour per level, so the eye finds the trouble without reading.
