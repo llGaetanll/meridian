@@ -270,6 +270,12 @@ means adding, changing or removing its example here.
   went quiet on a request rather than an outcome.
 - `DEBUG server_main::router_exchange a route hung up before its answer arrived request_id=3`
   — an ordinary dropped connection.
+- `ERROR server_main::source_pool a call to a source did not finish source=plaid error="task panicked"`
+  — the call itself panicked, so whatever was waiting on its answer still is.
+  This line is the only trace of why.
+- `ERROR server_main::source_pool a source pool is gone; its call was dropped source=plaid`
+  — the pool's task ended while the server is still serving, which should not
+  happen while the process is up.
 - `WARN trace log file unavailable error="logs/meridian.log: permission denied"`
 - `ERROR panic panicked at=crates/web-main/src/pages/markets.rs:112 message="…"`
 - `INFO server_main::runtime_server shutting down` / `INFO server_main::runtime_server server stopped`
