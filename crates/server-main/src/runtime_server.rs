@@ -32,6 +32,7 @@ use tower_http::cors::CorsLayer;
 
 use crate::Action;
 use crate::ActionClient;
+use crate::ActionEmail;
 use crate::ActionProcess;
 use crate::ActionSource;
 use crate::ActionStore;
@@ -44,7 +45,7 @@ use crate::EventStore;
 use crate::EventTerminal;
 use crate::PlaidCollect;
 use crate::StateServer;
-use crate::login_code;
+use crate::StoredCode;
 use crate::project;
 use crate::runtime_plaid;
 use crate::session_token;
@@ -57,6 +58,13 @@ use uuid::Uuid;
 
 /// A different port from either front-end, so all three can run at once.
 const PORT: u16 = 8082;
+
+/// How often the machine is handed fresh entropy.
+///
+/// Every seed is 32 bytes of ChaCha20 state, so one covers far more codes than
+/// a minute will ever produce. The interval is not about running out — it is
+/// about how much a single leaked seed is worth.
+const RESEED_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
 
 pub struct RuntimeServer {
     /// The store. Required, and not optional in any sense: the access tokens
@@ -187,10 +195,42 @@ impl RuntimeServer {
         // machine asks to be filled from the store rather than the runtime
         // deciding to do it on its own initiative.
         runtime
-            .dispatch(vec![Event::FromProcess {
-                event: EventProcess::Started,
-            }])
+            .dispatch(vec![
+                Event::FromProcess {
+                    event: EventProcess::Seeded { seed: fresh_seed() },
+                },
+                Event::FromProcess {
+                    event: EventProcess::Started,
+                },
+            ])
             .await;
+
+        // Reseeded on a timer, which is what bounds the damage of a leaked
+        // log: a seed tells you the codes drawn before the next one and no
+        // more. The task holds a weak reference so it cannot keep the server
+        // alive past its own shutdown.
+        let reseed = Arc::downgrade(&runtime);
+
+        tokio::spawn(async move {
+            let mut ticks = tokio::time::interval(RESEED_EVERY);
+
+            // The first tick is immediate and we have just seeded.
+            ticks.tick().await;
+
+            loop {
+                ticks.tick().await;
+
+                let Some(runtime) = reseed.upgrade() else {
+                    return;
+                };
+
+                runtime
+                    .dispatch(vec![Event::FromProcess {
+                        event: EventProcess::Seeded { seed: fresh_seed() },
+                    }])
+                    .await;
+            }
+        });
 
         let router = Router::new()
             .route("/snapshot", get(snapshot))
@@ -228,9 +268,9 @@ impl RuntimeServer {
     /// The loop the architecture describes, one turn at a time: a request is
     /// the event source here rather than a `loop`, because axum owns the outer
     /// loop and hands us one batch per connection.
-    async fn dispatch(&self, events: Vec<Event>) {
+    async fn dispatch(&self, events: Vec<Event>) -> Vec<Action> {
         if events.is_empty() {
-            return;
+            return Vec::new();
         }
 
         let now = unix_now();
@@ -244,6 +284,8 @@ impl RuntimeServer {
         tracing::debug!(?events, ?actions, "handled");
 
         self.perform_actions(&actions).await;
+
+        actions
     }
 
     /// Connect to Postgres and bring the schema up to date, if there is one to
@@ -292,12 +334,44 @@ impl RuntimeServer {
             Action::ToSource { action } => self.perform_action_source(action).await,
             Action::ToStore { action } => self.perform_action_store(action).await,
             Action::ToProcess { action } => self.perform_action_process(action),
-            // Serving is the response to the request that is already in hand,
-            // so it is the absence of work here rather than a step: the handler
-            // projects the snapshot once every action has been carried out.
-            Action::ToClient {
-                action: ActionClient::Serve,
-            } => {}
+            Action::ToEmail { action } => self.perform_action_email(action).await,
+            // Everything for a client is the answer to a request already in
+            // hand, so it is the absence of work here rather than a step: the
+            // handler reads the outcome off the actions once they are done.
+            Action::ToClient { .. } => {}
+        }
+    }
+
+    /// Get a sign-in code to a person, or say where it went instead.
+    async fn perform_action_email(&self, action: &ActionEmail) {
+        let ActionEmail::SendCode { email, code } = action;
+
+        match (&self.email_send, &self.resend) {
+            (EmailSend::Resend, Some(client)) => {
+                let message = src_resend::Email::new(
+                    client_from(),
+                    email,
+                    format!("{code} is your Meridian code"),
+                    format!(
+                        "Your Meridian sign-in code is {code}.\n\n\
+                         It works for the next 10 minutes. If you did not ask for it, \
+                         you can ignore this — nobody can sign in without it.",
+                    ),
+                );
+
+                if let Err(e) = src_resend::send(client, &message).await {
+                    tracing::error!(error = %e, "could not send a sign-in code");
+                }
+            }
+
+            // The code goes in the log, at WARN, saying no email was sent.
+            // Loud on purpose: a server accidentally running this way says so
+            // on every single sign-in rather than looking healthy.
+            _ => tracing::warn!(
+                email,
+                code,
+                "EMAIL_SEND=log: no email sent, the code is on this line",
+            ),
         }
     }
 
@@ -318,6 +392,54 @@ impl RuntimeServer {
         let db = &self.db;
 
         match action {
+            ActionStore::SaveCode {
+                email,
+                code_sha256,
+                expires_at,
+            } => {
+                if let Err(e) = src_postgres::save_code(db, email, code_sha256, *expires_at).await {
+                    self.report_save_failed(e).await;
+                }
+            }
+
+            ActionStore::RecordAttempt { email } => {
+                if let Err(e) = src_postgres::record_attempt(db, email).await {
+                    self.report_save_failed(e).await;
+                }
+            }
+
+            ActionStore::DeleteCode { email } => {
+                if let Err(e) = src_postgres::delete_code(db, email).await {
+                    self.report_save_failed(e).await;
+                }
+            }
+
+            ActionStore::CreateSession {
+                email,
+                token_sha256,
+                expires_at,
+            } => {
+                // An address becomes a user here, which is what makes there be
+                // no separate sign-up: one that exists signs in, one that does
+                // not signs up, so there is nothing to choose and no way to
+                // choose wrong. A lookup, not a decision — the machine has no
+                // use for a uuid.
+                let created = async {
+                    let user_id = src_postgres::upsert_user(db, email).await?;
+
+                    src_postgres::create_session(db, token_sha256, user_id, Some(*expires_at))
+                        .await?;
+
+                    tracing::info!(%user_id, "signed in");
+
+                    Ok::<(), src_postgres::PostgresError>(())
+                };
+
+                if let Err(e) = created.await {
+                    self.report_save_failed(e).await;
+                }
+            }
+
             ActionStore::SaveFetched { .. } | ActionStore::SaveStatus { .. } => {
                 if let Err(e) = self.write(db, action).await {
                     self.dispatch(vec![Event::FromStore {
@@ -329,6 +451,17 @@ impl RuntimeServer {
                 }
             }
         }
+    }
+
+    /// A failed write, as the event that says so. The machine logs it and
+    /// carries on; what it must not do is find out by a silence.
+    async fn report_save_failed(&self, e: src_postgres::PostgresError) {
+        self.dispatch(vec![Event::FromStore {
+            event: EventStore::SaveFailed {
+                message: e.to_string(),
+            },
+        }])
+        .await;
     }
 
     /// One user's banks, as the store holds them.
@@ -461,6 +594,13 @@ impl RuntimeServer {
             } => {
                 src_postgres::save_error(db, item_id, error_code.as_deref()).await?;
             }
+
+            // Carried out where they are decided, above. `write` is the sync
+            // path, whose ordering is load-bearing in a way these are not.
+            ActionStore::SaveCode { .. }
+            | ActionStore::RecordAttempt { .. }
+            | ActionStore::DeleteCode { .. }
+            | ActionStore::CreateSession { .. } => {}
         }
 
         Ok(())
@@ -631,107 +771,6 @@ impl RuntimeServer {
         found.ok_or(StatusCode::UNAUTHORIZED)
     }
 
-    /// Make a code, store its hash, and get it to the person.
-    ///
-    /// The user is created here if this is their first time. That is what
-    /// makes there be no separate sign-up: an address that exists signs in and
-    /// one that does not signs up, so there is nothing to choose and no way to
-    /// choose wrong.
-    async fn send_login_code(&self, email: &str) -> anyhow::Result<()> {
-        let user_id = src_postgres::upsert_user(&self.db, email).await?;
-
-        let code = login_code::generate();
-
-        let expires_at =
-            Timestamp::from_secs(unix_now().as_secs() + login_code::GOOD_FOR.as_secs());
-
-        src_postgres::save_code(&self.db, email, &login_code::hash(&code), expires_at).await?;
-
-        match (&self.email_send, &self.resend) {
-            (EmailSend::Resend, Some(client)) => {
-                let message = src_resend::Email::new(
-                    client_from(),
-                    email,
-                    format!("{code} is your Meridian code"),
-                    format!(
-                        "Your Meridian sign-in code is {code}.\n\n\
-                         It works for the next 10 minutes. If you did not ask for it, \
-                         you can ignore this — nobody can sign in without it.",
-                    ),
-                );
-
-                src_resend::send(client, &message).await?;
-            }
-
-            // The code goes in the log, at WARN, saying that no email was
-            // sent. Loud on purpose: a server accidentally running this way
-            // says so on every single sign-in rather than looking healthy.
-            _ => tracing::warn!(
-                %user_id,
-                email,
-                code,
-                "EMAIL_SEND=log: no email sent, the code is on this line",
-            ),
-        }
-
-        Ok(())
-    }
-
-    /// Check a code and, if it is the right one, hand back a session.
-    ///
-    /// `Ok(None)` is every way of being wrong. The distinction between wrong,
-    /// expired and exhausted is real and is logged, but it is not told to the
-    /// caller — only somebody working through guesses benefits from knowing
-    /// which.
-    async fn verify_login_code(&self, email: &str, code: &str) -> anyhow::Result<Option<String>> {
-        let Some(stored) = src_postgres::load_code(&self.db, email).await? else {
-            return Ok(None);
-        };
-
-        let verdict = login_code::verify(
-            &login_code::StoredCode {
-                code_sha256: stored.code_sha256,
-                expires_at: stored.expires_at,
-                attempts: stored.attempts,
-            },
-            code,
-            unix_now(),
-        );
-
-        if verdict != login_code::Verdict::Accepted {
-            // Counted in the database rather than here, so two guesses landing
-            // at once cannot both read the same number.
-            src_postgres::record_attempt(&self.db, email).await?;
-
-            tracing::warn!(email, verdict = ?verdict, "a sign-in code was rejected");
-
-            return Ok(None);
-        }
-
-        let user_id = src_postgres::upsert_user(&self.db, email).await?;
-
-        let token = session_token::generate();
-
-        let expires_at =
-            Timestamp::from_secs(unix_now().as_secs() + session_token::GOOD_FOR.as_secs());
-
-        src_postgres::create_session(
-            &self.db,
-            &session_token::hash(&token),
-            user_id,
-            Some(expires_at),
-        )
-        .await?;
-
-        // Single use. A code that has signed somebody in is worth nothing
-        // afterwards, which is what makes a replayed one harmless.
-        src_postgres::delete_code(&self.db, email).await?;
-
-        tracing::info!(%user_id, "signed in");
-
-        Ok(Some(token))
-    }
-
     /// One Item's access token, if we hold one.
     fn token_for(&self, item_id: &str) -> Option<String> {
         match self.tokens.read() {
@@ -832,10 +871,11 @@ async fn auth_request(
         return StatusCode::NO_CONTENT;
     }
 
-    if let Err(e) = runtime.send_login_code(&email).await {
-        // Reported here and not to the caller, for the same reason.
-        tracing::error!(error = %e, "could not send a sign-in code");
-    }
+    runtime
+        .dispatch(vec![Event::FromClient {
+            event: EventClient::CodeRequested { email },
+        }])
+        .await;
 
     StatusCode::NO_CONTENT
 }
@@ -865,16 +905,45 @@ async fn auth_verify(
 ) -> Result<Json<AuthVerified>, StatusCode> {
     let email = body.email.trim().to_lowercase();
 
-    let token = runtime
-        .verify_login_code(&email, body.code.trim())
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "could not verify a sign-in code");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+    // What the store holds against this address, read before deciding — the
+    // same shape as the snapshot path, and for the same reason: the machine
+    // keeps nothing, so the facts arrive with the request.
+    let stored = match src_postgres::load_code(&runtime.db, &email).await {
+        Ok(stored) => stored.map(|s| StoredCode {
+            code_sha256: s.code_sha256,
+            expires_at: s.expires_at,
+            attempts: s.attempts,
+        }),
 
-    Ok(Json(AuthVerified { token }))
+        Err(e) => {
+            tracing::error!(error = %e, "could not read the sign-in code");
+
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    let actions = runtime
+        .dispatch(vec![Event::FromClient {
+            event: EventClient::CodeSubmitted {
+                email,
+                code: body.code.trim().to_string(),
+                stored,
+            },
+        }])
+        .await;
+
+    // The outcome is read off what the machine decided, not worked out again
+    // here. There is exactly one action that signs somebody in.
+    let token = actions.into_iter().find_map(|action| match action {
+        Action::ToClient {
+            action: ActionClient::SignedIn { token },
+        } => Some(token),
+        _ => None,
+    });
+
+    Ok(Json(AuthVerified {
+        token: token.ok_or(StatusCode::UNAUTHORIZED)?,
+    }))
 }
 
 /// `GET /health`
@@ -897,6 +966,16 @@ async fn health(State(runtime): State<Arc<RuntimeServer>>) -> (StatusCode, Strin
             )
         }
     }
+}
+
+/// 32 bytes from the operating system.
+///
+/// The one place entropy enters, and it is at the edge — the machine has no
+/// source of its own, the same way it has no clock. `rand::rng()` is the OS
+/// CSPRNG, which is the only acceptable origin for a seed that credentials are
+/// drawn from.
+fn fresh_seed() -> [u8; 32] {
+    rand::random()
 }
 
 /// Who the sign-in email comes from. Read once per send rather than held,

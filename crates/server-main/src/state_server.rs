@@ -17,12 +17,15 @@
 
 use api_common::Timestamp;
 use api_common::ratelimit::RateLimiter;
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use src_plaid::PlaidEndpoint;
 use src_plaid::PlaidRateCtx;
 use src_plaid::PlaidRateLimiter;
 
 use crate::Action;
 use crate::ActionClient;
+use crate::ActionEmail;
 use crate::ActionProcess;
 use crate::ActionSource;
 use crate::ActionStore;
@@ -33,6 +36,8 @@ use crate::EventSource;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::ItemFacts;
+use crate::login_code;
+use crate::session_token;
 
 /// How long a sync is good for before Plaid is asked again.
 ///
@@ -46,8 +51,26 @@ pub const FRESH_FOR_SECS: u64 = 30;
 ///
 /// Fields are private: state changes only through
 /// [`handle_events`](StateServer::handle_events).
+/// How long a session lasts. Long, because the alternative is asking somebody
+/// to check their email to look at their own balance; short enough that a
+/// phone lost in a drawer stops working eventually.
+pub const SESSION_GOOD_FOR_SECS: u64 = 90 * 24 * 60 * 60;
+
 #[derive(Debug, Default)]
 pub struct StateServer {
+    /// Where sign-in codes and session tokens come from.
+    ///
+    /// Seeded from the edge by [`EventProcess::Seeded`](crate::EventProcess),
+    /// never from a clock or a counter, and `None` until one arrives. ChaCha20
+    /// rather than a fast PRNG: these are credentials, and a generator whose
+    /// state can be recovered from a couple of outputs would hand an attacker
+    /// every code after the ones they saw.
+    ///
+    /// In the machine rather than the runtime so that a code is a *decision*
+    /// like everything else — reproducible from the event log, and reachable
+    /// from an `eval!` test.
+    rng: Option<ChaCha20Rng>,
+
     /// What Plaid will let us send. The one thing here that genuinely cannot
     /// be read back from the store — it is a fact about this process's last
     /// minute, and it is why "may I call?" is arithmetic in the machine rather
@@ -97,6 +120,112 @@ impl StateServer {
 
     fn handle_event_client(&mut self, event: &EventClient, actions: &mut Vec<Action>) {
         match event {
+            EventClient::CodeRequested { email } => {
+                // No entropy, no credentials. Refused rather than filled in
+                // with anything derivable — a predictable sign-in code is a
+                // way into somebody's bank, and there is no fallback that is
+                // better than saying no.
+                let Some(rng) = self.rng.as_mut() else {
+                    tracing::error!("asked for a sign-in code before the machine was seeded");
+
+                    return;
+                };
+
+                let code = login_code::generate(rng);
+
+                let expires_at =
+                    Timestamp::from_secs(self.now.as_secs() + login_code::GOOD_FOR.as_secs());
+
+                // The hash is stored and the code is sent. They are separate
+                // actions because they go to different places, and only one of
+                // them may ever hold the plaintext.
+                actions.push(Action::ToStore {
+                    action: ActionStore::SaveCode {
+                        email: email.clone(),
+                        code_sha256: login_code::hash(&code),
+                        expires_at,
+                    },
+                });
+
+                actions.push(Action::ToEmail {
+                    action: ActionEmail::SendCode {
+                        email: email.clone(),
+                        code,
+                    },
+                });
+            }
+
+            EventClient::CodeSubmitted {
+                email,
+                code,
+                stored,
+            } => {
+                // No code standing against this address. A rejection like any
+                // other: telling them apart would say which addresses have a
+                // sign-in in flight.
+                let Some(stored) = stored else {
+                    actions.push(Action::ToClient {
+                        action: ActionClient::Rejected,
+                    });
+
+                    return;
+                };
+
+                let verdict = login_code::verify(stored, code, self.now);
+
+                if verdict != login_code::Verdict::Accepted {
+                    // Counted whatever the reason, including expired: an
+                    // attacker who could reset the cap by waiting would have
+                    // an unlimited number of guesses at the next code.
+                    actions.push(Action::ToStore {
+                        action: ActionStore::RecordAttempt {
+                            email: email.clone(),
+                        },
+                    });
+
+                    tracing::warn!(email, ?verdict, "a sign-in code was rejected");
+
+                    actions.push(Action::ToClient {
+                        action: ActionClient::Rejected,
+                    });
+
+                    return;
+                }
+
+                let Some(rng) = self.rng.as_mut() else {
+                    tracing::error!("a code was accepted before the machine was seeded");
+
+                    actions.push(Action::ToClient {
+                        action: ActionClient::Rejected,
+                    });
+
+                    return;
+                };
+
+                let token = login_code::generate_token(rng);
+
+                actions.push(Action::ToStore {
+                    action: ActionStore::CreateSession {
+                        email: email.clone(),
+                        token_sha256: session_token::hash(&token),
+                        expires_at: Timestamp::from_secs(
+                            self.now.as_secs() + SESSION_GOOD_FOR_SECS,
+                        ),
+                    },
+                });
+
+                // Single use, and spent only once it has bought something.
+                actions.push(Action::ToStore {
+                    action: ActionStore::DeleteCode {
+                        email: email.clone(),
+                    },
+                });
+
+                actions.push(Action::ToClient {
+                    action: ActionClient::SignedIn { token },
+                });
+            }
+
             EventClient::SnapshotRequested { force, items } => {
                 for item in items {
                     if self.should_fetch(item, *force) {
@@ -179,6 +308,10 @@ impl StateServer {
             // asked, so there is nothing to pull into memory at boot — which
             // is what makes a second server process possible.
             EventProcess::Started => {}
+
+            EventProcess::Seeded { seed } => {
+                self.rng = Some(ChaCha20Rng::from_seed(*seed));
+            }
         }
     }
 

@@ -19,6 +19,7 @@
 
 mod action;
 mod action_client;
+mod action_email;
 mod action_process;
 mod action_source;
 mod action_store;
@@ -40,6 +41,7 @@ mod state_server;
 
 pub use action::Action;
 pub use action_client::ActionClient;
+pub use action_email::ActionEmail;
 pub use action_process::ActionProcess;
 pub use action_source::ActionSource;
 pub use action_store::ActionStore;
@@ -51,6 +53,11 @@ pub use event_source::EventSource;
 pub use event_store::EventStore;
 pub use event_terminal::EventTerminal;
 pub use item_facts::ItemFacts;
+pub use login_code::StoredCode;
+pub use login_code::Verdict;
+/// Reachable so the machine's tests can build a stored code to submit
+/// against. Not part of the server's interface.
+pub use login_code::hash as hash_code;
 pub use plaid_collect::PlaidCollect;
 pub use runtime_server::RuntimeServer;
 pub use server_wire::WireSnapshot;

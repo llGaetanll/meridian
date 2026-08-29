@@ -50,14 +50,27 @@ pub struct StoredCode {
     pub attempts: i32,
 }
 
-/// Six digits from the system's CSPRNG.
+/// Six digits, drawn from the generator handed in.
 ///
-/// `rand::rng()` and not a seeded one: this is the only value in the app whose
-/// unpredictability is the whole point, and a reproducible login code would be
-/// no login code at all. Formatted to a fixed width, so `000123` is a code and
-/// not the number 123.
-pub fn generate() -> String {
-    format!("{:06}", rand::rng().random_range(0..1_000_000))
+/// The generator is the machine's, seeded from the edge, which is what makes a
+/// replay of the event log produce the same code. Its unpredictability comes
+/// from the seed being 32 bytes of OS entropy and the generator being
+/// ChaCha20 — not from being unreproducible.
+///
+/// Formatted to a fixed width, so `000123` is a code and not the number 123.
+pub fn generate(rng: &mut impl Rng) -> String {
+    format!("{:06}", rng.random_range(0..1_000_000))
+}
+
+/// A session token: 32 random bytes as hex, from the same generator.
+///
+/// Longer than a code and not guessable by brute force, because unlike a code
+/// it has no expiry measured in minutes and no attempt cap behind it — it is
+/// the credential itself.
+pub fn generate_token(rng: &mut impl Rng) -> String {
+    let bytes: [u8; 32] = rng.random();
+
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// The hash a code is stored as.
@@ -168,12 +181,32 @@ mod tests {
     /// would not match a field that expects six.
     #[test]
     fn a_generated_code_is_always_six_digits() {
+        use rand::SeedableRng;
+
+        let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(1);
+
         for _ in 0..1_000 {
-            let code = generate();
+            let code = generate(&mut rng);
 
             assert_eq!(code.len(), 6, "{code}");
             assert!(code.chars().all(|c| c.is_ascii_digit()), "{code}");
         }
+    }
+
+    /// The whole point of the generator living in the machine: the same seed
+    /// gives the same codes, so an event log replays to the values it produced
+    /// the first time.
+    #[test]
+    fn the_same_seed_gives_the_same_codes() {
+        use rand::SeedableRng;
+
+        let codes = |seed| {
+            let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(seed);
+            (0..5).map(|_| generate(&mut rng)).collect::<Vec<_>>()
+        };
+
+        assert_eq!(codes(7), codes(7));
+        assert_ne!(codes(7), codes(8));
     }
 
     #[test]

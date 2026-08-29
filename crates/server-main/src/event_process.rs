@@ -28,4 +28,15 @@ pub enum EventProcess {
     /// a runtime with behaviour in it — behaviour no `eval!` test can reach and
     /// no event log records.
     Started,
+
+    /// Fresh entropy for the machine's own generator.
+    ///
+    /// Randomness arrives the way time does: from the edge, as a fact, so that
+    /// nothing inside reads a source of its own and a replay of the log lands
+    /// where it did the first time. The machine draws sign-in codes and
+    /// session tokens from it and can mint neither until one arrives.
+    ///
+    /// Sent at startup and on a timer. Reseeding is what bounds the damage of
+    /// a leaked log: a seed only tells you the codes drawn before the next one.
+    Seeded { seed: [u8; 32] },
 }

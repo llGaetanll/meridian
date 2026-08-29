@@ -184,7 +184,11 @@ means adding, changing or removing its example here.
   Both the store and the credentials are required now.
 - `WARN server_main::runtime_server EMAIL_SEND=log: no email sent, the code is on this line user_id=e8b13a2b… email=alex@example.com code=704924`
 - `INFO server_main::runtime_server signed in user_id=e8b13a2b…`
-- `WARN server_main::runtime_server a sign-in code was rejected email=alex@example.com verdict=Wrong`
+- `ERROR server_main::state_server asked for a sign-in code before the machine was seeded`
+  — the machine draws codes and tokens from a generator seeded at the edge,
+  and mints neither before one arrives. There is no fallback: a predictable
+  sign-in code is a way into somebody's bank.
+- `WARN server_main::state_server a sign-in code was rejected email=alex@example.com verdict=Wrong`
   — `Wrong`, `Expired` or `Exhausted`. Which one is logged and deliberately not
   told to the caller: only somebody working through guesses benefits from
   knowing which.
