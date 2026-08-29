@@ -37,6 +37,7 @@ mod login_code;
 mod plaid_collect;
 mod project;
 mod request_id;
+mod router_exchange;
 mod router_server;
 mod runtime_plaid;
 mod runtime_server;

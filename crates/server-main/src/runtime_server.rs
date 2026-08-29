@@ -13,8 +13,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -37,10 +35,10 @@ use crate::EventSource;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::PlaidCollect;
-use crate::RequestId;
 use crate::StateServer;
 use crate::StoredCode;
 use crate::project;
+use crate::router_exchange::RouterExchange;
 use crate::router_server;
 use crate::runtime_plaid;
 use crate::session_token;
@@ -130,10 +128,8 @@ pub struct RuntimeServer {
     /// Raised once the machine asks to shut down.
     shutdown: Notify,
 
-    /// Where [`RequestId`]s come from. At the edge, like the clock and the
-    /// seed — the machine only relays them, so nothing about a decision
-    /// depends on which number a request happened to draw.
-    requests: AtomicU64,
+    /// Where a route's question is paired with its answer.
+    exchange: RouterExchange,
 }
 
 impl RuntimeServer {
@@ -181,7 +177,7 @@ impl RuntimeServer {
             db,
             fetching: Mutex::new(()),
             shutdown: Notify::new(),
-            requests: AtomicU64::new(0),
+            exchange: RouterExchange::default(),
         });
 
         // The first event, and the reason the boot sequence is replayable: the
@@ -249,37 +245,16 @@ impl RuntimeServer {
 
     /// Ask the machine something on a route's behalf, and wait for its answer.
     ///
-    /// The one way a handler reaches the machine. It mints the id, so no route
-    /// has to know there is one, and it hands back that route's own action —
-    /// never another's, which is what the id is for.
-    ///
-    /// `None` means the machine produced no answer, which is a bug rather than
-    /// an outcome: every router event owes exactly one.
-    pub(crate) async fn ask(&self, event: EventRouter) -> Option<ActionRouter> {
-        let request_id = self.next_request();
+    /// The one way a handler reaches the machine. The id is minted here, so no
+    /// route has to know there is one.
+    pub(crate) async fn request(&self, event: EventRouter) -> Option<ActionRouter> {
+        let request_id = self.exchange.opening();
 
         let actions = self
             .dispatch(vec![Event::FromRouter { request_id, event }])
             .await;
 
-        let answer = actions.into_iter().find_map(|action| match action {
-            Action::ToRouter {
-                request_id: answered,
-                action,
-            } if answered == request_id => Some(action),
-
-            _ => None,
-        });
-
-        if answer.is_none() {
-            tracing::error!(request_id, "a route asked something nothing answered");
-        }
-
-        answer
-    }
-
-    fn next_request(&self) -> RequestId {
-        self.requests.fetch_add(1, Ordering::Relaxed)
+        self.exchange.answer(request_id, actions)
     }
 
     /// Feed events in, carry out what comes back.
