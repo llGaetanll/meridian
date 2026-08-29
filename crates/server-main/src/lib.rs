@@ -70,6 +70,7 @@ pub use plaid_collect::PlaidCollect;
 pub use request_id::RequestId;
 pub use runtime_server::RuntimeServer;
 pub use server_wire::WireSnapshot;
+pub use state_server::CALL_GOOD_FOR_SECS;
 pub use state_server::FRESH_FOR_SECS;
 pub use state_server::StateServer;
 

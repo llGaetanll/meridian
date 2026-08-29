@@ -152,7 +152,7 @@ pub fn eval(input: TokenStream) -> TokenStream {
                 let __events = vec![#(#events),*];
 
                 let mut __actions = ::std::vec::Vec::new();
-                __eval_state.handle_events(__eval_now, &__events, &mut __actions);
+                __eval_state.handle_events(&__events, &mut __actions);
 
                 // Checked before the patterns so that a missing or extra action
                 // reports as that, rather than as a mismatch three lines down.
@@ -174,10 +174,6 @@ pub fn eval(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         {
             let __eval_state = #state;
-
-            // Whatever the machine already holds. A test that cares about time
-            // sets it beforehand, which keeps the clock out of this syntax.
-            let __eval_now = __eval_state.now();
 
             #(#steps)*
         }

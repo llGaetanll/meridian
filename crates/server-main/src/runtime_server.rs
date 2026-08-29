@@ -78,6 +78,13 @@ const PLAID_AT_ONCE: usize = 4;
 /// per person signing in, and they are not waiting on it.
 const EMAIL_AT_ONCE: usize = 2;
 
+/// How often the machine is told what time it is.
+///
+/// A second, which is far finer than anything the machine measures — the
+/// shortest window in it is thirty seconds — and fine enough that giving up on
+/// a call is not noticeably late.
+const TICK_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+
 /// How many writes may be in flight at once. Bounded by what the Postgres
 /// pool will hand out either way; this is what stops a burst queueing there
 /// instead, where it is invisible.
@@ -218,12 +225,40 @@ impl RuntimeServer {
         // The first event, and the reason the boot sequence is replayable: the
         // machine asks to be filled from the store rather than the runtime
         // deciding to do it on its own initiative.
+        // The clock first. The machine starts at the epoch, and a code minted
+        // before the first tick would expire in 1970.
+        runtime.exchange.push(Event::FromProcess {
+            event: EventProcess::Tick { now: unix_now() },
+        });
+
         runtime.exchange.push(Event::FromProcess {
             event: EventProcess::Seeded { seed: fresh_seed() },
         });
 
         runtime.exchange.push(Event::FromProcess {
             event: EventProcess::Started,
+        });
+
+        // The clock, from the edge, on its own timer. Nothing inside the
+        // machine reads one — this is the only place it enters — and it is
+        // also the only event that arrives when nothing has happened, which
+        // is what lets a call that went quiet be given up on.
+        let ticking = Arc::downgrade(&runtime);
+
+        tokio::spawn(async move {
+            let mut ticks = tokio::time::interval(TICK_EVERY);
+
+            loop {
+                ticks.tick().await;
+
+                let Some(runtime) = ticking.upgrade() else {
+                    return;
+                };
+
+                runtime.exchange.push(Event::FromProcess {
+                    event: EventProcess::Tick { now: unix_now() },
+                });
+            }
         });
 
         // Reseeded on a timer, which is what bounds the damage of a leaked
@@ -317,7 +352,6 @@ impl RuntimeServer {
             return;
         }
 
-        let now = unix_now();
         let mut actions = Vec::new();
 
         // The guard is held across `handle_events` and nothing else. It is
@@ -325,7 +359,7 @@ impl RuntimeServer {
         // `.await` — the IO below happens with the lock long since dropped.
         {
             let mut state = self.write_state();
-            state.handle_events(now, &events, &mut actions);
+            state.handle_events(&events, &mut actions);
         }
 
         tracing::debug!(?events, ?actions, "turn");

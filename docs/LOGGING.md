@@ -257,6 +257,10 @@ means adding, changing or removing its example here.
 - `DEBUG server_main::runtime_server turn events=[FromRouter { request_id: 3, event: SnapshotRequested { .. } }] actions=[ToSource { action: FetchPlaid { call_id: 1, .. } }]`
   — one per turn of the loop, both vectors paired. A quiet server logs none of
   these: a turn with nothing queued does not happen.
+- `WARN server_main::state_server a call took too long and was given up on call_id=7 request_id=3`
+  — a source went quiet rather than failing, so no event ever came. The route
+  waiting is answered with what the store already holds, because a request
+  held for an answer that is not coming is held forever.
 - `ERROR server_main::state_server a source answered a call nobody is waiting on call_id=7`
   — an answer to a question we have no record of asking, which cannot happen
   while every call is minted in the machine. Dropped rather than guessed at:

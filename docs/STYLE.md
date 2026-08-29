@@ -140,8 +140,22 @@ The macro expands to `matches!`, which is why events and actions need no
 `PartialEq` — pattern matching requires no trait at all, and keeping that derive
 off them is what stops it spreading through every type they touch.
 
-Time is not part of the syntax: `eval!` reads the clock off the machine, so a
-test that is *about* time calls the machine's `set_now` first.
+Time is not part of the syntax: it is an event like any other, so a test that
+is *about* time sends one.
+
+```rust
+eval!(&mut state,
+    < requested(false, vec![facts(None, false)]),
+    > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
+
+    // Plaid says nothing. Time passes and nothing else arrives.
+    < tick(too_late),
+    > Action::ToRouter { action: ActionRouter::Serve, .. },
+);
+```
+
+That is what makes "we waited long enough" a test rather than a stopwatch.
+`phone-state` has not moved yet and still sets its clock with `set_now`.
 
 **A bug is reproduced before it is fixed.** Write the test first, run it, and
 watch it fail for the reason you think it fails. Only then change the code. A
