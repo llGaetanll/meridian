@@ -99,7 +99,7 @@ impl ApiCall {
                 method,
                 url = url.as_str(),
                 body = body.as_ref(),
-                "-> request",
+                "->",
             ),
             None => tracing::info!(
                 target: TARGET,
@@ -107,7 +107,7 @@ impl ApiCall {
                 source = source.name(),
                 method,
                 url = url.as_str(),
-                "-> request",
+                "->",
             ),
         }
 
@@ -148,7 +148,7 @@ impl ApiCall {
             status,
             ms = crate::clock::millis_since(self.start),
             body = body.as_ref(),
-            "<- response",
+            "<-",
         );
 
         Response {

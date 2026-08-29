@@ -11,8 +11,8 @@
 //! Lines look like this:
 //!
 //! ```text
-//! 2026-08-07T18:42:03.401Z 6e917a6 INFO  api quote{symbol=SPY range=1D} -> request id=1 source=yahoo method=GET url=/v8/finance/chart/SPY?range=1d&interval=1m
-//! 2026-08-07T18:42:03.813Z 6e917a6 INFO  api quote{symbol=SPY range=1D} <- response id=1 source=yahoo status=200 bytes=91233 ms=412
+//! 2026-08-07T18:42:03.401Z 6e917a6 INFO  api quote{symbol=SPY range=1D} -> id=1 source=yahoo method=GET url=/v8/finance/chart/SPY?range=1d&interval=1m
+//! 2026-08-07T18:42:03.813Z 6e917a6 INFO  api quote{symbol=SPY range=1D} <- id=1 source=yahoo status=200 bytes=91233 ms=412
 //! ```
 //!
 //! `6e917a6` is the commit the build came from, and `quote{…}` is the span the

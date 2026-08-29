@@ -21,7 +21,7 @@ first thing in `main`, before anything worth logging happens.
 ## The shape of a line
 
 ```
-2026-08-07T18:42:03.401Z 6e917a6 INFO  api quote{symbol=SPY range=1D} -> request id=1 source=yahoo method=GET url=…
+2026-08-07T18:42:03.401Z 6e917a6 INFO  api quote{symbol=SPY range=1D} -> id=1 source=yahoo method=GET url=…
 ```
 
 Timestamp (UTC), the commit the build came from, level, target, the spans the
@@ -165,13 +165,13 @@ means adding, changing or removing its example here.
 - `INFO src_plaid::plaid_client plaid client env=sandbox base_url=https://sandbox.plaid.com/`
   — which environment a session ran against, logged once when the client is
   built. See [PLAID.md](PLAID.md).
-- `INFO api -> request id=1 source=plaid method=POST url=https://sandbox.plaid.com/transactions/sync body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"cursor\":\"CAESJTM3…\",\"secret\":\"xxxx\"}"`
+- `INFO api -> id=1 source=plaid method=POST url=https://sandbox.plaid.com/transactions/sync body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"cursor\":\"CAESJTM3…\",\"secret\":\"xxxx\"}"`
   — the body as sent, credentials included. See the warning above.
-- `INFO api <- response id=1 source=plaid status=200 ms=284 body="{\"added\":[{\"account_id\":\"6Pd…"`
+- `INFO api <- id=1 source=plaid status=200 ms=284 body="{\"added\":[{\"account_id\":\"6Pd…"`
   — Plaid pretty-prints, and this is the same body with the whitespace taken
   back out. See [Rules a body passes through](#rules-a-body-passes-through).
-- `INFO api -> request id=2 source=plaid method=POST url=https://sandbox.plaid.com/accounts/balance/get body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}"`
-- `INFO api -> request id=3 source=plaid method=POST url=https://sandbox.plaid.com/transactions/recurring/get body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}"`
+- `INFO api -> id=2 source=plaid method=POST url=https://sandbox.plaid.com/accounts/balance/get body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}"`
+- `INFO api -> id=3 source=plaid method=POST url=https://sandbox.plaid.com/transactions/recurring/get body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}"`
   — a GET carries no `body` field at all, rather than an empty one. Yahoo and
   CoinGecko lines below are the same shape as before.
 - `INFO src_plaid transactions synced added=18 modified=0 removed=1`
@@ -245,15 +245,15 @@ means adding, changing or removing its example here.
   — first run is a phone flow for now, and the web answers `LoadSession` as
   already signed in so that it is never walked. A line here means that answer
   changed and the web reached a road it cannot draw.
-- `INFO api quote{symbol=SPY range=1D} -> request id=2 source=yahoo method=GET url="/v8/finance/chart/SPY?period1=1785542400&period2=1785628800&interval=1m"`
-- `INFO api quote{symbol=SPY range=1D} <- response id=2 source=yahoo status=200 ms=412 body="{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"USD\",\"symbol\":\"SPY\"…"`
+- `INFO api quote{symbol=SPY range=1D} -> id=2 source=yahoo method=GET url="/v8/finance/chart/SPY?period1=1785542400&period2=1785628800&interval=1m"`
+- `INFO api quote{symbol=SPY range=1D} <- id=2 source=yahoo status=200 ms=412 body="{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"USD\",\"symbol\":\"SPY\"…"`
   — the body as it arrived, cut at 400 characters.
 - `INFO cache quote{symbol=SPY range=1D} served symbol=SPY interval=Min1 window=1785542400..1785628800 bars=930 cached=false`
 - `INFO cache quote{symbol=BTC-USD range=1D} source substituted an interval symbol=BTC-USD asked=Min1 served=Hour1`
 - `WARN api quote{symbol=SPY range=1D} request failed id=3 source=yahoo ms=30012 error="Network error: operation timed out"`
   — nothing came back, so there is no response line.
 - `ERROR api quote{symbol=SPY range=1D} [parse error id=4] source=yahoo error="missing field \`chart\`"`
-  — the body is already on the `<- response` line for the same `id`.
+  — the body is already on the `<-` line for the same `id`.
 - `DEBUG api quote{symbol=SPY range=1W} request cancelled id=5 source=yahoo ms=12`
   — the request was dropped before an answer, which is what switching range
   mid-fetch looks like from here.
