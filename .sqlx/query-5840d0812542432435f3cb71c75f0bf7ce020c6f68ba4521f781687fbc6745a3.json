@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE items SET institution_name = $2, updated_at = now() WHERE item_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5840d0812542432435f3cb71c75f0bf7ce020c6f68ba4521f781687fbc6745a3"
+}

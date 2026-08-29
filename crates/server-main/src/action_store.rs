@@ -1,10 +1,9 @@
 //! Something for the store to do.
 //!
-//! A query is IO, so it is an action out and an event back, the same as a trip
-//! to Plaid. What it is *not* is a lookup on the request path: the server holds
-//! its ledger in memory and answers `/snapshot` from what it holds. Postgres is
-//! where that survives a restart, so the writes happen as data lands and the
-//! read happens once, at boot.
+//! Only writes. Reads are not actions: the runtime reads a user's rows on the
+//! request path and serves them, because the alternative — holding every
+//! user's ledger in memory — is what stopped this server being able to serve
+//! more than one person.
 //!
 //! Nothing here carries an access token. The machine has never seen one — it
 //! lives in the runtime, beside the credentials it belongs with — and an action
@@ -16,9 +15,6 @@ use api_ledger::Stream;
 
 #[derive(Debug)]
 pub enum ActionStore {
-    /// Read everything back. Asked for once, when the server starts.
-    LoadEverything,
-
     /// Write what a sync just produced.
     ///
     /// Carries the diff rather than asking the runtime to read it off state,

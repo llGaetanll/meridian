@@ -23,6 +23,7 @@ use api_ledger::Stream;
 use api_ledger::Tx;
 use chrono::DateTime;
 use chrono::Utc;
+use uuid::Uuid;
 
 use crate::Db;
 use crate::PostgresError;
@@ -251,11 +252,15 @@ pub async fn apply_entries(
 /// Ties break on id so the order is total: two transactions on the same day
 /// would otherwise come back differently run to run, and a list that
 /// reshuffles on refresh looks broken.
-pub async fn load_entries(db: &Db) -> Result<Vec<Entry>, PostgresError> {
+pub async fn load_entries(db: &Db, user_id: Uuid) -> Result<Vec<Entry>, PostgresError> {
     let rows = sqlx::query!(
-        "SELECT id, account_id, ts, currency, amount_minor, label, category,
-                logo_url, pending, supersedes
-         FROM entries ORDER BY ts DESC, id ASC"
+        "SELECT e.id, e.account_id, e.ts, e.currency, e.amount_minor, e.label,
+                e.category, e.logo_url, e.pending, e.supersedes
+         FROM entries e
+         JOIN items i USING (item_id)
+         WHERE i.user_id = $1
+         ORDER BY e.ts DESC, e.id ASC",
+        user_id,
     )
     .fetch_all(db)
     .await?;
@@ -327,10 +332,14 @@ pub async fn save_streams(db: &Db, item_id: &str, streams: &[Stream]) -> Result<
 
 /// Every stream. All of them are active: an inactive one is dropped before it
 /// ever reaches this crate, so nothing here has to decide.
-pub async fn load_streams(db: &Db) -> Result<Vec<Stream>, PostgresError> {
+pub async fn load_streams(db: &Db, user_id: Uuid) -> Result<Vec<Stream>, PostgresError> {
     let rows = sqlx::query!(
-        "SELECT id, label, category, amount_minor, frequency, next_date
-         FROM streams ORDER BY id"
+        "SELECT s.id, s.label, s.category, s.amount_minor, s.frequency, s.next_date
+         FROM streams s
+         JOIN items i USING (item_id)
+         WHERE i.user_id = $1
+         ORDER BY s.id",
+        user_id,
     )
     .fetch_all(db)
     .await?;

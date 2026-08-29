@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, account_id, ts, currency, amount_minor, label, category,\n                logo_url, pending, supersedes\n         FROM entries ORDER BY ts DESC, id ASC",
+  "query": "SELECT e.id, e.account_id, e.ts, e.currency, e.amount_minor, e.label,\n                e.category, e.logo_url, e.pending, e.supersedes\n         FROM entries e\n         JOIN items i USING (item_id)\n         WHERE i.user_id = $1\n         ORDER BY e.ts DESC, e.id ASC",
   "describe": {
     "columns": [
       {
@@ -115,7 +115,9 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
       false,
@@ -130,5 +132,5 @@
       true
     ]
   },
-  "hash": "974b5fe75627fd4ebce57d87d810415cdf45293aa39bc9179b09c18f46cb09db"
+  "hash": "a5e789062fb8df4089b4fa901735ed1eaa0205c8f8cb93bd68a52e39eac3e5e0"
 }

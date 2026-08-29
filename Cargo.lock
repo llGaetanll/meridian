@@ -2670,6 +2670,7 @@ dependencies = [
  "sha2 0.10.9",
  "src-plaid",
  "src-postgres",
+ "src-resend",
  "tokio",
  "tower-http",
  "tracing",
@@ -3080,6 +3081,17 @@ dependencies = [
  "sqlx",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "src-resend"
+version = "0.1.0"
+dependencies = [
+ "api-trace",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]

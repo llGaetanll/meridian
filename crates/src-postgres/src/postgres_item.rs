@@ -76,6 +76,27 @@ pub async fn save_item(db: &Db, item: &StoredItem) -> Result<(), PostgresError> 
     Ok(())
 }
 
+/// Record what the bank is called, as the balances call reported it.
+///
+/// Its own function rather than part of the upsert, so a sync cannot touch
+/// `user_id` or `access_token` at all — a re-save must never be able to move
+/// somebody's bank onto another account or blank its credential.
+pub async fn name_item(
+    db: &Db,
+    item_id: &str,
+    institution_name: Option<&str>,
+) -> Result<(), PostgresError> {
+    sqlx::query!(
+        "UPDATE items SET institution_name = $2, updated_at = now() WHERE item_id = $1",
+        item_id,
+        institution_name,
+    )
+    .execute(db)
+    .await?;
+
+    Ok(())
+}
+
 /// One user's Items, oldest first, so the connection list is stable across
 /// restarts.
 ///
