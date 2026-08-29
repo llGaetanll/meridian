@@ -15,6 +15,8 @@
 //! clock handed in, which is what makes a stale-cache bug reproducible from a
 //! log rather than from a stopwatch.
 
+use std::collections::HashMap;
+
 use api_common::Timestamp;
 use api_common::ratelimit::RateLimiter;
 use rand::SeedableRng;
@@ -29,6 +31,7 @@ use crate::ActionProcess;
 use crate::ActionRouter;
 use crate::ActionSource;
 use crate::ActionStore;
+use crate::CallId;
 use crate::Event;
 use crate::EventProcess;
 use crate::EventRouter;
@@ -36,6 +39,7 @@ use crate::EventSource;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::ItemFacts;
+use crate::RequestId;
 use crate::login_code;
 use crate::session_token;
 
@@ -80,6 +84,19 @@ pub struct StateServer {
     /// Whether a shutdown has been asked for. Once set, no new work starts.
     shutting_down: bool,
 
+    /// The next [`CallId`] to hand out. A counter rather than anything drawn,
+    /// so the same log replays to the same numbers.
+    next_call: CallId,
+
+    /// Which route, if any, is parked on the answer to each call in flight.
+    ///
+    /// The one thing here that is bookkeeping rather than a decision, and it
+    /// has to be: the answer to a call arrives turns later, on an event that
+    /// has no idea who asked. An absent entry is a call nobody is waiting on —
+    /// a sync on a timer — which is why this is a lookup and not an `Option`
+    /// on the event.
+    waiting: HashMap<CallId, RequestId>,
+
     /// When the current batch is being handled.
     now: Timestamp,
 }
@@ -110,7 +127,9 @@ impl StateServer {
 
     fn handle_event(&mut self, event: &Event, actions: &mut Vec<Action>) {
         match event {
-            Event::FromRouter { event } => self.handle_event_router(event, actions),
+            Event::FromRouter { request_id, event } => {
+                self.handle_event_router(*request_id, event, actions)
+            }
             Event::FromSource { event } => self.handle_event_source(event, actions),
             Event::FromStore { event } => self.handle_event_store(event, actions),
             Event::FromProcess { event } => self.handle_event_process(event, actions),
@@ -118,7 +137,12 @@ impl StateServer {
         }
     }
 
-    fn handle_event_router(&mut self, event: &EventRouter, actions: &mut Vec<Action>) {
+    fn handle_event_router(
+        &mut self,
+        request_id: RequestId,
+        event: &EventRouter,
+        actions: &mut Vec<Action>,
+    ) {
         match event {
             // Free to ask for, and creates nothing at Plaid's end — a session
             // nobody finishes costs nothing and expires on its own. So there
@@ -126,7 +150,10 @@ impl StateServer {
             // issue #23.
             EventRouter::LinkRequested { user_id } => {
                 actions.push(Action::ToSource {
-                    action: ActionSource::OpenLink { user_id: *user_id },
+                    action: ActionSource::OpenLink {
+                        call_id: self.calling(request_id),
+                        user_id: *user_id,
+                    },
                 });
             }
 
@@ -136,6 +163,7 @@ impl StateServer {
                 // to go and ask about.
                 if pending.is_empty() {
                     actions.push(Action::ToRouter {
+                        request_id,
                         action: ActionRouter::NotLinked,
                     });
 
@@ -144,6 +172,7 @@ impl StateServer {
 
                 actions.push(Action::ToSource {
                     action: ActionSource::PollLinks {
+                        call_id: self.calling(request_id),
                         link_tokens: pending.clone(),
                     },
                 });
@@ -158,6 +187,7 @@ impl StateServer {
                     tracing::error!("asked for a sign-in code before the machine was seeded");
 
                     actions.push(Action::ToRouter {
+                        request_id,
                         action: ActionRouter::Unavailable,
                     });
 
@@ -188,6 +218,7 @@ impl StateServer {
                 });
 
                 actions.push(Action::ToRouter {
+                    request_id,
                     action: ActionRouter::Accepted,
                 });
             }
@@ -202,6 +233,7 @@ impl StateServer {
                 // sign-in in flight.
                 let Some(stored) = stored else {
                     actions.push(Action::ToRouter {
+                        request_id,
                         action: ActionRouter::Rejected,
                     });
 
@@ -223,6 +255,7 @@ impl StateServer {
                     tracing::warn!(email, ?verdict, "a sign-in code was rejected");
 
                     actions.push(Action::ToRouter {
+                        request_id,
                         action: ActionRouter::Rejected,
                     });
 
@@ -233,6 +266,7 @@ impl StateServer {
                     tracing::error!("a code was accepted before the machine was seeded");
 
                     actions.push(Action::ToRouter {
+                        request_id,
                         action: ActionRouter::Rejected,
                     });
 
@@ -259,6 +293,7 @@ impl StateServer {
                 });
 
                 actions.push(Action::ToRouter {
+                    request_id,
                     action: ActionRouter::SignedIn { token },
                 });
             }
@@ -268,6 +303,7 @@ impl StateServer {
                     if self.should_fetch(item, *force) {
                         actions.push(Action::ToSource {
                             action: ActionSource::FetchPlaid {
+                                call_id: self.call(),
                                 item_id: item.item_id.clone(),
                                 cursor: item.cursor.clone(),
                             },
@@ -281,6 +317,7 @@ impl StateServer {
                 // bank linked yet" looks like, and it is the state first run
                 // exists to leave.
                 actions.push(Action::ToRouter {
+                    request_id,
                     action: ActionRouter::Serve,
                 });
             }
@@ -295,6 +332,7 @@ impl StateServer {
             // removed the trap `docs/PLAID.md` describes rather than guarding
             // against it: there is nothing here to assign over.
             EventSource::PlaidLoaded {
+                call_id,
                 item_id,
                 added,
                 modified,
@@ -318,13 +356,23 @@ impl StateServer {
                         cursor: cursor.clone(),
                     },
                 });
+
+                // Nobody has to be waiting on a sync. A route that asked for
+                // one is, a timer is not, and the answer is the same either
+                // way — so the entry is retired and no one is told.
+                self.waiting.remove(call_id);
             }
 
             EventSource::LinkOpened {
+                call_id,
                 user_id,
                 link_token,
                 hosted_link_url,
             } => {
+                let Some(request_id) = self.answered(*call_id) else {
+                    return;
+                };
+
                 // Written down before the URL is handed over. The other order
                 // leaves a window where somebody could finish a session we
                 // have no record of asking for.
@@ -336,13 +384,18 @@ impl StateServer {
                 });
 
                 actions.push(Action::ToRouter {
+                    request_id,
                     action: ActionRouter::LinkOpened {
                         url: hosted_link_url.clone(),
                     },
                 });
             }
 
-            EventSource::LinksPolled { polls } => {
+            EventSource::LinksPolled { call_id, polls } => {
+                let Some(request_id) = self.answered(*call_id) else {
+                    return;
+                };
+
                 // A token is the answer whether or not the session says it has
                 // finished: somebody who added one bank and is partway through
                 // a second has produced a real Item already.
@@ -355,8 +408,10 @@ impl StateServer {
                     .find_map(|poll| Some((&poll.link_token, poll.public_tokens.first()?)));
 
                 if let Some((link_token, public_token)) = exchangeable {
+                    // The same route is still waiting, one call further along.
                     actions.push(Action::ToSource {
                         action: ActionSource::ExchangePublicToken {
+                            call_id: self.calling(request_id),
                             link_token: link_token.clone(),
                             public_token: public_token.clone(),
                         },
@@ -379,14 +434,20 @@ impl StateServer {
                 }
 
                 actions.push(Action::ToRouter {
+                    request_id,
                     action: ActionRouter::NotLinked,
                 });
             }
 
             EventSource::ItemLinked {
+                call_id,
                 link_token,
                 item_id,
             } => {
+                let Some(request_id) = self.answered(*call_id) else {
+                    return;
+                };
+
                 actions.push(Action::ToStore {
                     action: ActionStore::SaveItem {
                         item_id: item_id.clone(),
@@ -401,11 +462,19 @@ impl StateServer {
                 });
 
                 actions.push(Action::ToRouter {
+                    request_id,
                     action: ActionRouter::Linked,
                 });
             }
 
-            EventSource::LinkAbandoned { link_token } => {
+            EventSource::LinkAbandoned {
+                call_id,
+                link_token,
+            } => {
+                let Some(request_id) = self.answered(*call_id) else {
+                    return;
+                };
+
                 actions.push(Action::ToStore {
                     action: ActionStore::CollectLink {
                         link_token: link_token.clone(),
@@ -413,11 +482,18 @@ impl StateServer {
                 });
 
                 actions.push(Action::ToRouter {
+                    request_id,
                     action: ActionRouter::NotLinked,
                 });
             }
 
-            EventSource::PlaidFailed { item_id, code } => {
+            EventSource::PlaidFailed {
+                call_id,
+                item_id,
+                code,
+            } => {
+                self.waiting.remove(call_id);
+
                 if code == "ITEM_LOGIN_REQUIRED" {
                     actions.push(Action::ToProcess {
                         action: ActionProcess::ReportLoginRequired,
@@ -482,6 +558,38 @@ impl StateServer {
                 });
             }
         }
+    }
+
+    /// A fresh [`CallId`], noted as owed to the route that is waiting.
+    fn calling(&mut self, request_id: RequestId) -> CallId {
+        let call_id = self.call();
+
+        self.waiting.insert(call_id, request_id);
+
+        call_id
+    }
+
+    /// A fresh [`CallId`] for a call nobody is waiting on.
+    fn call(&mut self) -> CallId {
+        self.next_call += 1;
+
+        self.next_call
+    }
+
+    /// Who was waiting on this call, now that it has answered.
+    ///
+    /// Absent means an answer to a question we have no record of asking, which
+    /// cannot happen — every call is minted here. Reported rather than
+    /// guessed at: there is no route to send it to, and picking one would send
+    /// somebody another person's bank.
+    fn answered(&mut self, call_id: CallId) -> Option<RequestId> {
+        let request_id = self.waiting.remove(&call_id);
+
+        if request_id.is_none() {
+            tracing::error!(call_id, "a source answered a call nobody is waiting on");
+        }
+
+        request_id
     }
 
     /// Whether to go back to Plaid about this bank.

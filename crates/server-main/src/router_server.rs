@@ -23,9 +23,7 @@ use serde::Deserialize;
 use tower_http::cors::Any;
 use tower_http::cors::CorsLayer;
 
-use crate::Action;
 use crate::ActionRouter;
-use crate::Event;
 use crate::EventRouter;
 use crate::RuntimeServer;
 use server_wire::WireSnapshot;
@@ -74,12 +72,10 @@ async fn snapshot(
     });
 
     runtime
-        .dispatch(vec![Event::FromRouter {
-            event: EventRouter::SnapshotRequested {
-                force: query.refresh,
-                items,
-            },
-        }])
+        .ask(EventRouter::SnapshotRequested {
+            force: query.refresh,
+            items,
+        })
         .await;
 
     Ok(Json(runtime.project_snapshot(user_id).await))
@@ -110,29 +106,13 @@ async fn auth_request(
         return StatusCode::NO_CONTENT;
     }
 
-    let actions = runtime
-        .dispatch(vec![Event::FromRouter {
-            event: EventRouter::CodeRequested { email },
-        }])
-        .await;
-
     // Read off what the machine decided rather than assumed. `Unavailable` is
     // the machine refusing to mint a code it has no entropy for, and answering
     // 204 to that would leave somebody waiting for an email that is not coming.
-    let unavailable = actions.iter().any(|action| {
-        matches!(
-            action,
-            Action::ToRouter {
-                action: ActionRouter::Unavailable
-            }
-        )
-    });
-
-    if unavailable {
-        return StatusCode::SERVICE_UNAVAILABLE;
+    match runtime.ask(EventRouter::CodeRequested { email }).await {
+        Some(ActionRouter::Accepted) => StatusCode::NO_CONTENT,
+        _ => StatusCode::SERVICE_UNAVAILABLE,
     }
-
-    StatusCode::NO_CONTENT
 }
 
 /// What `POST /auth/verify` takes.
@@ -173,28 +153,21 @@ async fn auth_verify(
         }
     };
 
-    let actions = runtime
-        .dispatch(vec![Event::FromRouter {
-            event: EventRouter::CodeSubmitted {
-                email,
-                code: body.code.trim().to_string(),
-                stored,
-            },
-        }])
+    // The outcome is read off what the machine decided, not worked out again
+    // here. There is exactly one answer that signs somebody in.
+    let answer = runtime
+        .ask(EventRouter::CodeSubmitted {
+            email,
+            code: body.code.trim().to_string(),
+            stored,
+        })
         .await;
 
-    // The outcome is read off what the machine decided, not worked out again
-    // here. There is exactly one action that signs somebody in.
-    let token = actions.into_iter().find_map(|action| match action {
-        Action::ToRouter {
-            action: ActionRouter::SignedIn { token },
-        } => Some(token),
-        _ => None,
-    });
+    let Some(ActionRouter::SignedIn { token }) = answer else {
+        return Err(StatusCode::UNAUTHORIZED);
+    };
 
-    Ok(Json(AuthVerified {
-        token: token.ok_or(StatusCode::UNAUTHORIZED)?,
-    }))
+    Ok(Json(AuthVerified { token }))
 }
 
 /// What `POST /link/start` answers with: the page to open.
@@ -213,22 +186,13 @@ async fn link_start(
 ) -> Result<Json<LinkStarted>, StatusCode> {
     let user_id = runtime.authenticate(&headers).await?;
 
-    let actions = runtime
-        .dispatch(vec![Event::FromRouter {
-            event: EventRouter::LinkRequested { user_id },
-        }])
-        .await;
+    let answer = runtime.ask(EventRouter::LinkRequested { user_id }).await;
 
-    let url = actions.into_iter().find_map(|action| match action {
-        Action::ToRouter {
-            action: ActionRouter::LinkOpened { url },
-        } => Some(url),
-        _ => None,
-    });
+    let Some(ActionRouter::LinkOpened { url }) = answer else {
+        return Err(StatusCode::BAD_GATEWAY);
+    };
 
-    Ok(Json(LinkStarted {
-        url: url.ok_or(StatusCode::BAD_GATEWAY)?,
-    }))
+    Ok(Json(LinkStarted { url }))
 }
 
 /// What `POST /link/finish` answers with.
@@ -259,21 +223,10 @@ async fn link_finish(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let actions = runtime
-        .dispatch(vec![Event::FromRouter {
-            event: EventRouter::LinkClosed { pending },
-        }])
-        .await;
+    let answer = runtime.ask(EventRouter::LinkClosed { pending }).await;
 
     Ok(Json(LinkFinished {
-        linked: actions.iter().any(|action| {
-            matches!(
-                action,
-                Action::ToRouter {
-                    action: ActionRouter::Linked
-                }
-            )
-        }),
+        linked: matches!(answer, Some(ActionRouter::Linked)),
     }))
 }
 

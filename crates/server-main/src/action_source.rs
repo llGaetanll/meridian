@@ -1,5 +1,7 @@
 //! Something for a source to do.
 
+use crate::CallId;
+
 #[derive(Debug)]
 pub enum ActionSource {
     /// Go and ask Plaid about one Item.
@@ -12,6 +14,7 @@ pub enum ActionSource {
     /// The cursor is where to resume from, if there is one. Losing it means
     /// re-fetching an entire history.
     FetchPlaid {
+        call_id: CallId,
         item_id: String,
         cursor: Option<String>,
     },
@@ -21,7 +24,10 @@ pub enum ActionSource {
     /// Creates nothing at Plaid's end — a session nobody finishes costs
     /// nothing and expires on its own — so this is the one call in the flow
     /// that is free to repeat.
-    OpenLink { user_id: uuid::Uuid },
+    OpenLink {
+        call_id: CallId,
+        user_id: uuid::Uuid,
+    },
 
     /// Ask what became of every Link session this user has open.
     ///
@@ -33,7 +39,10 @@ pub enum ActionSource {
     /// one question gets one answer. Fanning out to N calls is the runtime's
     /// business, and doing it here would be N answers to a handler that can
     /// only send one.
-    PollLinks { link_tokens: Vec<String> },
+    PollLinks {
+        call_id: CallId,
+        link_tokens: Vec<String>,
+    },
 
     /// Trade a `public_token` for the permanent one.
     ///
@@ -42,6 +51,7 @@ pub enum ActionSource {
     /// stays in the runtime: it never comes back as an event, because an event
     /// carrying one would put a bank credential in the log.
     ExchangePublicToken {
+        call_id: CallId,
         link_token: String,
         public_token: String,
     },

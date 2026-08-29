@@ -13,6 +13,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::RwLock;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
@@ -24,15 +26,18 @@ use tokio::sync::Notify;
 use crate::Action;
 use crate::ActionEmail;
 use crate::ActionProcess;
+use crate::ActionRouter;
 use crate::ActionSource;
 use crate::ActionStore;
 use crate::EmailSend;
 use crate::Event;
 use crate::EventProcess;
+use crate::EventRouter;
 use crate::EventSource;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::PlaidCollect;
+use crate::RequestId;
 use crate::StateServer;
 use crate::StoredCode;
 use crate::project;
@@ -124,6 +129,11 @@ pub struct RuntimeServer {
 
     /// Raised once the machine asks to shut down.
     shutdown: Notify,
+
+    /// Where [`RequestId`]s come from. At the edge, like the clock and the
+    /// seed — the machine only relays them, so nothing about a decision
+    /// depends on which number a request happened to draw.
+    requests: AtomicU64,
 }
 
 impl RuntimeServer {
@@ -171,6 +181,7 @@ impl RuntimeServer {
             db,
             fetching: Mutex::new(()),
             shutdown: Notify::new(),
+            requests: AtomicU64::new(0),
         });
 
         // The first event, and the reason the boot sequence is replayable: the
@@ -234,6 +245,41 @@ impl RuntimeServer {
         tracing::info!("server stopped");
 
         Ok(())
+    }
+
+    /// Ask the machine something on a route's behalf, and wait for its answer.
+    ///
+    /// The one way a handler reaches the machine. It mints the id, so no route
+    /// has to know there is one, and it hands back that route's own action —
+    /// never another's, which is what the id is for.
+    ///
+    /// `None` means the machine produced no answer, which is a bug rather than
+    /// an outcome: every router event owes exactly one.
+    pub(crate) async fn ask(&self, event: EventRouter) -> Option<ActionRouter> {
+        let request_id = self.next_request();
+
+        let actions = self
+            .dispatch(vec![Event::FromRouter { request_id, event }])
+            .await;
+
+        let answer = actions.into_iter().find_map(|action| match action {
+            Action::ToRouter {
+                request_id: answered,
+                action,
+            } if answered == request_id => Some(action),
+
+            _ => None,
+        });
+
+        if answer.is_none() {
+            tracing::error!(request_id, "a route asked something nothing answered");
+        }
+
+        answer
+    }
+
+    fn next_request(&self) -> RequestId {
+        self.requests.fetch_add(1, Ordering::Relaxed)
     }
 
     /// Feed events in, carry out what comes back.
@@ -363,25 +409,35 @@ impl RuntimeServer {
     /// several dispatches away learns what happened.
     async fn perform_action_source(&self, action: &ActionSource) -> Vec<Action> {
         match action {
-            ActionSource::FetchPlaid { item_id, cursor } => {
-                self.fetch_plaid(item_id, cursor.clone()).await
-            }
+            ActionSource::FetchPlaid {
+                call_id,
+                item_id,
+                cursor,
+            } => self.fetch_plaid(*call_id, item_id, cursor.clone()).await,
 
-            ActionSource::OpenLink { user_id } => self.open_link(*user_id).await,
+            ActionSource::OpenLink { call_id, user_id } => self.open_link(*call_id, *user_id).await,
 
-            ActionSource::PollLinks { link_tokens } => self.poll_links(link_tokens).await,
+            ActionSource::PollLinks {
+                call_id,
+                link_tokens,
+            } => self.poll_links(*call_id, link_tokens).await,
 
             ActionSource::ExchangePublicToken {
+                call_id,
                 link_token,
                 public_token,
-            } => self.exchange_public_token(link_token, public_token).await,
+            } => {
+                self.exchange_public_token(*call_id, link_token, public_token)
+                    .await
+            }
         }
     }
 
     /// Open a Link session and report the page that hosts it.
-    async fn open_link(&self, user_id: Uuid) -> Vec<Action> {
+    async fn open_link(&self, call_id: crate::CallId, user_id: Uuid) -> Vec<Action> {
         let event = match runtime_plaid::open_link(&self.credentials, &user_id.to_string()).await {
             Ok((link_token, Some(hosted_link_url))) => EventSource::LinkOpened {
+                call_id,
                 user_id,
                 link_token,
                 hosted_link_url,
@@ -393,13 +449,17 @@ impl RuntimeServer {
             Ok((link_token, None)) => {
                 tracing::error!("plaid answered a link token with no hosted url");
 
-                EventSource::LinkAbandoned { link_token }
+                EventSource::LinkAbandoned {
+                    call_id,
+                    link_token,
+                }
             }
 
             Err(e) => {
                 tracing::warn!(error = %e, "could not open a link session");
 
                 EventSource::LinkAbandoned {
+                    call_id,
                     link_token: String::new(),
                 }
             }
@@ -412,7 +472,7 @@ impl RuntimeServer {
     ///
     /// One call each, and one event for all of them. Which sessions to ask
     /// about is the machine's decision; how many requests that takes is not.
-    async fn poll_links(&self, link_tokens: &[String]) -> Vec<Action> {
+    async fn poll_links(&self, call_id: crate::CallId, link_tokens: &[String]) -> Vec<Action> {
         let mut polls = Vec::with_capacity(link_tokens.len());
 
         for link_token in link_tokens {
@@ -441,7 +501,7 @@ impl RuntimeServer {
         }
 
         self.dispatch(vec![Event::FromSource {
-            event: EventSource::LinksPolled { polls },
+            event: EventSource::LinksPolled { call_id, polls },
         }])
         .await
     }
@@ -455,12 +515,18 @@ impl RuntimeServer {
     /// The access token goes into the runtime's map and no further. It never
     /// becomes an event, because an event carrying one would put a bank
     /// credential in the log.
-    async fn exchange_public_token(&self, link_token: &str, public_token: &str) -> Vec<Action> {
+    async fn exchange_public_token(
+        &self,
+        call_id: crate::CallId,
+        link_token: &str,
+        public_token: &str,
+    ) -> Vec<Action> {
         let event = match runtime_plaid::exchange(&self.credentials, public_token).await {
             Ok((item_id, access_token)) => {
                 self.write_tokens().insert(item_id.clone(), access_token);
 
                 EventSource::ItemLinked {
+                    call_id,
                     link_token: link_token.to_string(),
                     item_id,
                 }
@@ -470,6 +536,7 @@ impl RuntimeServer {
                 tracing::warn!(error = %e, "could not exchange a public token");
 
                 EventSource::LinkAbandoned {
+                    call_id,
                     link_token: link_token.to_string(),
                 }
             }
@@ -821,7 +888,12 @@ impl RuntimeServer {
     ///
     /// Nothing here inspects the answer or decides anything about it; that is
     /// what makes the loop closed.
-    async fn fetch_plaid(&self, item_id: &str, cursor: Option<String>) -> Vec<Action> {
+    async fn fetch_plaid(
+        &self,
+        call_id: crate::CallId,
+        item_id: &str,
+        cursor: Option<String>,
+    ) -> Vec<Action> {
         // One fetch at a time. A burst of cold requests would otherwise all
         // miss and all call out.
         let Ok(_guard) = self.fetching.try_lock() else {
@@ -839,6 +911,7 @@ impl RuntimeServer {
             return self
                 .dispatch(vec![Event::FromSource {
                     event: EventSource::PlaidFailed {
+                        call_id,
                         item_id: item_id.to_string(),
                         code: String::from("NO_ACCESS_TOKEN"),
                     },
@@ -851,6 +924,7 @@ impl RuntimeServer {
                 .await
             {
                 Ok(fetched) => EventSource::PlaidLoaded {
+                    call_id,
                     item_id: item_id.to_string(),
                     added: fetched.added,
                     modified: fetched.modified,
@@ -869,6 +943,7 @@ impl RuntimeServer {
                     tracing::warn!(error = %e, code, "plaid fetch failed");
 
                     EventSource::PlaidFailed {
+                        call_id,
                         item_id: item_id.to_string(),
                         code,
                     }
