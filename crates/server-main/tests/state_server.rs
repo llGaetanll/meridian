@@ -41,6 +41,14 @@ fn entry(id: &str) -> Entry {
     )
 }
 
+/// The store reporting that a write landed. The machine holds a route's
+/// answer until everything it started has, so this is what releases one.
+fn written(call_id: server_main::CallId) -> Event {
+    Event::FromStore {
+        event: EventStore::Written { call_id },
+    }
+}
+
 /// The first call id the machine hands out, which is what a snapshot's fetch
 /// draws. Tests feed an answer back on it.
 const CALL: server_main::CallId = 1;
@@ -99,7 +107,9 @@ fn a_bank_that_has_never_synced_is_fetched() {
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
 
         < loaded(vec![]),
-        > Action::ToStore { action: ActionStore::SaveFetched { .. } },
+        > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
+
+        < written(2),
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -141,7 +151,9 @@ fn a_stale_bank_is_refetched_from_its_cursor() {
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
 
         < loaded(vec![]),
-        > Action::ToStore { action: ActionStore::SaveFetched { .. } },
+        > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
+
+        < written(2),
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -155,7 +167,9 @@ fn a_forced_request_refetches_however_fresh() {
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
 
         < loaded(vec![]),
-        > Action::ToStore { action: ActionStore::SaveFetched { .. } },
+        > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
+
+        < written(2),
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -189,7 +203,9 @@ fn each_bank_is_decided_about_on_its_own() {
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
 
         < loaded(vec![]),
-        > Action::ToStore { action: ActionStore::SaveFetched { .. } },
+        > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
+
+        < written(2),
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -225,6 +241,30 @@ fn a_snapshot_is_answered_after_its_last_bank() {
         < reported(1),
 
         < reported(2),
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
+    );
+}
+
+/// A write that failed ends the wait like one that worked. The rows are the
+/// ones we already had, which is a worse answer than a fresh sync and a far
+/// better one than a request that never returns.
+#[test]
+fn a_failed_write_still_answers_the_route() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < requested(false, vec![facts(None, false)]),
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
+
+        < loaded(vec![]),
+        > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
+
+        < Event::FromStore {
+            event: EventStore::SaveFailed {
+                call_id: 2,
+                message: "connection refused".to_string(),
+            },
+        },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -410,8 +450,10 @@ fn asking_for_a_code_stores_a_hash_and_sends_the_code() {
         < seeded(),
 
         < code_requested("alex@example.com"),
-        > Action::ToStore { action: ActionStore::SaveCode { .. } },
+        > Action::ToStore { action: ActionStore::SaveCode { call_id: 1, .. } },
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
+
+        < written(1),
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }
@@ -475,8 +517,14 @@ fn the_right_code_signs_you_in_and_spends_itself() {
         < seeded(),
 
         < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 0, 600))),
-        > Action::ToStore { action: ActionStore::CreateSession { .. } },
-        > Action::ToStore { action: ActionStore::DeleteCode { .. } },
+        > Action::ToStore { action: ActionStore::CreateSession { call_id: 1, .. } },
+        > Action::ToStore { action: ActionStore::DeleteCode { call_id: 2, .. } },
+
+        < written(1),
+
+        // Only now: a token that reaches the phone before its session row
+        // exists is a sign-in that 401s on its own first request.
+        < written(2),
         > Action::ToRouter { action: ActionRouter::SignedIn { .. }, .. },
     );
 }
@@ -491,7 +539,9 @@ fn a_wrong_code_only_counts_a_guess() {
         < seeded(),
 
         < code_submitted("alex@example.com", "654321", Some(stored_code("123456", 0, 600))),
-        > Action::ToStore { action: ActionStore::RecordAttempt { .. } },
+        > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
+
+        < written(1),
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -506,7 +556,9 @@ fn an_expired_code_is_rejected_and_still_counts() {
         < seeded(),
 
         < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 0, 0))),
-        > Action::ToStore { action: ActionStore::RecordAttempt { .. } },
+        > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
+
+        < written(1),
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -520,7 +572,9 @@ fn an_exhausted_code_rejects_the_right_answer() {
         < seeded(),
 
         < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 5, 600))),
-        > Action::ToStore { action: ActionStore::RecordAttempt { .. } },
+        > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
+
+        < written(1),
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -637,7 +691,9 @@ fn a_session_is_written_down_before_its_url_is_handed_over() {
                 hosted_link_url: "https://secure.plaid.com/x".to_string(),
             },
         },
-        > Action::ToStore { action: ActionStore::SaveLink { .. } },
+        > Action::ToStore { action: ActionStore::SaveLink { call_id: 2, .. } },
+
+        < written(2),
         > Action::ToRouter { action: ActionRouter::LinkOpened { .. }, .. },
     );
 }
@@ -669,7 +725,9 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < link_polled(true, vec![]),
-        > Action::ToStore { action: ActionStore::CollectLink { .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 2, .. } },
+
+        < written(2),
         > Action::ToRouter { action: ActionRouter::NotLinked, .. },
     );
 }
@@ -708,8 +766,12 @@ fn a_linked_bank_is_stored_and_its_session_closed() {
                 item_id: "item-9".to_string(),
             },
         },
-        > Action::ToStore { action: ActionStore::SaveItem { .. } },
-        > Action::ToStore { action: ActionStore::CollectLink { .. } },
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 3, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
+
+        < written(3),
+
+        < written(4),
         > Action::ToRouter { action: ActionRouter::Linked, .. },
     );
 }
@@ -764,9 +826,15 @@ fn many_sessions_still_produce_one_answer() {
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < polled(vec!["link-1", "link-2", "link-3"]),
-        > Action::ToStore { action: ActionStore::CollectLink { .. } },
-        > Action::ToStore { action: ActionStore::CollectLink { .. } },
-        > Action::ToStore { action: ActionStore::CollectLink { .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 2, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 3, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
+
+        < written(2),
+
+        < written(3),
+
+        < written(4),
         > Action::ToRouter { action: ActionRouter::NotLinked, .. },
     );
 }
