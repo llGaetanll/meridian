@@ -5,6 +5,7 @@
 //! makes of that is somebody else's business.
 
 use api_common::Timestamp;
+use uuid::Uuid;
 
 use crate::Db;
 use crate::PostgresError;
@@ -18,6 +19,10 @@ use crate::postgres_ledger::seconds;
 #[derive(Debug, Clone)]
 pub struct StoredItem {
     pub item_id: String,
+
+    /// Whose bank this is. The column every read scopes on, so it is not
+    /// optional and never inferred.
+    pub user_id: Uuid,
 
     /// Permanent, and a live credential to somebody's bank. Never logged,
     /// never sent to a client, and encrypted before the first Production Item
@@ -44,13 +49,14 @@ pub struct StoredItem {
 /// Write an Item, replacing whatever was there.
 ///
 /// An upsert rather than an insert: linking the same bank twice is something
-/// people do, and the source hands back the same `item_id` for it. The cursor
-/// is deliberately *not* touched here — it moves only through [`save_cursor`],
-/// so re-saving an Item cannot quietly rewind a sync.
+/// people do, and the source hands back the same `item_id` for it. Two columns
+/// are deliberately *not* in the update — the cursor, which moves only through
+/// [`save_cursor`] so a re-save cannot rewind a sync, and `user_id`, so that
+/// re-linking cannot move somebody else's bank onto your account.
 pub async fn save_item(db: &Db, item: &StoredItem) -> Result<(), PostgresError> {
     sqlx::query!(
-        "INSERT INTO items (item_id, access_token, institution_id, institution_name, error_code, updated_at)
-         VALUES ($1, $2, $3, $4, $5, now())
+        "INSERT INTO items (item_id, user_id, access_token, institution_id, institution_name, error_code, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, now())
          ON CONFLICT (item_id) DO UPDATE SET
              access_token     = EXCLUDED.access_token,
              institution_id   = EXCLUDED.institution_id,
@@ -58,6 +64,7 @@ pub async fn save_item(db: &Db, item: &StoredItem) -> Result<(), PostgresError> 
              error_code       = EXCLUDED.error_code,
              updated_at       = now()",
         item.item_id,
+        item.user_id,
         item.access_token,
         item.institution_id,
         item.institution_name,
@@ -69,12 +76,19 @@ pub async fn save_item(db: &Db, item: &StoredItem) -> Result<(), PostgresError> 
     Ok(())
 }
 
-/// Every Item, oldest first, so the connection list is stable across restarts.
-pub async fn load_items(db: &Db) -> Result<Vec<StoredItem>, PostgresError> {
+/// One user's Items, oldest first, so the connection list is stable across
+/// restarts.
+///
+/// Scoped, and there is no unscoped version on purpose. This query used to have
+/// no `WHERE` at all, which read as "everything I know" while there was one
+/// user and as "everyone's banks" the moment there were two.
+pub async fn load_items(db: &Db, user_id: Uuid) -> Result<Vec<StoredItem>, PostgresError> {
     let rows = sqlx::query!(
-        "SELECT item_id, access_token, institution_id, institution_name, cursor, error_code, updated_at
+        "SELECT item_id, user_id, access_token, institution_id, institution_name, cursor, error_code, updated_at
          FROM items
-         ORDER BY created_at"
+         WHERE user_id = $1
+         ORDER BY created_at",
+        user_id
     )
     .fetch_all(db)
     .await?;
@@ -83,6 +97,7 @@ pub async fn load_items(db: &Db) -> Result<Vec<StoredItem>, PostgresError> {
         .into_iter()
         .map(|row| StoredItem {
             item_id: row.item_id,
+            user_id: row.user_id,
             access_token: row.access_token,
             institution_id: row.institution_id,
             institution_name: row.institution_name,

@@ -25,15 +25,26 @@ use api_ledger::Stream;
 use api_ledger::Tx;
 use sqlx::PgPool;
 use src_postgres::StoredItem;
+use uuid::Uuid;
 
 const ITEM: &str = "item-test";
 
 /// 2026-08-19, the day the fixtures are drawn against.
 const NOW: Timestamp = Timestamp::from_secs(1_787_097_600);
 
-fn item() -> StoredItem {
+/// The owner every test's data hangs off. Made per test, because
+/// `#[sqlx::test]` gives each one its own database and a uuid is the
+/// database's to hand out.
+async fn user(db: &PgPool) -> Uuid {
+    src_postgres::upsert_user(db, "test@example.com")
+        .await
+        .unwrap()
+}
+
+fn item(user_id: Uuid) -> StoredItem {
     StoredItem {
         item_id: ITEM.to_string(),
+        user_id,
         access_token: "access-sandbox-1".to_string(),
         institution_id: Some("ins_109508".to_string()),
         institution_name: Some("First Platypus Bank".to_string()),
@@ -64,9 +75,10 @@ fn entry(id: &str, amount: f64) -> Entry {
 
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn an_item_round_trips(db: PgPool) {
-    src_postgres::save_item(&db, &item()).await.unwrap();
+    let user_id = user(&db).await;
+    src_postgres::save_item(&db, &item(user_id)).await.unwrap();
 
-    let items = src_postgres::load_items(&db).await.unwrap();
+    let items = src_postgres::load_items(&db, user_id).await.unwrap();
 
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].item_id, ITEM);
@@ -83,21 +95,24 @@ async fn an_item_round_trips(db: PgPool) {
 /// sync re-fetches a history the ledger already holds.
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn saving_an_item_again_does_not_rewind_the_cursor(db: PgPool) {
-    src_postgres::save_item(&db, &item()).await.unwrap();
+    let user_id = user(&db).await;
+    src_postgres::save_item(&db, &item(user_id)).await.unwrap();
     src_postgres::save_cursor(&db, ITEM, "cursor-abc")
         .await
         .unwrap();
 
-    src_postgres::save_item(&db, &item()).await.unwrap();
+    // Again, as a relink does.
+    src_postgres::save_item(&db, &item(user_id)).await.unwrap();
 
-    let items = src_postgres::load_items(&db).await.unwrap();
+    let items = src_postgres::load_items(&db, user_id).await.unwrap();
 
     assert_eq!(items[0].cursor.as_deref(), Some("cursor-abc"));
 }
 
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn accounts_round_trip_with_their_money_intact(db: PgPool) {
-    src_postgres::save_item(&db, &item()).await.unwrap();
+    let user_id = user(&db).await;
+    src_postgres::save_item(&db, &item(user_id)).await.unwrap();
 
     let accounts = vec![Account {
         id: "acc-1".to_string(),
@@ -126,7 +141,8 @@ async fn accounts_round_trip_with_their_money_intact(db: PgPool) {
 /// same diff twice a no-op.
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn applying_the_same_entries_twice_stores_them_once(db: PgPool) {
-    src_postgres::save_item(&db, &item()).await.unwrap();
+    let user_id = user(&db).await;
+    src_postgres::save_item(&db, &item(user_id)).await.unwrap();
 
     let added = vec![entry("a", -25.0), entry("b", -4.33)];
 
@@ -145,7 +161,8 @@ async fn applying_the_same_entries_twice_stores_them_once(db: PgPool) {
 
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn a_modified_entry_replaces_its_old_self(db: PgPool) {
-    src_postgres::save_item(&db, &item()).await.unwrap();
+    let user_id = user(&db).await;
+    src_postgres::save_item(&db, &item(user_id)).await.unwrap();
 
     src_postgres::apply_entries(&db, ITEM, &[entry("a", -25.0)], &[], &[])
         .await
@@ -170,7 +187,8 @@ async fn a_modified_entry_replaces_its_old_self(db: PgPool) {
 /// every purchase is counted twice for the days between the two.
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn a_posted_entry_drops_the_pending_one_it_replaces(db: PgPool) {
-    src_postgres::save_item(&db, &item()).await.unwrap();
+    let user_id = user(&db).await;
+    src_postgres::save_item(&db, &item(user_id)).await.unwrap();
 
     let mut pending = entry("pending-1", -25.0);
     pending.pending = true;
@@ -194,7 +212,8 @@ async fn a_posted_entry_drops_the_pending_one_it_replaces(db: PgPool) {
 
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn a_retracted_entry_is_removed(db: PgPool) {
-    src_postgres::save_item(&db, &item()).await.unwrap();
+    let user_id = user(&db).await;
+    src_postgres::save_item(&db, &item(user_id)).await.unwrap();
 
     src_postgres::apply_entries(&db, ITEM, &[entry("a", -25.0), entry("b", -4.33)], &[], &[])
         .await
@@ -213,7 +232,8 @@ async fn a_retracted_entry_is_removed(db: PgPool) {
 /// Newest first, which is the order every screen shows.
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn entries_come_back_newest_first(db: PgPool) {
-    src_postgres::save_item(&db, &item()).await.unwrap();
+    let user_id = user(&db).await;
+    src_postgres::save_item(&db, &item(user_id)).await.unwrap();
 
     let older = Entry {
         tx: Tx::Transfer {
@@ -238,7 +258,8 @@ async fn entries_come_back_newest_first(db: PgPool) {
 
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn streams_round_trip(db: PgPool) {
-    src_postgres::save_item(&db, &item()).await.unwrap();
+    let user_id = user(&db).await;
+    src_postgres::save_item(&db, &item(user_id)).await.unwrap();
 
     let streams = vec![Stream {
         id: "stream-1".to_string(),
@@ -264,7 +285,8 @@ async fn streams_round_trip(db: PgPool) {
 /// removing one takes its history with it.
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn removing_a_bank_deletes_everything_that_came_through_it(db: PgPool) {
-    src_postgres::save_item(&db, &item()).await.unwrap();
+    let user_id = user(&db).await;
+    src_postgres::save_item(&db, &item(user_id)).await.unwrap();
     src_postgres::apply_entries(&db, ITEM, &[entry("a", -25.0)], &[], &[])
         .await
         .unwrap();
@@ -288,7 +310,12 @@ async fn removing_a_bank_deletes_everything_that_came_through_it(db: PgPool) {
 
     src_postgres::remove_item(&db, ITEM).await.unwrap();
 
-    assert!(src_postgres::load_items(&db).await.unwrap().is_empty());
+    assert!(
+        src_postgres::load_items(&db, user_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(src_postgres::load_entries(&db).await.unwrap().is_empty());
     assert!(
         src_postgres::load_accounts(&db, ITEM)

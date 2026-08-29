@@ -47,6 +47,7 @@ use crate::runtime_plaid;
 use server_wire::WireSnapshot;
 use src_plaid::PlaidCredentials;
 use src_postgres::Db;
+use uuid::Uuid;
 
 /// A different port from either front-end, so all three can run at once.
 const PORT: u16 = 8082;
@@ -78,6 +79,15 @@ pub struct RuntimeServer {
     /// The Plaid account these calls are made on behalf of. One per process;
     /// it says which environment, and it signs every request.
     credentials: PlaidCredentials,
+
+    /// Whose data this server serves.
+    ///
+    /// **A scaffold.** The database is multi-user and every query is scoped,
+    /// but nothing on a request says who is asking yet — that is the sessions
+    /// table and the auth slice. Until then one user is named by
+    /// `MERIDIAN_USER_EMAIL` at startup, which is a stand-in that is at least
+    /// an honest one: it is required, it is logged, and it is a real row.
+    user_id: Uuid,
 
     /// Every Item's access token, by `item_id`, read from the store at boot
     /// and added to as banks are linked.
@@ -134,6 +144,13 @@ impl RuntimeServer {
         let collect = PlaidCollect::from_env()?;
         let db = Self::open_store().await?;
 
+        let email = std::env::var("MERIDIAN_USER_EMAIL")
+            .map_err(|_| anyhow::anyhow!("MERIDIAN_USER_EMAIL is not set"))?;
+
+        let user_id = src_postgres::upsert_user(&db, &email).await?;
+
+        tracing::info!(%user_id, "serving one user until sessions exist");
+
         tracing::info!(
             env = credentials.env.as_str(),
             collect = collect.as_str(),
@@ -143,6 +160,7 @@ impl RuntimeServer {
         let runtime = Arc::new(Self {
             state: RwLock::new(StateServer::new()),
             credentials,
+            user_id,
             tokens: RwLock::new(HashMap::new()),
             collect,
             db,
@@ -314,7 +332,7 @@ impl RuntimeServer {
     /// returns records. The status rule is `project`'s, shared with the path
     /// that builds one from a fresh balances response.
     async fn load_everything(&self, db: &Db) -> Result<EventStore, src_postgres::PostgresError> {
-        let items = src_postgres::load_items(db).await?;
+        let items = src_postgres::load_items(db, self.user_id).await?;
 
         // The tokens go to the runtime and stop there. Everything below this
         // line is a projection for a screen, and none of it carries one.
@@ -406,6 +424,7 @@ impl RuntimeServer {
                     db,
                     &src_postgres::StoredItem {
                         item_id: item_id.clone(),
+                        user_id: self.user_id,
                         access_token,
                         institution_id: None,
                         institution_name: institution_name.clone(),

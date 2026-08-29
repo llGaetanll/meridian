@@ -19,6 +19,7 @@ serde_json = { workspace = true }
 tokio = { workspace = true, features = ["signal"] }
 tower-http = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 api-common = { path = "../api-common" }

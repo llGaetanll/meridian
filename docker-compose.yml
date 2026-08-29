@@ -79,10 +79,21 @@ services:
       # No compose-level defaults: the server requires every one of these and
       # exits naming what is missing, and a `:-sandbox` here would answer that
       # question on behalf of whoever forgot to.
+      MERIDIAN_USER_EMAIL: ${MERIDIAN_USER_EMAIL:?}
+
       PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:?}
       PLAID_SECRET: ${PLAID_SECRET:?}
       PLAID_ENV: ${PLAID_ENV:?}
       PLAID_COLLECT: ${PLAID_COLLECT:?}
+
+      # The server's stdout here is a pipe to the daemon, never a terminal, so
+      # left to work it out for itself it turns colour off — and the log is
+      # then plain for `docker compose logs` too, which is a terminal and would
+      # have rendered it. Overridden rather than fixed with `tty: true`: a pty
+      # would also fold stderr into stdout and put a `\r` on every line, which
+      # is a lot of new behaviour to buy one thing. `NO_COLOR` still wins, for
+      # anyone who wants it off.
+      CLICOLOR_FORCE: "1"
 
     ports:
       # Every interface, because a real phone on the LAN is one of the clients
