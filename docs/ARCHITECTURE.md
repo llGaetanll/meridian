@@ -89,7 +89,19 @@ program — follows all of them.
 2. **Time is an argument, not a call.** `handle_events(now, events, actions)`.
    The clock is read once per batch, at the edge, by the runtime. Nothing
    inside reads one, which is what makes a replay land where it did the first
-   time. The same goes for randomness and IO.
+   time. The same goes for IO.
+
+   **Randomness arrives the same way, as a seed.** `server-main` takes 32 bytes
+   of OS entropy on `EventProcess::Seeded` and draws sign-in codes and session
+   tokens from a ChaCha20 generator seeded with it. So generation is a decision
+   like any other — reproducible from the log, reachable from `eval!` — while
+   staying unpredictable to anyone without the seed. Two things this asks for:
+   the generator must be cryptographic, and the machine must refuse to mint a
+   credential before it has been seeded rather than fall back to anything.
+
+   It also buys the bigger prize: with the generator inside, a whole run is
+   reproducible from one seed, which is what makes deterministic simulation
+   testing possible later.
 
 3. **Nothing derived is stored.** Filtering, grouping and totals are computed
    on the way out. A field that could be recomputed is a field that can

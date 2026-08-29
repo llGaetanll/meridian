@@ -295,3 +295,172 @@ fn a_second_signal_is_ignored() {
         > Action::ToProcess { action: ActionProcess::Shutdown },
     );
 }
+
+/// Entropy arrives from the edge, so the machine has a generator without ever
+/// reading one. A fixed seed here is what makes the codes below assertable.
+fn seeded() -> Event {
+    Event::FromProcess {
+        event: EventProcess::Seeded { seed: [7; 32] },
+    }
+}
+
+fn code_requested(email: &str) -> Event {
+    Event::FromClient {
+        event: EventClient::CodeRequested {
+            email: email.to_string(),
+        },
+    }
+}
+
+fn code_submitted(email: &str, code: &str, stored: Option<StoredCode>) -> Event {
+    Event::FromClient {
+        event: EventClient::CodeSubmitted {
+            email: email.to_string(),
+            code: code.to_string(),
+            stored,
+        },
+    }
+}
+
+fn stored_code(code: &str, attempts: i32, expires_in: u64) -> StoredCode {
+    StoredCode {
+        code_sha256: server_main::hash_code(code),
+        expires_at: Timestamp::from_secs(T0.as_secs() + expires_in),
+        attempts,
+    }
+}
+
+/// Asking for a code stores its hash and sends the code, in that order and as
+/// two actions: only one of them may ever hold the plaintext.
+#[test]
+fn asking_for_a_code_stores_a_hash_and_sends_the_code() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < seeded(),
+
+        < code_requested("alex@example.com"),
+        > Action::ToStore { action: ActionStore::SaveCode { .. } },
+        > Action::ToEmail { action: ActionEmail::SendCode { .. } },
+    );
+}
+
+/// The whole reason the generator is in here: the same seed produces the same
+/// code, so an event log replays to the value it produced the first time.
+#[test]
+fn the_same_seed_produces_the_same_code() {
+    let code_from = |seed: u8| {
+        let mut state = state();
+        let mut actions = Vec::new();
+
+        state.handle_events(
+            T0,
+            &[
+                Event::FromProcess {
+                    event: EventProcess::Seeded { seed: [seed; 32] },
+                },
+                code_requested("alex@example.com"),
+            ],
+            &mut actions,
+        );
+
+        actions
+            .iter()
+            .find_map(|a| match a {
+                Action::ToEmail {
+                    action: ActionEmail::SendCode { code, .. },
+                } => Some(code.clone()),
+                _ => None,
+            })
+            .expect("a code was sent")
+    };
+
+    assert_eq!(code_from(7), code_from(7), "a replay lands where it did");
+    assert_ne!(code_from(7), code_from(8), "and a different seed does not");
+}
+
+/// No entropy, no credentials. A predictable sign-in code is a way into
+/// somebody's bank, so an unseeded machine refuses rather than filling in
+/// anything derivable — and this is the test that says the refusal is silent
+/// to the caller and total.
+#[test]
+fn an_unseeded_machine_will_not_mint_a_code() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < code_requested("alex@example.com"),
+    );
+}
+
+#[test]
+fn the_right_code_signs_you_in_and_spends_itself() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < seeded(),
+
+        < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 0, 600))),
+        > Action::ToStore { action: ActionStore::CreateSession { .. } },
+        > Action::ToStore { action: ActionStore::DeleteCode { .. } },
+        > Action::ToClient { action: ActionClient::SignedIn { .. } },
+    );
+}
+
+/// A wrong code costs a guess and nothing else — no session, and the code is
+/// still there to be got right.
+#[test]
+fn a_wrong_code_only_counts_a_guess() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < seeded(),
+
+        < code_submitted("alex@example.com", "654321", Some(stored_code("123456", 0, 600))),
+        > Action::ToStore { action: ActionStore::RecordAttempt { .. } },
+        > Action::ToClient { action: ActionClient::Rejected },
+    );
+}
+
+/// An expired code counts a guess too. An attacker who could reset the cap by
+/// waiting would have an unlimited number of tries at the next one.
+#[test]
+fn an_expired_code_is_rejected_and_still_counts() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < seeded(),
+
+        < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 0, 0))),
+        > Action::ToStore { action: ActionStore::RecordAttempt { .. } },
+        > Action::ToClient { action: ActionClient::Rejected },
+    );
+}
+
+/// Out of guesses outranks a right answer, or the cap would be advice.
+#[test]
+fn an_exhausted_code_rejects_the_right_answer() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < seeded(),
+
+        < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 5, 600))),
+        > Action::ToStore { action: ActionStore::RecordAttempt { .. } },
+        > Action::ToClient { action: ActionClient::Rejected },
+    );
+}
+
+/// No code standing against the address. Rejected like any other, and
+/// deliberately not distinguishable — the difference would say which addresses
+/// have a sign-in in flight.
+#[test]
+fn an_address_with_no_code_is_rejected_the_same_way() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < seeded(),
+
+        < code_submitted("alex@example.com", "123456", None),
+        > Action::ToClient { action: ActionClient::Rejected },
+    );
+}

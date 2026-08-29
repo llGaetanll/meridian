@@ -15,6 +15,31 @@ use api_ledger::Stream;
 
 #[derive(Debug)]
 pub enum ActionStore {
+    /// Hold a sign-in code against an address, replacing any that stood.
+    ///
+    /// The hash, never the code. The plaintext goes only to
+    /// [`ActionEmail::SendCode`](crate::ActionEmail), which is the one place
+    /// that needs it.
+    SaveCode {
+        email: String,
+        code_sha256: Vec<u8>,
+        expires_at: api_common::Timestamp,
+    },
+
+    /// Count a wrong guess against the code standing for this address.
+    RecordAttempt { email: String },
+
+    /// Spend the code. What makes a replayed one worth nothing.
+    DeleteCode { email: String },
+
+    /// Sign somebody in. The runtime resolves the address to a user, which is
+    /// a lookup rather than a decision — the machine has no use for a uuid.
+    CreateSession {
+        email: String,
+        token_sha256: Vec<u8>,
+        expires_at: api_common::Timestamp,
+    },
+
     /// Write what a sync just produced.
     ///
     /// Carries the diff rather than asking the runtime to read it off state,
