@@ -79,7 +79,9 @@ services:
       # No compose-level defaults: the server requires every one of these and
       # exits naming what is missing, and a `:-sandbox` here would answer that
       # question on behalf of whoever forgot to.
-      MERIDIAN_USER_EMAIL: ${MERIDIAN_USER_EMAIL:?}
+      EMAIL_SEND: ${EMAIL_SEND:?}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
 
       PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:?}
       PLAID_SECRET: ${PLAID_SECRET:?}

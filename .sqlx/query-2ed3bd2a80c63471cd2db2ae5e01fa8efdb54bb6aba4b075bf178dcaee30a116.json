@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, label, category, amount_minor, frequency, next_date\n         FROM streams ORDER BY id",
+  "query": "SELECT s.id, s.label, s.category, s.amount_minor, s.frequency, s.next_date\n         FROM streams s\n         JOIN items i USING (item_id)\n         WHERE i.user_id = $1\n         ORDER BY s.id",
   "describe": {
     "columns": [
       {
@@ -71,7 +71,9 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
       false,
@@ -82,5 +84,5 @@
       true
     ]
   },
-  "hash": "a59476e6aead024fcfe5631137fdbff3bda13c56cf7e886d2010f91aecb8e639"
+  "hash": "2ed3bd2a80c63471cd2db2ae5e01fa8efdb54bb6aba4b075bf178dcaee30a116"
 }

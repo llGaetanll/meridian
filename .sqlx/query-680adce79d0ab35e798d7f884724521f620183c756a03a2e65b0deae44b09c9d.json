@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO login_codes (email, code_sha256, expires_at, attempts, created_at)\n         VALUES ($1, $2, $3, 0, now())\n         ON CONFLICT (email) DO UPDATE SET\n             code_sha256 = EXCLUDED.code_sha256,\n             expires_at  = EXCLUDED.expires_at,\n             attempts    = 0,\n             created_at  = now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Bytea",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "680adce79d0ab35e798d7f884724521f620183c756a03a2e65b0deae44b09c9d"
+}

@@ -23,6 +23,7 @@ use axum::extract::Query;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::get;
+use axum::routing::post;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 use tokio::sync::Notify;
@@ -34,6 +35,7 @@ use crate::ActionClient;
 use crate::ActionProcess;
 use crate::ActionSource;
 use crate::ActionStore;
+use crate::EmailSend;
 use crate::Event;
 use crate::EventClient;
 use crate::EventProcess;
@@ -42,11 +44,15 @@ use crate::EventStore;
 use crate::EventTerminal;
 use crate::PlaidCollect;
 use crate::StateServer;
+use crate::login_code;
 use crate::project;
 use crate::runtime_plaid;
+use crate::session_token;
 use server_wire::WireSnapshot;
 use src_plaid::PlaidCredentials;
 use src_postgres::Db;
+use src_resend::ResendClient;
+use src_resend::ResendCredentials;
 use uuid::Uuid;
 
 /// A different port from either front-end, so all three can run at once.
@@ -80,14 +86,12 @@ pub struct RuntimeServer {
     /// it says which environment, and it signs every request.
     credentials: PlaidCredentials,
 
-    /// Whose data this server serves.
-    ///
-    /// **A scaffold.** The database is multi-user and every query is scoped,
-    /// but nothing on a request says who is asking yet — that is the sessions
-    /// table and the auth slice. Until then one user is named by
-    /// `MERIDIAN_USER_EMAIL` at startup, which is a stand-in that is at least
-    /// an honest one: it is required, it is logged, and it is a real row.
-    user_id: Uuid,
+    /// How a sign-in code reaches the person asking for it.
+    email_send: EmailSend,
+
+    /// Resend, when [`RuntimeServer::email_send`] says to use it. `None` when
+    /// it says `log`, and nothing consults it in that case.
+    resend: Option<ResendClient>,
 
     /// Every Item's access token, by `item_id`, read from the store at boot
     /// and added to as banks are linked.
@@ -144,23 +148,34 @@ impl RuntimeServer {
         let collect = PlaidCollect::from_env()?;
         let db = Self::open_store().await?;
 
-        let email = std::env::var("MERIDIAN_USER_EMAIL")
-            .map_err(|_| anyhow::anyhow!("MERIDIAN_USER_EMAIL is not set"))?;
+        let email_send = EmailSend::from_env()?;
 
-        let user_id = src_postgres::upsert_user(&db, &email).await?;
+        // Built at startup rather than per send, so a missing key is a server
+        // that does not start rather than one that fails the first time
+        // somebody tries to sign in.
+        let resend = match email_send {
+            EmailSend::Resend => Some(ResendClient::new(&ResendCredentials::from_env()?)?),
+            EmailSend::Log => None,
+        };
 
-        tracing::info!(%user_id, "serving one user until sessions exist");
+        if email_send == EmailSend::Log {
+            tracing::warn!(
+                "EMAIL_SEND=log: sign-in codes are written to this log and no email is sent",
+            );
+        }
 
         tracing::info!(
             env = credentials.env.as_str(),
             collect = collect.as_str(),
+            email = email_send.as_str(),
             "serving live plaid data",
         );
 
         let runtime = Arc::new(Self {
             state: RwLock::new(StateServer::new()),
             credentials,
-            user_id,
+            email_send,
+            resend,
             tokens: RwLock::new(HashMap::new()),
             collect,
             db,
@@ -179,6 +194,8 @@ impl RuntimeServer {
 
         let router = Router::new()
             .route("/snapshot", get(snapshot))
+            .route("/auth/request", post(auth_request))
+            .route("/auth/verify", post(auth_verify))
             .route("/health", get(health))
             // The phone app is served by trunk on another port, so every
             // request it makes is cross-origin. This is a development server on
@@ -301,17 +318,6 @@ impl RuntimeServer {
         let db = &self.db;
 
         match action {
-            ActionStore::LoadEverything => {
-                let event = match self.load_everything(db).await {
-                    Ok(event) => event,
-                    Err(e) => EventStore::LoadFailed {
-                        message: e.to_string(),
-                    },
-                };
-
-                self.dispatch(vec![Event::FromStore { event }]).await;
-            }
-
             ActionStore::SaveFetched { .. } | ActionStore::SaveStatus { .. } => {
                 if let Err(e) = self.write(db, action).await {
                     self.dispatch(vec![Event::FromStore {
@@ -325,29 +331,25 @@ impl RuntimeServer {
         }
     }
 
-    /// Read every Item back, and the ledger with it.
+    /// One user's banks, as the store holds them.
+    ///
+    /// Read on the request path, for the person who asked. That is the change
+    /// that let this server serve more than one of them: the alternative was
+    /// every user's ledger resident in one process, read wholesale at boot.
     ///
     /// The connections are assembled here rather than in the store, because a
-    /// connection is a *projection* — initials, a status — and `src-postgres`
-    /// returns records. The status rule is `project`'s, shared with the path
-    /// that builds one from a fresh balances response.
-    async fn load_everything(&self, db: &Db) -> Result<EventStore, src_postgres::PostgresError> {
-        let items = src_postgres::load_items(db, self.user_id).await?;
-
-        // The tokens go to the runtime and stop there. Everything below this
-        // line is a projection for a screen, and none of it carries one.
-        {
-            let mut tokens = self.write_tokens();
-
-            for item in &items {
-                tokens.insert(item.item_id.clone(), item.access_token.clone());
-            }
-        }
+    /// connection is a *projection* — initials, a worded status — and
+    /// `src-postgres` returns records.
+    async fn connections_for(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<api_ledger::Connection>, src_postgres::PostgresError> {
+        let items = src_postgres::load_items(&self.db, user_id).await?;
 
         let mut connections = Vec::with_capacity(items.len());
 
         for item in &items {
-            let accounts = src_postgres::load_accounts(db, &item.item_id).await?;
+            let accounts = src_postgres::load_accounts(&self.db, &item.item_id).await?;
 
             let name = item
                 .institution_name
@@ -364,23 +366,35 @@ impl RuntimeServer {
             });
         }
 
-        // One Item today, as `ITEM` in the machine says, which is why a single
-        // cursor is a faithful answer rather than a choice made here. The day
-        // that stops being true this is the line that says so.
-        debug_assert!(
-            items.len() <= 1,
-            "a second Item needs per-Item state, not a cursor picked here",
-        );
+        Ok(connections)
+    }
 
-        Ok(EventStore::Loaded {
-            entries: src_postgres::load_entries(db).await?,
-            streams: src_postgres::load_streams(db).await?,
-            // One Item today; the first is the one whose cursor a fetch
-            // resumes from. See `ITEM` in the machine.
-            cursor: items.first().and_then(|item| item.cursor.clone()),
-            synced_at: items.first().map(|item| item.synced_at),
-            connections,
-        })
+    /// The facts the machine needs to decide whether to sync each of them.
+    async fn facts_for(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<crate::ItemFacts>, src_postgres::PostgresError> {
+        let items = src_postgres::load_items(&self.db, user_id).await?;
+
+        // Every token this user's banks need, so the fetch below can find one
+        // without going back to the database for it.
+        {
+            let mut tokens = self.write_tokens();
+
+            for item in &items {
+                tokens.insert(item.item_id.clone(), item.access_token.clone());
+            }
+        }
+
+        Ok(items
+            .iter()
+            .map(|item| crate::ItemFacts {
+                item_id: item.item_id.clone(),
+                cursor: item.cursor.clone(),
+                synced_at: Some(item.synced_at),
+                login_required: item.error_code.as_deref() == Some("ITEM_LOGIN_REQUIRED"),
+            })
+            .collect())
     }
 
     /// The writes, in the order a failure can be recovered from.
@@ -420,20 +434,12 @@ impl RuntimeServer {
                     return Ok(());
                 };
 
-                src_postgres::save_item(
-                    db,
-                    &src_postgres::StoredItem {
-                        item_id: item_id.clone(),
-                        user_id: self.user_id,
-                        access_token,
-                        institution_id: None,
-                        institution_name: institution_name.clone(),
-                        cursor: None,
-                        error_code: None,
-                        synced_at: unix_now(),
-                    },
-                )
-                .await?;
+                // The Item row already exists — a sync can only happen for a
+                // bank that was linked — so this is the institution name
+                // catching up, and `user_id` is deliberately not touched.
+                src_postgres::name_item(db, item_id, institution_name.as_deref()).await?;
+
+                let _ = access_token;
 
                 src_postgres::save_accounts(db, item_id, accounts).await?;
                 src_postgres::apply_entries(db, item_id, added, modified, removed).await?;
@@ -455,8 +461,6 @@ impl RuntimeServer {
             } => {
                 src_postgres::save_error(db, item_id, error_code.as_deref()).await?;
             }
-
-            ActionStore::LoadEverything => {}
         }
 
         Ok(())
@@ -493,6 +497,7 @@ impl RuntimeServer {
 
             self.dispatch(vec![Event::FromSource {
                 event: EventSource::PlaidFailed {
+                    item_id: item_id.to_string(),
                     code: String::from("NO_ACCESS_TOKEN"),
                 },
             }])
@@ -506,10 +511,11 @@ impl RuntimeServer {
                 .await
             {
                 Ok(fetched) => EventSource::PlaidLoaded {
+                    item_id: item_id.to_string(),
                     added: fetched.added,
                     modified: fetched.modified,
                     removed: fetched.removed,
-                    connections: fetched.connections,
+                    connection: fetched.connections.into_iter().next(),
                     streams: fetched.streams,
                     cursor: fetched.cursor,
                 },
@@ -522,7 +528,10 @@ impl RuntimeServer {
 
                     tracing::warn!(error = %e, code, "plaid fetch failed");
 
-                    EventSource::PlaidFailed { code }
+                    EventSource::PlaidFailed {
+                        item_id: item_id.to_string(),
+                        code,
+                    }
                 }
             };
 
@@ -555,11 +564,31 @@ impl RuntimeServer {
     /// The guard is taken and dropped inside this function rather than held by
     /// the caller: an `RwLockReadGuard` alive across an `.await` makes the
     /// handler's future `!Send`, which axum will not accept.
-    fn project_snapshot(&self) -> WireSnapshot {
+    /// Everything one user knows, as of now, read from the store.
+    ///
+    /// Not from memory. The machine used to hold the ledger and this used to
+    /// be a projection of it, which was only ever right because there was one
+    /// user — and a second would have been served the first one's transactions.
+    async fn project_snapshot(&self, user_id: Uuid) -> WireSnapshot {
         let now = unix_now();
-        let state = self.read_state();
 
-        WireSnapshot::new(state.entries(), state.connections(), state.streams(), now)
+        let entries = src_postgres::load_entries(&self.db, user_id).await;
+        let streams = src_postgres::load_streams(&self.db, user_id).await;
+        let connections = self.connections_for(user_id).await;
+
+        // A store that will not answer is reported and served around: an empty
+        // ledger is what a first run has, and it is a better answer than a
+        // failure the phone would have to have a screen for.
+        if let Err(e) = entries.as_ref().err().map_or(Ok(()), Err) {
+            tracing::error!(error = %e, "could not read the ledger");
+        }
+
+        WireSnapshot::new(
+            &entries.unwrap_or_default(),
+            &connections.unwrap_or_default(),
+            &streams.unwrap_or_default(),
+            now,
+        )
     }
 
     /// Wait for the machine to ask for a shutdown, having first turned the
@@ -579,25 +608,128 @@ impl RuntimeServer {
         tracing::info!("shutting down");
     }
 
-    /// A poisoned lock means another thread panicked while holding it.
+    /// Who this request is, or 401.
     ///
-    /// The server carries on with the held data — losing every future request
-    /// is worse than serving one that may be mid-update — but it says so, at
-    /// `ERROR`, every time. Recovering silently would turn a panic somewhere
-    /// else into a mystery here, which is exactly what `docs/LOGGING.md` exists
-    /// to prevent.
-    fn read_state(&self) -> std::sync::RwLockReadGuard<'_, StateServer> {
-        match self.state.read() {
-            Ok(state) => state,
-            Err(poisoned) => {
-                tracing::error!(
-                    "server state lock is poisoned — a thread panicked while holding it; \
-                     carrying on with the held data",
+    /// The only place a request turns into a user. Everything downstream takes
+    /// a `Uuid` rather than a header, so there is no path that reads somebody's
+    /// ledger without having come through here.
+    async fn authenticate(&self, headers: &axum::http::HeaderMap) -> Result<Uuid, StatusCode> {
+        let header = headers
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok());
+
+        let token = session_token::from_header(header).ok_or(StatusCode::UNAUTHORIZED)?;
+
+        let found =
+            src_postgres::user_for_session(&self.db, &session_token::hash(token), unix_now())
+                .await
+                .map_err(|e| {
+                    tracing::error!(error = %e, "could not read the session");
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+
+        found.ok_or(StatusCode::UNAUTHORIZED)
+    }
+
+    /// Make a code, store its hash, and get it to the person.
+    ///
+    /// The user is created here if this is their first time. That is what
+    /// makes there be no separate sign-up: an address that exists signs in and
+    /// one that does not signs up, so there is nothing to choose and no way to
+    /// choose wrong.
+    async fn send_login_code(&self, email: &str) -> anyhow::Result<()> {
+        let user_id = src_postgres::upsert_user(&self.db, email).await?;
+
+        let code = login_code::generate();
+
+        let expires_at =
+            Timestamp::from_secs(unix_now().as_secs() + login_code::GOOD_FOR.as_secs());
+
+        src_postgres::save_code(&self.db, email, &login_code::hash(&code), expires_at).await?;
+
+        match (&self.email_send, &self.resend) {
+            (EmailSend::Resend, Some(client)) => {
+                let message = src_resend::Email::new(
+                    client_from(),
+                    email,
+                    format!("{code} is your Meridian code"),
+                    format!(
+                        "Your Meridian sign-in code is {code}.\n\n\
+                         It works for the next 10 minutes. If you did not ask for it, \
+                         you can ignore this — nobody can sign in without it.",
+                    ),
                 );
 
-                poisoned.into_inner()
+                src_resend::send(client, &message).await?;
             }
+
+            // The code goes in the log, at WARN, saying that no email was
+            // sent. Loud on purpose: a server accidentally running this way
+            // says so on every single sign-in rather than looking healthy.
+            _ => tracing::warn!(
+                %user_id,
+                email,
+                code,
+                "EMAIL_SEND=log: no email sent, the code is on this line",
+            ),
         }
+
+        Ok(())
+    }
+
+    /// Check a code and, if it is the right one, hand back a session.
+    ///
+    /// `Ok(None)` is every way of being wrong. The distinction between wrong,
+    /// expired and exhausted is real and is logged, but it is not told to the
+    /// caller — only somebody working through guesses benefits from knowing
+    /// which.
+    async fn verify_login_code(&self, email: &str, code: &str) -> anyhow::Result<Option<String>> {
+        let Some(stored) = src_postgres::load_code(&self.db, email).await? else {
+            return Ok(None);
+        };
+
+        let verdict = login_code::verify(
+            &login_code::StoredCode {
+                code_sha256: stored.code_sha256,
+                expires_at: stored.expires_at,
+                attempts: stored.attempts,
+            },
+            code,
+            unix_now(),
+        );
+
+        if verdict != login_code::Verdict::Accepted {
+            // Counted in the database rather than here, so two guesses landing
+            // at once cannot both read the same number.
+            src_postgres::record_attempt(&self.db, email).await?;
+
+            tracing::warn!(email, verdict = ?verdict, "a sign-in code was rejected");
+
+            return Ok(None);
+        }
+
+        let user_id = src_postgres::upsert_user(&self.db, email).await?;
+
+        let token = session_token::generate();
+
+        let expires_at =
+            Timestamp::from_secs(unix_now().as_secs() + session_token::GOOD_FOR.as_secs());
+
+        src_postgres::create_session(
+            &self.db,
+            &session_token::hash(&token),
+            user_id,
+            Some(expires_at),
+        )
+        .await?;
+
+        // Single use. A code that has signed somebody in is worth nothing
+        // afterwards, which is what makes a replayed one harmless.
+        src_postgres::delete_code(&self.db, email).await?;
+
+        tracing::info!(%user_id, "signed in");
+
+        Ok(Some(token))
     }
 
     /// One Item's access token, if we hold one.
@@ -645,19 +777,104 @@ impl RuntimeServer {
 }
 
 /// `GET /snapshot`
+///
+/// Answers with the ledger of whoever the bearer token signs in, and 401s
+/// without one. There is no unauthenticated form: this is somebody's bank
+/// transactions.
 async fn snapshot(
     State(runtime): State<Arc<RuntimeServer>>,
+    headers: axum::http::HeaderMap,
     Query(query): Query<SnapshotQuery>,
-) -> Json<WireSnapshot> {
+) -> Result<Json<WireSnapshot>, StatusCode> {
+    let user_id = runtime.authenticate(&headers).await?;
+
+    // Read before deciding. These are the facts the machine needs and does not
+    // keep — where each bank's last sync reached, and whether it still works.
+    let items = runtime.facts_for(user_id).await.unwrap_or_else(|e| {
+        tracing::error!(error = %e, "could not read this user's banks");
+        Vec::new()
+    });
+
     runtime
         .dispatch(vec![Event::FromClient {
             event: EventClient::SnapshotRequested {
                 force: query.refresh,
+                items,
             },
         }])
         .await;
 
-    Json(runtime.project_snapshot())
+    Ok(Json(runtime.project_snapshot(user_id).await))
+}
+
+/// What `POST /auth/request` takes.
+#[derive(Debug, Deserialize)]
+struct AuthRequestBody {
+    email: String,
+}
+
+/// `POST /auth/request` — send a sign-in code to this address.
+///
+/// Always answers 204, whether or not the address is one we know. The
+/// alternative tells anybody who asks which addresses have accounts here,
+/// which for a banking app is worth more than the convenience of a clearer
+/// error.
+async fn auth_request(
+    State(runtime): State<Arc<RuntimeServer>>,
+    Json(body): Json<AuthRequestBody>,
+) -> StatusCode {
+    let email = body.email.trim().to_lowercase();
+
+    // Not an address, so nothing to send to. Still 204: see above.
+    if !email.contains('@') || email.len() < 3 {
+        tracing::warn!("a sign-in was asked for with something that is not an address");
+
+        return StatusCode::NO_CONTENT;
+    }
+
+    if let Err(e) = runtime.send_login_code(&email).await {
+        // Reported here and not to the caller, for the same reason.
+        tracing::error!(error = %e, "could not send a sign-in code");
+    }
+
+    StatusCode::NO_CONTENT
+}
+
+/// What `POST /auth/verify` takes.
+#[derive(Debug, Deserialize)]
+struct AuthVerifyBody {
+    email: String,
+    code: String,
+}
+
+/// What it answers with: the token every later request carries.
+#[derive(Debug, serde::Serialize)]
+struct AuthVerified {
+    token: String,
+}
+
+/// `POST /auth/verify` — trade a code for a session.
+///
+/// One failure shape for every way of being wrong — wrong code, expired code,
+/// too many guesses, no code at all — because the difference is only useful to
+/// somebody working through guesses. The app already knows what to say from
+/// the screen it is on.
+async fn auth_verify(
+    State(runtime): State<Arc<RuntimeServer>>,
+    Json(body): Json<AuthVerifyBody>,
+) -> Result<Json<AuthVerified>, StatusCode> {
+    let email = body.email.trim().to_lowercase();
+
+    let token = runtime
+        .verify_login_code(&email, body.code.trim())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "could not verify a sign-in code");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    Ok(Json(AuthVerified { token }))
 }
 
 /// `GET /health`
@@ -680,6 +897,12 @@ async fn health(State(runtime): State<Arc<RuntimeServer>>) -> (StatusCode, Strin
             )
         }
     }
+}
+
+/// Who the sign-in email comes from. Read once per send rather than held,
+/// because it is only consulted on the Resend path.
+fn client_from() -> String {
+    std::env::var("RESEND_FROM").unwrap_or_else(|_| String::from("meridian@example.com"))
 }
 
 /// Resolves with whichever signal arrives first.

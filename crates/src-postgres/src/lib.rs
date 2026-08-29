@@ -15,13 +15,16 @@
 
 mod postgres_item;
 mod postgres_ledger;
+mod postgres_login;
 mod postgres_migrate;
 mod postgres_money;
 mod postgres_pool;
+mod postgres_session;
 mod postgres_user;
 
 pub use postgres_item::StoredItem;
 pub use postgres_item::load_items;
+pub use postgres_item::name_item;
 pub use postgres_item::remove_item;
 pub use postgres_item::save_cursor;
 pub use postgres_item::save_error;
@@ -32,10 +35,20 @@ pub use postgres_ledger::load_entries;
 pub use postgres_ledger::load_streams;
 pub use postgres_ledger::save_accounts;
 pub use postgres_ledger::save_streams;
+pub use postgres_login::StoredCode;
+pub use postgres_login::delete_code;
+pub use postgres_login::load_code;
+pub use postgres_login::record_attempt;
+pub use postgres_login::save_code;
 pub use postgres_migrate::MIGRATOR;
 pub use postgres_migrate::migrate;
 pub use postgres_pool::Db;
 pub use postgres_pool::PostgresError;
 pub use postgres_pool::connect;
 pub use postgres_pool::ping;
+pub use postgres_session::create_session;
+pub use postgres_session::delete_session;
+pub use postgres_session::session_expiry;
+pub use postgres_session::sweep_sessions;
+pub use postgres_session::user_for_session;
 pub use postgres_user::upsert_user;

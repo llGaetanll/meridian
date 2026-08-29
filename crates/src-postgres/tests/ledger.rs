@@ -153,7 +153,7 @@ async fn applying_the_same_entries_twice_stores_them_once(db: PgPool) {
         .await
         .unwrap();
 
-    let entries = src_postgres::load_entries(&db).await.unwrap();
+    let entries = src_postgres::load_entries(&db, user_id).await.unwrap();
 
     assert_eq!(entries.len(), 2, "a transaction appears once");
     assert_eq!(entries.iter().filter(|e| e.id == "a").count(), 1);
@@ -175,7 +175,7 @@ async fn a_modified_entry_replaces_its_old_self(db: PgPool) {
         .await
         .unwrap();
 
-    let entries = src_postgres::load_entries(&db).await.unwrap();
+    let entries = src_postgres::load_entries(&db, user_id).await.unwrap();
 
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].amount(), -30.0);
@@ -204,7 +204,7 @@ async fn a_posted_entry_drops_the_pending_one_it_replaces(db: PgPool) {
         .await
         .unwrap();
 
-    let entries = src_postgres::load_entries(&db).await.unwrap();
+    let entries = src_postgres::load_entries(&db, user_id).await.unwrap();
 
     assert_eq!(entries.len(), 1, "counted once, not twice");
     assert_eq!(entries[0].id, "posted-1");
@@ -223,7 +223,7 @@ async fn a_retracted_entry_is_removed(db: PgPool) {
         .await
         .unwrap();
 
-    let entries = src_postgres::load_entries(&db).await.unwrap();
+    let entries = src_postgres::load_entries(&db, user_id).await.unwrap();
 
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].id, "b");
@@ -250,7 +250,7 @@ async fn entries_come_back_newest_first(db: PgPool) {
         .await
         .unwrap();
 
-    let entries = src_postgres::load_entries(&db).await.unwrap();
+    let entries = src_postgres::load_entries(&db, user_id).await.unwrap();
 
     assert_eq!(entries[0].id, "newer");
     assert_eq!(entries[1].id, "older");
@@ -276,7 +276,7 @@ async fn streams_round_trip(db: PgPool) {
         .await
         .unwrap();
 
-    let back = src_postgres::load_streams(&db).await.unwrap();
+    let back = src_postgres::load_streams(&db, user_id).await.unwrap();
 
     assert_eq!(back, streams);
 }
@@ -316,7 +316,12 @@ async fn removing_a_bank_deletes_everything_that_came_through_it(db: PgPool) {
             .unwrap()
             .is_empty()
     );
-    assert!(src_postgres::load_entries(&db).await.unwrap().is_empty());
+    assert!(
+        src_postgres::load_entries(&db, user_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert!(
         src_postgres::load_accounts(&db, ITEM)
             .await

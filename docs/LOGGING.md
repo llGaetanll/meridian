@@ -140,7 +140,11 @@ means adding, changing or removing its example here.
 - `INFO server_main::runtime_server store ready store=postgres`
   — once at startup. There is no second form: `DATABASE_URL` is required, and
   a server without a store has no access tokens and so no bank to reach.
-- `INFO server_main::runtime_server serving live plaid data env=sandbox collect=poll`
+- `WARN server_main::runtime_server EMAIL_SEND=log: sign-in codes are written to this log and no email is sent`
+  — once at startup, and again on every sign-in below. A server running this
+  way in front of anyone real is a mistake, so it says so rather than being
+  quiet about it.
+- `INFO server_main::runtime_server serving live plaid data env=sandbox collect=poll email=log`
   — once at startup. There is no second form of this line any more: the server
   starts with credentials or it does not start. Only ever Sandbox; see
   [PLAID.md](PLAID.md).
@@ -178,7 +182,14 @@ means adding, changing or removing its example here.
   Two older lines of this shape are gone, because their cases are: being asked
   to use a store that is not there, and storing an Item with no credentials.
   Both the store and the credentials are required now.
-- `INFO server_main::state_server read back from the store entries=48 connections=1 streams=8`
+- `WARN server_main::runtime_server EMAIL_SEND=log: no email sent, the code is on this line user_id=e8b13a2b… email=alex@example.com code=704924`
+- `INFO server_main::runtime_server signed in user_id=e8b13a2b…`
+- `WARN server_main::runtime_server a sign-in code was rejected email=alex@example.com verdict=Wrong`
+  — `Wrong`, `Expired` or `Exhausted`. Which one is logged and deliberately not
+  told to the caller: only somebody working through guesses benefits from
+  knowing which.
+- `WARN server_main::runtime_server a sign-in was asked for with something that is not an address`
+- `INFO src_resend email sent id=… to=alex@example.com`
   — what a restart came back with, before anything is fetched. Zeroes are a
   first run, not a failure.
 - `ERROR server_main::state_server could not read the store; starting empty message="connection refused"`

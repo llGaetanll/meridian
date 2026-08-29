@@ -9,6 +9,7 @@ api-ledger = { path = "../api-ledger" }
 api-trace = { path = "../api-trace" }
 server-wire = { path = "../server-wire" }
 src-plaid = { path = "../src-plaid" }
+src-resend = { path = "../src-resend" }
 src-postgres = { path = "../src-postgres" }
 
 anyhow = { workspace = true }
