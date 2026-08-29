@@ -18,7 +18,6 @@ use std::time::UNIX_EPOCH;
 
 use api_common::Timestamp;
 use axum::http::StatusCode;
-use tokio::sync::Mutex;
 use tokio::sync::Notify;
 
 use crate::Action;
@@ -42,6 +41,7 @@ use crate::router_exchange::RouterExchange;
 use crate::router_server;
 use crate::runtime_plaid;
 use crate::session_token;
+use crate::source_pool::SourcePool;
 use server_wire::WireSnapshot;
 use src_plaid::PlaidCredentials;
 use src_postgres::Db;
@@ -67,6 +67,17 @@ const RESEED_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
 /// a turn is really waiting on.
 const TURN_EVERY: std::time::Duration = std::time::Duration::from_millis(2);
 
+/// How many calls to Plaid may be in flight at once.
+///
+/// More than one, because somebody with three banks should not sync them one
+/// after another. Not many more: Plaid rate-limits per Item and the machine is
+/// what respects that, so this only bounds how much work is outstanding.
+const PLAID_AT_ONCE: usize = 4;
+
+/// How many sign-in emails may be in flight at once. Small: it is one request
+/// per person signing in, and they are not waiting on it.
+const EMAIL_AT_ONCE: usize = 2;
+
 pub struct RuntimeServer {
     /// The store. Required, and not optional in any sense: the access tokens
     /// live in it, so a server without one has no way to reach any bank and
@@ -84,11 +95,10 @@ pub struct RuntimeServer {
     /// buys over a `Mutex` is that the many requests served from fresh state no
     /// longer queue behind each other.
     ///
-    /// If write contention ever becomes the bottleneck, the next step is
-    /// interior mutability inside the machine rather than a bigger lock out
-    /// here — but that trades one contended lock for a machine that can no
-    /// longer be read as a plain `&mut self` function, and the blocking work is
-    /// the Plaid fetch, which `fetching` already serialises.
+    /// Only the loop takes it now, once per turn, for the length of a pure
+    /// synchronous call. Nothing else touches the machine, and no guard ever
+    /// spans an `.await` — the calls to Plaid happen in a pool that has no
+    /// reference to it at all.
     state: RwLock<StateServer>,
 
     /// The Plaid account these calls are made on behalf of. One per process;
@@ -126,18 +136,21 @@ pub struct RuntimeServer {
     )]
     collect: PlaidCollect,
 
-    /// Only one fetch may be in flight. Without this, a burst of cold requests
-    /// all miss the cache and all call Plaid.
-    ///
-    /// A `tokio::sync::Mutex` rather than a `std` one: the guard is held across
-    /// the `.await` on Plaid, which a blocking guard cannot be.
-    fetching: Mutex<()>,
-
     /// Raised once the machine asks to shut down.
     shutdown: Notify,
 
-    /// Where a route's question is paired with its answer.
-    exchange: RouterExchange,
+    /// Where a route's question is paired with its answer. Shared, because
+    /// the pools push what a call produced straight onto it.
+    exchange: Arc<RouterExchange>,
+
+    /// Every call to Plaid. Two at once: a snapshot of somebody with several
+    /// banks should overlap, and Plaid's own limits are the machine's problem
+    /// rather than this number's.
+    plaid: SourcePool,
+
+    /// Every sign-in email. Its own pool so a slow bank cannot use up the room
+    /// a sign-in needs — the whole reason there is one per source.
+    email: SourcePool,
 }
 
 impl RuntimeServer {
@@ -175,7 +188,12 @@ impl RuntimeServer {
             "serving live plaid data",
         );
 
+        let exchange = Arc::new(RouterExchange::default());
+
         let runtime = Arc::new(Self {
+            plaid: SourcePool::new("plaid", PLAID_AT_ONCE, Arc::clone(&exchange)),
+            email: SourcePool::new("email", EMAIL_AT_ONCE, Arc::clone(&exchange)),
+            exchange,
             state: RwLock::new(StateServer::new()),
             credentials,
             email_send,
@@ -183,9 +201,7 @@ impl RuntimeServer {
             tokens: RwLock::new(HashMap::new()),
             collect,
             db,
-            fetching: Mutex::new(()),
             shutdown: Notify::new(),
-            exchange: RouterExchange::default(),
         });
 
         // The first event, and the reason the boot sequence is replayable: the
@@ -308,6 +324,13 @@ impl RuntimeServer {
         }
     }
 
+    /// Hand one action to a pool, to be carried out whenever there is room.
+    fn calling(self: &Arc<Self>, pool: &SourcePool, action: Action) {
+        let runtime = Arc::clone(self);
+
+        pool.call(async move { runtime.perform_action(&action).await });
+    }
+
     /// Set one action going.
     ///
     /// A call to a source is spawned and not waited for: one that takes a
@@ -334,15 +357,12 @@ impl RuntimeServer {
                 self.exchange.push_all(caused);
             }
 
-            Action::ToSource { .. } | Action::ToEmail { .. } => {
-                let runtime = Arc::clone(self);
+            // Handed to the pool for that source and not waited for. Which
+            // pool is the only thing decided here: a bank and an email are
+            // different sources, so a slow one cannot crowd out the other.
+            Action::ToSource { .. } => self.calling(&self.plaid, action),
 
-                tokio::spawn(async move {
-                    let caused = runtime.perform_action(&action).await;
-
-                    runtime.exchange.push_all(caused);
-                });
-            }
+            Action::ToEmail { .. } => self.calling(&self.email, action),
         }
     }
 
@@ -910,13 +930,6 @@ impl RuntimeServer {
         item_id: &str,
         cursor: Option<String>,
     ) -> Vec<Event> {
-        // One fetch at a time. A burst of cold requests would otherwise all
-        // miss and all call out.
-        let Ok(_guard) = self.fetching.try_lock() else {
-            tracing::debug!("a fetch is already in flight");
-            return Vec::new();
-        };
-
         // The machine named an Item it read off its own connection list, and
         // every connection there was built from a stored Item. Absent means
         // those two have drifted, which is worth saying rather than guessing
