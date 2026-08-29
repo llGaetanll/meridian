@@ -22,9 +22,20 @@ const T0: Timestamp = Timestamp::from_secs(1_787_097_600);
 
 const ITEM: &str = "item-1";
 
+/// The clock, as the process hands it over. Time is an event like every other
+/// fact from the edge, so a test that is *about* time sends one of these
+/// rather than reaching into the machine.
+fn tick(now: Timestamp) -> Event {
+    Event::FromProcess {
+        event: EventProcess::Tick { now },
+    }
+}
+
 fn state() -> StateServer {
     let mut state = StateServer::new();
-    state.set_now(T0);
+
+    state.handle_events(&[tick(T0)], &mut Vec::new());
+
     state
 }
 
@@ -269,6 +280,58 @@ fn a_failed_write_still_answers_the_route() {
     );
 }
 
+/// A source that goes quiet does not park a route forever.
+///
+/// The only thing in the machine that happens because *nothing* happened: no
+/// answer means no event, so without a tick there is no turn in which to give
+/// up. The route is served what the store already holds.
+#[test]
+fn a_call_that_never_answers_is_given_up_on() {
+    let mut state = state();
+
+    let too_late = Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS);
+
+    eval!(&mut state,
+        < requested(false, vec![facts(None, false)]),
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
+
+        // Plaid says nothing. Time passes and nothing else arrives.
+        < tick(Timestamp::from_secs(T0.as_secs() + 1)),
+
+        < tick(too_late),
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
+    );
+}
+
+/// A route that had no answer decided yet is told so, rather than left. Being
+/// given up on before the machine knew what to say is the one case where there
+/// is nothing held to release.
+#[test]
+fn a_route_with_nothing_decided_is_told_it_cannot_be_answered() {
+    let mut state = state();
+
+    let too_late = Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS);
+
+    eval!(&mut state,
+        < link_requested(),
+        > Action::ToSource { action: ActionSource::OpenLink { call_id: 1, .. } },
+
+        < tick(too_late),
+        > Action::ToRouter { action: ActionRouter::Unavailable, .. },
+    );
+}
+
+/// A tick with nothing outstanding decides nothing. Every second of a quiet
+/// server goes through here, so it had better be free.
+#[test]
+fn a_tick_on_a_quiet_server_does_nothing() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < tick(Timestamp::from_secs(T0.as_secs() + 3600)),
+    );
+}
+
 /// A sync nobody asked for answers nobody. The store is written and that is
 /// all — which is what a sync on a timer will be.
 #[test]
@@ -331,7 +394,6 @@ fn a_burst_of_forced_refreshes_is_rate_limited() {
     for _ in 0..12 {
         actions.clear();
         state.handle_events(
-            T0,
             &[requested(true, vec![facts(Some(T0), false)])],
             &mut actions,
         );
@@ -354,7 +416,6 @@ fn the_rate_limit_is_per_bank() {
     for _ in 0..12 {
         actions.clear();
         state.handle_events(
-            T0,
             &[requested(true, vec![facts(Some(T0), false)])],
             &mut actions,
         );
@@ -368,7 +429,7 @@ fn the_rate_limit_is_per_bank() {
     };
 
     actions.clear();
-    state.handle_events(T0, &[requested(true, vec![second])], &mut actions);
+    state.handle_events(&[requested(true, vec![second])], &mut actions);
 
     assert!(
         actions.iter().any(|a| matches!(a, Action::ToSource { .. })),
@@ -467,7 +528,6 @@ fn the_same_seed_produces_the_same_code() {
         let mut actions = Vec::new();
 
         state.handle_events(
-            T0,
             &[
                 Event::FromProcess {
                     event: EventProcess::Seeded { seed: [seed; 32] },
@@ -626,7 +686,7 @@ fn two_routes_asking_at_once_get_their_own_answers() {
         },
     };
 
-    state.handle_events(T0, &[asking(7), asking(9)], &mut actions);
+    state.handle_events(&[asking(7), asking(9)], &mut actions);
 
     let answered: Vec<_> = actions
         .iter()

@@ -86,10 +86,19 @@ program — follows all of them.
    The fields are private. A `pub` field is a way to mutate state without an
    event, which is the one thing this design exists to prevent.
 
-2. **Time is an argument, not a call.** `handle_events(now, events, actions)`.
-   The clock is read once per batch, at the edge, by the runtime. Nothing
-   inside reads one, which is what makes a replay land where it did the first
-   time. The same goes for IO.
+2. **Time is an event, not a call.** `EventProcess::Tick { now }`, about once
+   a second, read at the edge by the runtime. Nothing inside reads a clock,
+   which is what makes a replay land where it did the first time. The same
+   goes for IO.
+
+   A tick is also the only event that arrives when *nothing* has happened, and
+   that turns out to be load-bearing: a source that goes quiet rather than
+   failing produces no event, so without a tick there is no turn in which to
+   give up on it. `server-main` expires a call that has been out too long and
+   answers the route waiting on it — see `CALL_GOOD_FOR_SECS`.
+
+   `phone-state` still takes `now` as an argument to `handle_events` and is
+   going the same way (issue #19).
 
    **Randomness arrives the same way, as a seed.** `server-main` takes 32 bytes
    of OS entropy on `EventProcess::Seeded` and draws sign-in codes and session

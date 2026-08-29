@@ -26,7 +26,7 @@ fn app() -> StateApp {
     let mut state = StateApp::new();
     let mut actions = Vec::new();
 
-    state.handle_events(Timestamp::EPOCH, &[signed_in()], &mut actions);
+    state.handle_events_at(Timestamp::EPOCH, &[signed_in()], &mut actions);
 
     state
 }
@@ -89,7 +89,7 @@ fn loaded_on(screen: Screen) -> (StateApp, ViewScreen) {
     let mut state = app();
     let mut actions = Vec::new();
 
-    state.handle_events(
+    state.handle_events_at(
         NOW,
         &[ui(EventUi::Started), loaded(), open(screen)],
         &mut actions,
@@ -112,7 +112,7 @@ fn covered_on(screen: Screen) -> ViewScreen {
     let mut state = app();
     let mut actions = Vec::new();
 
-    state.handle_events(
+    state.handle_events_at(
         NOW,
         &[
             ui(EventUi::Started),
@@ -201,7 +201,7 @@ fn switching_tabs_asks_for_nothing() {
     let mut state = app();
     let mut actions = Vec::new();
 
-    state.handle_events(
+    state.handle_events_at(
         NOW,
         &[
             ui(EventUi::Started),
@@ -345,7 +345,7 @@ fn filtered(events: Vec<Event>) -> ViewLedger {
     let mut all = vec![ui(EventUi::Started), loaded(), open(Screen::Ledger)];
     all.extend(events);
 
-    state.handle_events(NOW, &all, &mut actions);
+    state.handle_events_at(NOW, &all, &mut actions);
 
     match last_render(&actions) {
         ViewScreen::Ledger { view } => view,
@@ -835,7 +835,7 @@ fn tapping_a_day_opens_it_and_tapping_it_again_shuts_it() {
     let pick = |id: &str| ui(EventUi::CalendarDaySelected { id: id.to_string() });
 
     let mut actions = Vec::new();
-    state.handle_events(NOW, &[ui(EventUi::MaskToggled), pick(&id)], &mut actions);
+    state.handle_events_at(NOW, &[ui(EventUi::MaskToggled), pick(&id)], &mut actions);
 
     let opened = last_render(&actions);
     let card = recurring_of(&opened).day_card.clone();
@@ -855,7 +855,7 @@ fn tapping_a_day_opens_it_and_tapping_it_again_shuts_it() {
     );
 
     let mut actions = Vec::new();
-    state.handle_events(NOW, &[pick(&id)], &mut actions);
+    state.handle_events_at(NOW, &[pick(&id)], &mut actions);
 
     assert!(recurring_of(&last_render(&actions)).day_card.is_none());
 }
@@ -1061,7 +1061,7 @@ fn an_empty_app_says_it_is_loading() {
     let mut state = app();
     let mut actions = Vec::new();
 
-    state.handle_events(
+    state.handle_events_at(
         NOW,
         &[ui(EventUi::Started), open(Screen::Ledger)],
         &mut actions,
@@ -1098,7 +1098,7 @@ fn a_failure_after_a_good_load_keeps_the_data() {
     let mut state = app();
     let mut actions = Vec::new();
 
-    state.handle_events(
+    state.handle_events_at(
         NOW,
         &[
             ui(EventUi::Started),
@@ -1126,7 +1126,7 @@ fn an_unreadable_snapshot_does_not_crash() {
     let mut state = app();
     let mut actions = Vec::new();
 
-    state.handle_events(
+    state.handle_events_at(
         NOW,
         &[
             ui(EventUi::Started),
@@ -1167,7 +1167,7 @@ fn the_same_events_give_the_same_actions() {
         let mut state = app();
         let mut actions = Vec::new();
 
-        state.handle_events(NOW, &events(), &mut actions);
+        state.handle_events_at(NOW, &events(), &mut actions);
 
         format!("{actions:?}")
     };
@@ -1183,7 +1183,7 @@ fn the_machine_does_not_depend_on_when_it_runs() {
         let mut state = app();
         let mut actions = Vec::new();
 
-        state.handle_events(
+        state.handle_events_at(
             NOW,
             &[ui(EventUi::Started), loaded(), open(Screen::Recurring)],
             &mut actions,
@@ -1239,7 +1239,7 @@ fn every_ui_event_produces_a_render() {
 
         let label = format!("{event:?}");
 
-        state.handle_events(
+        state.handle_events_at(
             NOW,
             &[ui(EventUi::Started), loaded(), Event::FromUi { event }],
             &mut actions,
@@ -1272,7 +1272,7 @@ fn the_servers_clock_wins_over_the_devices() {
     // A device that thinks it is a year earlier than the server.
     let device = NOW.saturating_sub_secs(365 * 86_400);
 
-    state.handle_events(
+    state.handle_events_at(
         device,
         &[ui(EventUi::Started), loaded(), open(Screen::Recurring)],
         &mut actions,

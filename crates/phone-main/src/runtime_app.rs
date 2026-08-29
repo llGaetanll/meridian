@@ -111,7 +111,7 @@ impl RuntimeApp {
         let now = unix_now();
 
         self.state
-            .update_value(|state| state.handle_events(now, &events, &mut actions));
+            .update_value(|state| state.handle_events_at(now, &events, &mut actions));
 
         tracing::debug!(?events, ?actions, "handled");
 

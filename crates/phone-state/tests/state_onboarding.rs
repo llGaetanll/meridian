@@ -53,7 +53,7 @@ fn code(digits: &str) -> Event {
 fn screen(state: &mut StateApp, events: &[Event]) -> ViewScreen {
     let mut actions = Vec::new();
 
-    state.handle_events(state.now(), events, &mut actions);
+    state.handle_events(events, &mut actions);
 
     actions
         .iter()
@@ -125,7 +125,7 @@ fn a_device_the_app_has_never_run_on_opens_on_welcome() {
     let mut state = first_run();
 
     let mut actions = Vec::new();
-    state.handle_events(NOW, &[ui(EventUi::Started)], &mut actions);
+    state.handle_events_at(NOW, &[ui(EventUi::Started)], &mut actions);
 
     let rendered = actions.iter().find_map(|a| match a {
         Action::ToUi {
@@ -533,7 +533,7 @@ fn opening_meridian_ends_the_flow() {
     );
 
     let mut actions = Vec::new();
-    state.handle_events(state.now(), &[ui(EventUi::Ticked)], &mut actions);
+    state.handle_events_at(state.now(), &[ui(EventUi::Ticked)], &mut actions);
 
     let Some(Action::ToUi {
         action: ActionUi::Render { screen, dock },

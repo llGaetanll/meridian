@@ -132,7 +132,7 @@ impl Core {
             }
         };
 
-        state.handle_events(Timestamp::from_secs(now), &events, &mut actions);
+        state.handle_events_at(Timestamp::from_secs(now), &events, &mut actions);
 
         actions
     }

@@ -55,10 +55,27 @@ pub const FRESH_FOR_SECS: u64 = 30;
 ///
 /// Fields are private: state changes only through
 /// [`handle_events`](StateServer::handle_events).
+/// How long to wait on a source before giving up on it.
+///
+/// Generous: a cold Plaid sync of a long history is slow, and cutting one off
+/// costs a real answer. It is not a latency budget — it is the point past
+/// which a call has almost certainly gone quiet rather than gone slow.
+pub const CALL_GOOD_FOR_SECS: u64 = 30;
+
 /// How long a session lasts. Long, because the alternative is asking somebody
 /// to check their email to look at their own balance; short enough that a
 /// phone lost in a drawer stops working eventually.
 pub const SESSION_GOOD_FOR_SECS: u64 = 90 * 24 * 60 * 60;
+
+/// A call in flight, and the route that wants its answer.
+#[derive(Debug)]
+struct Waiting {
+    request_id: RequestId,
+
+    /// When the call went out, so one that never answers can be given up on.
+    /// Without it a source that goes quiet is a route parked forever.
+    since: Timestamp,
+}
 
 #[derive(Debug, Default)]
 pub struct StateServer {
@@ -95,7 +112,7 @@ pub struct StateServer {
     /// has no idea who asked. An absent entry is a call nobody is waiting on —
     /// a sync on a timer — which is why this is a lookup and not an `Option`
     /// on the event.
-    waiting: HashMap<CallId, RequestId>,
+    waiting: HashMap<CallId, Waiting>,
 
     /// Answers that are decided but not yet owed.
     ///
@@ -116,18 +133,12 @@ impl StateServer {
 
     /// The only entry point.
     ///
-    /// `now` arrives once per batch rather than on every event: a batch happens
-    /// at one instant, and an event carrying its own clock reading would be a
-    /// reading the runtime could get wrong.
-    pub fn handle_events(&mut self, now: Timestamp, events: &[Event], actions: &mut Vec<Action>) {
-        debug_assert!(
-            now >= self.now,
-            "time went backwards: {now} after {}",
-            self.now,
-        );
-
-        self.now = now;
-
+    /// Time is not an argument. It arrives as
+    /// [`EventProcess::Tick`](crate::EventProcess) like anything else the
+    /// machine cannot go and get for itself, which is what makes a log of the
+    /// events a recording of the session rather than a list of things that
+    /// happened at whatever time the replay runs at.
+    pub fn handle_events(&mut self, events: &[Event], actions: &mut Vec<Action>) {
         for event in events {
             self.handle_event(event, actions);
         }
@@ -507,7 +518,7 @@ impl StateServer {
         }
     }
 
-    fn handle_event_process(&mut self, event: &EventProcess, _actions: &mut Vec<Action>) {
+    fn handle_event_process(&mut self, event: &EventProcess, actions: &mut Vec<Action>) {
         match event {
             // Nothing to do. The store is read per request, for the user who
             // asked, so there is nothing to pull into memory at boot — which
@@ -516,6 +527,21 @@ impl StateServer {
 
             EventProcess::Seeded { seed } => {
                 self.rng = Some(ChaCha20Rng::from_seed(*seed));
+            }
+
+            EventProcess::Tick { now } => {
+                // Time only ever moves forward. A runtime handing in a stale
+                // reading would make a freshness window wrong in a way nothing
+                // else here would catch.
+                debug_assert!(
+                    *now >= self.now,
+                    "time went backwards: {now} after {}",
+                    self.now,
+                );
+
+                self.now = *now;
+
+                self.give_up_on_calls_that_will_not_answer(actions);
             }
         }
     }
@@ -575,7 +601,7 @@ impl StateServer {
     /// Silent when nothing was waiting: that is the ordinary shape of a sync
     /// nobody asked for, unlike [`answered`](Self::answered).
     fn landed(&mut self, call_id: CallId, actions: &mut Vec<Action>) {
-        let Some(request_id) = self.waiting.remove(&call_id) else {
+        let Some(Waiting { request_id, .. }) = self.waiting.remove(&call_id) else {
             return;
         };
 
@@ -593,7 +619,9 @@ impl StateServer {
 
     /// Whether this route started anything that has not come back.
     fn outstanding(&self, request_id: RequestId) -> bool {
-        self.waiting.values().any(|waiter| *waiter == request_id)
+        self.waiting
+            .values()
+            .any(|waiter| waiter.request_id == request_id)
     }
 
     /// A fresh [`CallId`] that inherits whatever `call_id` was holding.
@@ -603,7 +631,7 @@ impl StateServer {
     /// chain, not for its first link.
     fn passing(&mut self, call_id: CallId) -> CallId {
         match self.waiting.remove(&call_id) {
-            Some(request_id) => self.calling(request_id),
+            Some(waiter) => self.calling(waiter.request_id),
             None => self.call(),
         }
     }
@@ -612,7 +640,13 @@ impl StateServer {
     fn calling(&mut self, request_id: RequestId) -> CallId {
         let call_id = self.call();
 
-        self.waiting.insert(call_id, request_id);
+        self.waiting.insert(
+            call_id,
+            Waiting {
+                request_id,
+                since: self.now,
+            },
+        );
 
         call_id
     }
@@ -631,13 +665,59 @@ impl StateServer {
     /// guessed at: there is no route to send it to, and picking one would send
     /// somebody another person's bank.
     fn answered(&mut self, call_id: CallId) -> Option<RequestId> {
-        let request_id = self.waiting.remove(&call_id);
-
-        if request_id.is_none() {
+        let Some(Waiting { request_id, .. }) = self.waiting.remove(&call_id) else {
             tracing::error!(call_id, "a source answered a call nobody is waiting on");
-        }
 
-        request_id
+            return None;
+        };
+
+        Some(request_id)
+    }
+
+    /// Stop waiting on calls that have taken too long.
+    ///
+    /// The only thing in the machine that happens because *nothing* happened,
+    /// and the reason there is a tick at all. A source that goes quiet — a
+    /// connection that hangs rather than fails — produces no event, so without
+    /// this the route waiting on it is parked for as long as the process runs.
+    ///
+    /// What it answers with is whatever was already decided, and
+    /// [`ActionRouter::Unavailable`] when nothing was. Serving what we have
+    /// beats a request that never returns.
+    fn give_up_on_calls_that_will_not_answer(&mut self, actions: &mut Vec<Action>) {
+        let now = self.now;
+
+        let given_up: Vec<CallId> = self
+            .waiting
+            .iter()
+            .filter(|(_, waiter)| now.since(waiter.since).as_secs() >= CALL_GOOD_FOR_SECS)
+            .map(|(call_id, _)| *call_id)
+            .collect();
+
+        for call_id in given_up {
+            let Some(Waiting { request_id, .. }) = self.waiting.remove(&call_id) else {
+                unreachable!("the key came from the map")
+            };
+
+            tracing::warn!(
+                call_id,
+                request_id,
+                "a call took too long and was given up on"
+            );
+
+            // Another of this route's calls may still answer, and would then
+            // release the answer itself.
+            if self.outstanding(request_id) {
+                continue;
+            }
+
+            let action = self
+                .held
+                .remove(&request_id)
+                .unwrap_or(ActionRouter::Unavailable);
+
+            actions.push(Action::ToRouter { request_id, action });
+        }
     }
 
     /// Whether to go back to Plaid about this bank.
@@ -680,22 +760,6 @@ impl StateServer {
             self.limiter
                 .can_send(now, &PlaidRateCtx::new(*endpoint, item_id))
         })
-    }
-
-    /// The clock the last batch was handled at.
-    ///
-    /// Public because `eval!` reads it: a test sets the time it wants before
-    /// driving the machine, rather than the macro carrying a clock of its own.
-    pub fn now(&self) -> Timestamp {
-        self.now
-    }
-
-    /// Move the clock, for tests that are *about* time — staleness, backoff.
-    ///
-    /// Nothing in the running program calls this: time arrives solely through
-    /// `handle_events`, from the runtime that read it.
-    pub fn set_now(&mut self, now: Timestamp) {
-        self.now = now;
     }
 
     pub fn shutting_down(&self) -> bool {

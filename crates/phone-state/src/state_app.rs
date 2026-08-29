@@ -152,7 +152,23 @@ impl StateApp {
     /// costs one allocation and a replay can reuse the same one. The FFI
     /// boundary in `lib.rs` wraps this with an owning version, since a `&mut
     /// Vec` does not cross.
-    pub fn handle_events(&mut self, now: Timestamp, events: &[Event], actions: &mut Vec<Action>) {
+    /// The clock the machine already holds, for a caller that has no better
+    /// one. `eval!` uses this: a test that is *about* time sets the clock
+    /// first and then drives the machine, rather than carrying a reading
+    /// through the syntax.
+    ///
+    /// The server's machine takes time as a `Tick` event instead, which is
+    /// where this one is going too — see issue #19.
+    pub fn handle_events(&mut self, events: &[Event], actions: &mut Vec<Action>) {
+        self.handle_events_at(self.now(), events, actions);
+    }
+
+    pub fn handle_events_at(
+        &mut self,
+        now: Timestamp,
+        events: &[Event],
+        actions: &mut Vec<Action>,
+    ) {
         // Time only ever moves forward. A runtime handing in a stale reading
         // would make "in 3 days" wrong in a way nothing else would catch.
         debug_assert!(
