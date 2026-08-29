@@ -81,6 +81,10 @@ Only the terminal gets colour, and only when stdout is a terminal that has not
 set `NO_COLOR`. The file and the buffer are read back as text long afterwards,
 and escape codes in them are noise.
 
+Under docker that test is wrong: stdout is a pipe to the daemon, but the thing
+reading the other end is `docker compose logs` in a terminal. `CLICOLOR_FORCE`
+says so, and docker-compose.yml sets it. `NO_COLOR` still beats it.
+
 Level is INFO by default. `DEBUG` adds cancelled requests.
 
 A few targets are held to `WARN` whatever the level says — `Config::quiet`.
