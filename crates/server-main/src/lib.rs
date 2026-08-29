@@ -31,6 +31,7 @@ mod event_source;
 mod event_store;
 mod event_terminal;
 mod item_facts;
+mod link_poll;
 mod login_code;
 mod plaid_collect;
 mod project;
@@ -54,6 +55,7 @@ pub use event_source::EventSource;
 pub use event_store::EventStore;
 pub use event_terminal::EventTerminal;
 pub use item_facts::ItemFacts;
+pub use link_poll::LinkPoll;
 pub use login_code::StoredCode;
 pub use login_code::Verdict;
 /// Reachable so the machine's tests can build a stored code to submit

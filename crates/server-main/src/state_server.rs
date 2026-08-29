@@ -142,13 +142,11 @@ impl StateServer {
                     return;
                 }
 
-                for link_token in pending {
-                    actions.push(Action::ToSource {
-                        action: ActionSource::PollLink {
-                            link_token: link_token.clone(),
-                        },
-                    });
-                }
+                actions.push(Action::ToSource {
+                    action: ActionSource::PollLinks {
+                        link_tokens: pending.clone(),
+                    },
+                });
             }
 
             EventRouter::CodeRequested { email } => {
@@ -158,6 +156,10 @@ impl StateServer {
                 // better than saying no.
                 let Some(rng) = self.rng.as_mut() else {
                     tracing::error!("asked for a sign-in code before the machine was seeded");
+
+                    actions.push(Action::ToRouter {
+                        action: ActionRouter::Unavailable,
+                    });
 
                     return;
                 };
@@ -183,6 +185,10 @@ impl StateServer {
                         email: email.clone(),
                         code,
                     },
+                });
+
+                actions.push(Action::ToRouter {
+                    action: ActionRouter::Accepted,
                 });
             }
 
@@ -336,15 +342,19 @@ impl StateServer {
                 });
             }
 
-            EventSource::LinkPolled {
-                link_token,
-                finished,
-                public_tokens,
-            } => {
+            EventSource::LinksPolled { polls } => {
                 // A token is the answer whether or not the session says it has
                 // finished: somebody who added one bank and is partway through
                 // a second has produced a real Item already.
-                if let Some(public_token) = public_tokens.first() {
+                //
+                // The first one wins and the rest stay pending. One close
+                // attaches one bank, because the route can only be told about
+                // one — the next close collects the next.
+                let exchangeable = polls
+                    .iter()
+                    .find_map(|poll| Some((&poll.link_token, poll.public_tokens.first()?)));
+
+                if let Some((link_token, public_token)) = exchangeable {
                     actions.push(Action::ToSource {
                         action: ActionSource::ExchangePublicToken {
                             link_token: link_token.clone(),
@@ -357,23 +367,17 @@ impl StateServer {
 
                 // Finished with nothing: they closed the sheet. An outcome,
                 // not a failure — and the session is marked done so it is not
-                // polled again forever.
-                if *finished {
+                // polled again forever. One that has not finished is somebody
+                // still typing their password, and is left pending so the next
+                // close asks about it again.
+                for poll in polls.iter().filter(|poll| poll.finished) {
                     actions.push(Action::ToStore {
                         action: ActionStore::CollectLink {
-                            link_token: link_token.clone(),
+                            link_token: poll.link_token.clone(),
                         },
                     });
-
-                    actions.push(Action::ToRouter {
-                        action: ActionRouter::NotLinked,
-                    });
-
-                    return;
                 }
 
-                // Still open — somebody is still typing their password. Left
-                // pending, so the next close asks again.
                 actions.push(Action::ToRouter {
                     action: ActionRouter::NotLinked,
                 });

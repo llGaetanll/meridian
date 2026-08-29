@@ -13,6 +13,16 @@ pub enum ActionRouter {
     /// mean building it even when nobody is waiting for one.
     Serve,
 
+    /// The request was taken. Not "an email was sent": the address may be one
+    /// nobody has, and that is deliberately indistinguishable from one that
+    /// works — see the route's own note.
+    Accepted,
+
+    /// The machine cannot answer this yet. So far only one thing causes it:
+    /// being asked for a credential before any entropy has arrived, which
+    /// there is no safe fallback for.
+    Unavailable,
+
     /// They are signed in, and this is the token that says so.
     ///
     /// The token is on the action because the runtime has no other way to

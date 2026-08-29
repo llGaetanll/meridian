@@ -4,6 +4,8 @@ use api_ledger::Connection;
 use api_ledger::Entry;
 use api_ledger::Stream;
 
+use crate::LinkPoll;
+
 #[derive(Debug)]
 pub enum EventSource {
     /// Plaid answered, about one Item.
@@ -38,17 +40,9 @@ pub enum EventSource {
         hosted_link_url: String,
     },
 
-    /// What a Link session has come to.
-    ///
-    /// `finished` and `public_tokens` are separate facts. A session with no
-    /// token that has not finished is somebody still typing their password; a
-    /// session with no token that *has* finished is somebody who closed the
-    /// sheet, which is an ordinary outcome and not a failure.
-    LinkPolled {
-        link_token: String,
-        finished: bool,
-        public_tokens: Vec<String>,
-    },
+    /// What every Link session polled together has come to, one
+    /// [`LinkPoll`] each and in the order they were asked about.
+    LinksPolled { polls: Vec<LinkPoll> },
 
     /// A bank is attached. Carries no access token: that stays in the runtime,
     /// beside the credentials it belongs with.

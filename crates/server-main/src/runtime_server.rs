@@ -369,7 +369,7 @@ impl RuntimeServer {
 
             ActionSource::OpenLink { user_id } => self.open_link(*user_id).await,
 
-            ActionSource::PollLink { link_token } => self.poll_link(link_token).await,
+            ActionSource::PollLinks { link_tokens } => self.poll_links(link_tokens).await,
 
             ActionSource::ExchangePublicToken {
                 link_token,
@@ -408,29 +408,42 @@ impl RuntimeServer {
         self.dispatch(vec![Event::FromSource { event }]).await
     }
 
-    /// Ask what became of a Link session.
-    async fn poll_link(&self, link_token: &str) -> Vec<Action> {
-        let event = match runtime_plaid::poll_link(&self.credentials, link_token).await {
-            Ok((finished, public_tokens)) => EventSource::LinkPolled {
-                link_token: link_token.to_string(),
-                finished,
-                public_tokens,
-            },
+    /// Ask what became of every Link session the machine named.
+    ///
+    /// One call each, and one event for all of them. Which sessions to ask
+    /// about is the machine's decision; how many requests that takes is not.
+    async fn poll_links(&self, link_tokens: &[String]) -> Vec<Action> {
+        let mut polls = Vec::with_capacity(link_tokens.len());
 
-            Err(e) => {
-                tracing::warn!(error = %e, "could not poll a link session");
+        for link_token in link_tokens {
+            let poll = match runtime_plaid::poll_link(&self.credentials, link_token).await {
+                Ok((finished, public_tokens)) => crate::LinkPoll {
+                    link_token: link_token.clone(),
+                    finished,
+                    public_tokens,
+                },
 
-                // Not abandoned: a failed poll says nothing about the session,
-                // and giving up here would lose a bank somebody did connect.
-                EventSource::LinkPolled {
-                    link_token: link_token.to_string(),
-                    finished: false,
-                    public_tokens: Vec::new(),
+                Err(e) => {
+                    tracing::warn!(error = %e, "could not poll a link session");
+
+                    // Not abandoned: a failed poll says nothing about the
+                    // session, and giving up here would lose a bank somebody
+                    // did connect.
+                    crate::LinkPoll {
+                        link_token: link_token.clone(),
+                        finished: false,
+                        public_tokens: Vec::new(),
+                    }
                 }
-            }
-        };
+            };
 
-        self.dispatch(vec![Event::FromSource { event }]).await
+            polls.push(poll);
+        }
+
+        self.dispatch(vec![Event::FromSource {
+            event: EventSource::LinksPolled { polls },
+        }])
+        .await
     }
 
     /// Trade a `public_token` for the permanent one.
