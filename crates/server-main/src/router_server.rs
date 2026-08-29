@@ -72,7 +72,7 @@ async fn snapshot(
     });
 
     runtime
-        .ask(EventRouter::SnapshotRequested {
+        .request(EventRouter::SnapshotRequested {
             force: query.refresh,
             items,
         })
@@ -109,7 +109,7 @@ async fn auth_request(
     // Read off what the machine decided rather than assumed. `Unavailable` is
     // the machine refusing to mint a code it has no entropy for, and answering
     // 204 to that would leave somebody waiting for an email that is not coming.
-    match runtime.ask(EventRouter::CodeRequested { email }).await {
+    match runtime.request(EventRouter::CodeRequested { email }).await {
         Some(ActionRouter::Accepted) => StatusCode::NO_CONTENT,
         _ => StatusCode::SERVICE_UNAVAILABLE,
     }
@@ -156,7 +156,7 @@ async fn auth_verify(
     // The outcome is read off what the machine decided, not worked out again
     // here. There is exactly one answer that signs somebody in.
     let answer = runtime
-        .ask(EventRouter::CodeSubmitted {
+        .request(EventRouter::CodeSubmitted {
             email,
             code: body.code.trim().to_string(),
             stored,
@@ -186,7 +186,9 @@ async fn link_start(
 ) -> Result<Json<LinkStarted>, StatusCode> {
     let user_id = runtime.authenticate(&headers).await?;
 
-    let answer = runtime.ask(EventRouter::LinkRequested { user_id }).await;
+    let answer = runtime
+        .request(EventRouter::LinkRequested { user_id })
+        .await;
 
     let Some(ActionRouter::LinkOpened { url }) = answer else {
         return Err(StatusCode::BAD_GATEWAY);
@@ -223,7 +225,7 @@ async fn link_finish(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let answer = runtime.ask(EventRouter::LinkClosed { pending }).await;
+    let answer = runtime.request(EventRouter::LinkClosed { pending }).await;
 
     Ok(Json(LinkFinished {
         linked: matches!(answer, Some(ActionRouter::Linked)),
