@@ -4,7 +4,7 @@
 //! nothing decides anything about it: the runtime reads a user's rows on the
 //! request path and serves them, and the only thing the machine wants from the
 //! store is the handful of facts on
-//! [`EventClient::SnapshotRequested`](crate::EventClient).
+//! [`EventRouter::SnapshotRequested`](crate::EventRouter).
 
 #[derive(Debug)]
 pub enum EventStore {

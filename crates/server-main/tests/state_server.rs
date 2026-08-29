@@ -52,8 +52,8 @@ fn facts(synced_at: Option<Timestamp>, login_required: bool) -> ItemFacts {
 }
 
 fn requested(force: bool, items: Vec<ItemFacts>) -> Event {
-    Event::FromClient {
-        event: EventClient::SnapshotRequested { force, items },
+    Event::FromRouter {
+        event: EventRouter::SnapshotRequested { force, items },
     }
 }
 
@@ -88,7 +88,7 @@ fn a_bank_that_has_never_synced_is_fetched() {
     eval!(&mut state,
         < requested(false, vec![facts(None, false)]),
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
-        > Action::ToClient { action: ActionClient::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve },
     );
 }
 
@@ -102,7 +102,7 @@ fn a_user_with_no_banks_is_just_served() {
     eval!(&mut state,
         // Forced, which normally outranks everything short of a dead login.
         < requested(true, vec![]),
-        > Action::ToClient { action: ActionClient::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve },
     );
 }
 
@@ -112,7 +112,7 @@ fn a_fresh_bank_is_served_without_asking_plaid_again() {
 
     eval!(&mut state,
         < requested(false, vec![facts(Some(T0), false)]),
-        > Action::ToClient { action: ActionClient::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve },
     );
 }
 
@@ -127,7 +127,7 @@ fn a_stale_bank_is_refetched_from_its_cursor() {
     eval!(&mut state,
         < requested(false, vec![facts(Some(long_ago), false)]),
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
-        > Action::ToClient { action: ActionClient::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve },
     );
 }
 
@@ -138,7 +138,7 @@ fn a_forced_request_refetches_however_fresh() {
     eval!(&mut state,
         < requested(true, vec![facts(Some(T0), false)]),
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
-        > Action::ToClient { action: ActionClient::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve },
     );
 }
 
@@ -149,7 +149,7 @@ fn a_login_required_bank_is_not_retried_even_when_forced() {
 
     eval!(&mut state,
         < requested(true, vec![facts(Some(T0), true)]),
-        > Action::ToClient { action: ActionClient::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve },
     );
 }
 
@@ -169,7 +169,7 @@ fn each_bank_is_decided_about_on_its_own() {
     eval!(&mut state,
         < requested(false, vec![facts(None, false), dead]),
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
-        > Action::ToClient { action: ActionClient::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve },
     );
 }
 
@@ -277,7 +277,7 @@ fn shutting_down_stops_new_work() {
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
         < requested(true, vec![facts(None, false)]),
-        > Action::ToClient { action: ActionClient::Serve },
+        > Action::ToRouter { action: ActionRouter::Serve },
     );
 
     assert!(state.shutting_down());
@@ -305,16 +305,16 @@ fn seeded() -> Event {
 }
 
 fn code_requested(email: &str) -> Event {
-    Event::FromClient {
-        event: EventClient::CodeRequested {
+    Event::FromRouter {
+        event: EventRouter::CodeRequested {
             email: email.to_string(),
         },
     }
 }
 
 fn code_submitted(email: &str, code: &str, stored: Option<StoredCode>) -> Event {
-    Event::FromClient {
-        event: EventClient::CodeSubmitted {
+    Event::FromRouter {
+        event: EventRouter::CodeSubmitted {
             email: email.to_string(),
             code: code.to_string(),
             stored,
@@ -402,7 +402,7 @@ fn the_right_code_signs_you_in_and_spends_itself() {
         < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 0, 600))),
         > Action::ToStore { action: ActionStore::CreateSession { .. } },
         > Action::ToStore { action: ActionStore::DeleteCode { .. } },
-        > Action::ToClient { action: ActionClient::SignedIn { .. } },
+        > Action::ToRouter { action: ActionRouter::SignedIn { .. } },
     );
 }
 
@@ -417,7 +417,7 @@ fn a_wrong_code_only_counts_a_guess() {
 
         < code_submitted("alex@example.com", "654321", Some(stored_code("123456", 0, 600))),
         > Action::ToStore { action: ActionStore::RecordAttempt { .. } },
-        > Action::ToClient { action: ActionClient::Rejected },
+        > Action::ToRouter { action: ActionRouter::Rejected },
     );
 }
 
@@ -432,7 +432,7 @@ fn an_expired_code_is_rejected_and_still_counts() {
 
         < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 0, 0))),
         > Action::ToStore { action: ActionStore::RecordAttempt { .. } },
-        > Action::ToClient { action: ActionClient::Rejected },
+        > Action::ToRouter { action: ActionRouter::Rejected },
     );
 }
 
@@ -446,7 +446,7 @@ fn an_exhausted_code_rejects_the_right_answer() {
 
         < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 5, 600))),
         > Action::ToStore { action: ActionStore::RecordAttempt { .. } },
-        > Action::ToClient { action: ActionClient::Rejected },
+        > Action::ToRouter { action: ActionRouter::Rejected },
     );
 }
 
@@ -461,7 +461,7 @@ fn an_address_with_no_code_is_rejected_the_same_way() {
         < seeded(),
 
         < code_submitted("alex@example.com", "123456", None),
-        > Action::ToClient { action: ActionClient::Rejected },
+        > Action::ToRouter { action: ActionRouter::Rejected },
     );
 }
 
@@ -484,7 +484,7 @@ fn connecting_a_bank_opens_a_link_session() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromClient { event: EventClient::LinkRequested { user_id: USER } },
+        < Event::FromRouter { event: EventRouter::LinkRequested { user_id: USER } },
         > Action::ToSource { action: ActionSource::OpenLink { .. } },
     );
 }
@@ -506,7 +506,7 @@ fn a_session_is_written_down_before_its_url_is_handed_over() {
             },
         },
         > Action::ToStore { action: ActionStore::SaveLink { .. } },
-        > Action::ToClient { action: ActionClient::LinkOpened { .. } },
+        > Action::ToRouter { action: ActionRouter::LinkOpened { .. } },
     );
 }
 
@@ -532,7 +532,7 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
     eval!(&mut state,
         < link_polled(true, vec![]),
         > Action::ToStore { action: ActionStore::CollectLink { .. } },
-        > Action::ToClient { action: ActionClient::NotLinked },
+        > Action::ToRouter { action: ActionRouter::NotLinked },
     );
 }
 
@@ -544,7 +544,7 @@ fn an_open_session_is_left_pending() {
 
     eval!(&mut state,
         < link_polled(false, vec![]),
-        > Action::ToClient { action: ActionClient::NotLinked },
+        > Action::ToRouter { action: ActionRouter::NotLinked },
     );
 }
 
@@ -562,7 +562,7 @@ fn a_linked_bank_is_stored_and_its_session_closed() {
         },
         > Action::ToStore { action: ActionStore::SaveItem { .. } },
         > Action::ToStore { action: ActionStore::CollectLink { .. } },
-        > Action::ToClient { action: ActionClient::Linked },
+        > Action::ToRouter { action: ActionRouter::Linked },
     );
 }
 
@@ -573,8 +573,8 @@ fn closing_a_sheet_with_no_session_open_asks_nothing() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromClient { event: EventClient::LinkClosed { pending: vec![] } },
-        > Action::ToClient { action: ActionClient::NotLinked },
+        < Event::FromRouter { event: EventRouter::LinkClosed { pending: vec![] } },
+        > Action::ToRouter { action: ActionRouter::NotLinked },
     );
 }
 
@@ -585,8 +585,8 @@ fn every_open_session_is_polled() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromClient {
-            event: EventClient::LinkClosed {
+        < Event::FromRouter {
+            event: EventRouter::LinkClosed {
                 pending: vec!["link-1".to_string(), "link-2".to_string()],
             },
         },

@@ -1,11 +1,15 @@
-//! A client asked for something.
+//! A route was asked for something.
+//!
+//! One variant per route that dispatches, and the handler for that route is
+//! what makes it. "Router" rather than "client": the phone is a client too,
+//! and so is the web app, but only a handler is waiting on the answer.
 
 use crate::ItemFacts;
 use crate::StoredCode;
 use uuid::Uuid;
 
 #[derive(Debug)]
-pub enum EventClient {
+pub enum EventRouter {
     /// Someone wants their snapshot.
     ///
     /// Carries the banks the store holds for them, read by the runtime just

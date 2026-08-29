@@ -1,7 +1,11 @@
-//! Something to send back to a client.
+//! The answer a route is waiting on.
+//!
+//! Exactly one of these per [`EventRouter`](crate::EventRouter). The handler
+//! parks until its own comes back, so a router event that produced none would
+//! be a request that never answers.
 
 #[derive(Debug)]
-pub enum ActionClient {
+pub enum ActionRouter {
     /// Answer with what this user's store holds.
     ///
     /// The snapshot is assembled by the runtime rather than carried here: it

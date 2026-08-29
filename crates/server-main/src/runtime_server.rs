@@ -316,10 +316,10 @@ impl RuntimeServer {
             Action::ToStore { action } => self.perform_action_store(action).await,
             Action::ToProcess { action } => self.perform_action_process(action),
             Action::ToEmail { action } => self.perform_action_email(action).await,
-            // Everything for a client is the answer to a request already in
-            // hand, so it is the absence of work here rather than a step: the
-            // handler reads the outcome off the actions once they are done.
-            Action::ToClient { .. } => {}
+            // The answer to a request already in hand, so it is the absence
+            // of work here rather than a step: the handler reads its outcome
+            // off the actions once they are done.
+            Action::ToRouter { .. } => {}
         }
 
         Vec::new()

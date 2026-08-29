@@ -116,11 +116,11 @@ state machine.
 
 ```rust
 eval!(&mut state,
-    < EventClient::SnapshotRequested { force: false },
+    < EventRouter::SnapshotRequested { force: false },
     > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None } },
 
-    < EventClient::SnapshotRequested { force: true },
-    > Action::ToClient { action: ActionClient::Serve },
+    < EventRouter::SnapshotRequested { force: true },
+    > Action::ToRouter { action: ActionRouter::Serve },
 );
 ```
 
@@ -161,10 +161,10 @@ events carrying an entry the ledger already held:
 ```rust
 eval!(&mut state,
     < loaded(vec![entry("a"), entry("b")]),
-    > Action::ToClient { action: ActionClient::Serve },
+    > Action::ToRouter { action: ActionRouter::Serve },
 
     < loaded(vec![entry("a")]),
-    > Action::ToClient { action: ActionClient::Serve },
+    > Action::ToRouter { action: ActionRouter::Serve },
 );
 
 assert_eq!(state.entries().len(), 2, "a transaction must appear once");

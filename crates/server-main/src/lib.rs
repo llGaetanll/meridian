@@ -18,15 +18,15 @@
 //! ([`RuntimeServer`]). `main.rs` does nothing but start the latter.
 
 mod action;
-mod action_client;
 mod action_email;
 mod action_process;
+mod action_router;
 mod action_source;
 mod action_store;
 mod email_send;
 mod event;
-mod event_client;
 mod event_process;
+mod event_router;
 mod event_source;
 mod event_store;
 mod event_terminal;
@@ -41,15 +41,15 @@ mod session_token;
 mod state_server;
 
 pub use action::Action;
-pub use action_client::ActionClient;
 pub use action_email::ActionEmail;
 pub use action_process::ActionProcess;
+pub use action_router::ActionRouter;
 pub use action_source::ActionSource;
 pub use action_store::ActionStore;
 pub use email_send::EmailSend;
 pub use event::Event;
-pub use event_client::EventClient;
 pub use event_process::EventProcess;
+pub use event_router::EventRouter;
 pub use event_source::EventSource;
 pub use event_store::EventStore;
 pub use event_terminal::EventTerminal;
