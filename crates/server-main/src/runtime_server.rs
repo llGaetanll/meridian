@@ -17,28 +17,17 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use api_common::Timestamp;
-use axum::Json;
-use axum::Router;
-use axum::extract::Query;
-use axum::extract::State;
 use axum::http::StatusCode;
-use axum::routing::get;
-use axum::routing::post;
-use serde::Deserialize;
 use tokio::sync::Mutex;
 use tokio::sync::Notify;
-use tower_http::cors::Any;
-use tower_http::cors::CorsLayer;
 
 use crate::Action;
-use crate::ActionClient;
 use crate::ActionEmail;
 use crate::ActionProcess;
 use crate::ActionSource;
 use crate::ActionStore;
 use crate::EmailSend;
 use crate::Event;
-use crate::EventClient;
 use crate::EventProcess;
 use crate::EventSource;
 use crate::EventStore;
@@ -47,6 +36,7 @@ use crate::PlaidCollect;
 use crate::StateServer;
 use crate::StoredCode;
 use crate::project;
+use crate::router_server;
 use crate::runtime_plaid;
 use crate::session_token;
 use server_wire::WireSnapshot;
@@ -134,14 +124,6 @@ pub struct RuntimeServer {
 
     /// Raised once the machine asks to shut down.
     shutdown: Notify,
-}
-
-/// Everything a request can ask for.
-#[derive(Debug, Default, Deserialize)]
-struct SnapshotQuery {
-    /// Skip the freshness window and go straight to Plaid. Pull-to-refresh.
-    #[serde(default)]
-    refresh: bool,
 }
 
 impl RuntimeServer {
@@ -232,18 +214,7 @@ impl RuntimeServer {
             }
         });
 
-        let router = Router::new()
-            .route("/snapshot", get(snapshot))
-            .route("/auth/request", post(auth_request))
-            .route("/auth/verify", post(auth_verify))
-            .route("/link/start", post(link_start))
-            .route("/link/finish", post(link_finish))
-            .route("/health", get(health))
-            // The phone app is served by trunk on another port, so every
-            // request it makes is cross-origin. This is a development server on
-            // localhost; a deployed one would name its origin instead.
-            .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any))
-            .with_state(Arc::clone(&runtime));
+        let router = router_server::router(Arc::clone(&runtime));
 
         // Every interface rather than loopback, because a phone on the LAN is
         // one of the clients. The simulator shares the Mac's loopback and would
@@ -270,7 +241,7 @@ impl RuntimeServer {
     /// The loop the architecture describes, one turn at a time: a request is
     /// the event source here rather than a `loop`, because axum owns the outer
     /// loop and hands us one batch per connection.
-    async fn dispatch(&self, events: Vec<Event>) -> Vec<Action> {
+    pub(crate) async fn dispatch(&self, events: Vec<Event>) -> Vec<Action> {
         if events.is_empty() {
             return Vec::new();
         }
@@ -681,8 +652,43 @@ impl RuntimeServer {
         Ok(connections)
     }
 
+    /// The sign-in code standing against an address, if there is one.
+    ///
+    /// Read on the request path and handed to the machine on the event, the
+    /// same as every other fact: the machine keeps no codes, so it cannot
+    /// decide about one it was not given.
+    pub(crate) async fn stored_code(
+        &self,
+        email: &str,
+    ) -> Result<Option<StoredCode>, src_postgres::PostgresError> {
+        Ok(src_postgres::load_code(&self.db, email)
+            .await?
+            .map(|s| StoredCode {
+                code_sha256: s.code_sha256,
+                expires_at: s.expires_at,
+                attempts: s.attempts,
+            }))
+    }
+
+    /// The Link sessions this user has open and has not collected.
+    pub(crate) async fn pending_links(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<String>, src_postgres::PostgresError> {
+        Ok(src_postgres::pending_links(&self.db, user_id)
+            .await?
+            .into_iter()
+            .map(|link| link.link_token)
+            .collect())
+    }
+
+    /// Whether the store answers. Asked rather than assumed from a pool.
+    pub(crate) async fn ping_store(&self) -> Result<(), src_postgres::PostgresError> {
+        src_postgres::ping(&self.db).await
+    }
+
     /// The facts the machine needs to decide whether to sync each of them.
-    async fn facts_for(
+    pub(crate) async fn facts_for(
         &self,
         user_id: Uuid,
     ) -> Result<Vec<crate::ItemFacts>, src_postgres::PostgresError> {
@@ -892,7 +898,7 @@ impl RuntimeServer {
     /// Not from memory. The machine used to hold the ledger and this used to
     /// be a projection of it, which was only ever right because there was one
     /// user — and a second would have been served the first one's transactions.
-    async fn project_snapshot(&self, user_id: Uuid) -> WireSnapshot {
+    pub(crate) async fn project_snapshot(&self, user_id: Uuid) -> WireSnapshot {
         let now = unix_now();
 
         let entries = src_postgres::load_entries(&self.db, user_id).await;
@@ -936,7 +942,10 @@ impl RuntimeServer {
     /// The only place a request turns into a user. Everything downstream takes
     /// a `Uuid` rather than a header, so there is no path that reads somebody's
     /// ledger without having come through here.
-    async fn authenticate(&self, headers: &axum::http::HeaderMap) -> Result<Uuid, StatusCode> {
+    pub(crate) async fn authenticate(
+        &self,
+        headers: &axum::http::HeaderMap,
+    ) -> Result<Uuid, StatusCode> {
         let header = headers
             .get(axum::http::header::AUTHORIZATION)
             .and_then(|value| value.to_str().ok());
@@ -994,244 +1003,6 @@ impl RuntimeServer {
 
                 poisoned.into_inner()
             }
-        }
-    }
-}
-
-/// `GET /snapshot`
-///
-/// Answers with the ledger of whoever the bearer token signs in, and 401s
-/// without one. There is no unauthenticated form: this is somebody's bank
-/// transactions.
-async fn snapshot(
-    State(runtime): State<Arc<RuntimeServer>>,
-    headers: axum::http::HeaderMap,
-    Query(query): Query<SnapshotQuery>,
-) -> Result<Json<WireSnapshot>, StatusCode> {
-    let user_id = runtime.authenticate(&headers).await?;
-
-    // Read before deciding. These are the facts the machine needs and does not
-    // keep — where each bank's last sync reached, and whether it still works.
-    let items = runtime.facts_for(user_id).await.unwrap_or_else(|e| {
-        tracing::error!(error = %e, "could not read this user's banks");
-        Vec::new()
-    });
-
-    runtime
-        .dispatch(vec![Event::FromClient {
-            event: EventClient::SnapshotRequested {
-                force: query.refresh,
-                items,
-            },
-        }])
-        .await;
-
-    Ok(Json(runtime.project_snapshot(user_id).await))
-}
-
-/// What `POST /auth/request` takes.
-#[derive(Debug, Deserialize)]
-struct AuthRequestBody {
-    email: String,
-}
-
-/// `POST /auth/request` — send a sign-in code to this address.
-///
-/// Always answers 204, whether or not the address is one we know. The
-/// alternative tells anybody who asks which addresses have accounts here,
-/// which for a banking app is worth more than the convenience of a clearer
-/// error.
-async fn auth_request(
-    State(runtime): State<Arc<RuntimeServer>>,
-    Json(body): Json<AuthRequestBody>,
-) -> StatusCode {
-    let email = body.email.trim().to_lowercase();
-
-    // Not an address, so nothing to send to. Still 204: see above.
-    if !email.contains('@') || email.len() < 3 {
-        tracing::warn!("a sign-in was asked for with something that is not an address");
-
-        return StatusCode::NO_CONTENT;
-    }
-
-    runtime
-        .dispatch(vec![Event::FromClient {
-            event: EventClient::CodeRequested { email },
-        }])
-        .await;
-
-    StatusCode::NO_CONTENT
-}
-
-/// What `POST /auth/verify` takes.
-#[derive(Debug, Deserialize)]
-struct AuthVerifyBody {
-    email: String,
-    code: String,
-}
-
-/// What it answers with: the token every later request carries.
-#[derive(Debug, serde::Serialize)]
-struct AuthVerified {
-    token: String,
-}
-
-/// `POST /auth/verify` — trade a code for a session.
-///
-/// One failure shape for every way of being wrong — wrong code, expired code,
-/// too many guesses, no code at all — because the difference is only useful to
-/// somebody working through guesses. The app already knows what to say from
-/// the screen it is on.
-async fn auth_verify(
-    State(runtime): State<Arc<RuntimeServer>>,
-    Json(body): Json<AuthVerifyBody>,
-) -> Result<Json<AuthVerified>, StatusCode> {
-    let email = body.email.trim().to_lowercase();
-
-    // What the store holds against this address, read before deciding — the
-    // same shape as the snapshot path, and for the same reason: the machine
-    // keeps nothing, so the facts arrive with the request.
-    let stored = match src_postgres::load_code(&runtime.db, &email).await {
-        Ok(stored) => stored.map(|s| StoredCode {
-            code_sha256: s.code_sha256,
-            expires_at: s.expires_at,
-            attempts: s.attempts,
-        }),
-
-        Err(e) => {
-            tracing::error!(error = %e, "could not read the sign-in code");
-
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
-
-    let actions = runtime
-        .dispatch(vec![Event::FromClient {
-            event: EventClient::CodeSubmitted {
-                email,
-                code: body.code.trim().to_string(),
-                stored,
-            },
-        }])
-        .await;
-
-    // The outcome is read off what the machine decided, not worked out again
-    // here. There is exactly one action that signs somebody in.
-    let token = actions.into_iter().find_map(|action| match action {
-        Action::ToClient {
-            action: ActionClient::SignedIn { token },
-        } => Some(token),
-        _ => None,
-    });
-
-    Ok(Json(AuthVerified {
-        token: token.ok_or(StatusCode::UNAUTHORIZED)?,
-    }))
-}
-
-/// What `POST /link/start` answers with: the page to open.
-#[derive(Debug, serde::Serialize)]
-struct LinkStarted {
-    url: String,
-}
-
-/// `POST /link/start` — open a Link session for the signed-in user.
-///
-/// Answers with Plaid's own hosted page. Nothing is created at Plaid's end by
-/// this, so it is safe to call again if somebody backs out.
-async fn link_start(
-    State(runtime): State<Arc<RuntimeServer>>,
-    headers: axum::http::HeaderMap,
-) -> Result<Json<LinkStarted>, StatusCode> {
-    let user_id = runtime.authenticate(&headers).await?;
-
-    let actions = runtime
-        .dispatch(vec![Event::FromClient {
-            event: EventClient::LinkRequested { user_id },
-        }])
-        .await;
-
-    let url = actions.into_iter().find_map(|action| match action {
-        Action::ToClient {
-            action: ActionClient::LinkOpened { url },
-        } => Some(url),
-        _ => None,
-    });
-
-    Ok(Json(LinkStarted {
-        url: url.ok_or(StatusCode::BAD_GATEWAY)?,
-    }))
-}
-
-/// What `POST /link/finish` answers with.
-#[derive(Debug, serde::Serialize)]
-struct LinkFinished {
-    /// Whether a bank is now attached. False is the ordinary outcome of
-    /// somebody closing the sheet, not an error.
-    linked: bool,
-}
-
-/// `POST /link/finish` — collect whatever the Link session came to.
-///
-/// Called when the web sheet closes. The redirect that closed it carries no
-/// token (`docs/PLAID.md`), so this is what goes and asks Plaid; with
-/// `PLAID_COLLECT=webhook` the same collection would arrive on its own and
-/// this becomes a read of what already happened.
-async fn link_finish(
-    State(runtime): State<Arc<RuntimeServer>>,
-    headers: axum::http::HeaderMap,
-) -> Result<Json<LinkFinished>, StatusCode> {
-    let user_id = runtime.authenticate(&headers).await?;
-
-    // The sessions this user has open, read before deciding — the same shape
-    // as everywhere else: the machine keeps nothing, so the facts arrive with
-    // the request.
-    let pending = src_postgres::pending_links(&runtime.db, user_id)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "could not read this user's link sessions");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .into_iter()
-        .map(|link| link.link_token)
-        .collect();
-
-    let actions = runtime
-        .dispatch(vec![Event::FromClient {
-            event: EventClient::LinkClosed { pending },
-        }])
-        .await;
-
-    Ok(Json(LinkFinished {
-        linked: actions.iter().any(|action| {
-            matches!(
-                action,
-                Action::ToClient {
-                    action: ActionClient::Linked
-                }
-            )
-        }),
-    }))
-}
-
-/// `GET /health`
-/// Whether the server is up, and whether what it depends on is.
-///
-/// It reports the database by asking it something rather than by checking that
-/// a pool exists: a pool holds connections the far end may have closed since,
-/// so the only honest answer comes from a query. This is what `docker compose
-/// up` is checked with, so an optimistic answer here would defeat the point of
-/// having it.
-async fn health(State(runtime): State<Arc<RuntimeServer>>) -> (StatusCode, String) {
-    match src_postgres::ping(&runtime.db).await {
-        Ok(()) => (StatusCode::OK, String::from("ok store=postgres")),
-        Err(e) => {
-            tracing::error!(error = %e, "the store is not answering");
-
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                format!("store unreachable: {e}"),
-            )
         }
     }
 }
