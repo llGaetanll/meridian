@@ -34,6 +34,7 @@ mod item_facts;
 mod login_code;
 mod plaid_collect;
 mod project;
+mod router_server;
 mod runtime_plaid;
 mod runtime_server;
 mod session_token;
