@@ -24,9 +24,9 @@ use tower_http::cors::Any;
 use tower_http::cors::CorsLayer;
 
 use crate::Action;
-use crate::ActionClient;
+use crate::ActionRouter;
 use crate::Event;
-use crate::EventClient;
+use crate::EventRouter;
 use crate::RuntimeServer;
 use server_wire::WireSnapshot;
 
@@ -74,8 +74,8 @@ async fn snapshot(
     });
 
     runtime
-        .dispatch(vec![Event::FromClient {
-            event: EventClient::SnapshotRequested {
+        .dispatch(vec![Event::FromRouter {
+            event: EventRouter::SnapshotRequested {
                 force: query.refresh,
                 items,
             },
@@ -111,8 +111,8 @@ async fn auth_request(
     }
 
     runtime
-        .dispatch(vec![Event::FromClient {
-            event: EventClient::CodeRequested { email },
+        .dispatch(vec![Event::FromRouter {
+            event: EventRouter::CodeRequested { email },
         }])
         .await;
 
@@ -158,8 +158,8 @@ async fn auth_verify(
     };
 
     let actions = runtime
-        .dispatch(vec![Event::FromClient {
-            event: EventClient::CodeSubmitted {
+        .dispatch(vec![Event::FromRouter {
+            event: EventRouter::CodeSubmitted {
                 email,
                 code: body.code.trim().to_string(),
                 stored,
@@ -170,8 +170,8 @@ async fn auth_verify(
     // The outcome is read off what the machine decided, not worked out again
     // here. There is exactly one action that signs somebody in.
     let token = actions.into_iter().find_map(|action| match action {
-        Action::ToClient {
-            action: ActionClient::SignedIn { token },
+        Action::ToRouter {
+            action: ActionRouter::SignedIn { token },
         } => Some(token),
         _ => None,
     });
@@ -198,14 +198,14 @@ async fn link_start(
     let user_id = runtime.authenticate(&headers).await?;
 
     let actions = runtime
-        .dispatch(vec![Event::FromClient {
-            event: EventClient::LinkRequested { user_id },
+        .dispatch(vec![Event::FromRouter {
+            event: EventRouter::LinkRequested { user_id },
         }])
         .await;
 
     let url = actions.into_iter().find_map(|action| match action {
-        Action::ToClient {
-            action: ActionClient::LinkOpened { url },
+        Action::ToRouter {
+            action: ActionRouter::LinkOpened { url },
         } => Some(url),
         _ => None,
     });
@@ -244,8 +244,8 @@ async fn link_finish(
     })?;
 
     let actions = runtime
-        .dispatch(vec![Event::FromClient {
-            event: EventClient::LinkClosed { pending },
+        .dispatch(vec![Event::FromRouter {
+            event: EventRouter::LinkClosed { pending },
         }])
         .await;
 
@@ -253,8 +253,8 @@ async fn link_finish(
         linked: actions.iter().any(|action| {
             matches!(
                 action,
-                Action::ToClient {
-                    action: ActionClient::Linked
+                Action::ToRouter {
+                    action: ActionRouter::Linked
                 }
             )
         }),

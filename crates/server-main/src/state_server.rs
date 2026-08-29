@@ -24,14 +24,14 @@ use src_plaid::PlaidRateCtx;
 use src_plaid::PlaidRateLimiter;
 
 use crate::Action;
-use crate::ActionClient;
 use crate::ActionEmail;
 use crate::ActionProcess;
+use crate::ActionRouter;
 use crate::ActionSource;
 use crate::ActionStore;
 use crate::Event;
-use crate::EventClient;
 use crate::EventProcess;
+use crate::EventRouter;
 use crate::EventSource;
 use crate::EventStore;
 use crate::EventTerminal;
@@ -110,7 +110,7 @@ impl StateServer {
 
     fn handle_event(&mut self, event: &Event, actions: &mut Vec<Action>) {
         match event {
-            Event::FromClient { event } => self.handle_event_client(event, actions),
+            Event::FromRouter { event } => self.handle_event_router(event, actions),
             Event::FromSource { event } => self.handle_event_source(event, actions),
             Event::FromStore { event } => self.handle_event_store(event, actions),
             Event::FromProcess { event } => self.handle_event_process(event, actions),
@@ -118,25 +118,25 @@ impl StateServer {
         }
     }
 
-    fn handle_event_client(&mut self, event: &EventClient, actions: &mut Vec<Action>) {
+    fn handle_event_router(&mut self, event: &EventRouter, actions: &mut Vec<Action>) {
         match event {
             // Free to ask for, and creates nothing at Plaid's end — a session
             // nobody finishes costs nothing and expires on its own. So there
             // is nothing to rate limit here that is not already covered by
             // issue #23.
-            EventClient::LinkRequested { user_id } => {
+            EventRouter::LinkRequested { user_id } => {
                 actions.push(Action::ToSource {
                     action: ActionSource::OpenLink { user_id: *user_id },
                 });
             }
 
-            EventClient::LinkClosed { pending } => {
+            EventRouter::LinkClosed { pending } => {
                 // Nothing open. Somebody closed a sheet we have no record of,
                 // or collected this one already — either way there is nothing
                 // to go and ask about.
                 if pending.is_empty() {
-                    actions.push(Action::ToClient {
-                        action: ActionClient::NotLinked,
+                    actions.push(Action::ToRouter {
+                        action: ActionRouter::NotLinked,
                     });
 
                     return;
@@ -151,7 +151,7 @@ impl StateServer {
                 }
             }
 
-            EventClient::CodeRequested { email } => {
+            EventRouter::CodeRequested { email } => {
                 // No entropy, no credentials. Refused rather than filled in
                 // with anything derivable — a predictable sign-in code is a
                 // way into somebody's bank, and there is no fallback that is
@@ -186,7 +186,7 @@ impl StateServer {
                 });
             }
 
-            EventClient::CodeSubmitted {
+            EventRouter::CodeSubmitted {
                 email,
                 code,
                 stored,
@@ -195,8 +195,8 @@ impl StateServer {
                 // other: telling them apart would say which addresses have a
                 // sign-in in flight.
                 let Some(stored) = stored else {
-                    actions.push(Action::ToClient {
-                        action: ActionClient::Rejected,
+                    actions.push(Action::ToRouter {
+                        action: ActionRouter::Rejected,
                     });
 
                     return;
@@ -216,8 +216,8 @@ impl StateServer {
 
                     tracing::warn!(email, ?verdict, "a sign-in code was rejected");
 
-                    actions.push(Action::ToClient {
-                        action: ActionClient::Rejected,
+                    actions.push(Action::ToRouter {
+                        action: ActionRouter::Rejected,
                     });
 
                     return;
@@ -226,8 +226,8 @@ impl StateServer {
                 let Some(rng) = self.rng.as_mut() else {
                     tracing::error!("a code was accepted before the machine was seeded");
 
-                    actions.push(Action::ToClient {
-                        action: ActionClient::Rejected,
+                    actions.push(Action::ToRouter {
+                        action: ActionRouter::Rejected,
                     });
 
                     return;
@@ -252,12 +252,12 @@ impl StateServer {
                     },
                 });
 
-                actions.push(Action::ToClient {
-                    action: ActionClient::SignedIn { token },
+                actions.push(Action::ToRouter {
+                    action: ActionRouter::SignedIn { token },
                 });
             }
 
-            EventClient::SnapshotRequested { force, items } => {
+            EventRouter::SnapshotRequested { force, items } => {
                 for item in items {
                     if self.should_fetch(item, *force) {
                         actions.push(Action::ToSource {
@@ -274,8 +274,8 @@ impl StateServer {
                 // the empty ledger rather than an error — that is what "no
                 // bank linked yet" looks like, and it is the state first run
                 // exists to leave.
-                actions.push(Action::ToClient {
-                    action: ActionClient::Serve,
+                actions.push(Action::ToRouter {
+                    action: ActionRouter::Serve,
                 });
             }
         }
@@ -329,8 +329,8 @@ impl StateServer {
                     },
                 });
 
-                actions.push(Action::ToClient {
-                    action: ActionClient::LinkOpened {
+                actions.push(Action::ToRouter {
+                    action: ActionRouter::LinkOpened {
                         url: hosted_link_url.clone(),
                     },
                 });
@@ -365,8 +365,8 @@ impl StateServer {
                         },
                     });
 
-                    actions.push(Action::ToClient {
-                        action: ActionClient::NotLinked,
+                    actions.push(Action::ToRouter {
+                        action: ActionRouter::NotLinked,
                     });
 
                     return;
@@ -374,8 +374,8 @@ impl StateServer {
 
                 // Still open — somebody is still typing their password. Left
                 // pending, so the next close asks again.
-                actions.push(Action::ToClient {
-                    action: ActionClient::NotLinked,
+                actions.push(Action::ToRouter {
+                    action: ActionRouter::NotLinked,
                 });
             }
 
@@ -396,8 +396,8 @@ impl StateServer {
                     },
                 });
 
-                actions.push(Action::ToClient {
-                    action: ActionClient::Linked,
+                actions.push(Action::ToRouter {
+                    action: ActionRouter::Linked,
                 });
             }
 
@@ -408,8 +408,8 @@ impl StateServer {
                     },
                 });
 
-                actions.push(Action::ToClient {
-                    action: ActionClient::NotLinked,
+                actions.push(Action::ToRouter {
+                    action: ActionRouter::NotLinked,
                 });
             }
 

@@ -1,7 +1,7 @@
 //! What happened to the server.
 
-use crate::EventClient;
 use crate::EventProcess;
+use crate::EventRouter;
 use crate::EventSource;
 use crate::EventStore;
 use crate::EventTerminal;
@@ -10,8 +10,8 @@ use crate::EventTerminal;
 /// readable as the server grows, and a recorded log reads as a story.
 #[derive(Debug)]
 pub enum Event {
-    /// A client asked for something.
-    FromClient { event: EventClient },
+    /// A route was asked for something.
+    FromRouter { event: EventRouter },
 
     /// A source answered, or failed to.
     FromSource { event: EventSource },
