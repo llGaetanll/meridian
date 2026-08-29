@@ -40,6 +40,24 @@ pub enum ActionStore {
         expires_at: api_common::Timestamp,
     },
 
+    /// Remember that this user opened this Link session.
+    ///
+    /// Written before the URL reaches them, so there is no window in which a
+    /// session could be finished that we have no record of asking for — which
+    /// is what stops one account collecting another's bank.
+    SaveLink {
+        link_token: String,
+        user_id: uuid::Uuid,
+    },
+
+    /// Mark a Link session done, whatever it came to. Set on an empty one too:
+    /// a session that stays open forever is one we would poll forever.
+    CollectLink { link_token: String },
+
+    /// Store a newly linked bank. The access token is the runtime's and is not
+    /// carried here.
+    SaveItem { item_id: String, link_token: String },
+
     /// Write what a sync just produced.
     ///
     /// Carries the diff rather than asking the runtime to read it off state,

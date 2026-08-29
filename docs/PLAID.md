@@ -29,12 +29,24 @@ Sandbox logins are `user_good` / `pass_good` at any institution.
 
 ## Linking a Sandbox bank
 
-Until Hosted Link is built, this is how a bank gets onto the books:
+Two ways. The real one is Hosted Link, which the server now speaks:
+
+```
+POST /link/start   -> { "url": "https://secure.plaid.com/hl/…" }
+                      open it, sign in as user_good / pass_good
+POST /link/finish  -> { "linked": true }
+```
+
+Both need a session — see the sign-in flow. `/link/start` writes the session
+down against the caller *before* handing back the URL, which is what stops one
+account collecting a bank another account connected.
+
+The other way needs no browser, which is what makes it useful from a terminal:
 
 ```sh
-./scripts/db-init.sh                                  # once, if Postgres is not up
-cargo run -p server-main --example link_sandbox       # ins_109508 by default
-cargo run -p server-main --example link_sandbox -- ins_109509
+./scripts/db-init.sh                                              # if Postgres is not up
+cargo run -p server-main --example link_sandbox -- you@example.com
+cargo run -p server-main --example link_sandbox -- you@example.com ins_109509
 ```
 
 It creates a Sandbox Item and writes it to `items`, access token and all. The
@@ -44,9 +56,16 @@ server picks it up at boot and syncs on the first request.
 Production, so there is no version of this call that can spend an Item slot.
 Run it as often as you like.
 
-What it skips is the middle of [the flow](#the-flow) — the part where a person
-signs into their bank on Plaid's page. Everything after that is the ordinary
-code path: the same `public_token`, the same exchange, the same Item.
+It skips the middle of [the flow](#the-flow) — the part where a person signs
+into their bank on Plaid's page. Everything after that is the ordinary code
+path: the same `public_token`, the same exchange, the same Item.
+
+**`is_mobile_app` is false on the link token we create.** Plaid rejects the
+request otherwise unless a top-level `redirect_uri` is set too, and that one
+has to be an https address registered in the dashboard — unlike the custom
+scheme in `completion_redirect_uri`, which needs nothing. It changes how an
+OAuth bank hands control back, so it has to be revisited before a real bank is
+linked from a real phone.
 
 Sandbox generates transactions asynchronously, so a `/transactions/sync` in the
 first seconds after linking can answer empty or `PRODUCT_NOT_READY`. Ask again.

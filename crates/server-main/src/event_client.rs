@@ -2,6 +2,7 @@
 
 use crate::ItemFacts;
 use crate::StoredCode;
+use uuid::Uuid;
 
 #[derive(Debug)]
 pub enum EventClient {
@@ -32,4 +33,17 @@ pub enum EventClient {
         code: String,
         stored: Option<StoredCode>,
     },
+
+    /// Somebody wants to connect a bank. The id is theirs, so the session
+    /// can be written down against them before its URL is handed over.
+    LinkRequested { user_id: Uuid },
+
+    /// The bank sign-in page closed, so whatever happened there has happened.
+    ///
+    /// Carries the sessions the store holds open for this user, read by the
+    /// runtime just before — the same shape as
+    /// [`ItemFacts`](crate::ItemFacts). The redirect that closed the sheet
+    /// carries no token, so the result has to be collected, and this is what
+    /// says it is worth collecting now.
+    LinkClosed { pending: Vec<String> },
 }

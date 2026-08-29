@@ -47,6 +47,12 @@ pub struct LinkTokenRequest {
     pub completion_redirect_uri: Option<String>,
 
     /// Whether the session is being opened inside a native app.
+    ///
+    /// **Setting this requires a top-level `redirect_uri` as well**, which
+    /// Plaid rejects the request without — and that one must be an https
+    /// address registered in the dashboard, unlike the custom scheme in
+    /// `completion_redirect_uri`. It changes how an OAuth bank hands control
+    /// back, so it is only needed once a real bank is linked from a phone.
     pub is_mobile_app: bool,
 
     /// How long the hosted URL stays good for. Plaid's default is 30 minutes

@@ -46,24 +46,10 @@ pub async fn fetch_all(
     now: api_common::Timestamp,
 ) -> Result<Fetched, PlaidError> {
     // Guard rail, not decoration: nothing should be able to reach Production
-    // by accident. An error rather than a panic — `docs/STYLE.md` — but the
-    // effect is the same, because the caller has no way to proceed past it.
-    if credentials.env != PlaidEnv::Sandbox {
-        tracing::error!(
-            env = credentials.env.as_str(),
-            "refusing to call anything but the Plaid Sandbox — see docs/PLAID.md",
-        );
-
-        return Err(PlaidError::InvalidUrl(
-            "server-main only ever talks to the Plaid Sandbox".to_string(),
-        ));
-    }
-
-    let client = PlaidClient::new(PlaidCredentials {
-        client_id: credentials.client_id.clone(),
-        secret: credentials.secret.clone(),
-        env: credentials.env,
-    })?;
+    // by accident. `client` refuses anything but Sandbox — an error rather
+    // than a panic, per `docs/STYLE.md`, but the effect is the same because
+    // the caller has no way to proceed past it.
+    let client = client(credentials)?;
 
     let token = access_token;
 
@@ -92,6 +78,88 @@ pub async fn fetch_all(
         connections,
         streams,
         cursor: sync.cursor,
+    })
+}
+
+/// Open a Link session, and answer with the token and the page that hosts it.
+///
+/// `client_user_id` is our own id for the person linking, which Plaid echoes
+/// back in webhooks. A uuid rather than an address: it ends up in Plaid's logs.
+pub async fn open_link(
+    credentials: &PlaidCredentials,
+    client_user_id: &str,
+) -> Result<(String, Option<String>), PlaidError> {
+    let client = client(credentials)?;
+
+    // The redirect closes the sheet and carries no token — the result is
+    // collected afterwards, by polling. See `docs/PLAID.md`.
+    //
+    // `is_mobile_app` is false, and that is a constraint rather than a choice:
+    // Plaid rejects the request unless a top-level `redirect_uri` is set too,
+    // and that one has to be an https address registered in the dashboard.
+    // False costs nothing here — it changes how OAuth banks hand control back,
+    // and Sandbox has none. It has to be revisited before a real bank is
+    // linked from a real phone.
+    let request = src_plaid::LinkTokenRequest::hosted(client_user_id)
+        .redirecting_to(COMPLETION_REDIRECT, false);
+
+    let res = src_plaid::create_link_token(&client, &request).await?;
+
+    Ok((res.link_token, res.hosted_link_url))
+}
+
+/// Where Plaid sends the browser when the flow ends.
+///
+/// A custom scheme whose only job is to close the web session. It carries no
+/// token; the `public_token` arrives by polling, which is a separate channel.
+const COMPLETION_REDIRECT: &str = "meridian://linked";
+
+/// What became of a Link session: whether it has ended, and what it produced.
+pub async fn poll_link(
+    credentials: &PlaidCredentials,
+    link_token: &str,
+) -> Result<(bool, Vec<String>), PlaidError> {
+    let client = client(credentials)?;
+
+    let res = src_plaid::link_session(&client, link_token).await?;
+
+    Ok((
+        res.finished(),
+        res.public_tokens().iter().map(|t| t.to_string()).collect(),
+    ))
+}
+
+/// Trade a `public_token` for the permanent one, and the Item it belongs to.
+pub async fn exchange(
+    credentials: &PlaidCredentials,
+    public_token: &str,
+) -> Result<(String, String), PlaidError> {
+    let client = client(credentials)?;
+
+    let res = src_plaid::exchange_public_token(&client, public_token).await?;
+
+    Ok((res.item_id, res.access_token))
+}
+
+/// A client for these credentials, refusing anything but Sandbox.
+///
+/// The guard `fetch_all` carries, in the one place every call now goes through.
+fn client(credentials: &PlaidCredentials) -> Result<PlaidClient, PlaidError> {
+    if credentials.env != PlaidEnv::Sandbox {
+        tracing::error!(
+            env = credentials.env.as_str(),
+            "refusing to call anything but the Plaid Sandbox — see docs/PLAID.md",
+        );
+
+        return Err(PlaidError::InvalidUrl(
+            "server-main only ever talks to the Plaid Sandbox".to_string(),
+        ));
+    }
+
+    PlaidClient::new(PlaidCredentials {
+        client_id: credentials.client_id.clone(),
+        secret: credentials.secret.clone(),
+        env: credentials.env,
     })
 }
 
