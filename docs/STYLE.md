@@ -142,22 +142,74 @@ The macro expands to `matches!`, which is why events and actions need no
 `PartialEq` — pattern matching requires no trait at all, and keeping that derive
 off them is what stops it spreading through every type they touch.
 
-Time is not part of the syntax: it is an event like any other, so a test that
-is *about* time sends one.
+**A `>` line that starts with `@` pins the whole action instead**, as a raw
+string compared against its `{:?}`:
+
+```rust
+> @r#"ToSource { action: SendCode { email: "al@example.com" } }"#,
+```
+
+A pattern cannot reach a value: it cannot compare a `String` to a sentence, or
+say that six boxes are red, or that a countdown reads `Resend in 0:18`. `@`
+can, because it compares text. Use it where a value is the claim, and a pattern
+where the shape is — the two sit side by side in one block, and most tests use
+both.
+
+Two things follow from it. The string is what the machine printed, so the enum
+names are unqualified — `ToSource { action: SendCode { … } }`, not
+`Action::ToSource { action: ActionSource::SendCode { … } }`. And a failure
+prints the expected and the actual on two lines in exactly that form, so the
+way to write one is to put in `@r#""#`, run the test, and paste back what it
+says it got — after reading it, since what it got may be the bug.
+
+A screen that runs to hundreds of lines of `Debug` is not worth pinning this
+way; the Ledger's 48 rows stay `Render { .. }` and the assertions on them read
+the view. First run's screens are small, and `tests/state_onboarding.rs` pins
+every one of them whole.
+
+**Every event on a `<` line is written out in full.** No helper that builds one,
+no local holding one, no closure — the whole event, where it is sent:
 
 ```rust
 eval!(&mut state,
-    < requested(false, vec![facts(None, false)]),
+    < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
     > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
 
     // Plaid says nothing. Time passes and nothing else arrives.
-    < tick(too_late),
+    < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
     > Action::ToRouter { action: ActionRouter::Serve, .. },
 );
 ```
 
-That is what makes "we waited long enough" a test rather than a stopwatch.
-`phone-state` has not moved yet and still sets its clock with `set_now`.
+The lines get long. That is the cheaper half of the trade: the point of these
+tests is to read a flow at a glance, and `requested(false, vec![facts(None,
+false)])` cannot be read at all without going to look up two definitions — which
+is worse the more of them a file has, and worst in exactly the test somebody is
+reading because it broke. A helper is fine *around* a test — the machine it
+starts from, the screen it reads back afterwards — but not on a `<` line.
+
+Time is not part of the syntax either: it is an event like any other, so a test
+that is *about* time sends one, as above. That is what makes "we waited long
+enough" a test rather than a stopwatch. `phone-state` has not moved yet and
+still sets its clock with `set_now`.
+
+**Nothing searches the action list.** No `.iter().find(…)` for the render, no
+`.filter(…).count()` of the fetches, and no helper that hands back "the screen
+that came out" — a test that goes looking never says which action carried what
+it found, or how many others there were. Take the action by position instead,
+in a pattern:
+
+```rust
+let [.., Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } }] = actions.as_slice() else {
+    panic!("the ledger is what a batch draws last, got {actions:#?}")
+};
+```
+
+Inside `eval!` this is free: the `>` lines are already every action in order,
+so "only the first turn fetches" is the list itself rather than a count of it.
+A test that needs a view out of a render — because the screen is too large to
+pin with `@` — takes the last action of a batch as above and asserts on what it
+carried.
 
 **A bug is reproduced before it is fixed.** Write the test first, run it, and
 watch it fail for the reason you think it fails. Only then change the code. A
@@ -176,19 +228,20 @@ events carrying an entry the ledger already held:
 
 ```rust
 eval!(&mut state,
-    < loaded(vec![entry("a"), entry("b")]),
+    < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } }), Entry::from_tx("b".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
     > Action::ToRouter { action: ActionRouter::Serve },
 
-    < loaded(vec![entry("a")]),
+    < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
     > Action::ToRouter { action: ActionRouter::Serve },
 );
 
 assert_eq!(state.entries().len(), 2, "a transaction must appear once");
 ```
 
-Six lines, no fixture and no server. Reproducing it that small is also what
-located it: the phone's machine assigns a snapshot wholesale and could never
-have doubled anything, which left one caller of `Ledger::apply` to look at.
+Six lines, no fixture and no server — long ones, and the sequence is still the
+first thing you see. Reproducing it that small is also what located it: the
+phone's machine assigns a snapshot wholesale and could never have doubled
+anything, which left one caller of `Ledger::apply` to look at.
 
 **`eval!` tests live in the crate's `tests/` directory**, not in a
 `#[cfg(test)] mod tests` at the foot of the file they test. A machine's tests
@@ -200,10 +253,16 @@ Unit tests on a value stay where they are, in a module beside the thing they
 test. The rule is about machines, whose tests are conversations rather than
 assertions on a return value.
 
-**No snapshot testing.** Not inline, not in files. A snapshot asserts on a
-string, which means it passes or fails on formatting and `Debug` output that
-nobody chose deliberately; a pattern says what the test actually cares about and
-ignores the rest.
+**No snapshot testing.** Not inline, not in files, and no tool that writes the
+expected value for you or updates it when it changes. A snapshot is accepted
+rather than decided, and a suite of them is a suite nobody has read.
+
+`@` is a string comparison and is not that: it is written into the test by the
+person making the claim, one action at a time, next to the pattern lines that
+deliberately ignore everything else. It does cost what a snapshot costs — add a
+field to a view and every `@` carrying it fails — and that is the trade taken
+knowingly. When a change breaks a pile of them, read the new value before
+pasting it in; that reading is the whole difference.
 
 ## Logging
 

@@ -9,6 +9,13 @@
 //! The ledger itself is no longer the machine's, so it is no longer tested
 //! here. `/transactions/sync` being a diff is now `src-postgres`'s
 //! `apply_entries` to get right, and its tests are the ones that pin it.
+//!
+//! Every event is written out where it is sent rather than built by a helper,
+//! so each test reads as the conversation it is. Three things recur in them:
+//! time arrives as a `Tick` like any other fact from the edge, call ids are
+//! handed out in order from 1 so an answer comes back on the one that asked,
+//! and a route is released only once everything it started has been written —
+//! which is what `EventStore::Written` is doing on its own line.
 
 use api_common::Timestamp;
 use api_eval::eval;
@@ -20,92 +27,17 @@ use server_main::*;
 
 const T0: Timestamp = Timestamp::from_secs(1_787_097_600);
 
-const ITEM: &str = "item-1";
-
-/// The clock, as the process hands it over. Time is an event like every other
-/// fact from the edge, so a test that is *about* time sends one of these
-/// rather than reaching into the machine.
-fn tick(now: Timestamp) -> Event {
-    Event::FromProcess {
-        event: EventProcess::Tick { now },
-    }
-}
-
 fn state() -> StateServer {
     let mut state = StateServer::new();
 
-    state.handle_events(&[tick(T0)], &mut Vec::new());
+    state.handle_events(
+        &[Event::FromProcess {
+            event: EventProcess::Tick { now: T0 },
+        }],
+        &mut Vec::new(),
+    );
 
     state
-}
-
-fn entry(id: &str) -> Entry {
-    Entry::from_tx(
-        id.to_string(),
-        Tx::Transfer {
-            ts: Timestamp::from_secs(1_787_000_000),
-            pos: Position {
-                asset: "USD".into(),
-                qty: -1.0,
-            },
-        },
-    )
-}
-
-/// The store reporting that a write landed. The machine holds a route's
-/// answer until everything it started has, so this is what releases one.
-fn written(call_id: server_main::CallId) -> Event {
-    Event::FromStore {
-        event: EventStore::Written { call_id },
-    }
-}
-
-/// The first call id the machine hands out, which is what a snapshot's fetch
-/// draws. Tests feed an answer back on it.
-const CALL: server_main::CallId = 1;
-
-/// A bank as the store holds it, ready to be decided about.
-fn facts(synced_at: Option<Timestamp>, login_required: bool) -> ItemFacts {
-    ItemFacts {
-        item_id: ITEM.to_string(),
-        cursor: synced_at.map(|_| "cursor-1".to_string()),
-        synced_at,
-        login_required,
-    }
-}
-
-/// A request id per call, so a test that drives two of them can tell their
-/// answers apart. The machine only relays it, so which number is arbitrary.
-fn requested(force: bool, items: Vec<ItemFacts>) -> Event {
-    Event::FromRouter {
-        request_id: 1,
-        event: EventRouter::SnapshotRequested { force, items },
-    }
-}
-
-fn loaded(added: Vec<Entry>) -> Event {
-    Event::FromSource {
-        event: EventSource::PlaidLoaded {
-            call_id: CALL,
-            item_id: ITEM.to_string(),
-            added,
-            modified: vec![],
-            removed: vec![],
-            connection: None,
-            streams: vec![],
-            cursor: "cursor-2".into(),
-        },
-    }
-}
-
-fn failed(code: &str) -> Event {
-    Event::FromSource {
-        event: EventSource::PlaidFailed {
-            call_id: CALL,
-            item_id: ITEM.to_string(),
-            code: code.into(),
-        },
-    }
 }
 
 /// A bank that has never synced is asked about immediately.
@@ -114,13 +46,13 @@ fn a_bank_that_has_never_synced_is_fetched() {
     let mut state = state();
 
     eval!(&mut state,
-        < requested(false, vec![facts(None, false)]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
 
-        < loaded(vec![]),
+        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
         > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
 
-        < written(2),
+        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -134,7 +66,7 @@ fn a_user_with_no_banks_is_just_served() {
 
     eval!(&mut state,
         // Forced, which normally outranks everything short of a dead login.
-        < requested(true, vec![]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: true, items: vec![] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -144,7 +76,7 @@ fn a_fresh_bank_is_served_without_asking_plaid_again() {
     let mut state = state();
 
     eval!(&mut state,
-        < requested(false, vec![facts(Some(T0), false)]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -155,16 +87,14 @@ fn a_fresh_bank_is_served_without_asking_plaid_again() {
 fn a_stale_bank_is_refetched_from_its_cursor() {
     let mut state = state();
 
-    let long_ago = Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS);
-
     eval!(&mut state,
-        < requested(false, vec![facts(Some(long_ago), false)]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
 
-        < loaded(vec![]),
+        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
         > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
 
-        < written(2),
+        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -174,13 +104,13 @@ fn a_forced_request_refetches_however_fresh() {
     let mut state = state();
 
     eval!(&mut state,
-        < requested(true, vec![facts(Some(T0), false)]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
 
-        < loaded(vec![]),
+        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
         > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
 
-        < written(2),
+        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -191,7 +121,7 @@ fn a_login_required_bank_is_not_retried_even_when_forced() {
     let mut state = state();
 
     eval!(&mut state,
-        < requested(true, vec![facts(Some(T0), true)]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: true }] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -202,21 +132,14 @@ fn a_login_required_bank_is_not_retried_even_when_forced() {
 fn each_bank_is_decided_about_on_its_own() {
     let mut state = state();
 
-    let dead = ItemFacts {
-        item_id: "item-2".to_string(),
-        cursor: None,
-        synced_at: None,
-        login_required: true,
-    };
-
     eval!(&mut state,
-        < requested(false, vec![facts(None, false), dead]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: true }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
 
-        < loaded(vec![]),
+        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
         > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
 
-        < written(2),
+        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -228,30 +151,15 @@ fn each_bank_is_decided_about_on_its_own() {
 fn a_snapshot_is_answered_after_its_last_bank() {
     let mut state = state();
 
-    let second = ItemFacts {
-        item_id: "item-2".to_string(),
-        cursor: None,
-        synced_at: None,
-        login_required: false,
-    };
-
-    let reported = |call_id| Event::FromSource {
-        event: EventSource::PlaidFailed {
-            call_id,
-            item_id: ITEM.to_string(),
-            code: "REQUEST_FAILED".to_string(),
-        },
-    };
-
     eval!(&mut state,
-        < requested(false, vec![facts(None, false), second]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 2, .. } },
 
         // One bank in. Still nothing to say: the other is outstanding.
-        < reported(1),
+        < Event::FromSource { event: EventSource::PlaidFailed { call_id: 1, item_id: "item-1".to_string(), code: "REQUEST_FAILED".to_string() } },
 
-        < reported(2),
+        < Event::FromSource { event: EventSource::PlaidFailed { call_id: 2, item_id: "item-2".to_string(), code: "REQUEST_FAILED".to_string() } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -264,18 +172,13 @@ fn a_failed_write_still_answers_the_route() {
     let mut state = state();
 
     eval!(&mut state,
-        < requested(false, vec![facts(None, false)]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
 
-        < loaded(vec![]),
+        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
         > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
 
-        < Event::FromStore {
-            event: EventStore::SaveFailed {
-                call_id: 2,
-                message: "connection refused".to_string(),
-            },
-        },
+        < Event::FromStore { event: EventStore::SaveFailed { call_id: 2, message: "connection refused".to_string() } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -289,16 +192,14 @@ fn a_failed_write_still_answers_the_route() {
 fn a_call_that_never_answers_is_given_up_on() {
     let mut state = state();
 
-    let too_late = Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS);
-
     eval!(&mut state,
-        < requested(false, vec![facts(None, false)]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
 
         // Plaid says nothing. Time passes and nothing else arrives.
-        < tick(Timestamp::from_secs(T0.as_secs() + 1)),
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 1) } },
 
-        < tick(too_late),
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -310,13 +211,11 @@ fn a_call_that_never_answers_is_given_up_on() {
 fn a_route_with_nothing_decided_is_told_it_cannot_be_answered() {
     let mut state = state();
 
-    let too_late = Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS);
-
     eval!(&mut state,
-        < link_requested(),
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkRequested { user_id: uuid::Uuid::nil() } },
         > Action::ToSource { action: ActionSource::OpenLink { call_id: 1, .. } },
 
-        < tick(too_late),
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
         > Action::ToRouter { action: ActionRouter::Unavailable, .. },
     );
 }
@@ -328,7 +227,7 @@ fn a_tick_on_a_quiet_server_does_nothing() {
     let mut state = state();
 
     eval!(&mut state,
-        < tick(Timestamp::from_secs(T0.as_secs() + 3600)),
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 3600) } },
     );
 }
 
@@ -339,7 +238,7 @@ fn a_sync_nobody_asked_for_serves_nobody() {
     let mut state = state();
 
     eval!(&mut state,
-        < loaded(vec![entry("a")]),
+        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
         > Action::ToStore { action: ActionStore::SaveFetched { .. } },
     );
 }
@@ -352,7 +251,7 @@ fn a_sync_is_handed_to_the_store() {
     let mut state = state();
 
     eval!(&mut state,
-        < loaded(vec![entry("a")]),
+        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
         > Action::ToStore { action: ActionStore::SaveFetched { .. } },
     );
 }
@@ -364,7 +263,7 @@ fn an_expired_login_is_reported_and_written_down() {
     let mut state = state();
 
     eval!(&mut state,
-        < failed("ITEM_LOGIN_REQUIRED"),
+        < Event::FromSource { event: EventSource::PlaidFailed { call_id: 1, item_id: "item-1".to_string(), code: "ITEM_LOGIN_REQUIRED".to_string() } },
         > Action::ToProcess { action: ActionProcess::ReportLoginRequired },
         > Action::ToStore { action: ActionStore::SaveStatus { .. } },
     );
@@ -377,7 +276,7 @@ fn an_ordinary_failure_writes_nothing() {
     let mut state = state();
 
     eval!(&mut state,
-        < failed("INTERNAL_SERVER_ERROR"),
+        < Event::FromSource { event: EventSource::PlaidFailed { call_id: 1, item_id: "item-1".to_string(), code: "INTERNAL_SERVER_ERROR".to_string() } },
     );
 }
 
@@ -388,22 +287,48 @@ fn a_burst_of_forced_refreshes_is_rate_limited() {
     let mut state = state();
     let mut actions = Vec::new();
 
-    // BalanceGet allows 10/min, so the 11th forced refresh has no budget.
-    let mut fetches = 0;
-
-    for _ in 0..12 {
+    // BalanceGet allows 10/min, so the 11th forced refresh has no budget: the
+    // first ten turns fetch, and the last two answer the route from the store.
+    for turn in 1..=12 {
         actions.clear();
         state.handle_events(
-            &[requested(true, vec![facts(Some(T0), false)])],
+            &[Event::FromRouter {
+                request_id: turn,
+                event: EventRouter::SnapshotRequested {
+                    force: true,
+                    items: vec![ItemFacts {
+                        item_id: "item-1".to_string(),
+                        cursor: Some("cursor-1".to_string()),
+                        synced_at: Some(T0),
+                        login_required: false,
+                    }],
+                },
+            }],
             &mut actions,
         );
 
-        if actions.iter().any(|a| matches!(a, Action::ToSource { .. })) {
-            fetches += 1;
+        if turn <= 10 {
+            let [
+                Action::ToSource {
+                    action: ActionSource::FetchPlaid { .. },
+                    ..
+                },
+            ] = actions.as_slice()
+            else {
+                panic!("turn {turn} has budget and should fetch, got {actions:#?}")
+            };
+        } else {
+            let [
+                Action::ToRouter {
+                    action: ActionRouter::Serve,
+                    ..
+                },
+            ] = actions.as_slice()
+            else {
+                panic!("turn {turn} is over budget and should serve, got {actions:#?}")
+            };
         }
     }
-
-    assert_eq!(fetches, 10, "the endpoint's per-minute budget");
 }
 
 /// The budget is per Item, so a second bank is not refused because the first
@@ -416,25 +341,48 @@ fn the_rate_limit_is_per_bank() {
     for _ in 0..12 {
         actions.clear();
         state.handle_events(
-            &[requested(true, vec![facts(Some(T0), false)])],
+            &[Event::FromRouter {
+                request_id: 1,
+                event: EventRouter::SnapshotRequested {
+                    force: true,
+                    items: vec![ItemFacts {
+                        item_id: "item-1".to_string(),
+                        cursor: Some("cursor-1".to_string()),
+                        synced_at: Some(T0),
+                        login_required: false,
+                    }],
+                },
+            }],
             &mut actions,
         );
     }
 
-    let second = ItemFacts {
-        item_id: "item-2".to_string(),
-        cursor: None,
-        synced_at: None,
-        login_required: false,
-    };
-
     actions.clear();
-    state.handle_events(&[requested(true, vec![second])], &mut actions);
-
-    assert!(
-        actions.iter().any(|a| matches!(a, Action::ToSource { .. })),
-        "a second bank has its own budget",
+    state.handle_events(
+        &[Event::FromRouter {
+            request_id: 1,
+            event: EventRouter::SnapshotRequested {
+                force: true,
+                items: vec![ItemFacts {
+                    item_id: "item-2".to_string(),
+                    cursor: None,
+                    synced_at: None,
+                    login_required: false,
+                }],
+            },
+        }],
+        &mut actions,
     );
+
+    let [
+        Action::ToSource {
+            action: ActionSource::FetchPlaid { .. },
+            ..
+        },
+    ] = actions.as_slice()
+    else {
+        panic!("a second bank has its own budget, got {actions:#?}")
+    };
 }
 
 #[test]
@@ -445,7 +393,7 @@ fn shutting_down_stops_new_work() {
         < Event::FromTerminal { event: EventTerminal::SigInt },
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
-        < requested(true, vec![facts(None, false)]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 
@@ -465,42 +413,6 @@ fn a_second_signal_is_ignored() {
     );
 }
 
-/// Entropy arrives from the edge, so the machine has a generator without ever
-/// reading one. A fixed seed here is what makes the codes below assertable.
-fn seeded() -> Event {
-    Event::FromProcess {
-        event: EventProcess::Seeded { seed: [7; 32] },
-    }
-}
-
-fn code_requested(email: &str) -> Event {
-    Event::FromRouter {
-        request_id: 1,
-        event: EventRouter::CodeRequested {
-            email: email.to_string(),
-        },
-    }
-}
-
-fn code_submitted(email: &str, code: &str, stored: Option<StoredCode>) -> Event {
-    Event::FromRouter {
-        request_id: 1,
-        event: EventRouter::CodeSubmitted {
-            email: email.to_string(),
-            code: code.to_string(),
-            stored,
-        },
-    }
-}
-
-fn stored_code(code: &str, attempts: i32, expires_in: u64) -> StoredCode {
-    StoredCode {
-        code_sha256: server_main::hash_code(code),
-        expires_at: Timestamp::from_secs(T0.as_secs() + expires_in),
-        attempts,
-    }
-}
-
 /// Asking for a code stores its hash and sends the code, in that order and as
 /// two actions: only one of them may ever hold the plaintext.
 #[test]
@@ -508,13 +420,13 @@ fn asking_for_a_code_stores_a_hash_and_sends_the_code() {
     let mut state = state();
 
     eval!(&mut state,
-        < seeded(),
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < code_requested("alex@example.com"),
+        < Event::FromRouter { request_id: 1, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
         > Action::ToStore { action: ActionStore::SaveCode { call_id: 1, .. } },
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
 
-        < written(1),
+        < Event::FromStore { event: EventStore::Written { call_id: 1 } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }
@@ -532,20 +444,27 @@ fn the_same_seed_produces_the_same_code() {
                 Event::FromProcess {
                     event: EventProcess::Seeded { seed: [seed; 32] },
                 },
-                code_requested("alex@example.com"),
+                Event::FromRouter {
+                    request_id: 1,
+                    event: EventRouter::CodeRequested {
+                        email: "alex@example.com".to_string(),
+                    },
+                },
             ],
             &mut actions,
         );
 
-        actions
-            .iter()
-            .find_map(|a| match a {
-                Action::ToEmail {
-                    action: ActionEmail::SendCode { code, .. },
-                } => Some(code.clone()),
-                _ => None,
-            })
-            .expect("a code was sent")
+        let [
+            _,
+            Action::ToEmail {
+                action: ActionEmail::SendCode { code, .. },
+            },
+        ] = actions.as_slice()
+        else {
+            panic!("a code request stores a hash and then sends, got {actions:#?}")
+        };
+
+        code.clone()
     };
 
     assert_eq!(code_from(7), code_from(7), "a replay lands where it did");
@@ -564,7 +483,7 @@ fn an_unseeded_machine_will_not_mint_a_code() {
     let mut state = state();
 
     eval!(&mut state,
-        < code_requested("alex@example.com"),
+        < Event::FromRouter { request_id: 1, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
         > Action::ToRouter { action: ActionRouter::Unavailable, .. },
     );
 }
@@ -574,17 +493,17 @@ fn the_right_code_signs_you_in_and_spends_itself() {
     let mut state = state();
 
     eval!(&mut state,
-        < seeded(),
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 0, 600))),
+        < Event::FromRouter { request_id: 1, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
         > Action::ToStore { action: ActionStore::CreateSession { call_id: 1, .. } },
         > Action::ToStore { action: ActionStore::DeleteCode { call_id: 2, .. } },
 
-        < written(1),
+        < Event::FromStore { event: EventStore::Written { call_id: 1 } },
 
         // Only now: a token that reaches the phone before its session row
         // exists is a sign-in that 401s on its own first request.
-        < written(2),
+        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::SignedIn { .. }, .. },
     );
 }
@@ -596,12 +515,12 @@ fn a_wrong_code_only_counts_a_guess() {
     let mut state = state();
 
     eval!(&mut state,
-        < seeded(),
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < code_submitted("alex@example.com", "654321", Some(stored_code("123456", 0, 600))),
+        < Event::FromRouter { request_id: 1, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "654321".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
         > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
 
-        < written(1),
+        < Event::FromStore { event: EventStore::Written { call_id: 1 } },
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -613,12 +532,12 @@ fn an_expired_code_is_rejected_and_still_counts() {
     let mut state = state();
 
     eval!(&mut state,
-        < seeded(),
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 0, 0))),
+        < Event::FromRouter { request_id: 1, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs()), attempts: 0 }) } },
         > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
 
-        < written(1),
+        < Event::FromStore { event: EventStore::Written { call_id: 1 } },
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -629,12 +548,12 @@ fn an_exhausted_code_rejects_the_right_answer() {
     let mut state = state();
 
     eval!(&mut state,
-        < seeded(),
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < code_submitted("alex@example.com", "123456", Some(stored_code("123456", 5, 600))),
+        < Event::FromRouter { request_id: 1, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 5 }) } },
         > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
 
-        < written(1),
+        < Event::FromStore { event: EventStore::Written { call_id: 1 } },
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -647,26 +566,11 @@ fn an_address_with_no_code_is_rejected_the_same_way() {
     let mut state = state();
 
     eval!(&mut state,
-        < seeded(),
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < code_submitted("alex@example.com", "123456", None),
+        < Event::FromRouter { request_id: 1, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: None } },
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
-}
-
-const USER: uuid::Uuid = uuid::Uuid::nil();
-
-fn link_polled(finished: bool, tokens: Vec<&str>) -> Event {
-    Event::FromSource {
-        event: EventSource::LinksPolled {
-            call_id: CALL,
-            polls: vec![server_main::LinkPoll {
-                link_token: "link-1".to_string(),
-                finished,
-                public_tokens: tokens.into_iter().map(str::to_string).collect(),
-            }],
-        },
-    }
 }
 
 /// The whole point of the id. Two routes asking at once are answered on their
@@ -678,45 +582,33 @@ fn two_routes_asking_at_once_get_their_own_answers() {
     let mut state = state();
     let mut actions = Vec::new();
 
-    let asking = |request_id| Event::FromRouter {
-        request_id,
-        event: EventRouter::SnapshotRequested {
-            force: false,
-            items: vec![],
-        },
+    state.handle_events(
+        &[
+            Event::FromRouter {
+                request_id: 7,
+                event: EventRouter::SnapshotRequested {
+                    force: false,
+                    items: vec![],
+                },
+            },
+            Event::FromRouter {
+                request_id: 9,
+                event: EventRouter::SnapshotRequested {
+                    force: false,
+                    items: vec![],
+                },
+            },
+        ],
+        &mut actions,
+    );
+
+    let [
+        Action::ToRouter { request_id: 7, .. },
+        Action::ToRouter { request_id: 9, .. },
+    ] = actions.as_slice()
+    else {
+        panic!("each route is answered on its own id, got {actions:#?}")
     };
-
-    state.handle_events(&[asking(7), asking(9)], &mut actions);
-
-    let answered: Vec<_> = actions
-        .iter()
-        .filter_map(|action| match action {
-            Action::ToRouter { request_id, .. } => Some(*request_id),
-            _ => None,
-        })
-        .collect();
-
-    assert_eq!(answered, vec![7, 9], "each route is answered on its own id");
-}
-
-/// Asking to connect a bank, which is what puts a route behind every answer
-/// below. A source event with no request in front of it is an answer to a
-/// question nobody asked, and the machine drops it.
-fn link_requested() -> Event {
-    Event::FromRouter {
-        request_id: 1,
-        event: EventRouter::LinkRequested { user_id: USER },
-    }
-}
-
-/// The sheet closing, with these sessions open.
-fn link_closed(pending: Vec<&str>) -> Event {
-    Event::FromRouter {
-        request_id: 1,
-        event: EventRouter::LinkClosed {
-            pending: pending.into_iter().map(str::to_string).collect(),
-        },
-    }
 }
 
 /// Asking to connect a bank opens a session and nothing else. Nothing is
@@ -726,8 +618,8 @@ fn connecting_a_bank_opens_a_link_session() {
     let mut state = state();
 
     eval!(&mut state,
-        < link_requested(),
-        > Action::ToSource { action: ActionSource::OpenLink { call_id: CALL, .. } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkRequested { user_id: uuid::Uuid::nil() } },
+        > Action::ToSource { action: ActionSource::OpenLink { call_id: 1, .. } },
     );
 }
 
@@ -740,20 +632,13 @@ fn a_session_is_written_down_before_its_url_is_handed_over() {
     let mut state = state();
 
     eval!(&mut state,
-        < link_requested(),
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkRequested { user_id: uuid::Uuid::nil() } },
         > Action::ToSource { action: ActionSource::OpenLink { .. } },
 
-        < Event::FromSource {
-            event: EventSource::LinkOpened {
-                call_id: CALL,
-                user_id: USER,
-                link_token: "link-1".to_string(),
-                hosted_link_url: "https://secure.plaid.com/x".to_string(),
-            },
-        },
+        < Event::FromSource { event: EventSource::LinkOpened { call_id: 1, user_id: uuid::Uuid::nil(), link_token: "link-1".to_string(), hosted_link_url: "https://secure.plaid.com/x".to_string() } },
         > Action::ToStore { action: ActionStore::SaveLink { call_id: 2, .. } },
 
-        < written(2),
+        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::LinkOpened { .. }, .. },
     );
 }
@@ -766,10 +651,10 @@ fn a_public_token_is_exchanged_even_before_the_session_finishes() {
     let mut state = state();
 
     eval!(&mut state,
-        < link_closed(vec!["link-1"]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
-        < link_polled(false, vec!["public-1"]),
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
         > Action::ToSource { action: ActionSource::ExchangePublicToken { .. } },
     );
 }
@@ -781,13 +666,13 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
     let mut state = state();
 
     eval!(&mut state,
-        < link_closed(vec!["link-1"]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
-        < link_polled(true, vec![]),
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }] } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 2, .. } },
 
-        < written(2),
+        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::NotLinked, .. },
     );
 }
@@ -799,10 +684,10 @@ fn an_open_session_is_left_pending() {
     let mut state = state();
 
     eval!(&mut state,
-        < link_closed(vec!["link-1"]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
-        < link_polled(false, vec![]),
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec![] }] } },
         > Action::ToRouter { action: ActionRouter::NotLinked, .. },
     );
 }
@@ -813,25 +698,19 @@ fn a_linked_bank_is_stored_and_its_session_closed() {
     let mut state = state();
 
     eval!(&mut state,
-        < link_closed(vec!["link-1"]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
-        < link_polled(false, vec!["public-1"]),
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
         > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 2, .. } },
 
-        < Event::FromSource {
-            event: EventSource::ItemLinked {
-                call_id: 2,
-                link_token: "link-1".to_string(),
-                item_id: "item-9".to_string(),
-            },
-        },
+        < Event::FromSource { event: EventSource::ItemLinked { call_id: 2, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 3, .. } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
 
-        < written(3),
+        < Event::FromStore { event: EventStore::Written { call_id: 3 } },
 
-        < written(4),
+        < Event::FromStore { event: EventStore::Written { call_id: 4 } },
         > Action::ToRouter { action: ActionRouter::Linked, .. },
     );
 }
@@ -843,7 +722,7 @@ fn closing_a_sheet_with_no_session_open_asks_nothing() {
     let mut state = state();
 
     eval!(&mut state,
-        < link_closed(vec![]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec![] } },
         > Action::ToRouter { action: ActionRouter::NotLinked, .. },
     );
 }
@@ -855,7 +734,7 @@ fn every_open_session_is_polled() {
     let mut state = state();
 
     eval!(&mut state,
-        < link_closed(vec!["link-1", "link-2"]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
     );
 }
@@ -867,34 +746,20 @@ fn every_open_session_is_polled() {
 fn many_sessions_still_produce_one_answer() {
     let mut state = state();
 
-    let polled = |tokens: Vec<&str>| Event::FromSource {
-        event: EventSource::LinksPolled {
-            call_id: CALL,
-            polls: tokens
-                .into_iter()
-                .map(|link_token| server_main::LinkPoll {
-                    link_token: link_token.to_string(),
-                    finished: true,
-                    public_tokens: Vec::new(),
-                })
-                .collect(),
-        },
-    };
-
     eval!(&mut state,
-        < link_closed(vec!["link-1", "link-2", "link-3"]),
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string(), "link-3".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
-        < polled(vec!["link-1", "link-2", "link-3"]),
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-2".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-3".to_string(), finished: true, public_tokens: vec![] }] } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 2, .. } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 3, .. } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
 
-        < written(2),
+        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
 
-        < written(3),
+        < Event::FromStore { event: EventStore::Written { call_id: 3 } },
 
-        < written(4),
+        < Event::FromStore { event: EventStore::Written { call_id: 4 } },
         > Action::ToRouter { action: ActionRouter::NotLinked, .. },
     );
 }
