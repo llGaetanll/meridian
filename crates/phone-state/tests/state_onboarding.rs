@@ -390,24 +390,7 @@ fn a_finished_sync_counts_what_arrived() {
 /// the Ledger and that the dock is back.
 #[test]
 fn opening_meridian_ends_the_flow() {
-    let mut state = at_the_bank_screen();
-
-    state.handle_events(
-        &[
-            Event::FromUi {
-                event: EventUi::BankConnectRequested,
-            },
-            Event::FromSource {
-                event: EventSource::BankLinked {
-                    institution: "First Platypus Bank".to_string(),
-                },
-            },
-            Event::FromSource {
-                event: EventSource::SyncFinished,
-            },
-        ],
-        &mut Vec::new(),
-    );
+    let mut state = at_the_code_screen();
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::OnboardingFinished },
@@ -424,25 +407,12 @@ fn opening_meridian_ends_the_flow() {
 /// invariant. It draws the app it is now in and nothing else happens.
 #[test]
 fn the_flow_ignores_events_once_it_is_over() {
-    let mut state = at_the_bank_screen();
+    let mut state = at_the_code_screen();
 
     state.handle_events(
-        &[
-            Event::FromUi {
-                event: EventUi::BankConnectRequested,
-            },
-            Event::FromSource {
-                event: EventSource::BankLinked {
-                    institution: "First Platypus Bank".to_string(),
-                },
-            },
-            Event::FromSource {
-                event: EventSource::SyncFinished,
-            },
-            Event::FromUi {
-                event: EventUi::OnboardingFinished,
-            },
-        ],
+        &[Event::FromUi {
+            event: EventUi::OnboardingFinished,
+        }],
         &mut Vec::new(),
     );
 

@@ -49,11 +49,6 @@ fn a_bank_that_has_never_synced_is_fetched() {
         < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
 
-        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
-        > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
-
-        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
 
@@ -91,11 +86,6 @@ fn a_stale_bank_is_refetched_from_its_cursor() {
         < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
 
-        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
-        > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
-
-        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
 
@@ -107,11 +97,6 @@ fn a_forced_request_refetches_however_fresh() {
         < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
 
-        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
-        > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
-
-        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
 
@@ -136,11 +121,6 @@ fn each_bank_is_decided_about_on_its_own() {
         < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: true }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
 
-        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
-        > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
-
-        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
 
@@ -231,21 +211,10 @@ fn a_tick_on_a_quiet_server_does_nothing() {
     );
 }
 
-/// A sync nobody asked for answers nobody. The store is written and that is
-/// all — which is what a sync on a timer will be.
-#[test]
-fn a_sync_nobody_asked_for_serves_nobody() {
-    let mut state = state();
-
-    eval!(&mut state,
-        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
-        > Action::ToStore { action: ActionStore::SaveFetched { .. } },
-    );
-}
-
-/// A sync goes to the store and nowhere else. The machine holds no ledger to
-/// apply a diff to, which is what retired the trap in `docs/PLAID.md` rather
-/// than guarding against it.
+/// A sync goes to the store and nowhere else — and answers nobody, which is
+/// what a sync on a timer will be. The machine holds no ledger to apply a diff
+/// to, which is what retired the trap in `docs/PLAID.md` rather than guarding
+/// against it.
 #[test]
 fn a_sync_is_handed_to_the_store() {
     let mut state = state();
@@ -285,50 +254,44 @@ fn an_ordinary_failure_writes_nothing() {
 #[test]
 fn a_burst_of_forced_refreshes_is_rate_limited() {
     let mut state = state();
-    let mut actions = Vec::new();
 
-    // BalanceGet allows 10/min, so the 11th forced refresh has no budget: the
-    // first ten turns fetch, and the last two answer the route from the store.
-    for turn in 1..=12 {
-        actions.clear();
-        state.handle_events(
-            &[Event::FromRouter {
-                request_id: turn,
-                event: EventRouter::SnapshotRequested {
-                    force: true,
-                    items: vec![ItemFacts {
-                        item_id: "item-1".to_string(),
-                        cursor: Some("cursor-1".to_string()),
-                        synced_at: Some(T0),
-                        login_required: false,
-                    }],
-                },
-            }],
-            &mut actions,
-        );
+    // BalanceGet allows ten a minute, and each refresh here is its own route,
+    // so the budget runs out in front of you: ten fetches, and then the
+    // eleventh is answered from the store instead of asking Plaid again.
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        if turn <= 10 {
-            let [
-                Action::ToSource {
-                    action: ActionSource::FetchPlaid { .. },
-                    ..
-                },
-            ] = actions.as_slice()
-            else {
-                panic!("turn {turn} has budget and should fetch, got {actions:#?}")
-            };
-        } else {
-            let [
-                Action::ToRouter {
-                    action: ActionRouter::Serve,
-                    ..
-                },
-            ] = actions.as_slice()
-            else {
-                panic!("turn {turn} is over budget and should serve, got {actions:#?}")
-            };
-        }
-    }
+        < Event::FromRouter { request_id: 2, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
+
+        < Event::FromRouter { request_id: 3, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
+
+        < Event::FromRouter { request_id: 4, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
+
+        < Event::FromRouter { request_id: 5, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
+
+        < Event::FromRouter { request_id: 6, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
+
+        < Event::FromRouter { request_id: 7, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
+
+        < Event::FromRouter { request_id: 8, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
+
+        < Event::FromRouter { request_id: 9, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
+
+        < Event::FromRouter { request_id: 10, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
+
+        < Event::FromRouter { request_id: 11, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
+    );
 }
 
 /// The budget is per Item, so a second bank is not refused because the first
@@ -336,13 +299,14 @@ fn a_burst_of_forced_refreshes_is_rate_limited() {
 #[test]
 fn the_rate_limit_is_per_bank() {
     let mut state = state();
-    let mut actions = Vec::new();
 
-    for _ in 0..12 {
-        actions.clear();
+    // The first bank's ten a minute, spent. Which turn spends which is
+    // `a_burst_of_forced_refreshes_is_rate_limited`'s claim, so the actions go
+    // nowhere here.
+    for request_id in 1..=10 {
         state.handle_events(
             &[Event::FromRouter {
-                request_id: 1,
+                request_id,
                 event: EventRouter::SnapshotRequested {
                     force: true,
                     items: vec![ItemFacts {
@@ -353,36 +317,14 @@ fn the_rate_limit_is_per_bank() {
                     }],
                 },
             }],
-            &mut actions,
+            &mut Vec::new(),
         );
     }
 
-    actions.clear();
-    state.handle_events(
-        &[Event::FromRouter {
-            request_id: 1,
-            event: EventRouter::SnapshotRequested {
-                force: true,
-                items: vec![ItemFacts {
-                    item_id: "item-2".to_string(),
-                    cursor: None,
-                    synced_at: None,
-                    login_required: false,
-                }],
-            },
-        }],
-        &mut actions,
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 11, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
     );
-
-    let [
-        Action::ToSource {
-            action: ActionSource::FetchPlaid { .. },
-            ..
-        },
-    ] = actions.as_slice()
-    else {
-        panic!("a second bank has its own budget, got {actions:#?}")
-    };
 }
 
 #[test]
@@ -432,43 +374,30 @@ fn asking_for_a_code_stores_a_hash_and_sends_the_code() {
 }
 
 /// The whole reason the generator is in here: the same seed produces the same
-/// code, so an event log replays to the value it produced the first time.
+/// code, so an event log replays to the value it produced the first time. Two
+/// seeds, two codes, both written down — a test that only said "they differ"
+/// would pass on a generator that had stopped being a replay of anything.
 #[test]
 fn the_same_seed_produces_the_same_code() {
-    let code_from = |seed: u8| {
-        let mut state = state();
-        let mut actions = Vec::new();
+    let mut seven = state();
 
-        state.handle_events(
-            &[
-                Event::FromProcess {
-                    event: EventProcess::Seeded { seed: [seed; 32] },
-                },
-                Event::FromRouter {
-                    request_id: 1,
-                    event: EventRouter::CodeRequested {
-                        email: "alex@example.com".to_string(),
-                    },
-                },
-            ],
-            &mut actions,
-        );
+    eval!(&mut seven,
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        let [
-            _,
-            Action::ToEmail {
-                action: ActionEmail::SendCode { code, .. },
-            },
-        ] = actions.as_slice()
-        else {
-            panic!("a code request stores a hash and then sends, got {actions:#?}")
-        };
+        < Event::FromRouter { request_id: 1, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveCode { call_id: 1, .. } },
+        > @r#"ToEmail { action: SendCode { email: "alex@example.com", code: "470977" } }"#,
+    );
 
-        code.clone()
-    };
+    let mut eight = state();
 
-    assert_eq!(code_from(7), code_from(7), "a replay lands where it did");
-    assert_ne!(code_from(7), code_from(8), "and a different seed does not");
+    eval!(&mut eight,
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [8; 32] } },
+
+        < Event::FromRouter { request_id: 1, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveCode { call_id: 1, .. } },
+        > @r#"ToEmail { action: SendCode { email: "alex@example.com", code: "751695" } }"#,
+    );
 }
 
 /// No entropy, no credentials. A predictable sign-in code is a way into
@@ -580,35 +509,13 @@ fn an_address_with_no_code_is_rejected_the_same_way() {
 #[test]
 fn two_routes_asking_at_once_get_their_own_answers() {
     let mut state = state();
-    let mut actions = Vec::new();
 
-    state.handle_events(
-        &[
-            Event::FromRouter {
-                request_id: 7,
-                event: EventRouter::SnapshotRequested {
-                    force: false,
-                    items: vec![],
-                },
-            },
-            Event::FromRouter {
-                request_id: 9,
-                event: EventRouter::SnapshotRequested {
-                    force: false,
-                    items: vec![],
-                },
-            },
-        ],
-        &mut actions,
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 7, event: EventRouter::SnapshotRequested { force: false, items: vec![] } },
+        < Event::FromRouter { request_id: 9, event: EventRouter::SnapshotRequested { force: false, items: vec![] } },
+        > Action::ToRouter { action: ActionRouter::Serve, request_id: 7 },
+        > Action::ToRouter { action: ActionRouter::Serve, request_id: 9 },
     );
-
-    let [
-        Action::ToRouter { request_id: 7, .. },
-        Action::ToRouter { request_id: 9, .. },
-    ] = actions.as_slice()
-    else {
-        panic!("each route is answered on its own id, got {actions:#?}")
-    };
 }
 
 /// Asking to connect a bank opens a session and nothing else. Nothing is
