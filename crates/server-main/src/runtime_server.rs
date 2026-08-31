@@ -456,7 +456,7 @@ impl RuntimeServer {
         match (&self.email_send, &self.resend) {
             (EmailSend::Resend, Some(client)) => {
                 let message = src_resend::Email::new(
-                    client_from(),
+                    client.from(),
                     email,
                     format!("{code} is your Meridian code"),
                     format!(
@@ -1147,12 +1147,6 @@ impl RuntimeServer {
 /// drawn from.
 fn fresh_seed() -> [u8; 32] {
     rand::random()
-}
-
-/// Who the sign-in email comes from. Read once per send rather than held,
-/// because it is only consulted on the Resend path.
-fn client_from() -> String {
-    std::env::var("RESEND_FROM").unwrap_or_else(|_| String::from("meridian@example.com"))
 }
 
 /// Resolves with whichever signal arrives first.
