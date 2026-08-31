@@ -193,23 +193,46 @@ that is *about* time sends one, as above. That is what makes "we waited long
 enough" a test rather than a stopwatch. `phone-state` has not moved yet and
 still sets its clock with `set_now`.
 
+**A `>` line may bind and carry a block**, which runs when the action matches:
+
+```rust
+> Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+    assert_eq!(rows(ledger).len(), 2, "the Uber is filtered out");
+},
+```
+
+This is what a screen too large to pin with `@` uses. The Ledger's render
+carries sixteen filter chips whether there are two transactions or none, and
+Recurring's carries a three-month calendar grid; `@` would make a test about
+two rows pin a thousand characters it has no claim about. The pattern takes out
+the one part the test is about, the block says the one thing, and the rest of
+the render is neither written down nor asserted.
+
 **Nothing searches the action list.** No `.iter().find(…)` for the render, no
 `.filter(…).count()` of the fetches, and no helper that hands back "the screen
 that came out" — a test that goes looking never says which action carried what
-it found, or how many others there were. Take the action by position instead,
-in a pattern:
+it found, or how many others there were. The `>` lines are already every action
+in order, so "only the first turn fetches" is the list itself rather than a
+count of it, and the screen arrives through the line that drew it.
 
-```rust
-let [.., Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } }] = actions.as_slice() else {
-    panic!("the ledger is what a batch draws last, got {actions:#?}")
-};
-```
+**A test carries the smallest fixture that can make its claim.** Two
+transactions on one day is what "a day heading carries its net" is about; forty
+of them say the same thing while making the expected value something only the
+fixture knows. `assert_eq!(shown.len(), 9)` with a comment reading *nine food
+transactions in the captured feed* is not a claim about the machine at all — it
+is a fact about a file, and it breaks whenever that file is regenerated.
 
-Inside `eval!` this is free: the `>` lines are already every action in order,
-so "only the first turn fetches" is the list itself rather than a count of it.
-A test that needs a view out of a render — because the screen is too large to
-pin with `@` — takes the last action of a batch as above and asserts on what it
-carried.
+The corollary is that a shared fixture is usually the wrong shape. The phone's
+tests used to load one captured Plaid feed — 48 transactions, 14 accounts, 8
+streams — into all of them; six calendar tests loaded it to assert that August
+2026 starts on a Saturday. Each test now writes the snapshot it needs, and a
+screen whose claim needs no records asks for none.
+
+**A test sends only the events its claim needs.** An event that changes nothing
+the test looks at is a reader's problem: they have to work out whether it
+matters. The same goes for the tail after the claim — a test about whether a
+fetch goes out stops at the `>` line that says so, and what happens when the
+fetch lands is the next test's claim.
 
 **A bug is reproduced before it is fixed.** Write the test first, run it, and
 watch it fail for the reason you think it fails. Only then change the code. A

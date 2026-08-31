@@ -54,9 +54,22 @@
 //!
 //! Both forms sit in one block. Use `@` where a value is the claim and a
 //! pattern where the shape is; `docs/STYLE.md` has the rule and the reason.
+//!
+//! A pattern may also bind and carry a block, which runs when the action
+//! matches — for a screen too large to be worth writing out whole:
+//!
+//! ```ignore
+//! > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+//!     assert_eq!(rows(ledger).len(), 2, "the Uber is filtered out");
+//! },
+//! ```
+//!
+//! The bindings are the point: the test asserts on what the action carried,
+//! where it arrived, rather than digging it back out of the batch afterwards.
 
 use proc_macro::TokenStream;
 use quote::quote;
+use syn::Block;
 use syn::Expr;
 use syn::LitStr;
 use syn::Pat;
@@ -70,7 +83,11 @@ enum Expected {
     /// `> Action::ToUi { .. }` — a pattern, matched with `matches!`. Boxed
     /// because a `Pat` is thirty times the size of the other variant, and a
     /// parse tree is built once and never in a hot path.
-    Shape(Box<Pat>),
+    ///
+    /// With a block after `=>`, the pattern's bindings are in scope in it and
+    /// it runs when the action matches: a screen too large to write out is
+    /// asserted on where it arrives rather than dug back out afterwards.
+    Shape(Box<Pat>, Option<Box<Block>>),
 
     /// `> @"ToUi { … }"` — the action's `{:?}`, compared as a string. Values a
     /// pattern cannot reach are what this is for; see the module docs.
@@ -124,7 +141,17 @@ impl Parse for Eval {
                     Expected::Debug(input.parse()?)
                 } else {
                     // A pattern rather than an expression, so `..` and `_` work.
-                    Expected::Shape(Box::new(Pat::parse_multi_with_leading_vert(input)?))
+                    let pattern = Pat::parse_multi_with_leading_vert(input)?;
+
+                    let then = if input.peek(Token![=>]) {
+                        input.parse::<Token![=>]>()?;
+
+                        Some(Box::new(input.parse::<Block>()?))
+                    } else {
+                        None
+                    };
+
+                    Expected::Shape(Box::new(pattern), then)
                 };
 
                 match batches.last_mut() {
@@ -141,7 +168,11 @@ impl Parse for Eval {
                 break;
             }
 
-            input.parse::<Token![,]>()?;
+            // A block ends the line on its own brace, so the comma after one is
+            // as optional as it is on a `match` arm.
+            if input.peek(Token![,]) {
+                input.parse::<Token![,]>()?;
+            }
         }
 
         Ok(Eval { state, batches })
@@ -164,27 +195,41 @@ pub fn eval(input: TokenStream) -> TokenStream {
             let position = j + 1;
 
             match action {
-                Expected::Shape(pattern) => {
+                Expected::Shape(pattern, then) => {
                     // `quote` puts a space around every token, so the pattern in
                     // a failure message would read `Action :: ToUi { action : … }`.
                     // Tightening the punctuation costs nothing and the message is
                     // the only thing anyone sees when a test breaks.
+                    // `quote` breaks a long pattern over lines, which reads
+                    // badly in a one-line message.
                     let written = quote!(#pattern)
                         .to_string()
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
                         .replace(" :: ", "::")
                         .replace(" : ", ": ")
                         .replace(" , ", ", ");
 
+                    let matched = match then {
+                        // The bindings are the point: whatever the pattern took
+                        // out of the action is what the block asserts on.
+                        Some(block) => quote!(#pattern => #block),
+                        None => quote!(#pattern => {}),
+                    };
+
                     quote! {
                         match __actions.get(#j) {
-                            Some(__action) => assert!(
-                                ::std::matches!(__action, #pattern),
-                                "batch {}, action {}: expected `{}`, got {:#?}",
-                                #batch_number,
-                                #position,
-                                #written,
-                                __action,
-                            ),
+                            Some(__action) => match __action {
+                                #matched
+                                _ => panic!(
+                                    "batch {}, action {}: expected `{}`, got {:#?}",
+                                    #batch_number,
+                                    #position,
+                                    #written,
+                                    __action,
+                                ),
+                            },
                             None => unreachable!("the count was checked first"),
                         }
                     }

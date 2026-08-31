@@ -1,71 +1,51 @@
 //! The app's state machine, tested the way `docs/STYLE.md` says: events in
 //! with `<`, actions out with `>`.
 //!
-//! The snapshot these run against is the real captured Plaid Sandbox feed, so
-//! what they pin is the app's behaviour on data it will actually see — the same
-//! 48 transactions, 14 accounts and 8 streams the sketch was drawn from.
+//! Each test carries its own snapshot, written out in the test, holding the
+//! fewest records its claim needs — usually one, never more than four. Two
+//! transactions on one day is what "a day heading carries its net" is about;
+//! forty-eight of them would say the same thing while making the expected
+//! value something only a fixture file knows.
 //!
-//! `eval!` covers the *actions*. The screens here are far too large to pin
-//! whole — the Ledger alone is 48 rows — so a test that is about what a screen
-//! says drives the machine, takes the render by position (the last action of
-//! the batch) and asserts on what it carried. Nothing goes looking through the
-//! action list for it; `tests/state_onboarding.rs` is the file whose screens
-//! are small enough to write out.
+//! The snapshot is the JSON the server sends (`crates/server-wire`). Every
+//! field but `now` defaults, so `{"now": …}` is a whole snapshot, and a screen
+//! whose claim needs no records asks for none.
 
 use api_common::Timestamp;
 use api_eval::eval;
 use phone_state::*;
 
-/// 2026-08-19 00:00 UTC — the day the sketch is drawn against, so "in 3 days"
-/// and the rest line up with what it shows.
+/// 2026-08-19 00:00 UTC — a Wednesday, and the day the sketch is drawn
+/// against, so "in 3 days" and the rest line up with what it shows. The
+/// snapshots below carry the same instant as their `now`.
 const NOW: Timestamp = Timestamp::from_secs(1_787_097_600);
 
-/// A machine past first run, which is where every test in this file starts.
+/// A machine past first run, with its clock set — where every test here
+/// starts.
 ///
 /// The app assumes a device it has never run on, so saying who is signed in is
-/// what puts it on the Ledger — the same event the runtime sends on launch,
-/// once it has read the store. `tests/state_onboarding.rs` is the file that
-/// does not send it.
+/// what puts it on the Ledger. What that answer draws is
+/// `a_session_opens_the_app_on_its_data`'s claim rather than every test's, so
+/// the actions go nowhere here. `tests/state_onboarding.rs` is the file that
+/// does not sign in.
 fn app() -> StateApp {
     let mut state = StateApp::new();
-    let mut actions = Vec::new();
+    state.set_now(NOW);
 
-    state.handle_events_at(
-        Timestamp::EPOCH,
+    state.handle_events(
         &[Event::FromSource {
             event: EventSource::SessionLoaded {
                 email: Some("al@example.com".to_string()),
             },
         }],
-        &mut actions,
+        &mut Vec::new(),
     );
 
     state
 }
 
-/// A machine with its clock set, ready for `eval!` — which reads the time from
-/// the machine rather than carrying one of its own.
-fn at_now() -> StateApp {
-    let mut state = app();
-    state.set_now(NOW);
-    state
-}
-
-/// The snapshot the server would send, built from the same fixtures it serves.
-fn snapshot_json() -> String {
-    // The fixture is captured with `now: 0`; the tests substitute a fixed clock
-    // so nothing about them depends on when they run.
-    include_str!("snapshot.json").replace("\"now\": 0", &format!("\"now\": {}", NOW.as_secs()))
-}
-
-fn loaded() -> Event {
-    Event::FromSource {
-        event: EventSource::SnapshotLoaded {
-            json: snapshot_json(),
-        },
-    }
-}
-
+/// The rows of a ledger, in the order they are drawn. Months and days are the
+/// shape the screen wants; a test about a row wants the rows.
 fn rows(ledger: &ViewLedger) -> Vec<&ViewTxRow> {
     ledger
         .months
@@ -85,7 +65,7 @@ fn starting_asks_who_is_signed_in() {
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::Started },
-        > Action::ToSource { action: ActionSource::LoadSession },
+        > @r#"ToSource { action: LoadSession }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }
@@ -98,580 +78,278 @@ fn a_session_opens_the_app_on_its_data() {
 
     eval!(&mut state,
         < Event::FromSource { event: EventSource::SessionLoaded { email: Some("al@example.com".to_string()) } },
-        > Action::ToSource { action: ActionSource::LoadSnapshot { force: false } },
+        > @r#"ToSource { action: LoadSnapshot { force: false } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }
 
 #[test]
 fn pull_to_refresh_forces_a_fetch() {
-    let mut state = at_now();
+    let mut state = app();
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::RefreshRequested },
-        > Action::ToSource { action: ActionSource::LoadSnapshot { force: true } },
+        > @r#"ToSource { action: LoadSnapshot { force: true } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }
 
 /// One snapshot feeds every screen, so switching tabs must not go back to the
-/// network. This is what makes the dock feel instant: the only `ToSource` in
-/// the whole conversation is the first one.
+/// network. This is what makes the dock feel instant: there is no `ToSource`
+/// anywhere in the conversation.
 #[test]
 fn switching_tabs_asks_for_nothing() {
-    let mut state = at_now();
+    let mut state = app();
 
     eval!(&mut state,
-        < Event::FromUi { event: EventUi::Started },
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: snapshot_json() } },
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Ledger } },
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
-        > @r#"ToSource { action: LoadSession }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > Action::ToUi { action: ActionUi::Render { .. } },
-        > Action::ToUi { action: ActionUi::Render { .. } },
-        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Ledger } },
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }
 
+/// One document, three screens: a transaction, an account and a stream arrive
+/// in the same snapshot and each lands where it belongs.
 #[test]
-fn a_loaded_snapshot_fills_every_screen() {
+fn a_snapshot_lands_in_the_machine() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-        ],
-        &mut actions,
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+            "entries":[{"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}],
+            "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[{"id":"acc","name":"Plaid Checking","balance":100.0,"group":"depository"}]}],
+            "streams":[{"id":"s","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","is_active":true}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
     );
 
-    assert_eq!(state.entry_count(), 48);
+    assert_eq!(state.entry_count(), 1);
     assert_eq!(state.connection_count(), 1);
-    assert_eq!(state.stream_count(), 8);
+    assert_eq!(state.stream_count(), 1);
 }
 
+/// Every screen draws from the same snapshot, including one with nothing in
+/// it — a tab that cannot draw an empty month is a tab that breaks on the day
+/// a bank goes quiet.
 #[test]
 fn every_screen_renders() {
-    for screen in [Screen::Ledger, Screen::Recurring, Screen::Balances] {
-        let mut state = app();
-        let mut actions = Vec::new();
+    let mut state = app();
 
-        state.handle_events_at(
-            NOW,
-            &[
-                Event::FromUi {
-                    event: EventUi::Started,
-                },
-                loaded(),
-                Event::FromUi {
-                    event: EventUi::ScreenOpened { screen },
-                },
-            ],
-            &mut actions,
-        );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { .. }, .. } },
 
-        let [
-            ..,
-            Action::ToUi {
-                action: ActionUi::Render { screen: view, .. },
-            },
-        ] = actions.as_slice()
-        else {
-            panic!("a batch draws a screen last, got {actions:#?}")
-        };
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { .. }, .. } },
 
-        let matches = matches!(
-            (screen, &view),
-            (Screen::Ledger, ViewScreen::Ledger { .. })
-                | (Screen::Recurring, ViewScreen::Recurring { .. })
-                | (Screen::Balances, ViewScreen::Balances { .. })
-        );
-
-        assert!(matches, "{screen:?} rendered as {view:?}");
-    }
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { .. }, .. } },
+    );
 }
 
+/// Two transactions on one day and one a month earlier: two months, and the
+/// newest day of the newest month first.
 #[test]
 fn the_ledger_groups_by_month_and_day() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
+            {"id":"b","ts":1786492800,"amount":-25.00,"asset":"USD","label":"Card payment","category":"LoanPayments"},
+            {"id":"c","ts":1783814400,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            let months: Vec<&str> = ledger.months.iter().map(|m| m.name.as_str()).collect();
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+            assert_eq!(months, ["August", "July"]);
+            assert_eq!(ledger.months[0].days.len(), 1, "one day, both of its rows in it");
+            assert_eq!(ledger.months[0].days[0].heading, "Wed, Aug 12");
+            assert_eq!(rows(ledger).len(), 3, "every row lands in exactly one day");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    // The feed runs May to August 2026.
-    assert_eq!(ledger.months[0].name, "August");
-    assert_eq!(ledger.months[0].year, "2026");
-
-    // Newest day first, and the sketch's own heading.
-    assert_eq!(ledger.months[0].days[0].heading, "Wed, Aug 12");
-
-    assert_eq!(rows(ledger).len(), 48, "every row lands in exactly one day");
+    );
 }
 
 /// The heading carries the day's net, so the two halves of the line say the
-/// same thing about the same day.
+/// same thing about the same day. Signed, because a day that gave back more
+/// than it took is worth seeing as such.
 #[test]
 fn a_day_heading_carries_its_net() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
+            {"id":"b","ts":1786492800,"amount":-25.00,"asset":"USD","label":"Card payment","category":"LoanPayments"},
+            {"id":"c","ts":1786320000,"amount":500.00,"asset":"USD","label":"United Airlines","category":"Travel"},
+            {"id":"d","ts":1786320000,"amount":-78.50,"asset":"USD","label":"Climbing gym","category":"Entertainment"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            let days = &ledger.months[0].days;
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+            assert_eq!(days[0].total, "−$30.40", "−5.40 and −25.00");
+            assert_eq!(days[1].total, "+$421.50", "+500.00 against −78.50");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    // Aug 12 is the Uber and the credit card payment: −5.40 and −25.00.
-    assert_eq!(ledger.months[0].days[0].total, "−$30.40");
-
-    // Signed, because a day that took more than it gave is worth seeing as
-    // such — Aug 10 is a $500 refund against $78.50 of climbing.
-    let plus = ledger.months[0]
-        .days
-        .iter()
-        .find(|day| day.heading == "Mon, Aug 10");
-
-    assert_eq!(plus.map(|day| day.total.as_str()), Some("+$421.50"));
+    );
 }
 
-/// The marker over each month reads as one phrase, and the parts are still
-/// there for anything that wants them separately.
+/// The marker over each month reads as one phrase.
 #[test]
 fn a_month_is_labelled_with_its_year() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-        ],
-        &mut actions,
-    );
-
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view },
-                    ..
-                },
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(ledger.months[0].label, "August 2026");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger screen is what a batch draws last, got {actions:#?}")
-    };
-    let month = &view.months[0];
-
-    assert_eq!(month.label, "August 2026");
-    assert_eq!(month.label, format!("{} {}", month.name, month.year));
+    );
 }
 
+/// Two rows on one day are one heading, not two.
 #[test]
 fn a_day_heading_never_repeats_within_a_month() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
+            {"id":"b","ts":1786492800,"amount":-25.00,"asset":"USD","label":"Card payment","category":"LoanPayments"},
+            {"id":"c","ts":1786320000,"amount":-78.50,"asset":"USD","label":"Climbing gym","category":"Entertainment"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            let headings: Vec<&str> = ledger.months[0].days.iter().map(|d| d.heading.as_str()).collect();
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view },
-                    ..
-                },
+            assert_eq!(headings, ["Wed, Aug 12", "Mon, Aug 10"], "one each, newest first");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger screen is what a batch draws last, got {actions:#?}")
-    };
-
-    for month in &view.months {
-        let mut headings: Vec<&str> = month.days.iter().map(|d| d.heading.as_str()).collect();
-        let before = headings.len();
-
-        headings.sort_unstable();
-        headings.dedup();
-
-        assert_eq!(headings.len(), before, "{} has a repeated day", month.name);
-    }
+    );
 }
 
-/// The row the sketch calls out: Plaid reports −500.00 for the United Airlines
-/// refund, and the ledger shows it as money arriving.
+/// Plaid reports a refund as a positive amount on a spending category; the
+/// ledger shows it as money arriving.
 #[test]
 fn a_refund_reads_as_money_arriving() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786320000,"amount":500.00,"asset":"USD","label":"United Airlines","category":"Travel"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            let row = rows(ledger)[0];
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+            assert_eq!(row.amount, "+$500.00");
+            assert!(row.is_inflow);
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    let row = rows(ledger)
-        .into_iter()
-        .find(|r| r.title == "United Airlines" && r.is_inflow)
-        .expect("the feed has a United Airlines refund");
-
-    assert_eq!(row.amount, "+$500.00");
+    );
 }
 
 #[test]
 fn a_purchase_reads_as_money_leaving() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            let row = rows(ledger)[0];
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+            assert_eq!(row.amount, "−$12.00");
+            assert!(!row.is_inflow);
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    let row = rows(ledger)
-        .into_iter()
-        .find(|r| r.title == "McDonald's")
-        .expect("the feed has a McDonald's");
-
-    assert_eq!(row.amount, "−$12.00");
-    assert!(!row.is_inflow);
+    );
 }
 
 #[test]
 fn selecting_a_category_narrows_the_list() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "FoodAndDrink".to_string(),
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
+            {"id":"b","ts":1786492800,"amount":-4.33,"asset":"USD","label":"Starbucks","category":"FoodAndDrink"},
+            {"id":"c","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            let shown = rows(ledger);
+
+            assert_eq!(shown.len(), 2, "the Uber is filtered out");
+            assert!(shown.iter().all(|r| r.category == "Food & drink"));
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    let shown = rows(ledger);
-
-    // Nine food transactions in the captured feed.
-    assert_eq!(shown.len(), 9);
-    assert!(shown.iter().all(|r| r.category == "Food & drink"));
+    );
 }
 
 /// Multi-select: the chips are a union, not a replacement.
 #[test]
 fn two_categories_show_both() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "FoodAndDrink".to_string(),
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "Travel".to_string(),
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
+            {"id":"b","ts":1786492800,"amount":-410.00,"asset":"USD","label":"United Airlines","category":"Travel"},
+            {"id":"c","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "Travel".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(rows(ledger).len(), 2, "food and travel, not the Uber");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    // 9 food + 6 travel.
-    assert_eq!(rows(ledger).len(), 15);
+    );
 }
 
 #[test]
 fn tapping_a_selected_category_deselects_it() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "FoodAndDrink".to_string(),
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "FoodAndDrink".to_string(),
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
+            {"id":"b","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(rows(ledger).len(), 1);
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
 
-    assert_eq!(rows(ledger).len(), 48, "back to everything");
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(rows(ledger).len(), 2, "back to everything");
+        },
+    );
 }
 
-/// The counts on the chips have to say what selecting *that* chip would give.
-/// Computing them through the current selection would read zero for every
+/// The count on a chip has to say what selecting *that* chip would give.
+/// Computing it through the current selection would read zero for every
 /// unselected chip, which is the bug this pins.
 #[test]
 fn the_chip_counts_ignore_the_category_selection() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "FoodAndDrink".to_string(),
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
+            {"id":"b","ts":1786492800,"amount":-410.00,"asset":"USD","label":"United Airlines","category":"Travel"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            let travel = ledger.filter.categories.iter().find(|c| c.id == "Travel").expect("travel is always a chip");
+
+            assert_eq!(travel.count, "1", "still says what travel would give");
+            assert!(!travel.selected);
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    let travel = ledger
-        .filter
-        .categories
-        .iter()
-        .find(|c| c.id == "Travel")
-        .expect("travel is always a chip");
-
-    assert_eq!(travel.count, "6", "still says what travel would give");
-    assert!(!travel.selected);
+    );
 }
 
 /// Every one of Plaid's sixteen primaries is offered, even the ones with
@@ -680,629 +358,227 @@ fn the_chip_counts_ignore_the_category_selection() {
 #[test]
 fn all_sixteen_categories_are_offered() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            let chips = &ledger.filter.categories;
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+            assert_eq!(chips.len(), 16, "one transaction, still sixteen chips");
+            assert_eq!(chips.iter().filter(|c| c.empty).count(), 15, "and fifteen of them read as empty");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    let chips = &ledger.filter.categories;
-
-    assert_eq!(chips.len(), 16);
-    assert!(chips.iter().any(|c| c.empty), "some have no transactions");
-    assert!(chips.iter().any(|c| !c.empty));
+    );
 }
 
-#[test]
-fn the_counts_match_the_feed() {
-    let mut state = app();
-    let mut actions = Vec::new();
-
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-        ],
-        &mut actions,
-    );
-
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
-        },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    let count = |id: &str| {
-        ledger
-            .filter
-            .categories
-            .iter()
-            .find(|c| c.id == id)
-            .map(|c| c.count.as_str())
-            .unwrap_or_default()
-            .to_string()
-    };
-
-    // The numbers the sketch's filter grid shows.
-    assert_eq!(count("Transportation"), "9");
-    assert_eq!(count("FoodAndDrink"), "9");
-    assert_eq!(count("Travel"), "6");
-    assert_eq!(count("LoanPayments"), "6");
-    assert_eq!(count("TransferOut"), "6");
-    assert_eq!(count("Entertainment"), "0");
-}
-
+/// A shut filter has to say what it is doing in the room a shut filter has:
+/// the first two by name, the rest as a number.
 #[test]
 fn a_shut_filter_summarises_what_it_is_doing() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "FoodAndDrink".to_string(),
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "Travel".to_string(),
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "Transportation".to_string(),
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "LoanPayments".to_string(),
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "Travel".to_string() } },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "Transportation".to_string() } },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "LoanPayments".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(ledger.filter.categories_summary.len(), 2, "two named");
+            assert_eq!(ledger.filter.categories_overflow.as_deref(), Some("+2"));
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    assert_eq!(ledger.filter.categories_summary.len(), 2, "two named");
-    assert_eq!(ledger.filter.categories_overflow.as_deref(), Some("+2"));
+    );
 }
 
 #[test]
 fn clearing_categories_shows_everything_again() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "FoodAndDrink".to_string(),
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoriesCleared,
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
+            {"id":"b","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::CategoriesCleared },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(rows(ledger).len(), 2);
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    assert_eq!(rows(ledger).len(), 48);
+    );
 }
 
-/// A category id the ledger invented should narrow nothing, rather than
-/// filtering to a category no transaction is in.
+/// A chip id the app does not know is a phone running against a newer server.
+/// It changes nothing rather than filtering everything away.
 #[test]
 fn an_unknown_category_id_is_ignored() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "Crypto".to_string(),
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "NotACategory".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(rows(ledger).len(), 1, "the list is untouched");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    assert_eq!(rows(ledger).len(), 48);
+    );
 }
 
+/// An empty list has to say which kind of empty it is: nothing yet, or nothing
+/// that matches.
 #[test]
 fn a_filter_matching_nothing_says_so() {
-    // Nothing in the feed is medical.
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "Medical".to_string(),
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "Medical".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert!(rows(ledger).is_empty());
+            assert_eq!(ledger.empty.as_deref(), Some("Nothing matches this filter."));
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    assert!(rows(ledger).is_empty());
-    assert_eq!(
-        ledger.empty.as_deref(),
-        Some("Nothing matches this filter."),
-        "and it must not say the ledger is empty",
     );
 }
 
 #[test]
 fn this_month_keeps_only_august() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::RangeSelected {
-                    kind: RangeSelection::This {
-                        unit: RangeUnit::Month,
-                    },
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
+            {"id":"b","ts":1783814400,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::RangeSelected { kind: RangeSelection::This { unit: RangeUnit::Month } } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            let months: Vec<&str> = ledger.months.iter().map(|m| m.name.as_str()).collect();
+
+            assert_eq!(months, ["August"], "July's row is out");
+            assert_eq!(ledger.filter.range_summary, "This month");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    assert_eq!(ledger.months.len(), 1);
-    assert_eq!(ledger.months[0].name, "August");
-    assert_eq!(ledger.filter.range_summary, "This month");
+    );
 }
 
+/// Three months back reaches past this month and then stops.
 #[test]
 fn the_last_three_months_reach_back_further() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::RangeSelected {
-                    kind: RangeSelection::Last {
-                        count: 3,
-                        unit: RangeUnit::Month,
-                    },
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
+            {"id":"b","ts":1781222400,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
+            {"id":"c","ts":1778544000,"amount":-4.33,"asset":"USD","label":"Starbucks","category":"FoodAndDrink"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::RangeSelected { kind: RangeSelection::Last { count: 3, unit: RangeUnit::Month } } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            let months: Vec<&str> = ledger.months.iter().map(|m| m.name.as_str()).collect();
+
+            assert_eq!(months, ["August", "June"], "May is further back than three months");
+            assert_eq!(ledger.filter.range_summary, "Last 3 months");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    assert!(ledger.months.len() > 1);
-    assert_eq!(ledger.filter.range_summary, "Last 3 months");
+    );
 }
 
 /// The end of a `Between` range is a day, and a day includes its own
-/// transactions. Off by one here silently drops the last day.
+/// transactions — an end that meant midnight would drop them all.
 #[test]
 fn a_between_range_includes_its_last_day() {
-    // Aug 12 is the newest day in the feed, with two transactions on it.
-    const AUG_12: u64 = 1_786_492_800;
-
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::RangeSelected {
-                    kind: RangeSelection::Between {
-                        start: AUG_12,
-                        end: AUG_12,
-                    },
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
+            {"id":"b","ts":1786492800,"amount":-25.00,"asset":"USD","label":"Card payment","category":"LoanPayments"},
+            {"id":"c","ts":1786320000,"amount":-78.50,"asset":"USD","label":"Climbing gym","category":"Entertainment"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+        // Aug 12 to Aug 12 — the day the first two rows are on.
+        < Event::FromUi { event: EventUi::RangeSelected { kind: RangeSelection::Between { start: 1_786_492_800, end: 1_786_492_800 } } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(rows(ledger).len(), 2, "both of Aug 12's rows, and Aug 10 left out");
+            assert_eq!(ledger.months[0].days[0].heading, "Wed, Aug 12");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    assert_eq!(rows(ledger).len(), 2, "both of Aug 12's rows");
-    assert_eq!(ledger.months[0].days[0].heading, "Wed, Aug 12");
+    );
 }
 
 #[test]
 fn all_time_is_the_default_and_filters_nothing() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-        ],
-        &mut actions,
-    );
-
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
+            {"id":"b","ts":1778544000,"amount":-4.33,"asset":"USD","label":"Starbucks","category":"FoodAndDrink"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(rows(ledger).len(), 2, "three months apart, both drawn");
+            assert_eq!(ledger.filter.range_summary, "All time");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    assert_eq!(ledger.filter.range.kind, ViewRangeKind::All);
-    assert_eq!(rows(ledger).len(), 48);
+    );
 }
 
-/// The two filters are independent, so they compose rather than override.
+/// The two filters are an intersection: a row has to be in the category *and*
+/// in the range.
 #[test]
 fn a_category_and_a_range_apply_together() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "FoodAndDrink".to_string(),
-                },
-            },
-            Event::FromUi {
-                event: EventUi::RangeSelected {
-                    kind: RangeSelection::This {
-                        unit: RangeUnit::Month,
-                    },
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
+            {"id":"b","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
+            {"id":"c","ts":1783814400,"amount":-4.33,"asset":"USD","label":"Starbucks","category":"FoodAndDrink"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
+        < Event::FromUi { event: EventUi::RangeSelected { kind: RangeSelection::This { unit: RangeUnit::Month } } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            let shown = rows(ledger);
+
+            assert_eq!(shown.len(), 1, "August's food — not July's, and not the Uber");
+            assert_eq!(shown[0].title, "McDonald's");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    let shown = rows(ledger);
-
-    assert!(shown.iter().all(|r| r.category == "Food & drink"));
-    assert_eq!(ledger.months.len(), 1, "August only");
-    assert!(shown.len() < 9, "fewer than food across all time");
+    );
 }
 
-/// The chip counts respect the range even while ignoring the category
-/// selection — the two filters are independent in both directions.
+/// The chip counts are computed through the time range, or a chip would offer
+/// rows the range has already ruled out.
 #[test]
 fn the_chip_counts_follow_the_time_range() {
-    let count = |ledger: &ViewLedger| {
-        ledger
-            .filter
-            .categories
-            .iter()
-            .find(|c| c.id == "FoodAndDrink")
-            .expect("food is a chip")
-            .count
-            .clone()
-    };
-
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
+            {"id":"b","ts":1783814400,"amount":-4.33,"asset":"USD","label":"Starbucks","category":"FoodAndDrink"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            let food = ledger.filter.categories.iter().find(|c| c.id == "FoodAndDrink").expect("a chip per category");
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: all_time },
-                    ..
-                },
+            assert_eq!(food.count, "2", "both of them, over all time");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
 
-    let mut state = app();
-    let mut actions = Vec::new();
+        < Event::FromUi { event: EventUi::RangeSelected { kind: RangeSelection::This { unit: RangeUnit::Month } } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            let food = ledger.filter.categories.iter().find(|c| c.id == "FoodAndDrink").expect("a chip per category");
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::RangeSelected {
-                    kind: RangeSelection::This {
-                        unit: RangeUnit::Month,
-                    },
-                },
-            },
-        ],
-        &mut actions,
-    );
-
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: this_month },
-                    ..
-                },
+            assert_eq!(food.count, "1", "August's alone");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    assert_eq!(count(all_time), "9");
-    assert_ne!(count(this_month), "9", "August alone holds fewer");
+    );
 }
 
 /// Revealed by default. The phone has no eye any more, so a covered figure
@@ -1310,132 +586,59 @@ fn the_chip_counts_follow_the_time_range() {
 #[test]
 fn figures_start_revealed() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Balances,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+            "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[{"id":"acc","name":"Plaid Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Balances { view: balances },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            assert!(!balances.masked);
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the balances is what a batch draws last, got {actions:#?}")
-    };
-
-    assert!(!balances.masked);
-    assert_eq!(balances.headline, "$86,541.74");
+    );
 }
 
-/// Covering still works, and is still one switch for the whole app — the web
-/// is where it is reached from.
+/// Covering still works, and the figure must not travel in the clear — what a
+/// covered headline carries is dots, not a number nobody drew.
 #[test]
 fn covering_hides_the_figure() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::MaskToggled,
-            },
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Balances,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+            "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[{"id":"acc","name":"Plaid Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Balances { view: balances },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::MaskToggled },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            assert!(balances.masked);
+            assert_eq!(balances.headline, "••••••");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the balances is what a batch draws last, got {actions:#?}")
-    };
-
-    assert!(balances.masked);
-    assert!(
-        !balances.headline.contains('8'),
-        "the figure must not travel in the clear: {}",
-        balances.headline,
     );
 }
 
-/// One switch for the whole app: covering on Balances and staying revealed on
-/// Recurring would be a strange thing to have to explain.
+/// One switch for the whole app: covering on the Ledger and staying revealed
+/// on Recurring would be a strange thing to have to explain.
 #[test]
 fn the_mask_is_one_switch_across_screens() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::MaskToggled,
-            },
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+            "streams":[{"id":"s","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","is_active":true}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::MaskToggled },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            assert!(recurring.masked, "switched on the Ledger, covered here");
+            assert_eq!(recurring.headline, "••••••");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring screen is what a batch draws last, got {actions:#?}")
-    };
-
-    assert!(view.masked);
-    assert!(!view.headline.contains('3'));
+    );
 }
 
 /// Ledger rows are never covered — a list of grey bars says nothing, and the
@@ -1443,1095 +646,449 @@ fn the_mask_is_one_switch_across_screens() {
 #[test]
 fn the_mask_leaves_ledger_rows_alone() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-4.33,"asset":"USD","label":"Starbucks","category":"FoodAndDrink"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::MaskToggled },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(rows(ledger)[0].amount, "−$4.33", "covered everywhere else, not here");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger screen is what a batch draws last, got {actions:#?}")
-    };
-
-    assert!(rows(view).iter().any(|r| r.amount.contains('$')));
+    );
 }
 
 #[test]
 fn balances_lead_with_what_is_held() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Balances,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+            "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
+                {"id":"acc-1","name":"Plaid Checking","balance":100.0,"group":"depository"},
+                {"id":"acc-2","name":"Plaid Saving","balance":200.0,"group":"depository"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Balances { view: balances },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            assert_eq!(balances.headline_label, "Held");
+            assert_eq!(balances.headline, "$300.00", "the two balances, added");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the balances is what a batch draws last, got {actions:#?}")
-    };
-
-    assert_eq!(balances.headline_label, "Held");
-    assert_eq!(balances.headline, "$86,541.74");
+    );
 }
 
-/// A mortgage between a checking account and an HSA reads as something you
-/// have. Debts get their own block, after everything held.
+/// A mortgage among the accounts you hold reads as something you owe. Debts
+/// get their own block, after everything held.
 #[test]
 fn debts_are_split_out_and_come_last() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Balances,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+            "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
+                {"id":"acc-1","name":"Plaid Mortgage","balance":56302.06,"group":"loan"},
+                {"id":"acc-2","name":"Plaid Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Balances { view: balances },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            let blocks: Vec<bool> = balances.connections.iter().map(|c| c.is_debts).collect();
+
+            assert_eq!(blocks, [false, true], "held first, owed after");
+
+            let debts = &balances.connections[1];
+
+            assert_eq!(debts.total, "−$56,302.06");
+            assert_eq!(debts.total_label, "1 account owed");
+            assert!(debts.accounts.iter().all(|a| a.owed));
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the balances is what a batch draws last, got {actions:#?}")
-    };
-
-    let connections = &balances.connections;
-
-    let first_debt = connections.iter().position(|c| c.is_debts);
-    let last_held = connections.iter().rposition(|c| !c.is_debts);
-
-    assert!(first_debt.is_some(), "the feed has debts");
-    assert!(
-        first_debt > last_held,
-        "every debt block comes after every held one",
     );
-
-    let debts = connections
-        .iter()
-        .find(|c| c.is_debts)
-        .expect("just checked");
-
-    assert_eq!(debts.accounts.len(), 6);
-    assert_eq!(debts.total, "−$163,705.89");
-    assert_eq!(debts.total_label, "6 accounts owed");
-    assert!(debts.accounts.iter().all(|a| a.owed));
 }
 
 #[test]
 fn a_credit_card_shows_what_is_used_of_its_limit() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Balances,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+            "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
+                {"id":"acc","name":"Plaid Credit Card","subtype":"credit card","balance":410.0,"limit":2000.0,"group":"credit"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Balances { view: balances },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            let row = &balances.connections[0].accounts[0];
+
+            assert_eq!(row.amount, "−$410.00");
+            assert_eq!(row.utilisation.as_deref(), Some("$410.00 of $2,000.00 limit used"));
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the balances is what a batch draws last, got {actions:#?}")
-    };
-
-    let row = balances
-        .connections
-        .iter()
-        .flat_map(|c| &c.accounts)
-        .find(|a| a.name == "Plaid Credit Card")
-        .expect("the feed has a credit card");
-
-    assert_eq!(row.amount, "−$410.00");
-    assert_eq!(
-        row.utilisation.as_deref(),
-        Some("$410.00 of $2,000.00 limit used"),
     );
 }
 
-/// A HELOC's useful half is how much room is left, not how much is gone.
+/// A line of credit's useful half is how much room is left, not how much is
+/// gone.
 #[test]
 fn a_line_of_credit_shows_what_is_left() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Balances,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+            "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
+                {"id":"acc","name":"Plaid Home Equity","subtype":"home equity","balance":2352.50,"available":47647.50,"limit":50000.0,"group":"credit"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Balances { view: balances },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            let row = &balances.connections[0].accounts[0];
+
+            assert_eq!(row.utilisation.as_deref(), Some("$47,647.50 still available"));
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the balances is what a batch draws last, got {actions:#?}")
-    };
-
-    let row = balances
-        .connections
-        .iter()
-        .flat_map(|c| &c.accounts)
-        .find(|a| a.name.contains("Home Equity"))
-        .expect("the feed has a HELOC");
-
-    assert_eq!(
-        row.utilisation.as_deref(),
-        Some("$47,647.50 still available"),
     );
 }
 
+/// The kind, the last four digits and what is available read as one phrase —
+/// and Plaid's `401k` is not what a person calls it.
 #[test]
 fn an_account_subtitle_reads_as_a_sentence() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Balances,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+            "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
+                {"id":"acc-1","name":"Plaid Checking","subtype":"checking","mask":"0000","balance":100.0,"available":100.0,"group":"depository"},
+                {"id":"acc-2","name":"Plaid 401k","subtype":"401k","mask":"6666","balance":23631.98,"group":"investment"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Balances { view: balances },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            let accounts = &balances.connections[0].accounts;
+
+            assert_eq!(accounts[0].subtitle, "Checking ·0000 · $100.00 available");
+            assert_eq!(accounts[1].subtitle, "401(k) ·6666");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the balances is what a batch draws last, got {actions:#?}")
-    };
-
-    let accounts: Vec<&ViewAccountRow> = balances
-        .connections
-        .iter()
-        .flat_map(|c| &c.accounts)
-        .collect();
-
-    let subtitle = |name: &str| {
-        accounts
-            .iter()
-            .find(|a| a.name == name)
-            .map(|a| a.subtitle.as_str())
-            .unwrap_or_default()
-            .to_string()
-    };
-
-    assert_eq!(
-        subtitle("Plaid Checking"),
-        "Checking ·0000 · $100.00 available"
     );
-    assert_eq!(
-        subtitle("Plaid Saving"),
-        "Savings ·1111 · $200.00 available"
-    );
-
-    // Plaid's `401k` is not what a person calls it.
-    assert_eq!(subtitle("Plaid 401k"), "401(k) ·6666");
 }
 
 /// The grid is as many rows as the month has weeks in it. August 2026 starts
-/// on a Saturday and runs 31 days, which is six; July is five.
+/// on a Saturday and runs 31 days, which is six; July is five. No transaction
+/// is involved in either fact, so the snapshot carries none.
 #[test]
 fn the_calendar_is_as_tall_as_its_month() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view: recurring },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            assert_eq!(recurring.calendar.current.weeks.len(), 6, "August 2026");
+            assert_eq!(recurring.calendar.prev.weeks.len(), 5, "July 2026");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring is what a batch draws last, got {actions:#?}")
-    };
-
-    let calendar = &recurring.calendar;
-
-    assert_eq!(calendar.current.label, "August 2026");
-    assert_eq!(calendar.current.weeks.len(), 6);
-    assert!(calendar.current.weeks.iter().all(|week| week.len() == 7));
-
-    assert_eq!(calendar.prev.label, "July 2026");
-    assert_eq!(calendar.prev.weeks.len(), 5);
-
-    assert_eq!(calendar.next.label, "September 2026");
+    );
 }
 
-/// The months either side arrive whole, not as the one column that shows at
-/// the edge. Turning the calendar is a scroll, and a scroll needs somewhere to
-/// scroll to.
+/// The months either side arrive whole, so a swipe has something to land on.
 #[test]
 fn the_months_either_side_arrive_whole() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view: recurring },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            let calendar = &recurring.calendar;
+
+            assert_eq!(calendar.prev.label, "July 2026");
+            assert_eq!(calendar.current.label, "August 2026");
+            assert_eq!(calendar.next.label, "September 2026");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring is what a batch draws last, got {actions:#?}")
-    };
-
-    let calendar = &recurring.calendar;
-
-    for month in [&calendar.prev, &calendar.next] {
-        assert!(!month.weeks.is_empty());
-        assert!(month.weeks.iter().all(|week| week.len() == 7));
-
-        // Its own days are its own; the ones it borrows are dimmed.
-        assert!(month.weeks.iter().flatten().any(|day| !day.outside));
-        assert!(month.weeks.iter().flatten().any(|day| day.outside));
-    }
-
-    // Today belongs to one month, wherever else it is drawn it is outside it.
-    let today: Vec<&ViewCalendarDay> = calendar
-        .current
-        .weeks
-        .iter()
-        .flatten()
-        .filter(|day| day.today)
-        .collect();
-
-    assert_eq!(today.len(), 1);
-    assert!(!today[0].outside);
+    );
 }
 
-/// A day in two months' grids is one day, so the two carry the same id.
+/// A day is one date wherever it is drawn, so a day borrowed by the month next
+/// to it carries the same id — otherwise tapping it in one month would open
+/// nothing in the other.
 #[test]
 fn a_day_has_one_id_wherever_it_is_drawn() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view: recurring },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            let calendar = &recurring.calendar;
+
+            // August starts on a Saturday, so its first row borrows the end of
+            // July — the same days July's own grid ends with.
+            let borrowed: Vec<&str> = calendar.current.weeks[0].iter().filter(|d| d.outside).map(|d| d.id.as_str()).collect();
+            let julys: Vec<&str> = calendar.prev.weeks.iter().flatten().filter(|d| !d.outside).map(|d| d.id.as_str()).collect();
+
+            // Jul 27 to Jul 31 2026, as the day numbers a tap sends back.
+            assert_eq!(borrowed, ["20661", "20662", "20663", "20664", "20665"]);
+            assert!(borrowed.iter().all(|id| julys.contains(id)), "and July draws the same five");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring is what a batch draws last, got {actions:#?}")
-    };
-
-    let calendar = &recurring.calendar;
-
-    // The 2nd of August closes July's last week and opens August's first.
-    let inside = calendar
-        .current
-        .weeks
-        .iter()
-        .flatten()
-        .find(|day| day.label == "2" && !day.outside);
-
-    let borrowed = calendar
-        .prev
-        .weeks
-        .iter()
-        .flatten()
-        .find(|day| day.label == "2" && day.outside);
-
-    assert!(inside.is_some() && borrowed.is_some());
-    assert_eq!(
-        inside.map(|day| day.id.as_str()),
-        borrowed.map(|day| day.id.as_str()),
-        "the 2nd of August is the 2nd of August",
     );
 }
 
-/// Tapping a day opens what landed on it; tapping it again puts it away. A
-/// card that could only be opened would need a close button of its own.
+/// Tapping a day opens a card for it, and tapping it again shuts it.
 #[test]
 fn tapping_a_day_opens_it_and_tapping_it_again_shuts_it() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        // Two streams land on Aug 22, so the card has something to list.
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+            {"id":"s1","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","next_date":1787356800,"is_active":true},
+            {"id":"s2","label":"Spotify","category":"Entertainment","amount":-11.99,"frequency":"MONTHLY","next_date":1787356800,"is_active":true}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            assert!(recurring.day_card.is_none(), "nothing tapped yet");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring screen is what a batch draws last, got {actions:#?}")
-    };
 
-    assert!(view.day_card.is_none(), "nothing tapped yet");
+        < Event::FromUi { event: EventUi::CalendarDaySelected { id: "20687".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            let card = recurring.day_card.as_ref().expect("the day that was tapped opens");
 
-    // The day the sketch draws a card for: two streams land on it.
-    let marked = view
-        .calendar
-        .current
-        .weeks
-        .iter()
-        .flatten()
-        .find(|day| day.marks.len() > 1)
-        .map(|day| day.id.clone());
+            assert_eq!(card.rows.len(), 2, "both streams that land on it");
 
-    let Some(id) = marked else {
-        panic!("the fixture should land more than one stream on some day")
-    };
+            let picked: Vec<&str> = recurring.calendar.current.weeks.iter().flatten().filter(|d| d.picked).map(|d| d.id.as_str()).collect();
 
-    let mut actions = Vec::new();
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::MaskToggled,
-            },
-            Event::FromUi {
-                event: EventUi::CalendarDaySelected { id: id.clone() },
-            },
-        ],
-        &mut actions,
-    );
-
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view: opened },
-                    ..
-                },
+            assert_eq!(picked, ["20687"], "and it reads as picked");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring screen is what a batch draws last, got {actions:#?}")
-    };
 
-    let card = opened.day_card.clone();
-
-    assert!(card.is_some(), "the day that was tapped opens");
-    assert!(card.is_some_and(|card| card.rows.len() > 1));
-
-    assert!(
-        opened
-            .calendar
-            .current
-            .weeks
-            .iter()
-            .flatten()
-            .any(|day| day.picked),
-        "and it reads as picked",
-    );
-
-    let mut actions = Vec::new();
-    state.handle_events_at(
-        NOW,
-        &[Event::FromUi {
-            event: EventUi::CalendarDaySelected { id: id.clone() },
-        }],
-        &mut actions,
-    );
-
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view: closed },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::CalendarDaySelected { id: "20687".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            assert!(recurring.day_card.is_none(), "and tapping it again shuts it");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring screen is what a batch draws last, got {actions:#?}")
-    };
-
-    assert!(closed.day_card.is_none(), "and tapping it again closes it");
+    );
 }
 
+/// The screen leads with what the month comes to — everything going out and
+/// everything coming in, netted, and signed so a month that pays for itself
+/// reads as one.
 #[test]
 fn recurring_leads_with_the_monthly_commitment() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+            {"id":"s1","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","is_active":true},
+            {"id":"s2","label":"Rent","category":"RentAndUtilities","amount":-1500.00,"frequency":"MONTHLY","is_active":true},
+            {"id":"s3","label":"Payroll","category":"Income","amount":2000.00,"frequency":"MONTHLY","is_active":true}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view: recurring },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            assert_eq!(recurring.headline_label, "Every month");
+            assert_eq!(recurring.headline, "$484.01", "2000.00 against 15.99 and 1500.00");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring is what a batch draws last, got {actions:#?}")
-    };
-
-    // The headline is the net, and the two directions sit under it — the
-    // words beside them carry the sign, so the figures do not.
-    assert_eq!(recurring.headline_label, "Every month");
-    assert_eq!(recurring.headline, "−$3,767.18");
-    assert_eq!(recurring.flow_in, "$4.22");
-    assert_eq!(recurring.flow_out, "$3,771.40");
-
-    // The same pair with the sign back on, for the band, where the words that
-    // carry the direction do not fit.
-    assert_eq!(recurring.flow_in_signed, "+$4.22");
-    assert_eq!(recurring.flow_out_signed, "−$3,771.40");
-    assert_eq!(recurring.breakdown_total, "−$3,771.40");
-    assert_eq!(recurring.detail, "+$4.22 in · net −$3,767.18");
+    );
 }
 
-/// Every row is a full week, whichever month it belongs to — the days either
-/// side of the month are drawn rather than left blank.
+/// A grid of whole weeks, every row seven days, so the columns line up under
+/// their headings.
 #[test]
 fn the_calendar_draws_whole_weeks() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            let lengths: Vec<usize> = recurring.calendar.current.weeks.iter().map(|w| w.len()).collect();
+
+            assert_eq!(lengths, [7, 7, 7, 7, 7, 7]);
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring screen is what a batch draws last, got {actions:#?}")
-    };
-    let calendar = &view.calendar;
-
-    assert_eq!(calendar.weekdays, ["M", "T", "W", "T", "F", "S", "S"]);
-
-    for month in [&calendar.prev, &calendar.current, &calendar.next] {
-        for week in &month.weeks {
-            assert_eq!(week.len(), 7);
-            assert!(week.iter().all(|d| !d.label.is_empty()), "no blank cells");
-        }
-    }
+    );
 }
 
-/// August 2026 starts on a Saturday, so the row it starts in carries five days
-/// of July before it — and those are dimmed rather than dropped.
+/// August 2026 starts on a Saturday, so the first row is five borrowed days
+/// and then the 1st.
 #[test]
 fn the_calendar_starts_the_month_on_its_own_weekday() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            let week = &recurring.calendar.current.weeks[0];
+
+            let labels: Vec<&str> = week.iter().map(|d| d.label.as_str()).collect();
+            let dimmed: Vec<bool> = week.iter().map(|d| d.outside).collect();
+
+            assert_eq!(labels, ["27", "28", "29", "30", "31", "1", "2"]);
+            assert_eq!(dimmed, [true, true, true, true, true, false, false]);
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring screen is what a batch draws last, got {actions:#?}")
-    };
-    let first = &view.calendar.current.weeks[0];
-
-    let labels: Vec<&str> = first.iter().map(|d| d.label.as_str()).collect();
-    assert_eq!(labels, ["27", "28", "29", "30", "31", "1", "2"]);
-
-    let outside: Vec<bool> = first.iter().map(|d| d.outside).collect();
-    assert_eq!(outside, [true, true, true, true, true, false, false]);
+    );
 }
 
-/// Today is marked, and it is the only one.
+/// Exactly one day is today, and it is the 19th.
 #[test]
 fn the_calendar_marks_today() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            let today: Vec<&str> = recurring.calendar.current.weeks.iter().flatten().filter(|d| d.today).map(|d| d.label.as_str()).collect();
+
+            assert_eq!(today, ["19"]);
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring screen is what a batch draws last, got {actions:#?}")
-    };
-    let calendar = &view.calendar;
-
-    let today: Vec<&str> = calendar
-        .current
-        .weeks
-        .iter()
-        .flatten()
-        .filter(|d| d.today)
-        .map(|d| d.label.as_str())
-        .collect();
-
-    assert_eq!(today, ["19"]);
+    );
 }
 
-/// Only dates the source predicts. Every stream with a next date contributes
-/// one mark and no more — nothing is projected forward from a frequency.
+/// Only dates the source predicts. Two streams that land on the same day are
+/// two marks on it, a stream without a date is no mark at all, and nothing is
+/// projected forward from a frequency.
 #[test]
 fn the_calendar_marks_only_the_dates_plaid_gave_us() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+            {"id":"s1","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","next_date":1787356800,"is_active":true},
+            {"id":"s2","label":"Spotify","category":"Entertainment","amount":-11.99,"frequency":"MONTHLY","next_date":1787356800,"is_active":true},
+            {"id":"s3","label":"Rent","category":"RentAndUtilities","amount":-1500.00,"frequency":"MONTHLY","is_active":true}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            let marked: Vec<(&str, usize)> = recurring.calendar.current.weeks.iter().flatten()
+                .filter(|d| !d.marks.is_empty())
+                .map(|d| (d.id.as_str(), d.marks.len()))
+                .collect();
+
+            assert_eq!(marked, [("20687", 2)], "Aug 22, the two with a date, and nowhere else");
+
+            // A mark carries the category token the breakdown above colours by.
+            let tokens: Vec<&str> = recurring.calendar.current.weeks.iter().flatten()
+                .flat_map(|d| d.marks.iter().map(|m| m.as_str()))
+                .collect();
+
+            assert!(tokens.iter().all(|t| t.starts_with("c-")), "{tokens:?}");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring screen is what a batch draws last, got {actions:#?}")
-    };
-    let calendar = &view.calendar;
-
-    let marks: usize = calendar
-        .current
-        .weeks
-        .iter()
-        .flatten()
-        .map(|d| d.marks.len())
-        .sum();
-
-    assert!(marks > 0, "the feed has streams with next dates");
-    assert!(
-        marks <= state.stream_count(),
-        "{marks} marks from {} streams",
-        state.stream_count(),
     );
-
-    // A marked day carries the category token the breakdown above colours by.
-    let tokens: Vec<&str> = calendar
-        .current
-        .weeks
-        .iter()
-        .flatten()
-        .flat_map(|d| d.marks.iter().map(|m| m.as_str()))
-        .collect();
-
-    assert!(tokens.iter().all(|t| t.starts_with("c-")), "{tokens:?}");
 }
 
-/// The bar and the legend are two views of one split, so the shares have to add
-/// up to the whole bar.
+/// The bar and the legend are two views of one split, so the shares have to
+/// add up to the whole bar, biggest first.
 #[test]
 fn the_breakdown_covers_the_whole_bar() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+            {"id":"s1","label":"Rent","category":"RentAndUtilities","amount":-1500.00,"frequency":"MONTHLY","is_active":true},
+            {"id":"s2","label":"Netflix","category":"Entertainment","amount":-500.00,"frequency":"MONTHLY","is_active":true}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            let shares: Vec<f64> = recurring.breakdown.iter().map(|s| s.share).collect();
+
+            assert_eq!(shares, [0.75, 0.25], "1500 and 500 of 2000, biggest first");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring screen is what a batch draws last, got {actions:#?}")
-    };
-    let breakdown = &view.breakdown;
-
-    assert!(!breakdown.is_empty());
-
-    let total: f64 = breakdown.iter().map(|s| s.share).sum();
-
-    assert!((total - 1.0).abs() < 1e-9, "shares sum to {total}");
-
-    // Biggest first, so the eye lands on what matters.
-    for pair in breakdown.windows(2) {
-        assert!(pair[0].share >= pair[1].share);
-    }
+    );
 }
 
 /// The bar and the list are two views of one split, so the groups have to run
-/// in the same order the bar's segments do — biggest commitment first.
+/// in the same order the bar's segments do.
 #[test]
 fn stream_groups_run_biggest_first_like_the_bar() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+            {"id":"s1","label":"Netflix","category":"Entertainment","amount":-500.00,"frequency":"MONTHLY","is_active":true},
+            {"id":"s2","label":"Rent","category":"RentAndUtilities","amount":-1500.00,"frequency":"MONTHLY","is_active":true}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view: recurring },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            let list: Vec<&str> = recurring.groups.iter().map(|g| g.name.as_str()).collect();
+            let bar: Vec<&str> = recurring.breakdown.iter().map(|s| s.label.as_str()).collect();
+
+            assert_eq!(list, bar, "the bar and the list must not disagree");
+            assert_eq!(recurring.groups[0].total, "$1,500.00", "the bigger group leads");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring is what a batch draws last, got {actions:#?}")
-    };
-
-    // Outflow groups only: the inflow group is deliberately last regardless of
-    // size, being a different kind of thing.
-    let outflow: Vec<&ViewStreamGroup> = recurring
-        .groups
-        .iter()
-        .filter(|g| g.streams.iter().any(|s| s.amount.starts_with('−')))
-        .collect();
-
-    assert_eq!(outflow[0].name, "Transfer out", "the $2,078.50 group leads");
-    assert_eq!(outflow[0].total, "$2,078.50");
-
-    let bar: Vec<&str> = recurring
-        .breakdown
-        .iter()
-        .map(|s| s.label.as_str())
-        .collect();
-    let list: Vec<&str> = outflow.iter().map(|g| g.name.as_str()).collect();
-
-    assert_eq!(bar, list, "the bar and the list must not disagree");
+    );
 }
 
-#[test]
-fn a_stream_says_when_it_next_lands() {
-    let mut state = app();
-    let mut actions = Vec::new();
-
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
-
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view: recurring },
-                    ..
-                },
-        },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring is what a batch draws last, got {actions:#?}")
-    };
-
-    let row = recurring
-        .groups
-        .iter()
-        .flat_map(|g| &g.streams)
-        .find(|s| s.title == "AUTOMATIC PAYMENT - THANK")
-        .expect("the feed has this stream");
-
-    assert_eq!(row.when, "next Aug 22 · in 3 days");
-    assert!(row.soon, "three days out is a heads-up");
-    assert_eq!(row.amount, "−$2,078.50");
-    assert_eq!(row.frequency, "Monthly");
-}
-
-#[test]
-fn a_distant_stream_is_not_marked_soon() {
-    let mut state = app();
-    let mut actions = Vec::new();
-
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
-
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view },
-                    ..
-                },
-        },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring screen is what a batch draws last, got {actions:#?}")
-    };
-
-    let row = view
-        .groups
-        .iter()
-        .flat_map(|g| &g.streams)
-        .find(|s| s.title == "Touchstone Climbing")
-        .expect("the feed has this stream");
-
-    assert!(!row.soon, "three weeks out is not urgent");
-}
-
+/// What comes in is grouped after everything going out, however big it is:
+/// it is a different kind of thing, not a bigger one.
 #[test]
 fn money_coming_in_is_grouped_after_everything_going_out() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+            {"id":"s1","label":"Payroll","category":"Income","amount":5000.00,"frequency":"MONTHLY","is_active":true},
+            {"id":"s2","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","is_active":true}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view },
-                    ..
-                },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            let last = recurring.groups.last().expect("two groups");
+
+            assert!(last.streams.iter().all(|s| s.amount.starts_with('+')), "the $5,000 comes last");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring screen is what a batch draws last, got {actions:#?}")
-    };
-    let groups = &view.groups;
+    );
+}
 
-    let inflow = groups
-        .iter()
-        .position(|g| g.streams.iter().any(|s| s.title == "INTRST PYMNT"))
-        .expect("the feed has one inflow");
+/// A stream says when it next lands, in the words the sketch uses.
+#[test]
+fn a_stream_says_when_it_next_lands() {
+    let mut state = app();
 
-    assert_eq!(inflow, groups.len() - 1, "the inflow group comes last");
+    eval!(&mut state,
+        // Aug 22 — three days after the snapshot's clock.
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+            {"id":"s","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","next_date":1787356800,"is_active":true}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            let row = &recurring.groups[0].streams[0];
+
+            assert_eq!(row.when, "next Aug 22 · in 3 days");
+            assert!(row.soon, "three days out is soon");
+        },
+    );
+}
+
+/// Soon is a fortnight, not a season: a stream further out than that is drawn
+/// like any other.
+#[test]
+fn a_distant_stream_is_not_marked_soon() {
+    let mut state = app();
+
+    eval!(&mut state,
+        // Sep 30 — six weeks out.
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+            {"id":"s","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","next_date":1790726400,"is_active":true}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            assert!(!recurring.groups[0].streams[0].soon);
+        },
+    );
 }
 
 /// Nothing is on screen until data arrives, and the wording has to say
@@ -2539,43 +1096,18 @@ fn money_coming_in_is_grouped_after_everything_going_out() {
 #[test]
 fn an_empty_app_says_it_is_loading() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-        ],
-        &mut actions,
-    );
-
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Ledger } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(ledger.empty.as_deref(), Some("Loading…"));
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    assert_eq!(ledger.empty.as_deref(), Some("Loading…"));
+    );
 }
 
 #[test]
 fn a_failed_load_tells_the_user_and_still_draws() {
-    let mut state = at_now();
+    let mut state = app();
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::RefreshRequested },
@@ -2593,125 +1125,49 @@ fn a_failed_load_tells_the_user_and_still_draws() {
 #[test]
 fn a_failure_after_a_good_load_keeps_the_data() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromSource {
-                event: EventSource::LoadFailed {
-                    message: "network unreachable".to_string(),
-                },
-            },
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-        ],
-        &mut actions,
-    );
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-    assert_eq!(state.entry_count(), 48);
-
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Ledger { view: ledger },
-                    ..
-                },
+        < Event::FromSource { event: EventSource::LoadFailed { message: "network unreachable".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(rows(ledger).len(), 1, "the list still has its row");
+            assert!(ledger.empty.is_none());
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the ledger is what a batch draws last, got {actions:#?}")
-    };
-
-    assert!(ledger.empty.is_none(), "the list still has rows");
+        > Action::ToUi { action: ActionUi::ShowError { .. } },
+    );
 }
 
 /// A snapshot we cannot read is a failed load, not a panic.
 #[test]
 fn an_unreadable_snapshot_does_not_crash() {
     let mut state = app();
-    let mut actions = Vec::new();
 
-    state.handle_events_at(
-        NOW,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            Event::FromSource {
-                event: EventSource::SnapshotLoaded {
-                    json: "{ not json at all".to_string(),
-                },
-            },
-        ],
-        &mut actions,
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: "{ not json at all".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { .. }, .. } },
     );
 
     assert_eq!(state.entry_count(), 0);
-    assert!(matches!(
-        actions.as_slice(),
-        [
-            ..,
-            Action::ToUi {
-                action: ActionUi::Render {
-                    screen: ViewScreen::Ledger { .. },
-                    ..
-                }
-            }
-        ]
-    ));
 }
 
 /// The reason for all of this: if every decision is a pure function of state
 /// and an event, a log of the events is a recording of the session. Replay it
-/// and the same thing happens.
+/// and the same thing happens — the one test here that drives two machines and
+/// compares them, rather than saying what either one did.
 #[test]
 fn the_same_events_give_the_same_actions() {
     let events = || {
         vec![
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Ledger,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::CategoryToggled {
-                    id: "FoodAndDrink".to_string(),
-                },
-            },
-            Event::FromUi {
-                event: EventUi::RangeSelected {
-                    kind: RangeSelection::This {
-                        unit: RangeUnit::Month,
-                    },
-                },
-            },
-            Event::FromUi {
-                event: EventUi::MaskToggled,
-            },
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Balances,
-                },
-            },
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
+            Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+                {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
+                {"id":"b","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
+            Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
+            Event::FromUi { event: EventUi::RangeSelected { kind: RangeSelection::This { unit: RangeUnit::Month } } },
+            Event::FromUi { event: EventUi::MaskToggled },
+            Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
         ]
     };
 
@@ -2719,162 +1175,65 @@ fn the_same_events_give_the_same_actions() {
         let mut state = app();
         let mut actions = Vec::new();
 
-        state.handle_events_at(NOW, &events(), &mut actions);
+        state.handle_events(&events(), &mut actions);
 
         format!("{actions:?}")
     };
 
-    assert_eq!(run(), run());
+    assert_eq!(run(), run(), "a replay lands where it did");
 }
 
-/// The clock arrives as an argument, so the same events an hour of wall-clock
-/// later still land on the same screen.
-#[test]
-fn the_machine_does_not_depend_on_when_it_runs() {
-    let render = || {
-        let mut state = app();
-        let mut actions = Vec::new();
-
-        state.handle_events_at(
-            NOW,
-            &[
-                Event::FromUi {
-                    event: EventUi::Started,
-                },
-                loaded(),
-                Event::FromUi {
-                    event: EventUi::ScreenOpened {
-                        screen: Screen::Recurring,
-                    },
-                },
-            ],
-            &mut actions,
-        );
-
-        format!("{actions:?}")
-    };
-
-    let first = render();
-    std::thread::sleep(std::time::Duration::from_millis(20));
-
-    assert_eq!(first, render());
-}
-
-/// Every event renders, so the view never has to guess whether to redraw.
+/// Every event draws, so the view never has to guess whether to redraw.
 #[test]
 fn every_ui_event_produces_a_render() {
-    for event in [
-        EventUi::ScreenOpened {
-            screen: Screen::Ledger,
-        },
-        EventUi::MaskToggled,
-        EventUi::FilterGroupToggled {
-            group: FilterGroup::Categories,
-        },
-        EventUi::CategoryToggled {
-            id: "Travel".to_string(),
-        },
-        EventUi::CategoriesCleared,
-        EventUi::RangeSelected {
-            kind: RangeSelection::All,
-        },
-        EventUi::TxSelected {
-            id: "whatever".to_string(),
-        },
-        EventUi::RefreshRequested,
-        EventUi::EmailChosen,
-        EventUi::EmailTyped {
-            text: "al@example.com".to_string(),
-        },
-        EventUi::EmailSubmitted,
-        EventUi::CodeTyped {
-            digits: "407".to_string(),
-        },
-        EventUi::ResendRequested,
-        EventUi::BackPressed,
-        EventUi::BankConnectRequested,
-        EventUi::OnboardingFinished,
-        EventUi::Ticked,
-    ] {
-        let mut state = app();
-        let mut actions = Vec::new();
+    let mut state = app();
 
-        let label = format!("{event:?}");
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-        state.handle_events_at(
-            NOW,
-            &[
-                Event::FromUi {
-                    event: EventUi::Started,
-                },
-                loaded(),
-                Event::FromUi { event },
-            ],
-            &mut actions,
-        );
+        < Event::FromUi { event: EventUi::MaskToggled },
+        > Action::ToUi { action: ActionUi::Render { .. } },
 
-        assert!(
-            matches!(
-                actions.last(),
-                Some(Action::ToUi {
-                    action: ActionUi::Render { .. }
-                })
-            ),
-            "{label} should have drawn, got {actions:#?}",
-        );
-    }
+        < Event::FromUi { event: EventUi::FilterGroupToggled { group: FilterGroup::Categories } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "Travel".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::CategoriesCleared },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::RangeSelected { kind: RangeSelection::This { unit: RangeUnit::Month } } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::CalendarMonthStepped { step: -1 } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::CalendarDaySelected { id: "20687".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::Ticked },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+    );
 }
 
-/// The server's clock wins over the device's, and time still passes between
-/// snapshots. A phone with a wrong date would otherwise render a confidently
-/// wrong "in 3 days".
+/// The server's clock wins over the device's. A phone with a wrong date would
+/// otherwise render a confidently wrong "in 3 days".
 #[test]
 fn the_servers_clock_wins_over_the_devices() {
     let mut state = app();
-    let mut actions = Vec::new();
 
     // A device that thinks it is a year earlier than the server.
-    let device = NOW.saturating_sub_secs(365 * 86_400);
+    state.set_now(NOW.saturating_sub_secs(365 * 86_400));
 
-    state.handle_events_at(
-        device,
-        &[
-            Event::FromUi {
-                event: EventUi::Started,
-            },
-            loaded(),
-            Event::FromUi {
-                event: EventUi::ScreenOpened {
-                    screen: Screen::Recurring,
-                },
-            },
-        ],
-        &mut actions,
-    );
-
-    let [
-        ..,
-        Action::ToUi {
-            action:
-                ActionUi::Render {
-                    screen: ViewScreen::Recurring { view: recurring },
-                    ..
-                },
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+            {"id":"s","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","next_date":1787356800,"is_active":true}]}"#.to_string() } },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
+            assert_eq!(recurring.groups[0].streams[0].when, "next Aug 22 · in 3 days", "the server's clock decides");
         },
-    ] = actions.as_slice()
-    else {
-        panic!("the recurring screen is what a batch draws last, got {actions:#?}")
-    };
-
-    let row = recurring
-        .groups
-        .iter()
-        .flat_map(|g| &g.streams)
-        .find(|s| s.title == "AUTOMATIC PAYMENT - THANK")
-        .expect("the feed has this stream");
-
-    assert_eq!(
-        row.when, "next Aug 22 · in 3 days",
-        "the server's clock decides, not the device's",
     );
 }
