@@ -40,6 +40,7 @@ pub struct ResendClient {
     client: reqwest::Client,
     base_url: reqwest::Url,
     api_key: String,
+    from: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,7 +68,17 @@ impl ResendClient {
                 .build()?,
             base_url,
             api_key: credentials.api_key.clone(),
+            from: credentials.from.clone(),
         })
+    }
+
+    /// Who messages come from.
+    ///
+    /// Held rather than read again at each send: it was validated once, when
+    /// the client was built, and a second read is a second chance to disagree
+    /// with it.
+    pub fn from(&self) -> &str {
+        &self.from
     }
 
     pub(crate) async fn send(&self, email: &Email) -> Result<Sent, ResendError> {
