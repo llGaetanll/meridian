@@ -6,8 +6,10 @@
 //! `StateApp::new()` is already on the first screen of the flow — which is
 //! what these drive.
 //!
-//! `eval!` covers the actions; the assertions after it cover the screens those
-//! actions carry.
+//! The screens these are about are small enough to write out, so a test that
+//! is about what a screen says pins the whole render with `@` — the sentence,
+//! the field, the six boxes and the countdown, exactly as the machine built
+//! them. Nothing here reads a view back out of an action list.
 
 use std::time::Duration;
 
@@ -18,10 +20,6 @@ use phone_state::*;
 /// 2026-08-19 00:00 UTC, the same clock the rest of the tests are set to.
 const NOW: Timestamp = Timestamp::from_secs(1_787_097_600);
 
-const EMAIL: &str = "al@example.com";
-
-const BANK: &str = "First Platypus Bank";
-
 /// A machine on a device the app has never run on, with its clock set.
 fn first_run() -> StateApp {
     let mut state = StateApp::new();
@@ -29,122 +27,67 @@ fn first_run() -> StateApp {
     state
 }
 
-fn ui(event: EventUi) -> Event {
-    Event::FromUi { event }
-}
-
-fn from(event: EventSource) -> Event {
-    Event::FromSource { event }
-}
-
-fn typed(text: &str) -> Event {
-    ui(EventUi::EmailTyped {
-        text: text.to_string(),
-    })
-}
-
-fn code(digits: &str) -> Event {
-    ui(EventUi::CodeTyped {
-        digits: digits.to_string(),
-    })
-}
-
-/// Drive the machine and hand back the screen the last action carried.
-fn screen(state: &mut StateApp, events: &[Event]) -> ViewScreen {
-    let mut actions = Vec::new();
-
-    state.handle_events(events, &mut actions);
-
-    actions
-        .iter()
-        .rev()
-        .find_map(|a| match a {
-            Action::ToUi {
-                action: ActionUi::Render { screen, .. },
-            } => Some(screen.clone()),
-            _ => None,
-        })
-        .expect("something should have been rendered")
-}
-
-fn flow(state: &mut StateApp, events: &[Event]) -> ViewOnboarding {
-    match screen(state, events) {
-        ViewScreen::Onboarding { view } => view,
-        other => panic!("expected first run, got {other:?}"),
-    }
-}
-
-/// Everything up to the code screen, with a code already sent.
+/// Everything up to the code screen, with a code already sent. The actions are
+/// dropped rather than checked: the tests that are about them send these same
+/// events themselves.
 fn at_the_code_screen() -> StateApp {
     let mut state = first_run();
 
-    screen(
-        &mut state,
+    state.handle_events(
         &[
-            ui(EventUi::EmailChosen),
-            typed(EMAIL),
-            ui(EventUi::EmailSubmitted),
-            from(EventSource::CodeSent),
+            Event::FromUi {
+                event: EventUi::EmailChosen,
+            },
+            Event::FromUi {
+                event: EventUi::EmailTyped {
+                    text: "al@example.com".to_string(),
+                },
+            },
+            Event::FromUi {
+                event: EventUi::EmailSubmitted,
+            },
+            Event::FromSource {
+                event: EventSource::CodeSent,
+            },
         ],
+        &mut Vec::new(),
     );
 
     state
 }
 
-/// Connecting a bank is what starts the history arriving, so the ask follows
-/// the news rather than the runtime deciding a sync must be next.
-#[test]
-fn a_linked_bank_asks_for_its_history() {
-    let mut state = at_the_bank_screen();
-
-    eval!(&mut state,
-        < ui(EventUi::BankConnectRequested),
-        > Action::ToSource { action: ActionSource::StartBankLink },
-        > Action::ToUi { action: ActionUi::Render { .. } },
-
-        < from(EventSource::BankLinked { institution: BANK.to_string() }),
-        > Action::ToSource { action: ActionSource::WatchSync },
-        > Action::ToUi { action: ActionUi::Render { .. } },
-    );
-}
-
-/// Everything up to the bank screen, which is the one the flow exists for.
+/// The same, up to the bank screen, which is the one the flow exists for.
 fn at_the_bank_screen() -> StateApp {
     let mut state = at_the_code_screen();
 
-    screen(
-        &mut state,
-        &[code("407193"), from(EventSource::CodeAccepted)],
+    state.handle_events(
+        &[
+            Event::FromUi {
+                event: EventUi::CodeTyped {
+                    digits: "407193".to_string(),
+                },
+            },
+            Event::FromSource {
+                event: EventSource::CodeAccepted,
+            },
+        ],
+        &mut Vec::new(),
     );
 
     state
 }
 
+/// Its screens are not tabs, so there is no dock under them — a dock here would
+/// offer three empty ones. That is the `dock: None` at the end of the render.
 #[test]
 fn a_device_the_app_has_never_run_on_opens_on_welcome() {
     let mut state = first_run();
 
-    let mut actions = Vec::new();
-    state.handle_events_at(NOW, &[ui(EventUi::Started)], &mut actions);
-
-    let rendered = actions.iter().find_map(|a| match a {
-        Action::ToUi {
-            action: ActionUi::Render { screen, dock },
-        } => Some((screen.clone(), dock.clone())),
-        _ => None,
-    });
-
-    let Some((ViewScreen::Onboarding { view }, dock)) = rendered else {
-        panic!("first run should be what a new machine draws, got {rendered:?}")
-    };
-
-    assert!(
-        matches!(view, ViewOnboarding::Welcome { .. }),
-        "and it opens on the first screen of it",
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::Started },
+        > @r#"ToSource { action: LoadSession }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Welcome { title: "Every account,\none ledger.", body: [ViewRun { text: "Meridian reads your banks and puts what you spend, hold and owe on one page.", strong: false }], action: "Continue with email", legal: "By continuing you agree to our Terms and Privacy Policy." } }, dock: None } }"#,
     );
-
-    // Its screens are not tabs. A dock under them would offer three empty ones.
-    assert!(dock.is_none(), "first run has no dock");
 }
 
 /// No session means the machine stays where it already is. It is the *only*
@@ -154,13 +97,12 @@ fn no_session_leaves_the_flow_where_it_is() {
     let mut state = first_run();
 
     eval!(&mut state,
-        < from(EventSource::SessionLoaded { email: None }),
-        > Action::ToUi { action: ActionUi::Render { .. } },
+        < Event::FromSource { event: EventSource::SessionLoaded { email: None } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Welcome { title: "Every account,\none ledger.", body: [ViewRun { text: "Meridian reads your banks and puts what you spend, hold and owe on one page.", strong: false }], action: "Continue with email", legal: "By continuing you agree to our Terms and Privacy Policy." } }, dock: None } }"#,
+
+        < Event::FromUi { event: EventUi::Ticked },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Welcome { title: "Every account,\none ledger.", body: [ViewRun { text: "Meridian reads your banks and puts what you spend, hold and owe on one page.", strong: false }], action: "Continue with email", legal: "By continuing you agree to our Terms and Privacy Policy." } }, dock: None } }"#,
     );
-
-    let view = flow(&mut state, &[ui(EventUi::Ticked)]);
-
-    assert!(matches!(view, ViewOnboarding::Welcome { .. }));
 }
 
 #[test]
@@ -168,25 +110,16 @@ fn an_address_that_is_not_one_is_never_sent() {
     let mut state = first_run();
 
     eval!(&mut state,
-        < ui(EventUi::EmailChosen),
+        < Event::FromUi { event: EventUi::EmailChosen },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         // Nothing goes out, and the only thing that happens is the field
-        // saying so.
-        < typed("al@example"),
-        < ui(EventUi::EmailSubmitted),
+        // saying so — with what was typed still in it.
+        < Event::FromUi { event: EventUi::EmailTyped { text: "al@example".to_string() } },
+        < Event::FromUi { event: EventUi::EmailSubmitted },
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Email { step: "Step 1 of 3 · Account", title: "What's your email?", body: [ViewRun { text: "We'll send a six-digit code. Nothing to make up and nothing to forget.", strong: false }], field: ViewField { icon: "mail", value: "al@example", placeholder: "you@example.com", fault: Some("That doesn't look like an email address.") }, action: "Continue" } }, dock: None } }"#,
     );
-
-    let view = flow(&mut state, &[ui(EventUi::Ticked)]);
-
-    let ViewOnboarding::Email { field, .. } = view else {
-        panic!("a rejected address leaves you on the address screen, got {view:?}")
-    };
-
-    assert!(field.fault.is_some(), "the field says what is wrong");
-    assert_eq!(field.value, "al@example", "and keeps what was typed");
 }
 
 /// A field that stayed red while it was being fixed would be arguing with the
@@ -195,21 +128,17 @@ fn an_address_that_is_not_one_is_never_sent() {
 fn typing_clears_the_rejection() {
     let mut state = first_run();
 
-    let view = flow(
-        &mut state,
-        &[
-            ui(EventUi::EmailChosen),
-            typed("al@example"),
-            ui(EventUi::EmailSubmitted),
-            typed("al@example.c"),
-        ],
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::EmailChosen },
+        < Event::FromUi { event: EventUi::EmailTyped { text: "al@example".to_string() } },
+        < Event::FromUi { event: EventUi::EmailSubmitted },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::EmailTyped { text: "al@example.c".to_string() } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Email { step: "Step 1 of 3 · Account", title: "What's your email?", body: [ViewRun { text: "We'll send a six-digit code. Nothing to make up and nothing to forget.", strong: false }], field: ViewField { icon: "mail", value: "al@example.c", placeholder: "you@example.com", fault: None }, action: "Continue" } }, dock: None } }"#,
     );
-
-    let ViewOnboarding::Email { field, .. } = view else {
-        panic!("expected the address screen, got {view:?}")
-    };
-
-    assert!(field.fault.is_none());
 }
 
 #[test]
@@ -217,37 +146,29 @@ fn a_good_address_asks_for_a_code() {
     let mut state = first_run();
 
     eval!(&mut state,
-        < ui(EventUi::EmailChosen),
+        < Event::FromUi { event: EventUi::EmailChosen },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         // Typing draws, and only Continue sends.
-        < typed(EMAIL),
-        < ui(EventUi::EmailSubmitted),
+        < Event::FromUi { event: EventUi::EmailTyped { text: "al@example.com".to_string() } },
+        < Event::FromUi { event: EventUi::EmailSubmitted },
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > Action::ToSource { action: ActionSource::SendCode { .. } },
+        > @r#"ToSource { action: SendCode { email: "al@example.com" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }
 
 /// The address is on screen and one tap from being fixed — a typo in the step
-/// before is otherwise a dead end.
+/// before is otherwise a dead end. It is set strong in the sentence, there is a
+/// box per digit, and the first one takes the next digit.
 #[test]
 fn the_code_screen_says_where_the_code_went() {
     let mut state = at_the_code_screen();
 
-    let view = flow(&mut state, &[ui(EventUi::Ticked)]);
-
-    let ViewOnboarding::Code { body, cells, .. } = view else {
-        panic!("expected the code screen, got {view:?}")
-    };
-
-    assert!(
-        body.iter().any(|run| run.text == EMAIL && run.strong),
-        "the address is set strong in the sentence: {body:?}",
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::Ticked },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None } }"#,
     );
-
-    assert_eq!(cells.len(), 6, "a box per digit says how many are left");
-    assert!(cells[0].live, "and the first one takes the next digit");
 }
 
 /// There is nothing to check before the sixth digit, so the sixth digit
@@ -257,35 +178,28 @@ fn the_sixth_digit_submits() {
     let mut state = at_the_code_screen();
 
     eval!(&mut state,
-        < code("40719"),
+        < Event::FromUi { event: EventUi::CodeTyped { digits: "40719".to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < code("407193"),
-        > Action::ToSource { action: ActionSource::VerifyCode { .. } },
+        < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
+        > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }
 
-/// A rejected code is one wrong value, not six wrong digits.
+/// A rejected code is one wrong value, not six wrong digits: every box is bad,
+/// none is waiting, and the sentence says which of the two problems it is.
 #[test]
 fn a_wrong_code_reddens_every_box() {
     let mut state = at_the_code_screen();
 
-    let view = flow(
-        &mut state,
-        &[
-            code("407193"),
-            from(EventSource::CodeRejected { expired: false }),
-        ],
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
+        < Event::FromSource { event: EventSource::CodeRejected { expired: false } },
+        > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code is not right."), resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None } }"#,
     );
-
-    let ViewOnboarding::Code { cells, fault, .. } = view else {
-        panic!("expected the code screen, got {view:?}")
-    };
-
-    assert!(cells.iter().all(|cell| cell.bad), "{cells:?}");
-    assert!(cells.iter().all(|cell| !cell.live), "and none is waiting");
-    assert_eq!(fault.as_deref(), Some("That code is not right."));
 }
 
 /// Wrong and too late are different problems, one sentence apart, and the way
@@ -294,21 +208,12 @@ fn a_wrong_code_reddens_every_box() {
 fn an_expired_code_says_so_and_offers_a_new_one() {
     let mut state = at_the_code_screen();
 
-    let view = flow(
-        &mut state,
-        &[
-            code("407193"),
-            from(EventSource::CodeRejected { expired: true }),
-        ],
-    );
-
-    let ViewOnboarding::Code { fault, .. } = view else {
-        panic!("expected the code screen, got {view:?}")
-    };
-
-    assert_eq!(
-        fault.as_deref(),
-        Some("That code has expired. They last ten minutes."),
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
+        < Event::FromSource { event: EventSource::CodeRejected { expired: true } },
+        > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code has expired. They last ten minutes."), resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None } }"#,
     );
 }
 
@@ -316,39 +221,24 @@ fn an_expired_code_says_so_and_offers_a_new_one() {
 fn the_resend_counts_down_before_it_offers() {
     let mut state = at_the_code_screen();
 
-    let view = flow(&mut state, &[ui(EventUi::Ticked)]);
-    let ViewOnboarding::Code { resend, .. } = view else {
-        panic!("expected the code screen, got {view:?}")
-    };
-
-    let ViewResend::Waiting { text, .. } = resend else {
-        panic!("a code just went out, so it is still counting: {resend:?}")
-    };
-
-    assert_eq!(text, "Resend in 1:00");
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::Ticked },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None } }"#,
+    );
 
     state.set_now(NOW + Duration::from_secs(42));
 
-    let view = flow(&mut state, &[ui(EventUi::Ticked)]);
-    let ViewOnboarding::Code { resend, .. } = view else {
-        panic!("expected the code screen, got {view:?}")
-    };
-
-    assert!(
-        matches!(&resend, ViewResend::Waiting { text, .. } if text == "Resend in 0:18"),
-        "{resend:?}",
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::Ticked },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, resend: Waiting { text: "Resend in 0:18", wrong_address: "Wrong address?" } } }, dock: None } }"#,
     );
 
     state.set_now(NOW + Duration::from_secs(60));
 
-    let view = flow(&mut state, &[ui(EventUi::Ticked)]);
-    let ViewOnboarding::Code { resend, .. } = view else {
-        panic!("expected the code screen, got {view:?}")
-    };
-
-    assert!(
-        matches!(resend, ViewResend::Ready { .. }),
-        "once there is nothing to wait for it is a button",
+    // Once there is nothing left to wait for it is a button.
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::Ticked },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, resend: Ready { label: "Send a new code" } } }, dock: None } }"#,
     );
 }
 
@@ -359,15 +249,15 @@ fn resending_early_sends_nothing() {
     let mut state = at_the_code_screen();
 
     eval!(&mut state,
-        < ui(EventUi::ResendRequested),
+        < Event::FromUi { event: EventUi::ResendRequested },
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 
     state.set_now(NOW + Duration::from_secs(60));
 
     eval!(&mut state,
-        < ui(EventUi::ResendRequested),
-        > Action::ToSource { action: ActionSource::SendCode { .. } },
+        < Event::FromUi { event: EventUi::ResendRequested },
+        > @r#"ToSource { action: SendCode { email: "al@example.com" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }
@@ -376,25 +266,25 @@ fn resending_early_sends_nothing() {
 fn wrong_address_goes_back_to_the_field_with_it_still_in() {
     let mut state = at_the_code_screen();
 
-    let view = flow(&mut state, &[code("407"), ui(EventUi::BackPressed)]);
-
-    let ViewOnboarding::Email { field, .. } = view else {
-        panic!("back from the code screen is the address screen, got {view:?}")
-    };
-
-    assert_eq!(field.value, EMAIL, "and the address is still in it");
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::CodeTyped { digits: "407".to_string() } },
+        < Event::FromUi { event: EventUi::BackPressed },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Email { step: "Step 1 of 3 · Account", title: "What's your email?", body: [ViewRun { text: "We'll send a six-digit code. Nothing to make up and nothing to forget.", strong: false }], field: ViewField { icon: "mail", value: "al@example.com", placeholder: "you@example.com", fault: None }, action: "Continue" } }, dock: None } }"#,
+    );
 }
 
 #[test]
 fn a_verified_code_asks_for_a_bank() {
     let mut state = at_the_code_screen();
 
-    let view = flow(
-        &mut state,
-        &[code("407193"), from(EventSource::CodeAccepted)],
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
+        < Event::FromSource { event: EventSource::CodeAccepted },
+        > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Bank { .. } }, .. } },
     );
-
-    assert!(matches!(view, ViewOnboarding::Bank { .. }), "{view:?}");
 }
 
 /// There is no version of this app without a bank in it — every screen is a
@@ -404,9 +294,10 @@ fn a_verified_code_asks_for_a_bank() {
 fn there_is_no_way_back_out_of_the_bank_screen() {
     let mut state = at_the_bank_screen();
 
-    let view = flow(&mut state, &[ui(EventUi::BackPressed)]);
-
-    assert!(matches!(view, ViewOnboarding::Bank { .. }), "{view:?}");
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BackPressed },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Bank { .. } }, .. } },
+    );
 }
 
 #[test]
@@ -414,140 +305,119 @@ fn connecting_a_bank_opens_plaid() {
     let mut state = at_the_bank_screen();
 
     eval!(&mut state,
-        < ui(EventUi::BankConnectRequested),
-        > Action::ToSource { action: ActionSource::StartBankLink },
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+    );
+}
+
+/// Connecting a bank is what starts the history arriving, so the ask follows
+/// the news rather than the runtime deciding a sync must be next.
+#[test]
+fn a_linked_bank_asks_for_its_history() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource { event: EventSource::BankLinked { institution: "First Platypus Bank".to_string() } },
+        > @r#"ToSource { action: WatchSync }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }
 
 /// The common ending, not a rare one. Nothing was created, and the screen says
-/// exactly that.
+/// exactly that — and the way out of it is the same road, not a different one.
 #[test]
 fn an_abandoned_sign_in_says_nothing_was_connected() {
     let mut state = at_the_bank_screen();
 
-    let view = flow(
-        &mut state,
-        &[
-            ui(EventUi::BankConnectRequested),
-            from(EventSource::BankAbandoned),
-        ],
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankAbandoned },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Failed { .. } }, .. } },
+
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Bank { .. } }, .. } },
     );
-
-    assert!(matches!(view, ViewOnboarding::Failed { .. }), "{view:?}");
-
-    // And the way out of it is the same road, not a different one.
-    let view = flow(&mut state, &[ui(EventUi::BankConnectRequested)]);
-
-    assert!(matches!(view, ViewOnboarding::Bank { .. }), "{view:?}");
 }
 
+/// The sync screen names the bank it is reading and counts what has landed so
+/// far, which is the only thing on it that moves.
 #[test]
 fn the_sync_says_what_has_landed_so_far() {
     let mut state = at_the_bank_screen();
 
-    let view = flow(
-        &mut state,
-        &[
-            ui(EventUi::BankConnectRequested),
-            from(EventSource::BankLinked {
-                institution: BANK.to_string(),
-            }),
-            from(EventSource::SyncProgressed {
-                stage: SyncStage::Transactions,
-                accounts: 8,
-                transactions: 48,
-                streams: 0,
-            }),
-        ],
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankLinked { institution: "First Platypus Bank".to_string() } },
+        < Event::FromSource { event: EventSource::SyncProgressed { stage: SyncStage::Transactions, accounts: 8, transactions: 48, streams: 0 } },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToSource { action: WatchSync }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Sync { step: "Step 3 of 3 · Sync", title: "Reading your history", body: [ViewRun { text: "First time only. Every refresh after this one takes a moment.", strong: false }], progress: 0.625, rows: [ViewIconRow { icon: "tick-circle", tone: Done, title: "First Platypus Bank", sub: None, value: Some("connected") }, ViewIconRow { icon: "tick-circle", tone: Done, title: "Accounts", sub: None, value: Some("8") }, ViewIconRow { icon: "spin", tone: Running, title: "Transactions", sub: None, value: Some("48 so far") }, ViewIconRow { icon: "dot", tone: Waiting, title: "Recurring bills", sub: None, value: Some("waiting") }] } }, dock: None } }"#,
     );
-
-    let ViewOnboarding::Sync { progress, rows, .. } = view else {
-        panic!("a linked bank puts the flow on the sync screen, got {view:?}")
-    };
-
-    assert_eq!(rows[0].title, BANK, "the bank it is reading");
-    assert_eq!(rows[2].value.as_deref(), Some("48 so far"));
-    assert!(progress > 0.0 && progress < 1.0, "{progress}");
 }
 
+/// A finished sync counts what arrived and names the bank it came from.
 #[test]
 fn a_finished_sync_counts_what_arrived() {
     let mut state = at_the_bank_screen();
 
-    let view = flow(
-        &mut state,
-        &[
-            ui(EventUi::BankConnectRequested),
-            from(EventSource::BankLinked {
-                institution: BANK.to_string(),
-            }),
-            from(EventSource::SyncProgressed {
-                stage: SyncStage::Streams,
-                accounts: 8,
-                transactions: 48,
-                streams: 8,
-            }),
-            from(EventSource::SyncFinished),
-        ],
-    );
-
-    let ViewOnboarding::Ready { tally, body, .. } = view else {
-        panic!("a finished sync is the last screen, got {view:?}")
-    };
-
-    assert_eq!(tally[0].value, "8");
-    assert_eq!(tally[0].label, "accounts");
-    assert_eq!(tally[1].value, "48");
-    assert_eq!(tally[1].label, "transactions");
-    assert_eq!(tally[2].value, "8");
-
-    assert!(
-        body.iter().any(|run| run.text == BANK),
-        "and it names the bank: {body:?}",
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankLinked { institution: "First Platypus Bank".to_string() } },
+        < Event::FromSource { event: EventSource::SyncProgressed { stage: SyncStage::Streams, accounts: 8, transactions: 48, streams: 8 } },
+        < Event::FromSource { event: EventSource::SyncFinished },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToSource { action: WatchSync }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Ready { title: "You're set.", body: [ViewRun { text: "First Platypus Bank", strong: true }, ViewRun { text: " is connected and syncing.", strong: false }], tally: [ViewTally { value: "8", label: "accounts" }, ViewTally { value: "48", label: "transactions" }, ViewTally { value: "8", label: "recurring bills found" }], another: "Add another bank", open: "Open Meridian" } }, dock: None } }"#,
     );
 }
 
 /// The end of the road: the flow is dropped, the address is remembered so the
-/// next launch skips it, and the app goes and gets its data.
+/// next launch skips it, and the app goes and gets its data. The Ledger it
+/// lands on is far too large to write out, so the render says only that it is
+/// the Ledger and that the dock is back.
 #[test]
 fn opening_meridian_ends_the_flow() {
     let mut state = at_the_bank_screen();
 
-    screen(
-        &mut state,
+    state.handle_events(
         &[
-            ui(EventUi::BankConnectRequested),
-            from(EventSource::BankLinked {
-                institution: BANK.to_string(),
-            }),
-            from(EventSource::SyncFinished),
+            Event::FromUi {
+                event: EventUi::BankConnectRequested,
+            },
+            Event::FromSource {
+                event: EventSource::BankLinked {
+                    institution: "First Platypus Bank".to_string(),
+                },
+            },
+            Event::FromSource {
+                event: EventSource::SyncFinished,
+            },
         ],
+        &mut Vec::new(),
     );
 
     eval!(&mut state,
-        < ui(EventUi::OnboardingFinished),
+        < Event::FromUi { event: EventUi::OnboardingFinished },
         > Action::ToSource { action: ActionSource::SaveSession { .. } },
-        > Action::ToSource { action: ActionSource::LoadSnapshot { force: false } },
+        > @r#"ToSource { action: LoadSnapshot { force: false } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::Ticked },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { .. }, dock: Some(_) } },
     );
-
-    let mut actions = Vec::new();
-    state.handle_events_at(state.now(), &[ui(EventUi::Ticked)], &mut actions);
-
-    let Some(Action::ToUi {
-        action: ActionUi::Render { screen, dock },
-    }) = actions.first()
-    else {
-        panic!("expected a render, got {actions:?}")
-    };
-
-    assert!(
-        matches!(screen, ViewScreen::Ledger { .. }),
-        "the app opens on the Ledger, got {screen:?}",
-    );
-
-    assert!(dock.is_some(), "and the dock is back");
 }
 
 /// A tap that arrives after the flow has gone is a stale tap, not a broken
@@ -556,23 +426,31 @@ fn opening_meridian_ends_the_flow() {
 fn the_flow_ignores_events_once_it_is_over() {
     let mut state = at_the_bank_screen();
 
-    screen(
-        &mut state,
+    state.handle_events(
         &[
-            ui(EventUi::BankConnectRequested),
-            from(EventSource::BankLinked {
-                institution: BANK.to_string(),
-            }),
-            from(EventSource::SyncFinished),
-            ui(EventUi::OnboardingFinished),
+            Event::FromUi {
+                event: EventUi::BankConnectRequested,
+            },
+            Event::FromSource {
+                event: EventSource::BankLinked {
+                    institution: "First Platypus Bank".to_string(),
+                },
+            },
+            Event::FromSource {
+                event: EventSource::SyncFinished,
+            },
+            Event::FromUi {
+                event: EventUi::OnboardingFinished,
+            },
         ],
+        &mut Vec::new(),
     );
 
     eval!(&mut state,
-        < ui(EventUi::BankConnectRequested),
+        < Event::FromUi { event: EventUi::BankConnectRequested },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < ui(EventUi::OnboardingFinished),
+        < Event::FromUi { event: EventUi::OnboardingFinished },
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }

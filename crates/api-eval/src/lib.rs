@@ -7,15 +7,19 @@
 //!
 //! ```ignore
 //! eval!(&mut state,
-//!     < EventUi::Started,
+//!     < Event::FromUi { event: EventUi::Started },
 //!     > Action::ToSource { action: ActionSource::LoadSnapshot { force: false } },
 //!     > Action::ToUi { action: ActionUi::Render { .. } },
 //!
-//!     < EventUi::ScreenOpened { screen: Screen::Ledger },
-//!     < EventUi::CategoryToggled { id },
+//!     < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Ledger } },
+//!     < Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
 //!     > Action::ToUi { action: ActionUi::Render { .. } },
 //! );
 //! ```
+//!
+//! Every event is written out where it is sent — no `ui(…)`, no `toggle(…)`, no
+//! local holding one. A helper shortens the line and hides the flow, which is
+//! the one thing these tests exist to show; `docs/STYLE.md` has the rule.
 //!
 //! `<` is an event going in, `>` is an action expected out. A run of adjacent
 //! events goes into one `handle_events` call, and the `>` lines after them are
@@ -33,20 +37,50 @@
 //! `matches!`, which is pattern matching and needs no trait at all. Keeping
 //! that derive off the events and actions is the point — it spreads through
 //! every type they touch.
+//!
+//! A pattern cannot reach a *value*, though — there is no way to say in one
+//! that a `String` is a particular sentence — so a `>` line may instead be `@`
+//! and a string, compared against the action's `{:?}`:
+//!
+//! ```ignore
+//! > @r#"ToSource { action: SendCode { email: "al@example.com" } }"#,
+//! ```
+//!
+//! Debug prints variants unqualified, so the string reads `ToSource { … }`
+//! where the pattern would say `Action::ToSource { … }`. A failure prints the
+//! expected and the actual in that same form, which is how one gets written:
+//! leave it empty, run the test, and paste back what it says it got — having
+//! read it first, because what it got may be the bug.
+//!
+//! Both forms sit in one block. Use `@` where a value is the claim and a
+//! pattern where the shape is; `docs/STYLE.md` has the rule and the reason.
 
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::Expr;
+use syn::LitStr;
 use syn::Pat;
 use syn::Token;
 use syn::parse::Parse;
 use syn::parse::ParseStream;
 use syn::parse_macro_input;
 
+/// What a `>` line says about one action.
+enum Expected {
+    /// `> Action::ToUi { .. }` — a pattern, matched with `matches!`. Boxed
+    /// because a `Pat` is thirty times the size of the other variant, and a
+    /// parse tree is built once and never in a hot path.
+    Shape(Box<Pat>),
+
+    /// `> @"ToUi { … }"` — the action's `{:?}`, compared as a string. Values a
+    /// pattern cannot reach are what this is for; see the module docs.
+    Debug(LitStr),
+}
+
 /// A run of events and the actions they must produce.
 struct Batch {
     events: Vec<Expr>,
-    actions: Vec<Pat>,
+    actions: Vec<Expected>,
 }
 
 struct Eval {
@@ -84,8 +118,14 @@ impl Parse for Eval {
             } else if input.peek(Token![>]) {
                 input.parse::<Token![>]>()?;
 
-                // A pattern rather than an expression, so `..` and `_` work.
-                let action = Pat::parse_multi_with_leading_vert(input)?;
+                let action = if input.peek(Token![@]) {
+                    input.parse::<Token![@]>()?;
+
+                    Expected::Debug(input.parse()?)
+                } else {
+                    // A pattern rather than an expression, so `..` and `_` work.
+                    Expected::Shape(Box::new(Pat::parse_multi_with_leading_vert(input)?))
+                };
 
                 match batches.last_mut() {
                     Some(batch) => batch.actions.push(action),
@@ -119,31 +159,56 @@ pub fn eval(input: TokenStream) -> TokenStream {
         let expected = batch.actions.len();
 
         // One check per action, in order. Written out rather than looped so a
-        // failure names the position and prints the pattern that did not match.
+        // failure names the position and prints what did not match.
         let checks = batch.actions.iter().enumerate().map(|(j, action)| {
             let position = j + 1;
-            // `quote` puts a space around every token, so the pattern in a
-            // failure message would read `Action :: ToUi { action : … }`.
-            // Tightening the punctuation costs nothing and the message is the
-            // only thing anyone sees when a test breaks.
-            let pattern = quote!(#action)
-                .to_string()
-                .replace(" :: ", "::")
-                .replace(" : ", ": ")
-                .replace(" , ", ", ");
 
-            quote! {
-                match __actions.get(#j) {
-                    Some(__action) => assert!(
-                        ::std::matches!(__action, #action),
-                        "batch {}, action {}: expected `{}`, got {:#?}",
-                        #batch_number,
-                        #position,
-                        #pattern,
-                        __action,
-                    ),
-                    None => unreachable!("the count was checked first"),
+            match action {
+                Expected::Shape(pattern) => {
+                    // `quote` puts a space around every token, so the pattern in
+                    // a failure message would read `Action :: ToUi { action : … }`.
+                    // Tightening the punctuation costs nothing and the message is
+                    // the only thing anyone sees when a test breaks.
+                    let written = quote!(#pattern)
+                        .to_string()
+                        .replace(" :: ", "::")
+                        .replace(" : ", ": ")
+                        .replace(" , ", ", ");
+
+                    quote! {
+                        match __actions.get(#j) {
+                            Some(__action) => assert!(
+                                ::std::matches!(__action, #pattern),
+                                "batch {}, action {}: expected `{}`, got {:#?}",
+                                #batch_number,
+                                #position,
+                                #written,
+                                __action,
+                            ),
+                            None => unreachable!("the count was checked first"),
+                        }
+                    }
                 }
+
+                // `{:?}` rather than `{:#?}`: one action is one line, both in
+                // the test and in the message a failure prints.
+                Expected::Debug(written) => quote! {
+                    match __actions.get(#j) {
+                        Some(__action) => {
+                            let __shown = ::std::format!("{:?}", __action);
+
+                            assert!(
+                                __shown == #written,
+                                "batch {}, action {}:\n    expected `{}`\n         got `{}`",
+                                #batch_number,
+                                #position,
+                                #written,
+                                __shown,
+                            );
+                        }
+                        None => unreachable!("the count was checked first"),
+                    }
+                },
             }
         });
 
