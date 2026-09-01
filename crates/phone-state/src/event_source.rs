@@ -16,12 +16,14 @@ pub enum EventSource {
     /// A request did not come back.
     LoadFailed { message: String },
 
-    /// What the device had stored about who is signed in — the address the
-    /// app last completed first run as, absent on a device that never has.
+    /// Whether the device has a session to act on.
     ///
-    /// Absent rather than an empty string: "nobody" and "somebody with no
-    /// address" are different, and only one of them can happen.
-    SessionLoaded { email: Option<String> },
+    /// A bool rather than the address, because that is the whole of what the
+    /// machine does with it: a session decides which screen the app opens on
+    /// and nothing else. The credential itself is the runtime's — it never
+    /// crosses this boundary, so a recorded log carries no way into anybody's
+    /// bank. `docs/ARCHITECTURE.md` has the rule this follows from.
+    SessionLoaded { signed_in: bool },
 
     /// A code went out.
     CodeSent,
@@ -29,9 +31,15 @@ pub enum EventSource {
     /// The code was the right one.
     CodeAccepted,
 
-    /// It was not. `expired` separates too late from wrong: one asks you to
-    /// look again, the other asks for a new code.
-    CodeRejected { expired: bool },
+    /// It was not.
+    ///
+    /// No reason, because the server gives none: wrong, expired and too many
+    /// guesses answer alike, so that somebody working through codes learns
+    /// nothing from which they got. Too late and simply wrong still read
+    /// differently on screen — one asks you to look again, the other needs a
+    /// new code — and the machine tells them apart from what it already
+    /// knows: when it asked for the code, and what time it is now.
+    CodeRejected,
 
     /// Plaid came back with a bank attached, and this is what it is called.
     BankLinked { institution: String },

@@ -320,14 +320,13 @@ impl StateApp {
             }
 
             EventUi::OnboardingFinished => {
-                // A road with an end: past this the machine holds no memory of
-                // the flow at all, which is why the address is lifted out
-                // before it goes.
-                if let Some(flow) = self.onboarding.take() {
+                // A road with an end: past this the machine holds no memory
+                // of the flow at all. Nothing has to be lifted out first —
+                // what first run produced is a credential, and that has been
+                // the runtime's since `VerifyCode` answered.
+                if self.onboarding.take().is_some() {
                     actions.push(Action::ToSource {
-                        action: ActionSource::SaveSession {
-                            email: flow.email().to_string(),
-                        },
+                        action: ActionSource::SaveSession,
                     });
 
                     actions.push(Action::ToSource {
@@ -372,11 +371,11 @@ impl StateApp {
                 self.render(actions);
             }
 
-            EventSource::SessionLoaded { email } => {
+            EventSource::SessionLoaded { signed_in } => {
                 // This only ever *ends* first run — see the field's own note on
                 // why it starts present. A device with nobody signed in stays
                 // on the Welcome screen it is already drawing.
-                if email.is_some() {
+                if *signed_in {
                     self.onboarding = None;
 
                     actions.push(Action::ToSource {
@@ -405,9 +404,11 @@ impl StateApp {
                 self.render(actions);
             }
 
-            EventSource::CodeRejected { expired } => {
+            EventSource::CodeRejected => {
+                let now = self.now();
+
                 if let Some(flow) = &mut self.onboarding {
-                    flow.code_rejected(*expired);
+                    flow.code_rejected(now);
                 }
 
                 self.render(actions);

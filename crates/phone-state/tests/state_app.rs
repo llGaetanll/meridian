@@ -37,9 +37,7 @@ fn app() -> StateApp {
                 event: EventRuntime::Tick { now: NOW },
             },
             Event::FromSource {
-                event: EventSource::SessionLoaded {
-                    email: Some("al@example.com".to_string()),
-                },
+                event: EventSource::SessionLoaded { signed_in: true },
             },
         ],
         &mut Vec::new(),
@@ -85,7 +83,7 @@ fn a_session_opens_the_app_on_its_data() {
     eval!(&mut state,
         < Event::FromRuntime { event: EventRuntime::Tick { now: NOW } },
 
-        < Event::FromSource { event: EventSource::SessionLoaded { email: Some("al@example.com".to_string()) } },
+        < Event::FromSource { event: EventSource::SessionLoaded { signed_in: true } },
         > @r#"ToSource { action: LoadSnapshot { force: false } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
@@ -1236,7 +1234,7 @@ fn the_app_draws_against_the_devices_clock() {
     eval!(&mut state,
         // A device that thinks it is the day before.
         < Event::FromRuntime { event: EventRuntime::Tick { now: NOW - 86_400 } },
-        < Event::FromSource { event: EventSource::SessionLoaded { email: Some("al@example.com".to_string()) } },
+        < Event::FromSource { event: EventSource::SessionLoaded { signed_in: true } },
         > Action::ToSource { action: ActionSource::LoadSnapshot { force: false } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 

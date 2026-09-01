@@ -105,7 +105,7 @@ fn no_session_leaves_the_flow_where_it_is() {
     let mut state = first_run();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SessionLoaded { email: None } },
+        < Event::FromSource { event: EventSource::SessionLoaded { signed_in: false } },
         > @r#"ToUi { action: Render { screen: Onboarding { view: Welcome { title: "Every account,\none ledger.", body: [ViewRun { text: "Meridian reads your banks and puts what you spend, hold and owe on one page.", strong: false }], action: "Continue with email", legal: "By continuing you agree to our Terms and Privacy Policy." } }, dock: None } }"#,
 
         // And a second passing moves nothing either: Welcome says nothing
@@ -204,7 +204,7 @@ fn a_wrong_code_reddens_every_box() {
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
-        < Event::FromSource { event: EventSource::CodeRejected { expired: false } },
+        < Event::FromSource { event: EventSource::CodeRejected },
         > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code is not right."), resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None } }"#,
@@ -213,16 +213,25 @@ fn a_wrong_code_reddens_every_box() {
 
 /// Wrong and too late are different problems, one sentence apart, and the way
 /// out of each is different.
+///
+/// The server says only that the code was refused, so what makes this the
+/// expired screen rather than the wrong one is the clock: eleven minutes have
+/// passed since the code went out. Which is also why the resend is a button
+/// here and a countdown in the test above — by the time a code can expire, a
+/// new one has been available for ten minutes.
 #[test]
 fn an_expired_code_says_so_and_offers_a_new_one() {
     let mut state = at_the_code_screen();
 
     eval!(&mut state,
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 11 * 60 } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
         < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
-        < Event::FromSource { event: EventSource::CodeRejected { expired: true } },
+        < Event::FromSource { event: EventSource::CodeRejected },
         > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code has expired. They last ten minutes."), resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code has expired. They last ten minutes."), resend: Ready { label: "Send a new code" } } }, dock: None } }"#,
     );
 }
 
@@ -390,17 +399,17 @@ fn a_finished_sync_counts_what_arrived() {
     );
 }
 
-/// The end of the road: the flow is dropped, the address is remembered so the
-/// next launch skips it, and the app goes and gets its data. The Ledger it
-/// lands on is far too large to write out, so the render says only that it is
-/// the Ledger and that the dock is back.
+/// The end of the road: the flow is dropped, the session the runtime is
+/// holding is committed so the next launch skips first run, and the app goes
+/// and gets its data. The Ledger it lands on is far too large to write out, so
+/// the render says only that it is the Ledger and that the dock is back.
 #[test]
 fn opening_meridian_ends_the_flow() {
     let mut state = at_the_code_screen();
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::OnboardingFinished },
-        > Action::ToSource { action: ActionSource::SaveSession { .. } },
+        > Action::ToSource { action: ActionSource::SaveSession },
         > @r#"ToSource { action: LoadSnapshot { force: false } }"#,
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { .. }, dock: Some(_) } },
     );
