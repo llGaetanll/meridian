@@ -3824,13 +3824,20 @@ sealed class EventSource {
     object CodeRejected : EventSource()
 
     /**
-     * Plaid came back with a bank attached, and this is what it is called.
+     * Plaid came back with at least one bank attached.
+     *
+     * No name, because at that moment nobody has one: it is in neither the
+     * Link session nor the token exchange, and the server first learns it
+     * from the balances call inside the sync that follows. It arrives a
+     * second or two later on
+     * [`SyncStatusLoaded`](EventSource::SyncStatusLoaded), and the screen
+     * says "Your bank" until it does.
+     *
+     * No count either, though the server sends one: attaching two banks at
+     * once and attaching one lead to the same screen, and a number the flow
+     * does not read is a number that can be wrong without anything noticing.
      */
-    data class BankLinked(
-        val `institution`: kotlin.String,
-    ) : EventSource() {
-        companion object
-    }
+    object BankLinked : EventSource()
 
     /**
      * The bank sign-in ended with nothing — dismissed, failed, timed out.
@@ -3896,9 +3903,7 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
             }
 
             7 -> {
-                EventSource.BankLinked(
-                    FfiConverterString.read(buf),
-                )
+                EventSource.BankLinked
             }
 
             8 -> {
@@ -3966,8 +3971,7 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
             is EventSource.BankLinked -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`institution`)
+                    4UL
                 )
             }
 
@@ -4027,7 +4031,6 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
 
             is EventSource.BankLinked -> {
                 buf.putInt(7)
-                FfiConverterString.write(value.`institution`, buf)
                 Unit
             }
 

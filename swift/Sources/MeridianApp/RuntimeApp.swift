@@ -263,14 +263,52 @@ final class RuntimeApp: ObservableObject {
         }
     }
 
-    /// Ask the server for a `link_token` and open the `hosted_link_url` that
-    /// comes back, which is Plaid's own page in a web session the app does not
-    /// draw.
+    /// The bank connection, end to end.
+    ///
+    /// Three steps and one event out of them: ask the server to open a Link
+    /// session, put Plaid's page in front of the user, then tell the server
+    /// the sheet has closed so it can collect whatever the session came to.
+    ///
+    /// One action carries all three because they are one thing to the machine
+    /// — the tap was "connect a bank" and the answer is whether one is
+    /// connected. Splitting them into three actions would put the order in the
+    /// machine, which has no opinion about it and no way to be wrong about it.
+    ///
+    /// Nothing here decides. Dismissing the sheet and finishing with no bank
+    /// both arrive as the same event, because both are the same fact: nothing
+    /// was attached.
     private func startBankLink() {
-        Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(900))
+        guard let token else {
+            NSLog("MERIDIAN asked to connect a bank with no session")
 
-            self?.dispatch(.fromSource(event: FirstRun.link()))
+            dispatch(.fromSource(event: .bankAbandoned))
+
+            return
+        }
+
+        Task { [weak self] in
+            do {
+                let page = try await RuntimeIo.startLink(token: token)
+
+                // False is the sheet being dismissed, which is ordinary — and
+                // there is nothing to collect, because the server only ever
+                // had a session nobody finished.
+                guard await BankLink.open(page) else {
+                    self?.dispatch(.fromSource(event: .bankAbandoned))
+
+                    return
+                }
+
+                let linked = try await RuntimeIo.finishLink(token: token)
+
+                self?.dispatch(.fromSource(event: linked > 0 ? .bankLinked : .bankAbandoned))
+            } catch {
+                // A failure to reach the server on either call leaves no bank
+                // attached, which is the same screen as backing out — with the
+                // reason in the banner behind it.
+                self?.dispatch(.fromSource(event: .loadFailed(message: error.localizedDescription)))
+                self?.dispatch(.fromSource(event: .bankAbandoned))
+            }
         }
     }
 

@@ -607,7 +607,7 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 2, .. } },
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
-        > Action::ToRouter { action: ActionRouter::NotLinked, .. },
+        > Action::ToRouter { action: ActionRouter::Linked { count: 0 }, .. },
     );
 }
 
@@ -622,7 +622,7 @@ fn an_open_session_is_left_pending() {
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec![] }] } },
-        > Action::ToRouter { action: ActionRouter::NotLinked, .. },
+        > Action::ToRouter { action: ActionRouter::Linked { count: 0 }, .. },
     );
 }
 
@@ -646,7 +646,7 @@ fn a_linked_bank_is_stored_and_its_session_closed() {
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
-        > Action::ToRouter { action: ActionRouter::Linked, .. },
+        > Action::ToRouter { action: ActionRouter::Linked { count: 1 }, .. },
     );
 }
 
@@ -674,7 +674,7 @@ fn a_new_bank_starts_syncing_without_holding_the_route() {
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
-        > Action::ToRouter { action: ActionRouter::Linked, .. },
+        > Action::ToRouter { action: ActionRouter::Linked { count: 1 }, .. },
     );
 }
 
@@ -686,7 +686,7 @@ fn a_user_with_nothing_syncing_is_told_so() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, event: EventRouter::SyncStatusRequested { items: vec![] } },
-        > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "accounts", accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
+        > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
     );
 }
 
@@ -699,10 +699,10 @@ fn a_running_sync_reports_the_stage_it_is_on() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::PlaidProgressed { item_id: "item-9".to_string(), stage: server_wire::SyncStage::Transactions, accounts: 8, transactions: 19, streams: 0 } },
+        < Event::FromSource { event: EventSource::PlaidProgressed { item_id: "item-9".to_string(), stage: server_wire::SyncStage::Transactions, institution: Some("First Platypus Bank".to_string()), accounts: 8, transactions: 19, streams: 0 } },
 
         < Event::FromRouter { request_id: 1, event: EventRouter::SyncStatusRequested { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
-        > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "transactions", accounts: 8, transactions: 19, streams: 0, finished: false } } }"#,
+        > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "transactions", institution: Some("First Platypus Bank"), accounts: 8, transactions: 19, streams: 0, finished: false } } }"#,
     );
 }
 
@@ -714,12 +714,12 @@ fn a_failed_sync_stops_being_something_to_watch() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::PlaidProgressed { item_id: "item-9".to_string(), stage: server_wire::SyncStage::Transactions, accounts: 8, transactions: 19, streams: 0 } },
+        < Event::FromSource { event: EventSource::PlaidProgressed { item_id: "item-9".to_string(), stage: server_wire::SyncStage::Transactions, institution: Some("First Platypus Bank".to_string()), accounts: 8, transactions: 19, streams: 0 } },
 
         < Event::FromSource { event: EventSource::PlaidFailed { call_id: 1, item_id: "item-9".to_string(), code: "REQUEST_FAILED".to_string() } },
 
         < Event::FromRouter { request_id: 1, event: EventRouter::SyncStatusRequested { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
-        > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "accounts", accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
+        > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
     );
 }
 
@@ -731,7 +731,7 @@ fn closing_a_sheet_with_no_session_open_asks_nothing() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec![] } },
-        > Action::ToRouter { action: ActionRouter::NotLinked, .. },
+        > Action::ToRouter { action: ActionRouter::Linked { count: 0 }, .. },
     );
 }
 
@@ -768,6 +768,6 @@ fn many_sessions_still_produce_one_answer() {
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
-        > Action::ToRouter { action: ActionRouter::NotLinked, .. },
+        > Action::ToRouter { action: ActionRouter::Linked { count: 0 }, .. },
     );
 }

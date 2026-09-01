@@ -428,9 +428,9 @@ impl StateApp {
                 self.render(actions);
             }
 
-            EventSource::BankLinked { institution } => {
+            EventSource::BankLinked => {
                 if let Some(flow) = &mut self.onboarding {
-                    flow.bank_linked(institution);
+                    flow.bank_linked();
 
                     // The bank being attached is what starts the history
                     // arriving, so the first ask follows the news rather than
@@ -459,6 +459,14 @@ impl StateApp {
                 match serde_json::from_str::<WireSyncStatus>(json) {
                     Ok(status) => {
                         if let Some(flow) = &mut self.onboarding {
+                            // The name whenever it is there. It shows up one
+                            // poll into the sync rather than with the bank
+                            // being attached, so the screen opens saying
+                            // "Your bank" and corrects itself.
+                            if let Some(institution) = &status.institution {
+                                flow.bank_named(institution);
+                            }
+
                             if status.finished {
                                 flow.sync_finished();
                             } else {

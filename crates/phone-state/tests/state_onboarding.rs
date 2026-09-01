@@ -387,7 +387,7 @@ fn a_linked_bank_asks_for_its_history() {
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromSource { event: EventSource::BankLinked { institution: "First Platypus Bank".to_string() } },
+        < Event::FromSource { event: EventSource::BankLinked },
         > @r#"ToSource { action: PollSync }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
@@ -420,13 +420,38 @@ fn the_sync_says_what_has_landed_so_far() {
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::BankConnectRequested },
-        < Event::FromSource { event: EventSource::BankLinked { institution: "First Platypus Bank".to_string() } },
-        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"transactions","accounts":8,"transactions":48,"streams":0,"finished":false}"#.to_string() } },
+        < Event::FromSource { event: EventSource::BankLinked },
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"transactions","institution":"First Platypus Bank","accounts":8,"transactions":48,"streams":0,"finished":false}"#.to_string() } },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToSource { action: PollSync }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToUi { action: Render { screen: Onboarding { view: Sync { step: "Step 3 of 3 · Sync", title: "Reading your history", body: [ViewRun { text: "First time only. Every refresh after this one takes a moment.", strong: false }], progress: 0.625, rows: [ViewIconRow { icon: "tick-circle", tone: Done, title: "First Platypus Bank", sub: None, value: Some("connected") }, ViewIconRow { icon: "tick-circle", tone: Done, title: "Accounts", sub: None, value: Some("8") }, ViewIconRow { icon: "spin", tone: Running, title: "Transactions", sub: None, value: Some("48 so far") }, ViewIconRow { icon: "dot", tone: Waiting, title: "Recurring bills", sub: None, value: Some("waiting") }] } }, dock: None } }"#,
+    );
+}
+
+/// The sync screen opens before anyone knows what the bank is called.
+///
+/// Nothing has the name at the moment a bank is attached — it is in neither
+/// the Link session nor the token exchange, and the server first sees it in
+/// the balances call inside the sync that follows. So the first row reads
+/// "Your bank" and the first status that carries a name corrects it. Better
+/// than holding the bank sign-in sheet open for a string.
+#[test]
+fn the_sync_screen_names_the_bank_once_the_sync_says() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankLinked },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToSource { action: PollSync }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Sync { step: "Step 3 of 3 · Sync", title: "Reading your history", body: [ViewRun { text: "First time only. Every refresh after this one takes a moment.", strong: false }], progress: 0.375, rows: [ViewIconRow { icon: "tick-circle", tone: Done, title: "Your bank", sub: None, value: Some("connected") }, ViewIconRow { icon: "spin", tone: Running, title: "Accounts", sub: None, value: Some("reading") }, ViewIconRow { icon: "dot", tone: Waiting, title: "Transactions", sub: None, value: Some("waiting") }, ViewIconRow { icon: "dot", tone: Waiting, title: "Recurring bills", sub: None, value: Some("waiting") }] } }, dock: None } }"#,
+
+        // The first poll back from a sync that has got past balances.
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"transactions","institution":"First Platypus Bank","accounts":14,"transactions":0,"streams":0,"finished":false}"#.to_string() } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Sync { step: "Step 3 of 3 · Sync", title: "Reading your history", body: [ViewRun { text: "First time only. Every refresh after this one takes a moment.", strong: false }], progress: 0.625, rows: [ViewIconRow { icon: "tick-circle", tone: Done, title: "First Platypus Bank", sub: None, value: Some("connected") }, ViewIconRow { icon: "tick-circle", tone: Done, title: "Accounts", sub: None, value: Some("14") }, ViewIconRow { icon: "spin", tone: Running, title: "Transactions", sub: None, value: Some("reading") }, ViewIconRow { icon: "dot", tone: Waiting, title: "Recurring bills", sub: None, value: Some("waiting") }] } }, dock: None } }"#,
     );
 }
 
@@ -444,7 +469,7 @@ fn every_tick_asks_how_the_sync_is_going() {
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::BankConnectRequested },
-        < Event::FromSource { event: EventSource::BankLinked { institution: "First Platypus Bank".to_string() } },
+        < Event::FromSource { event: EventSource::BankLinked },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToSource { action: PollSync }"#,
@@ -467,8 +492,8 @@ fn the_asking_stops_when_the_sync_screen_does() {
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::BankConnectRequested },
-        < Event::FromSource { event: EventSource::BankLinked { institution: "First Platypus Bank".to_string() } },
-        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"streams","accounts":8,"transactions":48,"streams":8,"finished":true}"#.to_string() } },
+        < Event::FromSource { event: EventSource::BankLinked },
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"streams","institution":"First Platypus Bank","accounts":8,"transactions":48,"streams":8,"finished":true}"#.to_string() } },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToSource { action: PollSync }"#,
@@ -487,9 +512,9 @@ fn a_finished_sync_counts_what_arrived() {
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::BankConnectRequested },
-        < Event::FromSource { event: EventSource::BankLinked { institution: "First Platypus Bank".to_string() } },
-        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"streams","accounts":8,"transactions":48,"streams":8,"finished":false}"#.to_string() } },
-        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"streams","accounts":8,"transactions":48,"streams":8,"finished":true}"#.to_string() } },
+        < Event::FromSource { event: EventSource::BankLinked },
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"streams","institution":"First Platypus Bank","accounts":8,"transactions":48,"streams":8,"finished":false}"#.to_string() } },
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"streams","institution":"First Platypus Bank","accounts":8,"transactions":48,"streams":8,"finished":true}"#.to_string() } },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToSource { action: PollSync }"#,

@@ -43,6 +43,12 @@ pub enum EventSource {
     PlaidProgressed {
         item_id: String,
         stage: server_wire::SyncStage,
+
+        /// What the bank is called, absent until the balances call has said.
+        /// It is in neither the Link session nor the token exchange, so this
+        /// is the first place it can be known at all.
+        institution: Option<String>,
+
         accounts: u32,
         transactions: u32,
         streams: u32,

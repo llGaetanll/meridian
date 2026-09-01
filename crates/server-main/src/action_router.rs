@@ -33,11 +33,19 @@ pub enum ActionRouter {
     /// Send them to Plaid's page to sign into their bank.
     LinkOpened { url: String },
 
-    /// The Link flow ended with a bank attached.
-    Linked,
-
-    /// It ended without one, which is ordinary.
-    NotLinked,
+    /// How many banks the Link flow attached.
+    ///
+    /// A count and not a yes: one `/link/finish` collects *every* session the
+    /// caller has open, so it can attach two, and a bool would be a lossy
+    /// summary of what the route actually did. Zero is the ordinary outcome
+    /// of somebody closing the sheet — an answer, not a failure.
+    ///
+    /// It does not name them. At this point nobody knows what the bank is
+    /// called: the name arrives with the balances call inside the first sync,
+    /// seconds later, and reaches the screen through
+    /// [`SyncStatus`](ActionRouter::SyncStatus). Waiting for it here would
+    /// hold the sheet open for a string.
+    Linked { count: u32 },
 
     /// How far the sync this user is watching has got.
     ///

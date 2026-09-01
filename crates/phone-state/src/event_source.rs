@@ -41,8 +41,19 @@ pub enum EventSource {
     /// answering alike was protecting.
     CodeRejected,
 
-    /// Plaid came back with a bank attached, and this is what it is called.
-    BankLinked { institution: String },
+    /// Plaid came back with at least one bank attached.
+    ///
+    /// No name, because at that moment nobody has one: it is in neither the
+    /// Link session nor the token exchange, and the server first learns it
+    /// from the balances call inside the sync that follows. It arrives a
+    /// second or two later on
+    /// [`SyncStatusLoaded`](EventSource::SyncStatusLoaded), and the screen
+    /// says "Your bank" until it does.
+    ///
+    /// No count either, though the server sends one: attaching two banks at
+    /// once and attaching one lead to the same screen, and a number the flow
+    /// does not read is a number that can be wrong without anything noticing.
+    BankLinked,
 
     /// The bank sign-in ended with nothing — dismissed, failed, timed out.
     /// The common ending, not a rare one.

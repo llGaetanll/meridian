@@ -263,10 +263,18 @@ impl StateOnboarding {
         self.fault = Some(Fault::CodeWrong);
     }
 
-    pub(crate) fn bank_linked(&mut self, institution: &str) {
-        self.bank = Some(institution.to_string());
+    /// A bank is attached. What it is called is not known yet — see
+    /// [`EventSource::BankLinked`](crate::EventSource) — so the screen opens
+    /// on the fallback and [`Self::bank_named`] fills it in.
+    pub(crate) fn bank_linked(&mut self) {
+        self.bank = None;
         self.sync = Progress::default();
         self.step = Step::Sync;
+    }
+
+    /// The name, once the sync has reported one.
+    pub(crate) fn bank_named(&mut self, institution: &str) {
+        self.bank = Some(institution.to_string());
     }
 
     pub(crate) fn bank_abandoned(&mut self) {

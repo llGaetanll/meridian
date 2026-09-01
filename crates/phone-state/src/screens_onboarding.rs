@@ -394,7 +394,8 @@ mod tests {
     #[test]
     fn the_bar_matches_the_sketch() {
         let mut flow = StateOnboarding::new();
-        flow.bank_linked("First Platypus Bank");
+        flow.bank_linked();
+        flow.bank_named("First Platypus Bank");
         flow.sync_progressed(Progress {
             stage: SyncStage::Transactions,
             accounts: 8,
