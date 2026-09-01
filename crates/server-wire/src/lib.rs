@@ -28,6 +28,11 @@ use serde::Serialize;
 /// One document rather than an endpoint per screen: the alternative puts
 /// "which of my four fetches has landed?" state into the client, which is the
 /// state `docs/ARCHITECTURE.md` asks us to remove.
+///
+/// It carries the timestamps *of* things — when a sync landed, when a stream
+/// is next due — and no clock. What time it is now is the device's to know:
+/// it has one, it is right, and a phone that had to be told would draw
+/// nothing until the first fetch answered.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct WireSnapshot {
     /// Newest first.
@@ -39,22 +44,10 @@ pub struct WireSnapshot {
 
     #[serde(default)]
     pub streams: Vec<WireStream>,
-
-    /// When this was assembled.
-    ///
-    /// The app needs a clock for "in 3 days" and cannot trust its own — a
-    /// phone with a wrong date would render a confidently wrong screen.
-    #[serde(default)]
-    pub now: Timestamp,
 }
 
 impl WireSnapshot {
-    pub fn new(
-        entries: &[Entry],
-        connections: &[Connection],
-        streams: &[Stream],
-        now: Timestamp,
-    ) -> Self {
+    pub fn new(entries: &[Entry], connections: &[Connection], streams: &[Stream]) -> Self {
         Self {
             entries: entries.iter().map(WireEntry::from_entry).collect(),
             connections: connections
@@ -62,7 +55,6 @@ impl WireSnapshot {
                 .map(WireConnection::from_connection)
                 .collect(),
             streams: streams.iter().map(WireStream::from_stream).collect(),
-            now,
         }
     }
 }

@@ -46,20 +46,10 @@ pub struct StateApp {
 
     streams: Vec<Stream>,
 
-    /// The last reading the runtime sent, in its own clock. The machine never
-    /// reads one itself: this moves only when an
+    /// The last reading the runtime sent. The machine never reads a clock
+    /// itself: this moves only when an
     /// [`EventRuntime::Tick`](crate::EventRuntime) arrives.
     device_now: Timestamp,
-
-    /// The server's clock as of the last snapshot, and the device's reading at
-    /// the moment it arrived.
-    ///
-    /// Kept as a pair so that time still passes between snapshots: `now()`
-    /// returns the server's reading plus however long the device says has
-    /// elapsed since. Trusting the device outright would render a wrong date
-    /// on a phone with a wrong clock; trusting the server outright would
-    /// freeze "in 3 days" until the next fetch.
-    server_clock: Option<(Timestamp, Timestamp)>,
 
     /// Whether figures are covered.
     ///
@@ -125,7 +115,6 @@ impl Default for StateApp {
             connections: Vec::new(),
             streams: Vec::new(),
             device_now: Timestamp::EPOCH,
-            server_clock: None,
             masked: false,
             picked_day: None,
             month_step: 0,
@@ -364,12 +353,6 @@ impl StateApp {
                             .collect();
                         self.streams = snapshot.streams.iter().map(|s| s.to_stream()).collect();
 
-                        // The server's clock, paired with the device reading
-                        // it arrived at, so time keeps moving between fetches.
-                        if snapshot.now > Timestamp::EPOCH {
-                            self.server_clock = Some((snapshot.now, self.device_now));
-                        }
-
                         self.loaded = true;
                         self.load_failed = None;
 
@@ -534,14 +517,6 @@ impl StateApp {
         &self.streams
     }
 
-    /// What the app treats as now.
-    ///
-    /// The server's clock advanced by however long the device says has passed
-    /// since the snapshot landed — see [`StateApp::server_clock`]. Falls back to
-    /// the device's own reading before the first snapshot.
-    ///
-    /// Public because `eval!` reads it: a test sets the time it wants before
-    /// driving the machine, rather than the macro carrying a clock of its own.
     /// Whether what is on screen is a function of the clock.
     ///
     /// The code screen is, and nothing else is: its countdown reads a new
@@ -554,11 +529,15 @@ impl StateApp {
         }
     }
 
-    pub fn now(&self) -> Timestamp {
-        match self.server_clock {
-            Some((server, device_at)) => server + self.device_now.since(device_at),
-            None => self.device_now,
-        }
+    /// What time it is, as the device last said.
+    ///
+    /// The device's clock is the only one the app has and it is taken at its
+    /// word. The snapshot carries the timestamps *of* things — when a sync
+    /// landed, when a stream is next due — and no clock of its own: a phone
+    /// that had to be told the time would draw nothing until the first fetch
+    /// answered, and would stop moving between fetches.
+    pub(crate) fn now(&self) -> Timestamp {
+        self.device_now
     }
 
     pub(crate) fn masked(&self) -> bool {

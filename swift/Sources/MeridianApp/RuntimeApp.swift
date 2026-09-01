@@ -264,10 +264,9 @@ final class RuntimeApp: ObservableObject {
     /// The wall clock, in seconds.
     ///
     /// Read at the edge and sent to the machine, which has none of its own.
-    /// The server's clock rides in with the snapshot and is the one used for
-    /// anything the user sees — a phone with a wrong date should not render a
-    /// confidently wrong "in 3 days" — but the app has to draw something
-    /// before the first snapshot lands.
+    /// The device's is the only clock the app has: the server sends the
+    /// timestamps of things — when a sync landed, when a stream is next due —
+    /// and never a reading of its own.
     private static func unixNow() -> UInt64 {
         UInt64(max(0, Date().timeIntervalSince1970))
     }

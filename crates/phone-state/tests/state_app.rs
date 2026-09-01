@@ -8,15 +8,16 @@
 //! value something only a fixture file knows.
 //!
 //! The snapshot is the JSON the server sends (`crates/server-wire`). Every
-//! field but `now` defaults, so `{"now": …}` is a whole snapshot, and a screen
-//! whose claim needs no records asks for none.
+//! field defaults, so `{}` is a whole snapshot, and a screen whose claim needs
+//! no records asks for none. What time it is is not in there: that arrives as
+//! a tick, from the device, which is the only clock the app has.
 
 use api_eval::eval;
 use phone_state::*;
 
 /// 2026-08-19 00:00 UTC — a Wednesday, and the day the sketch is drawn
-/// against, so "in 3 days" and the rest line up with what it shows. The
-/// snapshots below carry the same instant as their `now`.
+/// against, so "in 3 days" and the rest line up with what it shows. It reaches
+/// the machine as a tick and nowhere else.
 const NOW: u64 = 1_787_097_600;
 
 /// A machine past first run, told what time it is — where every test here
@@ -109,7 +110,7 @@ fn switching_tabs_asks_for_nothing() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
@@ -130,7 +131,7 @@ fn a_snapshot_lands_in_the_machine() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
             "entries":[{"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}],
             "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[{"id":"acc","name":"Plaid Checking","balance":100.0,"group":"depository"}]}],
             "streams":[{"id":"s","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","is_active":true}]}"#.to_string() } },
@@ -150,7 +151,7 @@ fn every_screen_renders() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { .. }, .. } },
 
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
@@ -168,7 +169,7 @@ fn the_ledger_groups_by_month_and_day() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
             {"id":"b","ts":1786492800,"amount":-25.00,"asset":"USD","label":"Card payment","category":"LoanPayments"},
             {"id":"c","ts":1783814400,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"}]}"#.to_string() } },
@@ -191,7 +192,7 @@ fn a_day_heading_carries_its_net() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
             {"id":"b","ts":1786492800,"amount":-25.00,"asset":"USD","label":"Card payment","category":"LoanPayments"},
             {"id":"c","ts":1786320000,"amount":500.00,"asset":"USD","label":"United Airlines","category":"Travel"},
@@ -211,7 +212,7 @@ fn a_month_is_labelled_with_its_year() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
             assert_eq!(ledger.months[0].label, "August 2026");
@@ -225,7 +226,7 @@ fn a_day_heading_never_repeats_within_a_month() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
             {"id":"b","ts":1786492800,"amount":-25.00,"asset":"USD","label":"Card payment","category":"LoanPayments"},
             {"id":"c","ts":1786320000,"amount":-78.50,"asset":"USD","label":"Climbing gym","category":"Entertainment"}]}"#.to_string() } },
@@ -244,7 +245,7 @@ fn a_refund_reads_as_money_arriving() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786320000,"amount":500.00,"asset":"USD","label":"United Airlines","category":"Travel"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
             let row = rows(ledger)[0];
@@ -260,7 +261,7 @@ fn a_purchase_reads_as_money_leaving() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
             let row = rows(ledger)[0];
@@ -276,7 +277,7 @@ fn selecting_a_category_narrows_the_list() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
             {"id":"b","ts":1786492800,"amount":-4.33,"asset":"USD","label":"Starbucks","category":"FoodAndDrink"},
             {"id":"c","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
@@ -298,7 +299,7 @@ fn two_categories_show_both() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
             {"id":"b","ts":1786492800,"amount":-410.00,"asset":"USD","label":"United Airlines","category":"Travel"},
             {"id":"c","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
@@ -319,7 +320,7 @@ fn tapping_a_selected_category_deselects_it() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
             {"id":"b","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
@@ -344,7 +345,7 @@ fn the_chip_counts_ignore_the_category_selection() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
             {"id":"b","ts":1786492800,"amount":-410.00,"asset":"USD","label":"United Airlines","category":"Travel"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
@@ -367,7 +368,7 @@ fn all_sixteen_categories_are_offered() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
             let chips = &ledger.filter.categories;
@@ -385,7 +386,7 @@ fn a_shut_filter_summarises_what_it_is_doing() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
@@ -407,7 +408,7 @@ fn clearing_categories_shows_everything_again() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
             {"id":"b","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
@@ -429,7 +430,7 @@ fn an_unknown_category_id_is_ignored() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
@@ -447,7 +448,7 @@ fn a_filter_matching_nothing_says_so() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
@@ -464,7 +465,7 @@ fn this_month_keeps_only_august() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
             {"id":"b","ts":1783814400,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
@@ -485,7 +486,7 @@ fn the_last_three_months_reach_back_further() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
             {"id":"b","ts":1781222400,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
             {"id":"c","ts":1778544000,"amount":-4.33,"asset":"USD","label":"Starbucks","category":"FoodAndDrink"}]}"#.to_string() } },
@@ -508,7 +509,7 @@ fn a_between_range_includes_its_last_day() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
             {"id":"b","ts":1786492800,"amount":-25.00,"asset":"USD","label":"Card payment","category":"LoanPayments"},
             {"id":"c","ts":1786320000,"amount":-78.50,"asset":"USD","label":"Climbing gym","category":"Entertainment"}]}"#.to_string() } },
@@ -528,7 +529,7 @@ fn all_time_is_the_default_and_filters_nothing() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
             {"id":"b","ts":1778544000,"amount":-4.33,"asset":"USD","label":"Starbucks","category":"FoodAndDrink"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
@@ -545,7 +546,7 @@ fn a_category_and_a_range_apply_together() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
             {"id":"b","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"},
             {"id":"c","ts":1783814400,"amount":-4.33,"asset":"USD","label":"Starbucks","category":"FoodAndDrink"}]}"#.to_string() } },
@@ -570,7 +571,7 @@ fn the_chip_counts_follow_the_time_range() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
             {"id":"b","ts":1783814400,"amount":-4.33,"asset":"USD","label":"Starbucks","category":"FoodAndDrink"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
@@ -595,7 +596,7 @@ fn figures_start_revealed() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
             "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[{"id":"acc","name":"Plaid Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
@@ -613,7 +614,7 @@ fn covering_hides_the_figure() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
             "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[{"id":"acc","name":"Plaid Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
@@ -634,7 +635,7 @@ fn the_mask_is_one_switch_across_screens() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
             "streams":[{"id":"s","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","is_active":true}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
@@ -655,7 +656,7 @@ fn the_mask_leaves_ledger_rows_alone() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-4.33,"asset":"USD","label":"Starbucks","category":"FoodAndDrink"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
@@ -671,7 +672,7 @@ fn balances_lead_with_what_is_held() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
             "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
                 {"id":"acc-1","name":"Plaid Checking","balance":100.0,"group":"depository"},
                 {"id":"acc-2","name":"Plaid Saving","balance":200.0,"group":"depository"}]}]}"#.to_string() } },
@@ -692,7 +693,7 @@ fn debts_are_split_out_and_come_last() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
             "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
                 {"id":"acc-1","name":"Plaid Mortgage","balance":56302.06,"group":"loan"},
                 {"id":"acc-2","name":"Plaid Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
@@ -718,7 +719,7 @@ fn a_credit_card_shows_what_is_used_of_its_limit() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
             "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
                 {"id":"acc","name":"Plaid Credit Card","subtype":"credit card","balance":410.0,"limit":2000.0,"group":"credit"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
@@ -740,7 +741,7 @@ fn a_line_of_credit_shows_what_is_left() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
             "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
                 {"id":"acc","name":"Plaid Home Equity","subtype":"home equity","balance":2352.50,"available":47647.50,"limit":50000.0,"group":"credit"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
@@ -761,7 +762,7 @@ fn an_account_subtitle_reads_as_a_sentence() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
             "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
                 {"id":"acc-1","name":"Plaid Checking","subtype":"checking","mask":"0000","balance":100.0,"available":100.0,"group":"depository"},
                 {"id":"acc-2","name":"Plaid 401k","subtype":"401k","mask":"6666","balance":23631.98,"group":"investment"}]}]}"#.to_string() } },
@@ -785,7 +786,7 @@ fn the_calendar_is_as_tall_as_its_month() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
@@ -802,7 +803,7 @@ fn the_months_either_side_arrive_whole() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
@@ -824,7 +825,7 @@ fn a_day_has_one_id_wherever_it_is_drawn() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
@@ -850,7 +851,7 @@ fn tapping_a_day_opens_it_and_tapping_it_again_shuts_it() {
 
     eval!(&mut state,
         // Two streams land on Aug 22, so the card has something to list.
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"streams":[
             {"id":"s1","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","next_date":1787356800,"is_active":true},
             {"id":"s2","label":"Spotify","category":"Entertainment","amount":-11.99,"frequency":"MONTHLY","next_date":1787356800,"is_active":true}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
@@ -886,7 +887,7 @@ fn recurring_leads_with_the_monthly_commitment() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"streams":[
             {"id":"s1","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","is_active":true},
             {"id":"s2","label":"Rent","category":"RentAndUtilities","amount":-1500.00,"frequency":"MONTHLY","is_active":true},
             {"id":"s3","label":"Payroll","category":"Income","amount":2000.00,"frequency":"MONTHLY","is_active":true}]}"#.to_string() } },
@@ -907,7 +908,7 @@ fn the_calendar_draws_whole_weeks() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
@@ -926,7 +927,7 @@ fn the_calendar_starts_the_month_on_its_own_weekday() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
@@ -948,7 +949,7 @@ fn the_calendar_marks_today() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600}"#.to_string() } },
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
@@ -968,7 +969,7 @@ fn the_calendar_marks_only_the_dates_plaid_gave_us() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"streams":[
             {"id":"s1","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","next_date":1787356800,"is_active":true},
             {"id":"s2","label":"Spotify","category":"Entertainment","amount":-11.99,"frequency":"MONTHLY","next_date":1787356800,"is_active":true},
             {"id":"s3","label":"Rent","category":"RentAndUtilities","amount":-1500.00,"frequency":"MONTHLY","is_active":true}]}"#.to_string() } },
@@ -1000,7 +1001,7 @@ fn the_breakdown_covers_the_whole_bar() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"streams":[
             {"id":"s1","label":"Rent","category":"RentAndUtilities","amount":-1500.00,"frequency":"MONTHLY","is_active":true},
             {"id":"s2","label":"Netflix","category":"Entertainment","amount":-500.00,"frequency":"MONTHLY","is_active":true}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
@@ -1021,7 +1022,7 @@ fn stream_groups_run_biggest_first_like_the_bar() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"streams":[
             {"id":"s1","label":"Netflix","category":"Entertainment","amount":-500.00,"frequency":"MONTHLY","is_active":true},
             {"id":"s2","label":"Rent","category":"RentAndUtilities","amount":-1500.00,"frequency":"MONTHLY","is_active":true}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
@@ -1044,7 +1045,7 @@ fn money_coming_in_is_grouped_after_everything_going_out() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"streams":[
             {"id":"s1","label":"Payroll","category":"Income","amount":5000.00,"frequency":"MONTHLY","is_active":true},
             {"id":"s2","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","is_active":true}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
@@ -1065,7 +1066,7 @@ fn a_stream_says_when_it_next_lands() {
 
     eval!(&mut state,
         // Aug 22 — three days after the snapshot's clock.
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"streams":[
             {"id":"s","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","next_date":1787356800,"is_active":true}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
@@ -1087,7 +1088,7 @@ fn a_distant_stream_is_not_marked_soon() {
 
     eval!(&mut state,
         // Sep 30 — six weeks out.
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"streams":[
             {"id":"s","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","next_date":1790726400,"is_active":true}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
@@ -1134,7 +1135,7 @@ fn a_failure_after_a_good_load_keeps_the_data() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
             {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
@@ -1168,7 +1169,7 @@ fn an_unreadable_snapshot_does_not_crash() {
 fn the_same_events_give_the_same_actions() {
     let events = || {
         vec![
-            Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"entries":[
+            Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
                 {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
                 {"id":"b","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
             Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
@@ -1224,27 +1225,27 @@ fn every_ui_event_produces_a_render() {
     );
 }
 
-/// The server's clock wins over the device's. A phone with a wrong date would
-/// otherwise render a confidently wrong "in 3 days".
+/// The device's clock is the only one the app has, and it is taken at its
+/// word: a snapshot carries the timestamps *of* things and never a `now` of
+/// its own. A phone a day behind draws a day behind, which is the price of a
+/// screen that keeps moving between fetches and draws before the first one.
 #[test]
-fn the_servers_clock_wins_over_the_devices() {
+fn the_app_draws_against_the_devices_clock() {
     let mut state = StateApp::new();
 
     eval!(&mut state,
-        // A device that thinks it is a year earlier than the server. Every
-        // other test here starts from `app()`, whose tick is the server's own
-        // reading, so this is the one that builds its own machine.
-        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW - 365 * 86_400 } },
+        // A device that thinks it is the day before.
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW - 86_400 } },
         < Event::FromSource { event: EventSource::SessionLoaded { email: Some("al@example.com".to_string()) } },
         > Action::ToSource { action: ActionSource::LoadSnapshot { force: false } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"streams":[
             {"id":"s","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","next_date":1787356800,"is_active":true}]}"#.to_string() } },
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
         > Action::ToUi { action: ActionUi::Render { .. } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { view: recurring }, .. } } => {
-            assert_eq!(recurring.groups[0].streams[0].when, "next Aug 22 · in 3 days", "the server's clock decides");
+            assert_eq!(recurring.groups[0].streams[0].when, "next Aug 22 · in 4 days", "four days from the 18th, not three from the 19th");
         },
     );
 }
