@@ -25,13 +25,14 @@ struct OnboardingScreen: View {
         case .email(let step, let title, let runs, let field, let action):
             EmailScreen(step: step, title: title, runs: runs, field: field, action: action)
 
-        case .code(let step, let title, let runs, let cells, let fault, let resend):
+        case .code(let step, let title, let runs, let cells, let fault, let action, let resend):
             CodeScreen(
                 step: step,
                 title: title,
                 runs: runs,
                 cells: cells,
                 fault: fault,
+                action: action,
                 resend: resend
             )
 

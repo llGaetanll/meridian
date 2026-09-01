@@ -165,21 +165,36 @@ impl StateOnboarding {
     /// A digit typed, or the whole field filled by iOS from the notification.
     ///
     /// Takes the value the field now holds rather than one keystroke, so a
-    /// paste and a backspace are the same event as a tap. The address and the
-    /// code come back when the last digit lands, because there is nothing to
-    /// check before it and so the last digit submits.
-    pub(crate) fn type_code(&mut self, digits: &str) -> Option<(String, String)> {
-        self.code = digits
+    /// paste and a backspace are the same event as a tap.
+    pub(crate) fn type_code(&mut self, digits: &str) {
+        let code: String = digits
             .chars()
             .filter(char::is_ascii_digit)
             .take(CODE_LENGTH)
             .collect();
 
-        // Only clears on a *change* of length: the six digits that were just
-        // rejected are still on screen, and they stay red until one is taken
-        // back or another typed.
+        // Nothing changed, so nothing to clear. Worth checking because the
+        // field sends its whole contents: a seventh digit typed into six full
+        // boxes arrives here as the same six, and that is not an edit.
+        if code == self.code {
+            return;
+        }
+
+        self.code = code;
+
+        // Any change at all clears the rejection. A screen that stayed red
+        // while it was being corrected would be arguing with the user, which
+        // is the same reason [`Self::type_email`] does this.
+        self.fault = None;
+    }
+
+    /// Continue, under the boxes.
+    ///
+    /// `None` on a code that is not six digits long, which the button being
+    /// absent should already have prevented — a stale tap, not an invariant
+    /// worth asserting.
+    pub(crate) fn submit_code(&mut self) -> Option<(String, String)> {
         if self.code.len() < CODE_LENGTH {
-            self.fault = None;
             return None;
         }
 
@@ -321,16 +336,18 @@ mod tests {
         let mut flow = StateOnboarding::new();
         flow.email = "al@example.com".to_string();
 
-        assert!(flow.type_code("40").is_none());
+        flow.type_code("40");
         assert_eq!(flow.code(), "40");
+        assert!(flow.submit_code().is_none(), "two digits is not a code");
 
         // Whatever the keyboard sends, only digits land, and only six.
-        assert!(flow.type_code("4-0-7-1-9-3-5").is_some());
+        flow.type_code("4-0-7-1-9-3-5");
         assert_eq!(flow.code(), "407193");
+        assert!(flow.submit_code().is_some());
     }
 
     #[test]
-    fn taking_a_digit_back_clears_the_rejection() {
+    fn editing_at_all_clears_the_rejection() {
         let mut flow = StateOnboarding::new();
 
         flow.type_code("407193");
@@ -339,5 +356,20 @@ mod tests {
 
         flow.type_code("40719");
         assert_eq!(flow.fault(), None);
+    }
+
+    /// The field sends its whole contents, so a seventh digit typed into six
+    /// full boxes arrives as the same six. Nothing changed, so the rejection
+    /// stands — clearing it would wipe the message the user has not acted on.
+    #[test]
+    fn a_seventh_digit_is_not_an_edit() {
+        let mut flow = StateOnboarding::new();
+
+        flow.type_code("407193");
+        flow.code_rejected();
+
+        flow.type_code("4071935");
+        assert_eq!(flow.code(), "407193");
+        assert_eq!(flow.fault(), Some(Fault::CodeWrong));
     }
 }

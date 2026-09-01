@@ -4179,14 +4179,25 @@ sealed class EventUi {
     object EmailSubmitted : EventUi()
 
     /**
-     * The code field, as it now reads. There is nothing to check before the
-     * sixth digit, so the sixth digit submits and there is no Continue.
+     * The code field, as it now reads.
+     *
+     * Typing alone never submits. It used to: the sixth digit went straight
+     * to the server, on the reasoning that there is nothing to check before
+     * it. What that missed is the typo — a wrong sixth digit spent the guess
+     * before the user had seen what they had typed, and left six digits on
+     * screen that could only be edited backwards.
      */
     data class CodeTyped(
         val `digits`: kotlin.String,
     ) : EventUi() {
         companion object
     }
+
+    /**
+     * Continue, under the six boxes. Only drawn once all six are in, since
+     * there is nothing to submit before that.
+     */
+    object CodeSubmitted : EventUi()
 
     /**
      * Send a new code.
@@ -4299,18 +4310,22 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
             }
 
             16 -> {
-                EventUi.ResendRequested
+                EventUi.CodeSubmitted
             }
 
             17 -> {
-                EventUi.BackPressed
+                EventUi.ResendRequested
             }
 
             18 -> {
-                EventUi.BankConnectRequested
+                EventUi.BackPressed
             }
 
             19 -> {
+                EventUi.BankConnectRequested
+            }
+
+            20 -> {
                 EventUi.OnboardingFinished
             }
 
@@ -4435,6 +4450,13 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
                 )
             }
 
+            is EventUi.CodeSubmitted -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
             is EventUi.ResendRequested -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
@@ -4553,23 +4575,28 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
                 Unit
             }
 
-            is EventUi.ResendRequested -> {
+            is EventUi.CodeSubmitted -> {
                 buf.putInt(16)
                 Unit
             }
 
-            is EventUi.BackPressed -> {
+            is EventUi.ResendRequested -> {
                 buf.putInt(17)
                 Unit
             }
 
-            is EventUi.BankConnectRequested -> {
+            is EventUi.BackPressed -> {
                 buf.putInt(18)
                 Unit
             }
 
-            is EventUi.OnboardingFinished -> {
+            is EventUi.BankConnectRequested -> {
                 buf.putInt(19)
+                Unit
+            }
+
+            is EventUi.OnboardingFinished -> {
+                buf.putInt(20)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -4913,8 +4940,7 @@ sealed class ViewOnboarding {
     }
 
     /**
-     * Six digits, and no Continue — there is nothing to check before the
-     * sixth, so the sixth submits.
+     * Six digits and a Continue that is only there once all six are in.
      */
     data class Code(
         val `step`: kotlin.String,
@@ -4926,6 +4952,14 @@ sealed class ViewOnboarding {
          * fail, because the server answers with one.
          */
         val `fault`: kotlin.String?,
+        /**
+         * `Some("Continue")` once the code is complete, `None` before that.
+         *
+         * Absent rather than present-and-dim: there is nothing to submit yet,
+         * and a button that cannot be pressed still invites a press. It takes
+         * the place the resend was in, which is why the resend sits below it.
+         */
+        val `action`: kotlin.String?,
         val `resend`: uniffi.phone_state.ViewResend,
     ) : ViewOnboarding() {
         companion object
@@ -5036,6 +5070,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                     FfiConverterSequenceTypeViewRun.read(buf),
                     FfiConverterSequenceTypeViewCodeCell.read(buf),
                     FfiConverterOptionalString.read(buf),
+                    FfiConverterOptionalString.read(buf),
                     FfiConverterTypeViewResend.read(buf),
                 )
             }
@@ -5120,6 +5155,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                         FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
                         FfiConverterSequenceTypeViewCodeCell.allocationSize(value.`cells`) +
                         FfiConverterOptionalString.allocationSize(value.`fault`) +
+                        FfiConverterOptionalString.allocationSize(value.`action`) +
                         FfiConverterTypeViewResend.allocationSize(value.`resend`)
                 )
             }
@@ -5205,6 +5241,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
                 FfiConverterSequenceTypeViewCodeCell.write(value.`cells`, buf)
                 FfiConverterOptionalString.write(value.`fault`, buf)
+                FfiConverterOptionalString.write(value.`action`, buf)
                 FfiConverterTypeViewResend.write(value.`resend`, buf)
                 Unit
             }

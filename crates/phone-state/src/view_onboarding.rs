@@ -38,8 +38,7 @@ pub enum ViewOnboarding {
         action: String,
     },
 
-    /// Six digits, and no Continue — there is nothing to check before the
-    /// sixth, so the sixth submits.
+    /// Six digits and a Continue that is only there once all six are in.
     Code {
         step: String,
         title: String,
@@ -48,6 +47,12 @@ pub enum ViewOnboarding {
         /// `"That code is not right."` One sentence for every way a code can
         /// fail, because the server answers with one.
         fault: Option<String>,
+        /// `Some("Continue")` once the code is complete, `None` before that.
+        ///
+        /// Absent rather than present-and-dim: there is nothing to submit yet,
+        /// and a button that cannot be pressed still invites a press. It takes
+        /// the place the resend was in, which is why the resend sits below it.
+        action: Option<String>,
         resend: ViewResend,
     },
 

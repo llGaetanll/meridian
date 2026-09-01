@@ -126,6 +126,7 @@ final class RuntimeApp: ObservableObject {
         case .emailTyped: "emailTyped"
         case .emailSubmitted: "emailSubmitted"
         case .codeTyped: "codeTyped"
+        case .codeSubmitted: "codeSubmitted"
         case .resendRequested: "resend"
         case .backPressed: "back"
         case .bankConnectRequested: "bankConnect"

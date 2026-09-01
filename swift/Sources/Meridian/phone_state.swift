@@ -3880,11 +3880,21 @@ public enum EventUi: Equatable, Hashable {
      */
     case emailSubmitted
     /**
-     * The code field, as it now reads. There is nothing to check before the
-     * sixth digit, so the sixth digit submits and there is no Continue.
+     * The code field, as it now reads.
+     *
+     * Typing alone never submits. It used to: the sixth digit went straight
+     * to the server, on the reasoning that there is nothing to check before
+     * it. What that missed is the typo — a wrong sixth digit spent the guess
+     * before the user had seen what they had typed, and left six digits on
+     * screen that could only be edited backwards.
      */
     case codeTyped(digits: String
     )
+    /**
+     * Continue, under the six boxes. Only drawn once all six are in, since
+     * there is nothing to submit before that.
+     */
+    case codeSubmitted
     /**
      * Send a new code.
      */
@@ -3964,13 +3974,15 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
         case 15: return .codeTyped(digits: try FfiConverterString.read(from: &buf)
         )
         
-        case 16: return .resendRequested
+        case 16: return .codeSubmitted
         
-        case 17: return .backPressed
+        case 17: return .resendRequested
         
-        case 18: return .bankConnectRequested
+        case 18: return .backPressed
         
-        case 19: return .onboardingFinished
+        case 19: return .bankConnectRequested
+        
+        case 20: return .onboardingFinished
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4049,20 +4061,24 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
             FfiConverterString.write(digits, into: &buf)
             
         
-        case .resendRequested:
+        case .codeSubmitted:
             writeInt(&buf, Int32(16))
         
         
-        case .backPressed:
+        case .resendRequested:
             writeInt(&buf, Int32(17))
         
         
-        case .bankConnectRequested:
+        case .backPressed:
             writeInt(&buf, Int32(18))
         
         
-        case .onboardingFinished:
+        case .bankConnectRequested:
             writeInt(&buf, Int32(19))
+        
+        
+        case .onboardingFinished:
+            writeInt(&buf, Int32(20))
         
         }
     }
@@ -4533,14 +4549,20 @@ public enum ViewOnboarding: Equatable, Hashable {
          */action: String
     )
     /**
-     * Six digits, and no Continue — there is nothing to check before the
-     * sixth, so the sixth submits.
+     * Six digits and a Continue that is only there once all six are in.
      */
     case code(step: String, title: String, body: [ViewRun], cells: [ViewCodeCell], 
         /**
          * `"That code is not right."` One sentence for every way a code can
          * fail, because the server answers with one.
-         */fault: String?, resend: ViewResend
+         */fault: String?, 
+        /**
+         * `Some("Continue")` once the code is complete, `None` before that.
+         *
+         * Absent rather than present-and-dim: there is nothing to submit yet,
+         * and a button that cannot be pressed still invites a press. It takes
+         * the place the resend was in, which is why the resend sits below it.
+         */action: String?, resend: ViewResend
     )
     /**
      * What connecting a bank means, said plainly, and the button that does
@@ -4606,7 +4628,7 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
         case 2: return .email(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), field: try FfiConverterTypeViewField.read(from: &buf), action: try FfiConverterString.read(from: &buf)
         )
         
-        case 3: return .code(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), cells: try FfiConverterSequenceTypeViewCodeCell.read(from: &buf), fault: try FfiConverterOptionString.read(from: &buf), resend: try FfiConverterTypeViewResend.read(from: &buf)
+        case 3: return .code(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), cells: try FfiConverterSequenceTypeViewCodeCell.read(from: &buf), fault: try FfiConverterOptionString.read(from: &buf), action: try FfiConverterOptionString.read(from: &buf), resend: try FfiConverterTypeViewResend.read(from: &buf)
         )
         
         case 4: return .bank(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf), legal: try FfiConverterString.read(from: &buf)
@@ -4646,13 +4668,14 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
             FfiConverterString.write(action, into: &buf)
             
         
-        case let .code(step,title,body,cells,fault,resend):
+        case let .code(step,title,body,cells,fault,action,resend):
             writeInt(&buf, Int32(3))
             FfiConverterString.write(step, into: &buf)
             FfiConverterString.write(title, into: &buf)
             FfiConverterSequenceTypeViewRun.write(body, into: &buf)
             FfiConverterSequenceTypeViewCodeCell.write(cells, into: &buf)
             FfiConverterOptionString.write(fault, into: &buf)
+            FfiConverterOptionString.write(action, into: &buf)
             FfiConverterTypeViewResend.write(resend, into: &buf)
             
         

@@ -120,6 +120,8 @@ fn code(flow: &StateOnboarding, now: Timestamp) -> ViewOnboarding {
             _ => None,
         },
 
+        action: (flow.code().len() == CODE_LENGTH).then(|| "Continue".to_string()),
+
         resend: resend(flow, now),
     }
 }
