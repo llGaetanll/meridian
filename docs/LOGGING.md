@@ -245,6 +245,11 @@ means adding, changing or removing its example here.
   Two older lines of this shape are gone, because their cases are: being asked
   to use a store that is not there, and storing an Item with no credentials.
   Both the store and the credentials are required now.
+- `ERROR server_main::router_server could not read this user's banks error=…`
+  — written by `/snapshot` and by `/sync/status`, both of which read the
+  caller's Items before dispatching. Neither fails the request: an empty list
+  serves an empty ledger and reports nothing syncing, which is what somebody
+  with no bank sees anyway.
 - `WARN server_main::runtime_server EMAIL_SEND=log: no email sent, the code is on this line user_id=e8b13a2b… email=alex@example.com code=704924`
 - `INFO server_main::runtime_server signed in user_id=e8b13a2b…`
 - `ERROR server_main::state_server asked for a sign-in code before the machine was seeded`

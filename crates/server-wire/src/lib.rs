@@ -263,6 +263,107 @@ impl WireStream {
     }
 }
 
+/// How far the first sync has got.
+///
+/// Its own document rather than a field on [`WireSnapshot`], because
+/// `/snapshot` blocks until the fetch it triggered has landed and been
+/// written — so a snapshot could only ever report a sync that was already
+/// over. This is read while one is running.
+///
+/// The counts and the stage are separate facts. The transactions row reads
+/// `48 so far` while that stage is still going, so a count is not a claim
+/// that its stage has finished.
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct WireSyncStatus {
+    /// The stage's name, e.g. `"transactions"`. A name rather than an index,
+    /// for the same reason a category is one: inserting a stage must not
+    /// silently rename the others.
+    pub stage: String,
+
+    #[serde(default)]
+    pub accounts: u32,
+
+    #[serde(default)]
+    pub transactions: u32,
+
+    #[serde(default)]
+    pub streams: u32,
+
+    /// Whether there is anything still running.
+    ///
+    /// Its own field rather than something read off the stage, because the
+    /// last stage looks identical whether it is running or done. It is also
+    /// what a client with nothing syncing gets: `finished`, all zero.
+    #[serde(default)]
+    pub finished: bool,
+}
+
+impl WireSyncStatus {
+    /// Nothing is running. What a user with no sync in flight is told.
+    pub fn idle() -> Self {
+        Self {
+            stage: stage_name(SyncStage::Accounts).to_string(),
+            finished: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn new(stage: SyncStage, accounts: u32, transactions: u32, streams: u32) -> Self {
+        Self {
+            stage: stage_name(stage).to_string(),
+            accounts,
+            transactions,
+            streams,
+            finished: false,
+        }
+    }
+
+    pub fn stage(&self) -> SyncStage {
+        stage_from_name(&self.stage)
+    }
+}
+
+/// Which part of the first sync is running.
+///
+/// In the order they happen, which is the order `fetch_all` makes the calls
+/// in and the order the screen draws the rows in. All three are meant to stay
+/// in step; this is the one that decides.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum SyncStage {
+    #[default]
+    Accounts,
+    Transactions,
+    Streams,
+}
+
+impl SyncStage {
+    pub const ALL: [SyncStage; 3] = [
+        SyncStage::Accounts,
+        SyncStage::Transactions,
+        SyncStage::Streams,
+    ];
+}
+
+/// The wire name of a stage. Written out rather than derived from `Debug`, so
+/// renaming the variant is a deliberate wire change and not an accident.
+pub fn stage_name(stage: SyncStage) -> &'static str {
+    match stage {
+        SyncStage::Accounts => "accounts",
+        SyncStage::Transactions => "transactions",
+        SyncStage::Streams => "streams",
+    }
+}
+
+/// A stage's wire name back into the enum. An unknown name reads as the first
+/// stage, which costs a progress bar that starts low rather than a failure.
+pub fn stage_from_name(name: &str) -> SyncStage {
+    SyncStage::ALL
+        .iter()
+        .copied()
+        .find(|stage| stage_name(*stage) == name)
+        .unwrap_or(SyncStage::Accounts)
+}
+
 /// The wire name of a category.
 ///
 /// Written out rather than derived from the `Debug` name, so that renaming a
@@ -305,6 +406,20 @@ fn category_from_name(name: &str) -> Category {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Both sides map these back to the enum, and the phone draws its three
+    /// rows in this order. A name changed on one side and not the other stops
+    /// the screen tracking the sync it is describing.
+    #[test]
+    fn stage_names_are_stable() {
+        let names: Vec<&str> = SyncStage::ALL.iter().copied().map(stage_name).collect();
+
+        assert_eq!(names, ["accounts", "transactions", "streams"]);
+
+        for stage in SyncStage::ALL {
+            assert_eq!(stage_from_name(stage_name(stage)), stage);
+        }
+    }
 
     /// The app maps these names back to the enum. A name changed on one side
     /// and not the other silently re-files every row under "Uncategorised",

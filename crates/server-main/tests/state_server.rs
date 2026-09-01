@@ -641,11 +641,85 @@ fn a_linked_bank_is_stored_and_its_session_closed() {
         < Event::FromSource { event: EventSource::ItemLinked { call_id: 2, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 3, .. } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
+        > @r#"ToSource { action: FetchPlaid { call_id: 5, item_id: "item-9", cursor: None } }"#,
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
         > Action::ToRouter { action: ActionRouter::Linked, .. },
+    );
+}
+
+/// The route is answered as soon as the bank is attached, not when its history
+/// has arrived. Those are different questions, and the first sync is the long
+/// one — holding `/link/finish` open for it is the wait this removes.
+///
+/// So the fetch is on a call nobody is parked on: the two writes release the
+/// route, and the fetch is still outstanding when it goes.
+#[test]
+fn a_new_bank_starts_syncing_without_holding_the_route() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 2, .. } },
+
+        < Event::FromSource { event: EventSource::ItemLinked { call_id: 2, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 3, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 5, .. } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
+        > Action::ToRouter { action: ActionRouter::Linked, .. },
+    );
+}
+
+/// Nothing running is an answer, not a missing resource: a user who has never
+/// linked a bank gets `finished` and zeroes rather than a 404.
+#[test]
+fn a_user_with_nothing_syncing_is_told_so() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::SyncStatusRequested { items: vec![] } },
+        > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "accounts", accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
+    );
+}
+
+/// Progress is kept as it arrives and read back against the asking user's own
+/// banks. It is the one thing here that exists only to be looked at, and it is
+/// kept because it cannot be recovered — the fetch is over by the time
+/// anything else could go and read what it did.
+#[test]
+fn a_running_sync_reports_the_stage_it_is_on() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::PlaidProgressed { item_id: "item-9".to_string(), stage: server_wire::SyncStage::Transactions, accounts: 8, transactions: 19, streams: 0 } },
+
+        < Event::FromRouter { request_id: 1, event: EventRouter::SyncStatusRequested { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "transactions", accounts: 8, transactions: 19, streams: 0, finished: false } } }"#,
+    );
+}
+
+/// A fetch that has answered is no longer running, so what was watching it is
+/// told the sync is over. Dropped on a failure too — a screen polling a fetch
+/// that died would otherwise sit on its last stage for good.
+#[test]
+fn a_failed_sync_stops_being_something_to_watch() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::PlaidProgressed { item_id: "item-9".to_string(), stage: server_wire::SyncStage::Transactions, accounts: 8, transactions: 19, streams: 0 } },
+
+        < Event::FromSource { event: EventSource::PlaidFailed { call_id: 1, item_id: "item-9".to_string(), code: "REQUEST_FAILED".to_string() } },
+
+        < Event::FromRouter { request_id: 1, event: EventRouter::SyncStatusRequested { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "accounts", accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
     );
 }
 

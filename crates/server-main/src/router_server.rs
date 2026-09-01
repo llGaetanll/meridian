@@ -28,6 +28,7 @@ use crate::EventRouter;
 use crate::RuntimeServer;
 use crate::router_trace;
 use server_wire::WireSnapshot;
+use server_wire::WireSyncStatus;
 
 /// Every route, over one runtime.
 pub(crate) fn router(runtime: Arc<RuntimeServer>) -> Router {
@@ -37,6 +38,7 @@ pub(crate) fn router(runtime: Arc<RuntimeServer>) -> Router {
         .route("/auth/verify", post(auth_verify))
         .route("/link/start", post(link_start))
         .route("/link/finish", post(link_finish))
+        .route("/sync/status", get(sync_status))
         .route("/health", get(health))
         // Inside the CORS layer, so the preflight `OPTIONS` a browser sends
         // ahead of an authenticated request is answered above this and never
@@ -236,6 +238,40 @@ async fn link_finish(
     Ok(Json(LinkFinished {
         linked: matches!(answer, Some(ActionRouter::Linked)),
     }))
+}
+
+/// `GET /sync/status` — how far the caller's first sync has got.
+///
+/// Its own route rather than a field on the snapshot, because `/snapshot`
+/// blocks until the fetch it triggered has landed: it could only ever report
+/// a sync that was already over. This answers immediately, whatever is
+/// happening, which is what makes it pollable while one runs.
+///
+/// A user with nothing syncing gets `finished` and zeroes rather than a 404 —
+/// "no sync is running" is an answer, not a missing resource.
+async fn sync_status(
+    State(runtime): State<Arc<RuntimeServer>>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<WireSyncStatus>, StatusCode> {
+    let user_id = runtime.authenticate(&headers).await?;
+
+    // Which banks are theirs, read before deciding — the same shape as every
+    // other route here. The machine holds progress by item and has no idea
+    // whose item is whose.
+    let items = runtime.facts_for(user_id).await.unwrap_or_else(|e| {
+        tracing::error!(error = %e, "could not read this user's banks");
+        Vec::new()
+    });
+
+    let answer = runtime
+        .request(EventRouter::SyncStatusRequested { items })
+        .await;
+
+    let Some(ActionRouter::SyncStatus { status }) = answer else {
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    };
+
+    Ok(Json(status))
 }
 
 /// `GET /health`

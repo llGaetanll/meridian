@@ -21,6 +21,8 @@ use api_common::Timestamp;
 use api_common::ratelimit::RateLimiter;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
+use server_wire::SyncStage;
+use server_wire::WireSyncStatus;
 use src_plaid::PlaidEndpoint;
 use src_plaid::PlaidRateCtx;
 use src_plaid::PlaidRateLimiter;
@@ -139,6 +141,19 @@ pub struct StateServer {
     /// one rule rather than a note on each route to remember to wait.
     held: HashMap<RequestId, ActionRouter>,
 
+    /// How far each running fetch has got, by item.
+    ///
+    /// The one piece of state here that exists purely to be looked at. It is
+    /// kept because it cannot be recovered: a fetch is over by the time
+    /// anything could go and read what it did, so the first-run screen that
+    /// watches one has this or it has nothing (#25).
+    ///
+    /// An entry appears on the first
+    /// [`PlaidProgressed`](crate::EventSource) and goes when the fetch answers
+    /// or fails. Empty therefore means nothing is running, which is what a
+    /// user who is not syncing is told.
+    syncing: HashMap<String, WireSyncStatus>,
+
     /// When the current batch is being handled.
     now: Timestamp,
 }
@@ -191,6 +206,24 @@ impl StateServer {
                         user_id: *user_id,
                     },
                 });
+            }
+
+            EventRouter::SyncStatusRequested { items } => {
+                // The furthest-behind of this user's running fetches, because
+                // the screen draws one set of rows and the honest thing for it
+                // to show is the stage that has not finished yet. First run
+                // has exactly one bank, so this is a rule for later rather
+                // than one anybody meets today.
+                let status = items
+                    .iter()
+                    .filter_map(|item| self.syncing.get(&item.item_id))
+                    .min_by_key(|status| stage_index(status.stage()))
+                    .map_or_else(WireSyncStatus::idle, |status| WireSyncStatus {
+                        stage: status.stage.clone(),
+                        ..*status
+                    });
+
+                self.answer(request_id, ActionRouter::SyncStatus { status }, actions);
             }
 
             EventRouter::LinkClosed { pending } => {
@@ -376,6 +409,11 @@ impl StateServer {
                 streams,
                 cursor,
             } => {
+                // Over, so it stops being something to watch. Dropped on both
+                // endings rather than only this one: a screen polling a fetch
+                // that failed would otherwise sit on its last stage forever.
+                self.syncing.remove(item_id);
+
                 // The wait moves from the fetch to the write it caused, so
                 // the route is answered once the rows are actually there
                 // rather than once Plaid has spoken.
@@ -499,6 +537,31 @@ impl StateServer {
                     },
                 });
 
+                // Start reading the history now rather than waiting for the
+                // next `/snapshot` to trigger it. Two reasons: the first sync
+                // of a new bank is the long one and there is no sense making
+                // somebody wait for it twice, and a screen that watches a sync
+                // needs one to be running before it can watch anything.
+                //
+                // `call` rather than `calling`: nothing is parked on this.
+                // The route below is answered as soon as the bank is attached,
+                // which is the question it asked — whether the history has
+                // arrived yet is a different one, and `/sync/status` is where
+                // it gets asked. Registering a waiter here would hold
+                // `/link/finish` open for the whole first sync, which is the
+                // wait this is meant to remove.
+                actions.push(Action::ToSource {
+                    action: ActionSource::FetchPlaid {
+                        call_id: self.call(),
+                        item_id: item_id.clone(),
+
+                        // A bank attached seconds ago has no cursor. Passing
+                        // one would ask Plaid to resume a sync that never
+                        // happened.
+                        cursor: None,
+                    },
+                });
+
                 self.answer(request_id, ActionRouter::Linked, actions);
             }
 
@@ -520,11 +583,26 @@ impl StateServer {
                 self.answer(request_id, ActionRouter::NotLinked, actions);
             }
 
+            EventSource::PlaidProgressed {
+                item_id,
+                stage,
+                accounts,
+                transactions,
+                streams,
+            } => {
+                self.syncing.insert(
+                    item_id.clone(),
+                    WireSyncStatus::new(*stage, *accounts, *transactions, *streams),
+                );
+            }
+
             EventSource::PlaidFailed {
                 call_id,
                 item_id,
                 code,
             } => {
+                self.syncing.remove(item_id);
+
                 if code == "ITEM_LOGIN_REQUIRED" {
                     actions.push(Action::ToProcess {
                         action: ActionProcess::ReportLoginRequired,
@@ -816,4 +894,15 @@ impl StateServer {
     pub fn shutting_down(&self) -> bool {
         self.state == State::Stopping
     }
+}
+
+/// Where a stage sits in the order they run in.
+///
+/// `server-wire` owns the order itself; this is only how to compare two of
+/// them, which is what picking the furthest-behind fetch needs.
+fn stage_index(stage: SyncStage) -> usize {
+    SyncStage::ALL
+        .iter()
+        .position(|s| *s == stage)
+        .unwrap_or_default()
 }

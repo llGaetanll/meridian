@@ -31,6 +31,23 @@ pub enum EventSource {
         cursor: String,
     },
 
+    /// One stage of a fetch has landed, and this is what is known so far.
+    ///
+    /// A fact, not an answer: it carries no `call_id` and releases no route,
+    /// because nothing is waiting on it. The whole fetch still answers once,
+    /// with [`PlaidLoaded`](EventSource::PlaidLoaded).
+    ///
+    /// Kept because it cannot be worked out afterwards. The sync is over by
+    /// the time anything else could look, so a first-run screen watching it
+    /// has this or it has nothing (#25).
+    PlaidProgressed {
+        item_id: String,
+        stage: server_wire::SyncStage,
+        accounts: u32,
+        transactions: u32,
+        streams: u32,
+    },
+
     /// Plaid did not answer, or answered with an error. `code` is Plaid's own
     /// `error_code` where there was one.
     PlaidFailed {

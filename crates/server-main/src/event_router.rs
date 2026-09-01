@@ -42,6 +42,12 @@ pub enum EventRouter {
     /// can be written down against them before its URL is handed over.
     LinkRequested { user_id: Uuid },
 
+    /// Somebody is watching a sync and wants to know how far it has got.
+    ///
+    /// Carries their banks for the same reason `SnapshotRequested` does: the
+    /// machine holds progress by item and has no idea whose item is whose.
+    SyncStatusRequested { items: Vec<ItemFacts> },
+
     /// The bank sign-in page closed, so whatever happened there has happened.
     ///
     /// Carries the sessions the store holds open for this user, read by the
