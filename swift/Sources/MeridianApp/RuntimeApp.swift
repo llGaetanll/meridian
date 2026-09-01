@@ -35,6 +35,18 @@ final class RuntimeApp: ObservableObject {
     /// to know it.
     @Published private(set) var loading = false
 
+    /// The session token, once there is one.
+    ///
+    /// Not published and never sent to the machine, which is told only that a
+    /// session exists (`EventSource::SessionLoaded`). A bearer token is good
+    /// for ninety days, and an event log with one in it is a way into
+    /// somebody's bank — see `Session` and `docs/ARCHITECTURE.md`.
+    ///
+    /// It lives here from the moment `/auth/verify` answers, which is before
+    /// the machine says to save it: `/link/start` needs it during first run,
+    /// and only `OnboardingFinished` commits it to the keychain.
+    private var token: String?
+
     /// The clock, once a second, for as long as the app is up.
     ///
     /// Held so it lives as long as the runtime does. It is the machine's only
@@ -156,49 +168,92 @@ final class RuntimeApp: ObservableObject {
     private func performActionSource(_ action: ActionSource) {
         switch action {
         case .loadSnapshot(let force): loadSnapshot(force: force)
-
-        // First run. Every one of these is answered by `FirstRun`, which is
-        // standing in for a server that does not have these endpoints yet —
-        // see the note on that type. Nothing above this line can tell the
-        // difference, and nothing below it decides anything.
         case .loadSession: loadSession()
-        case .saveSession(let email): FirstRun.remember(email)
+        case .saveSession: saveSession()
         case .sendCode(let email): sendCode(to: email)
-        case .verifyCode(_, let code): verifyCode(code)
+        case .verifyCode(let email, let code): verifyCode(email: email, code: code)
+
+        // Still standing in for a server call — see `FirstRun`, which is what
+        // is left of the stub. Nothing above this line can tell the
+        // difference, and nothing below it decides anything.
         case .startBankLink: startBankLink()
         case .watchSync: watchSync()
         }
     }
 
-    /// Who the device says is signed in.
+    /// Whether the device has a session, read out of the keychain.
     ///
     /// Read straight away and answered on the next turn, so that the actions
     /// from the batch that asked are all carried out before the answer starts
-    /// another. The app draws its opening screen behind this, and the store is
-    /// fast enough that nobody sees the one it guessed.
+    /// another. The app draws its opening screen behind this, and the keychain
+    /// is fast enough that nobody sees the one it guessed.
+    ///
+    /// The token is kept here and the machine is told only that there is one.
     private func loadSession() {
-        let email = FirstRun.session
+        token = Session.token()
+
+        let signedIn = token != nil
 
         Task { [weak self] in
-            self?.dispatch(.fromSource(event: .sessionLoaded(email: email)))
+            self?.dispatch(.fromSource(event: .sessionLoaded(signedIn: signedIn)))
         }
     }
 
+    /// First run is through, so the token stops being something held in memory
+    /// for the length of a flow and becomes what this device is signed in as.
+    private func saveSession() {
+        guard let token else {
+            // Reachable only if the flow finished without a verified code,
+            // which nothing in the machine allows. Worth a line rather than a
+            // silent no-op, because the next launch would open on first run
+            // again and there would be nothing saying why.
+            NSLog("MERIDIAN first run finished with no token to save")
+
+            return
+        }
+
+        Session.save(token)
+    }
+
+    /// Ask for a code. The server answers alike whether or not it knows the
+    /// address, so there is nothing to read out of a success.
     private func sendCode(to email: String) {
-        NSLog("MERIDIAN first run: a code for %@ would be sent here", email)
-
         Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(500))
+            do {
+                try await RuntimeIo.requestCode(email: email)
 
-            self?.dispatch(.fromSource(event: .codeSent))
+                self?.dispatch(.fromSource(event: .codeSent))
+            } catch {
+                self?.dispatch(.fromSource(event: .loadFailed(message: error.localizedDescription)))
+            }
         }
     }
 
-    private func verifyCode(_ code: String) {
+    /// Trade the code for a session.
+    ///
+    /// The token is kept and not announced: what goes to the machine is that
+    /// the code was accepted. Whether the code was merely wrong or too late is
+    /// the machine's to work out — the server refuses all three failures
+    /// alike, on purpose, and the machine knows when it asked for the code.
+    private func verifyCode(email: String, code: String) {
         Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(400))
+            do {
+                let verified = try await RuntimeIo.verifyCode(email: email, code: code)
 
-            self?.dispatch(.fromSource(event: FirstRun.verdict(on: code)))
+                guard let self else { return }
+
+                guard let verified else {
+                    dispatch(.fromSource(event: .codeRejected))
+
+                    return
+                }
+
+                token = verified
+
+                dispatch(.fromSource(event: .codeAccepted))
+            } catch {
+                self?.dispatch(.fromSource(event: .loadFailed(message: error.localizedDescription)))
+            }
         }
     }
 
@@ -243,7 +298,18 @@ final class RuntimeApp: ObservableObject {
             let event: EventSource
 
             do {
-                event = .snapshotLoaded(json: try await RuntimeIo.snapshot(force: force))
+                // `/snapshot` has no unauthenticated form, so with nothing to
+                // send there is no request to make. Reported as a failed load
+                // rather than acted on here: what to do about a session that
+                // is not there is the machine's to decide, and today it has
+                // no arm that puts first run back. That is the next thing.
+                guard let token else {
+                    throw RuntimeIo.Failure.noSession
+                }
+
+                event = .snapshotLoaded(
+                    json: try await RuntimeIo.snapshot(force: force, token: token)
+                )
             } catch {
                 event = .loadFailed(
                     message: error.localizedDescription

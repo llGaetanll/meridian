@@ -17,10 +17,14 @@ pub enum ActionSource {
     /// the first screen of first run.
     LoadSession,
 
-    /// Remember it, so that the next launch opens on the Ledger.
-    SaveSession {
-        email: String,
-    },
+    /// Commit the session the runtime is holding, so that the next launch
+    /// opens on the Ledger.
+    ///
+    /// No payload: the credential to write is the one `VerifyCode` came back
+    /// with, and the runtime has held it since. This is the machine saying
+    /// *now* — first run is through, and what was good enough to live in
+    /// memory is worth keeping.
+    SaveSession,
 
     /// Send a six-digit code to this address.
     SendCode {

@@ -183,7 +183,7 @@ impl RuntimeApp {
             // `load_session` is what makes sure it is never reached — so an
             // action from it arriving on the web is worth a line rather than a
             // silent no-op.
-            ActionSource::SaveSession { .. }
+            ActionSource::SaveSession
             | ActionSource::SendCode { .. }
             | ActionSource::VerifyCode { .. }
             | ActionSource::StartBankLink
@@ -208,9 +208,7 @@ impl RuntimeApp {
 
         spawn_local(async move {
             runtime.dispatch(Event::FromSource {
-                event: EventSource::SessionLoaded {
-                    email: Some(WEB_SESSION.to_string()),
-                },
+                event: EventSource::SessionLoaded { signed_in: true },
             });
         });
     }
@@ -254,6 +252,3 @@ impl RuntimeApp {
 pub fn use_runtime() -> RuntimeApp {
     expect_context()
 }
-
-/// Who the web says it is, until it has a way to ask.
-const WEB_SESSION: &str = "web";

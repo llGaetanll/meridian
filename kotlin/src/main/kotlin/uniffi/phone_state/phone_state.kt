@@ -3272,13 +3272,15 @@ sealed class ActionSource {
     object LoadSession : ActionSource()
 
     /**
-     * Remember it, so that the next launch opens on the Ledger.
+     * Commit the session the runtime is holding, so that the next launch
+     * opens on the Ledger.
+     *
+     * No payload: the credential to write is the one `VerifyCode` came back
+     * with, and the runtime has held it since. This is the machine saying
+     * *now* — first run is through, and what was good enough to live in
+     * memory is worth keeping.
      */
-    data class SaveSession(
-        val `email`: kotlin.String,
-    ) : ActionSource() {
-        companion object
-    }
+    object SaveSession : ActionSource()
 
     /**
      * Send a six-digit code to this address.
@@ -3335,9 +3337,7 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
             }
 
             3 -> {
-                ActionSource.SaveSession(
-                    FfiConverterString.read(buf),
-                )
+                ActionSource.SaveSession
             }
 
             4 -> {
@@ -3386,8 +3386,7 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
             is ActionSource.SaveSession -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`email`)
+                    4UL
                 )
             }
 
@@ -3441,7 +3440,6 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
 
             is ActionSource.SaveSession -> {
                 buf.putInt(3)
-                FfiConverterString.write(value.`email`, buf)
                 Unit
             }
 
@@ -3690,19 +3688,13 @@ public object FfiConverterTypeEvent : FfiConverterRustBuffer<Event> {
 
 sealed class EventRuntime {
     /**
-     * What time it is now, in seconds since the epoch.
-     *
-     * The clock is an event rather than an argument to `handle_events`, and
-     * that is the whole point: nothing inside the machine reads one, so a
-     * replay of the log lands where it did the first time. The runtime sends
-     * one about once a second.
+     * What time it is, as the device's clock reads it — seconds since the
+     * epoch, about once a second.
      *
      * A bare `u64` rather than a [`Timestamp`](api_common::Timestamp),
      * because this crosses FFI and `custom_newtype!` cannot be applied to a
      * type from another crate — the same reason
      * [`RangeSelection::Between`](crate::RangeSelection) carries integers.
-     * The conversion happens where the tick is handled, so nothing downstream
-     * sees a raw one.
      */
     data class Tick(
         val `now`: kotlin.ULong,
@@ -3785,14 +3777,16 @@ sealed class EventSource {
     }
 
     /**
-     * What the device had stored about who is signed in — the address the
-     * app last completed first run as, absent on a device that never has.
+     * Whether the device has a session to act on.
      *
-     * Absent rather than an empty string: "nobody" and "somebody with no
-     * address" are different, and only one of them can happen.
+     * A bool rather than the address, because that is the whole of what the
+     * machine does with it: a session decides which screen the app opens on
+     * and nothing else. The credential itself is the runtime's — it never
+     * crosses this boundary, so a recorded log carries no way into anybody's
+     * bank. `docs/ARCHITECTURE.md` has the rule this follows from.
      */
     data class SessionLoaded(
-        val `email`: kotlin.String?,
+        val `signedIn`: kotlin.Boolean,
     ) : EventSource() {
         companion object
     }
@@ -3808,14 +3802,16 @@ sealed class EventSource {
     object CodeAccepted : EventSource()
 
     /**
-     * It was not. `expired` separates too late from wrong: one asks you to
-     * look again, the other asks for a new code.
+     * It was not.
+     *
+     * No reason, because the server gives none: wrong, expired and too many
+     * guesses answer alike, so that somebody working through codes learns
+     * nothing from which they got. Too late and simply wrong still read
+     * differently on screen — one asks you to look again, the other needs a
+     * new code — and the machine tells them apart from what it already
+     * knows: when it asked for the code, and what time it is now.
      */
-    data class CodeRejected(
-        val `expired`: kotlin.Boolean,
-    ) : EventSource() {
-        companion object
-    }
+    object CodeRejected : EventSource()
 
     /**
      * Plaid came back with a bank attached, and this is what it is called.
@@ -3878,7 +3874,7 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
 
             3 -> {
                 EventSource.SessionLoaded(
-                    FfiConverterOptionalString.read(buf),
+                    FfiConverterBoolean.read(buf),
                 )
             }
 
@@ -3891,9 +3887,7 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
             }
 
             6 -> {
-                EventSource.CodeRejected(
-                    FfiConverterBoolean.read(buf),
-                )
+                EventSource.CodeRejected
             }
 
             7 -> {
@@ -3946,7 +3940,7 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
                     4UL +
-                        FfiConverterOptionalString.allocationSize(value.`email`)
+                        FfiConverterBoolean.allocationSize(value.`signedIn`)
                 )
             }
 
@@ -3967,8 +3961,7 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
             is EventSource.CodeRejected -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
-                    4UL +
-                        FfiConverterBoolean.allocationSize(value.`expired`)
+                    4UL
                 )
             }
 
@@ -4025,7 +4018,7 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
 
             is EventSource.SessionLoaded -> {
                 buf.putInt(3)
-                FfiConverterOptionalString.write(value.`email`, buf)
+                FfiConverterBoolean.write(value.`signedIn`, buf)
                 Unit
             }
 
@@ -4041,7 +4034,6 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
 
             is EventSource.CodeRejected -> {
                 buf.putInt(6)
-                FfiConverterBoolean.write(value.`expired`, buf)
                 Unit
             }
 

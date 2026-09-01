@@ -1,20 +1,20 @@
-/// First run, answered on the device.
+/// What is left of the first-run stub: the bank link, and the sync behind it.
 ///
-/// **Everything here is standing in for a server that does not have these
-/// endpoints yet.** `server-main` serves `/snapshot` and `/health` and nothing
-/// else, so there is no account to make, no code to send and no `link_token` to
-/// exchange — and the screens that ask for all three are drawn and wired.
+/// **Everything here is standing in for a call that is not wired yet.** The
+/// account half is real — `/auth/request` and `/auth/verify` are live and
+/// `RuntimeApp` calls them — so what remains is Plaid: `/link/start` exists on
+/// the server and nothing opens it, and the sync has no progress to report at
+/// all (issue #25).
 ///
-/// It is one file on purpose. The machine already decides the whole flow, and
-/// each function here answers with the very event the real call will, so
-/// growing the server is a matter of replacing the bodies below and changing
-/// nothing above them. `docs/PLAID.md` has the four calls the real bank link
-/// makes, and the rule that goes with them: Sandbox unless the user says
-/// otherwise.
+/// It stays one file for the same reason it always was. The machine decides
+/// the whole flow, and each function here answers with the very event the real
+/// call will, so wiring one is a matter of replacing a body and changing
+/// nothing above it. `docs/PLAID.md` has the four calls the real link makes,
+/// and the rule that goes with them: Sandbox unless the user says otherwise.
 ///
-/// What it does *not* stand in for is any decision. Which screen follows a
-/// rejected code, whether a countdown has run out, what the tally says — all of
-/// that is in `phone-state` and is real already.
+/// What it does *not* stand in for is any decision. Which screen follows an
+/// abandoned link, what the tally says — all of that is in `phone-state` and
+/// is real already.
 ///
 /// `@MainActor` because `RuntimeApp` is, and because the attempt count below
 /// would otherwise be shared mutable state.
@@ -23,47 +23,6 @@ import Foundation
 
 @MainActor
 enum FirstRun {
-    /// The address this device last completed first run as, if it has.
-    ///
-    /// `UserDefaults` rather than the keychain because there is no secret in it
-    /// yet. When this becomes a session token it belongs in the keychain, and
-    /// that is a change to these two lines.
-    static var session: String? {
-        UserDefaults.standard.string(forKey: sessionKey)
-    }
-
-    static func remember(_ email: String) {
-        UserDefaults.standard.set(email, forKey: sessionKey)
-    }
-
-    /// Forget it, which is how first run is walked a second time.
-    ///
-    /// Nothing calls this yet — the app has no sign-out, because the Account
-    /// screen it would live on is drawn in `sketches/mobile/account.html` and
-    /// not built. Deleting the app from the simulator does the same thing.
-    static func forget() {
-        UserDefaults.standard.removeObject(forKey: sessionKey)
-    }
-
-    private static let sessionKey = "MeridianFirstRunEmail"
-
-    /// What the stub makes of a code.
-    ///
-    /// Two reserved values, so that both failures are reachable by hand and
-    /// neither screen is drawn once and never seen again: `000000` is wrong and
-    /// `111111` is expired. Every other six digits are right, because there is
-    /// no code to be right about until a code is really sent.
-    static func verdict(on code: String) -> EventSource {
-        switch code {
-        case wrongCode: .codeRejected(expired: false)
-        case expiredCode: .codeRejected(expired: true)
-        default: .codeAccepted
-        }
-    }
-
-    static let wrongCode = "000000"
-    static let expiredCode = "111111"
-
     /// What Plaid's page came back with.
     ///
     /// The first attempt of a launch ends with nothing, and every one after it

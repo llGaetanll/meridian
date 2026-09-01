@@ -152,6 +152,11 @@ PY
 # Ad-hoc, because the simulator only asks that a signature exists. A real phone
 # wants a development certificate, which is the one thing here that would need
 # an Apple account.
+#
+# It also means no entitlements: an ad-hoc signature may not claim one, and
+# taskgated kills the app on launch for trying. That is what puts the session
+# token in UserDefaults on the simulator rather than the keychain — see
+# swift/Sources/MeridianApp/Session.swift, which has the whole story.
 codesign --force --sign - --timestamp=none $APP >/dev/null
 
 # `boot` fails if it is already booted, which is the normal case on a re-run.

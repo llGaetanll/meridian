@@ -3214,10 +3214,15 @@ public enum ActionSource: Equatable, Hashable {
      */
     case loadSession
     /**
-     * Remember it, so that the next launch opens on the Ledger.
+     * Commit the session the runtime is holding, so that the next launch
+     * opens on the Ledger.
+     *
+     * No payload: the credential to write is the one `VerifyCode` came back
+     * with, and the runtime has held it since. This is the machine saying
+     * *now* — first run is through, and what was good enough to live in
+     * memory is worth keeping.
      */
-    case saveSession(email: String
-    )
+    case saveSession
     /**
      * Send a six-digit code to this address.
      */
@@ -3268,8 +3273,7 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
         
         case 2: return .loadSession
         
-        case 3: return .saveSession(email: try FfiConverterString.read(from: &buf)
-        )
+        case 3: return .saveSession
         
         case 4: return .sendCode(email: try FfiConverterString.read(from: &buf)
         )
@@ -3298,10 +3302,9 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
         
         
-        case let .saveSession(email):
+        case .saveSession:
             writeInt(&buf, Int32(3))
-            FfiConverterString.write(email, into: &buf)
-            
+        
         
         case let .sendCode(email):
             writeInt(&buf, Int32(4))
@@ -3532,19 +3535,13 @@ public func FfiConverterTypeEvent_lower(_ value: Event) -> RustBuffer {
 public enum EventRuntime: Equatable, Hashable {
     
     /**
-     * What time it is now, in seconds since the epoch.
-     *
-     * The clock is an event rather than an argument to `handle_events`, and
-     * that is the whole point: nothing inside the machine reads one, so a
-     * replay of the log lands where it did the first time. The runtime sends
-     * one about once a second.
+     * What time it is, as the device's clock reads it — seconds since the
+     * epoch, about once a second.
      *
      * A bare `u64` rather than a [`Timestamp`](api_common::Timestamp),
      * because this crosses FFI and `custom_newtype!` cannot be applied to a
      * type from another crate — the same reason
      * [`RangeSelection::Between`](crate::RangeSelection) carries integers.
-     * The conversion happens where the tick is handled, so nothing downstream
-     * sees a raw one.
      */
     case tick(now: UInt64
     )
@@ -3629,13 +3626,15 @@ public enum EventSource: Equatable, Hashable {
     case loadFailed(message: String
     )
     /**
-     * What the device had stored about who is signed in — the address the
-     * app last completed first run as, absent on a device that never has.
+     * Whether the device has a session to act on.
      *
-     * Absent rather than an empty string: "nobody" and "somebody with no
-     * address" are different, and only one of them can happen.
+     * A bool rather than the address, because that is the whole of what the
+     * machine does with it: a session decides which screen the app opens on
+     * and nothing else. The credential itself is the runtime's — it never
+     * crosses this boundary, so a recorded log carries no way into anybody's
+     * bank. `docs/ARCHITECTURE.md` has the rule this follows from.
      */
-    case sessionLoaded(email: String?
+    case sessionLoaded(signedIn: Bool
     )
     /**
      * A code went out.
@@ -3646,11 +3645,16 @@ public enum EventSource: Equatable, Hashable {
      */
     case codeAccepted
     /**
-     * It was not. `expired` separates too late from wrong: one asks you to
-     * look again, the other asks for a new code.
+     * It was not.
+     *
+     * No reason, because the server gives none: wrong, expired and too many
+     * guesses answer alike, so that somebody working through codes learns
+     * nothing from which they got. Too late and simply wrong still read
+     * differently on screen — one asks you to look again, the other needs a
+     * new code — and the machine tells them apart from what it already
+     * knows: when it asked for the code, and what time it is now.
      */
-    case codeRejected(expired: Bool
-    )
+    case codeRejected
     /**
      * Plaid came back with a bank attached, and this is what it is called.
      */
@@ -3703,15 +3707,14 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
         case 2: return .loadFailed(message: try FfiConverterString.read(from: &buf)
         )
         
-        case 3: return .sessionLoaded(email: try FfiConverterOptionString.read(from: &buf)
+        case 3: return .sessionLoaded(signedIn: try FfiConverterBool.read(from: &buf)
         )
         
         case 4: return .codeSent
         
         case 5: return .codeAccepted
         
-        case 6: return .codeRejected(expired: try FfiConverterBool.read(from: &buf)
-        )
+        case 6: return .codeRejected
         
         case 7: return .bankLinked(institution: try FfiConverterString.read(from: &buf)
         )
@@ -3741,9 +3744,9 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
             FfiConverterString.write(message, into: &buf)
             
         
-        case let .sessionLoaded(email):
+        case let .sessionLoaded(signedIn):
             writeInt(&buf, Int32(3))
-            FfiConverterOptionString.write(email, into: &buf)
+            FfiConverterBool.write(signedIn, into: &buf)
             
         
         case .codeSent:
@@ -3754,10 +3757,9 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(5))
         
         
-        case let .codeRejected(expired):
+        case .codeRejected:
             writeInt(&buf, Int32(6))
-            FfiConverterBool.write(expired, into: &buf)
-            
+        
         
         case let .bankLinked(institution):
             writeInt(&buf, Int32(7))
