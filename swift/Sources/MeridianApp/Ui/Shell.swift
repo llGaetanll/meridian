@@ -80,10 +80,9 @@ struct PhoneShell<Band: View, Content: View>: View {
         }
         .background(Theme.bg)
         .onPreferenceChange(BandAnchor.self) { bottom in
-            // Two thresholds, not one. The band arriving moves the list under
-            // it, which moves the anchor — so a single threshold sits the
-            // anchor right on the line it just crossed and the band flickers in
-            // and out as the two chase each other.
+            // Two thresholds, not one, so a finger held still on the line
+            // cannot flicker the band in and out. Both of them sit inside the
+            // anchor rather than below it — see `leaves`.
             let wanted = banded ? bottom < BandAnchor.leaves : bottom < BandAnchor.arrives
 
             if wanted != banded {
@@ -114,13 +113,17 @@ struct BandAnchor: PreferenceKey {
     /// screen with no band looks like.
     static let defaultValue = CGFloat.infinity
 
-    /// The band arrives while the anchor is still on its way out rather than
-    /// after it has gone: one that waits for the last point to leave arrives
-    /// after you have stopped looking for it.
-    static let arrives: CGFloat = 56
+    /// The band arrives as the last of the anchor goes: a headline still half
+    /// on screen does not need standing in for, and the band over it says the
+    /// same thing twice.
+    static let arrives: CGFloat = 24
 
-    /// And leaves later than it arrived, so the two cannot chase each other.
-    static let leaves: CGFloat = 132
+    /// And leaves later than it arrived, so the two cannot chase each other —
+    /// but still short of the anchor's own height, which is where it rests. A
+    /// threshold past that never clears: an empty page bounces far enough to
+    /// bring the band in, and springs back to a resting anchor that is already
+    /// below the line, leaving the band up over nothing.
+    static let leaves: CGFloat = 48
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = min(value, nextValue())
