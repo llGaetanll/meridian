@@ -96,6 +96,14 @@ that can disagree.
 Sub-machines do not handle events themselves. The app's `handle_events` routes
 the ones that are theirs, so there is still exactly one way anything changes.
 
+**A comment on a type says what the type is, not what is done with it.** A
+field's doc is what the field holds; a variant's is what the variant means.
+Where it is sent, who reads it, what the machine decides when it arrives — that
+belongs where the deciding happens, and put on the type it goes stale the first
+time a second caller appears. Why the type is *shaped* the way it is does
+belong here: a `Box` around a large variant, a `u64` where a `Timestamp` cannot
+cross FFI.
+
 **Derive as little as possible on events and actions.** `Debug` is needed for
 logging and for failure messages. `Clone` only if something genuinely needs to own one — they are passed
 by reference all the way down. **`PartialEq` in particular is not needed**:

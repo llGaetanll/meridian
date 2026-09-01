@@ -8,7 +8,7 @@
 //! the connections and the streams, and answer `/snapshot` from them — which
 //! was only ever right because there was one user. It now holds what cannot be
 //! read back from Postgres: how much of Plaid's rate limit has been spent, and
-//! whether the process is shutting down. Everything else arrives on the event
+//! where the process is in its own life. Everything else arrives on the event
 //! that needs it, and is served from the store.
 //!
 //! So "should I sync this bank?" is a pure function of facts handed in and a
@@ -77,29 +77,41 @@ struct Waiting {
     since: Timestamp,
 }
 
+/// Where the server is in its own life.
+///
+/// The two things the machine cannot do in every state are minting credentials
+/// and starting work, and each belongs to a state rather than to a flag beside
+/// one: the generator lives in [`Phase::Running`], so having one is the same
+/// fact as being in it, and there is no state in which asking for it can fail.
+#[derive(Debug, Default)]
+enum Phase {
+    /// Up, with no entropy yet.
+    #[default]
+    Starting,
+
+    /// Seeded, and serving.
+    ///
+    /// The generator is ChaCha20 rather than a fast PRNG: these are
+    /// credentials, and a generator whose state can be recovered from a couple
+    /// of outputs would hand an attacker every code after the ones they saw.
+    /// It is boxed because it is two orders of magnitude larger than the other
+    /// variants.
+    Running { rng: Box<ChaCha20Rng> },
+
+    /// A signal has arrived. What is outstanding finishes; nothing new starts,
+    /// and nothing new is minted.
+    Draining,
+}
+
 #[derive(Debug, Default)]
 pub struct StateServer {
-    /// Where sign-in codes and session tokens come from.
-    ///
-    /// Seeded from the edge by [`EventProcess::Seeded`](crate::EventProcess),
-    /// never from a clock or a counter, and `None` until one arrives. ChaCha20
-    /// rather than a fast PRNG: these are credentials, and a generator whose
-    /// state can be recovered from a couple of outputs would hand an attacker
-    /// every code after the ones they saw.
-    ///
-    /// In the machine rather than the runtime so that a code is a *decision*
-    /// like everything else — reproducible from the event log, and reachable
-    /// from an `eval!` test.
-    rng: Option<ChaCha20Rng>,
+    phase: Phase,
 
     /// What Plaid will let us send. The one thing here that genuinely cannot
     /// be read back from the store — it is a fact about this process's last
     /// minute, and it is why "may I call?" is arithmetic in the machine rather
     /// than a guess in the runtime.
     limiter: PlaidRateLimiter,
-
-    /// Whether a shutdown has been asked for. Once set, no new work starts.
-    shutting_down: bool,
 
     /// The next [`CallId`] to hand out. A counter rather than anything drawn,
     /// so the same log replays to the same numbers.
@@ -198,9 +210,10 @@ impl StateServer {
                 // No entropy, no credentials. Refused rather than filled in
                 // with anything derivable — a predictable sign-in code is a
                 // way into somebody's bank, and there is no fallback that is
-                // better than saying no.
-                let Some(rng) = self.rng.as_mut() else {
-                    tracing::error!("asked for a sign-in code before the machine was seeded");
+                // better than saying no. A machine on its way out refuses for
+                // the same reason it starts no fetches.
+                let Phase::Running { rng } = &mut self.phase else {
+                    tracing::error!("asked for a sign-in code with no generator to draw it from");
 
                     self.answer(request_id, ActionRouter::Unavailable, actions);
 
@@ -268,8 +281,8 @@ impl StateServer {
                     return;
                 }
 
-                let Some(rng) = self.rng.as_mut() else {
-                    tracing::error!("a code was accepted before the machine was seeded");
+                let Phase::Running { rng } = &mut self.phase else {
+                    tracing::error!("a code was accepted with no generator to draw a token from");
 
                     self.answer(request_id, ActionRouter::Rejected, actions);
 
@@ -525,9 +538,17 @@ impl StateServer {
             // is what makes a second server process possible.
             EventProcess::Started => {}
 
-            EventProcess::Seeded { seed } => {
-                self.rng = Some(ChaCha20Rng::from_seed(*seed));
-            }
+            EventProcess::Seeded { seed } => match self.phase {
+                // Reseeding replaces the generator; a seed arriving on the way
+                // out is dropped, because nothing will be drawn from it.
+                Phase::Starting | Phase::Running { .. } => {
+                    self.phase = Phase::Running {
+                        rng: Box::new(ChaCha20Rng::from_seed(*seed)),
+                    };
+                }
+
+                Phase::Draining => {}
+            },
 
             EventProcess::Tick { now } => {
                 // Time only ever moves forward. A runtime handing in a stale
@@ -541,20 +562,20 @@ impl StateServer {
 
                 self.now = *now;
 
-                self.give_up_on_calls_that_will_not_answer(actions);
+                self.handle_timeouts(actions);
             }
         }
     }
 
     fn handle_event_store(&mut self, event: &EventStore, actions: &mut Vec<Action>) {
         match event {
-            EventStore::Written { call_id } => self.landed(*call_id, actions),
+            EventStore::WriteSuccess { call_id } => self.landed(*call_id, actions),
 
             // Reported rather than silent — the log is meant to be a recording
             // of the session, and "the store would not take it" is part of the
             // story — and then it ends the wait like a write that worked.
             // Holding a route for a write that failed would hold it forever.
-            EventStore::SaveFailed { call_id, message } => {
+            EventStore::WriteError { call_id, message } => {
                 tracing::error!(message, "could not write the store");
 
                 self.landed(*call_id, actions);
@@ -569,11 +590,11 @@ impl StateServer {
             EventTerminal::SigInt | EventTerminal::SigTerm => {
                 // Idempotent: a second ^C while the first is still draining
                 // should not queue a second shutdown.
-                if self.shutting_down {
+                if matches!(self.phase, Phase::Draining) {
                     return;
                 }
 
-                self.shutting_down = true;
+                self.phase = Phase::Draining;
 
                 actions.push(Action::ToProcess {
                     action: ActionProcess::Shutdown,
@@ -684,7 +705,7 @@ impl StateServer {
     /// What it answers with is whatever was already decided, and
     /// [`ActionRouter::Unavailable`] when nothing was. Serving what we have
     /// beats a request that never returns.
-    fn give_up_on_calls_that_will_not_answer(&mut self, actions: &mut Vec<Action>) {
+    fn handle_timeouts(&mut self, actions: &mut Vec<Action>) {
         let now = self.now;
 
         let given_up: Vec<CallId> = self
@@ -726,7 +747,7 @@ impl StateServer {
     /// the whole reason this lives in a state machine.
     fn should_fetch(&mut self, item: &ItemFacts, force: bool) -> bool {
         // Nothing new starts once we are on the way out.
-        if self.shutting_down {
+        if matches!(self.phase, Phase::Draining) {
             return false;
         }
 
@@ -763,6 +784,6 @@ impl StateServer {
     }
 
     pub fn shutting_down(&self) -> bool {
-        self.shutting_down
+        matches!(self.phase, Phase::Draining)
     }
 }
