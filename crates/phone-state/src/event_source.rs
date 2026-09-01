@@ -33,12 +33,12 @@ pub enum EventSource {
 
     /// It was not.
     ///
-    /// No reason, because the server gives none: wrong, expired and too many
-    /// guesses answer alike, so that somebody working through codes learns
-    /// nothing from which they got. Too late and simply wrong still read
-    /// differently on screen — one asks you to look again, the other needs a
-    /// new code — and the machine tells them apart from what it already
-    /// knows: when it asked for the code, and what time it is now.
+    /// No reason, and the app does not work one out either. The server knows
+    /// whether a code was wrong, too late or guessed at too often — it writes
+    /// all three to its own log — and answers alike for every one of them, so
+    /// that nobody can ask it whether an address has a code standing against
+    /// it. A screen saying "that one expired" would give back exactly what
+    /// answering alike was protecting.
     CodeRejected,
 
     /// Plaid came back with a bank attached, and this is what it is called.

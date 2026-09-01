@@ -3647,12 +3647,12 @@ public enum EventSource: Equatable, Hashable {
     /**
      * It was not.
      *
-     * No reason, because the server gives none: wrong, expired and too many
-     * guesses answer alike, so that somebody working through codes learns
-     * nothing from which they got. Too late and simply wrong still read
-     * differently on screen — one asks you to look again, the other needs a
-     * new code — and the machine tells them apart from what it already
-     * knows: when it asked for the code, and what time it is now.
+     * No reason, and the app does not work one out either. The server knows
+     * whether a code was wrong, too late or guessed at too often — it writes
+     * all three to its own log — and answers alike for every one of them, so
+     * that nobody can ask it whether an address has a code standing against
+     * it. A screen saying "that one expired" would give back exactly what
+     * answering alike was protecting.
      */
     case codeRejected
     /**
@@ -4538,8 +4538,8 @@ public enum ViewOnboarding: Equatable, Hashable {
      */
     case code(step: String, title: String, body: [ViewRun], cells: [ViewCodeCell], 
         /**
-         * `"That code has expired. They last ten minutes."` Wrong and too
-         * late are different problems, one sentence apart.
+         * `"That code is not right."` One sentence for every way a code can
+         * fail, because the server answers with one.
          */fault: String?, resend: ViewResend
     )
     /**

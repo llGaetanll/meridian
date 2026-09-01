@@ -116,9 +116,6 @@ fn code(flow: &StateOnboarding, now: Timestamp) -> ViewOnboarding {
         cells,
 
         fault: match flow.fault() {
-            Some(Fault::CodeExpired) => {
-                Some("That code has expired. They last ten minutes.".to_string())
-            }
             Some(Fault::CodeWrong) => Some("That code is not right.".to_string()),
             _ => None,
         },
@@ -127,10 +124,10 @@ fn code(flow: &StateOnboarding, now: Timestamp) -> ViewOnboarding {
     }
 }
 
-/// Wrong and too late are one sentence apart, and the way out of each is
-/// different: one asks you to look again, the other needs a new code. So the
-/// countdown gives way to a button rather than the button being there all
-/// along and doing nothing for a minute.
+/// The way out of a code that did not work, whatever was wrong with it.
+///
+/// A countdown that gives way to a button, rather than a button that is there
+/// all along and does nothing for the first minute.
 fn resend(flow: &StateOnboarding, now: Timestamp) -> ViewResend {
     let Some(sent) = flow.sent_at() else {
         return ViewResend::Ready {

@@ -405,10 +405,8 @@ impl StateApp {
             }
 
             EventSource::CodeRejected => {
-                let now = self.now();
-
                 if let Some(flow) = &mut self.onboarding {
-                    flow.code_rejected(now);
+                    flow.code_rejected();
                 }
 
                 self.render(actions);
