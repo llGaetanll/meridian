@@ -27,13 +27,22 @@ use server_main::*;
 
 const T0: Timestamp = Timestamp::from_secs(1_787_097_600);
 
+/// A machine that has been told what time it is and that its process is up —
+/// the first two events the runtime sends, and neither of them any test's
+/// claim. What it has *not* been told is a seed: the tests that mint anything
+/// send one.
 fn state() -> StateServer {
     let mut state = StateServer::new();
 
     state.handle_events(
-        &[Event::FromProcess {
-            event: EventProcess::Tick { now: T0 },
-        }],
+        &[
+            Event::FromProcess {
+                event: EventProcess::Tick { now: T0 },
+            },
+            Event::FromProcess {
+                event: EventProcess::Started,
+            },
+        ],
         &mut Vec::new(),
     );
 
@@ -419,9 +428,9 @@ fn the_same_seed_produces_the_same_code() {
 }
 
 /// No entropy, no credentials. A predictable sign-in code is a way into
-/// somebody's bank, so an unseeded machine refuses rather than filling in
-/// anything derivable — and this is the test that says nothing is stored and
-/// nothing is sent.
+/// somebody's bank, so a machine that is up but not yet seeded refuses rather
+/// than filling in anything derivable — and this is the test that says nothing
+/// is stored and nothing is sent.
 ///
 /// It answers rather than going quiet. A route parks until its own action
 /// comes back, so a refusal with no action is a request that never returns.
