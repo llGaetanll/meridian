@@ -25,17 +25,6 @@ use crate::SyncStage;
 /// How long before another code can be asked for.
 pub(crate) const RESEND_AFTER: Duration = Duration::from_secs(60);
 
-/// How long a code is good for.
-///
-/// The server is the one that enforces this — `login_code::GOOD_FOR`, and the
-/// two are meant to be the same ten minutes. It is repeated here rather than
-/// shared because of what it is used for: the server decides whether a code
-/// *works*, and this decides which of two sentences to print about one that
-/// did not. A few seconds of disagreement at the boundary costs the wrong
-/// wording once, not a wrong outcome, so the copy is cheap and the shared
-/// constant across the FFI boundary would not be.
-pub(crate) const CODE_GOOD_FOR: Duration = Duration::from_secs(10 * 60);
-
 /// How many digits a code has.
 pub(crate) const CODE_LENGTH: usize = 6;
 
@@ -62,11 +51,13 @@ pub(crate) enum Fault {
     /// Not an address.
     Address,
 
-    /// The code did not match.
+    /// The code did not work.
+    ///
+    /// One fault for every way of failing, because the server answers with
+    /// one — see [`EventSource::CodeRejected`](crate::EventSource). A code
+    /// that has expired reads as wrong and the resend is the way out of both,
+    /// which is the same way out the user would have wanted anyway.
     CodeWrong,
-
-    /// The code was right ten minutes ago.
-    CodeExpired,
 }
 
 /// How much of the first sync has arrived.
@@ -253,26 +244,8 @@ impl StateOnboarding {
         self.step = Step::Bank;
     }
 
-    /// The code did not work, and this is what to say about it.
-    ///
-    /// The server does not say why — see
-    /// [`EventSource::CodeRejected`](crate::EventSource). So the choice is
-    /// made from what the flow holds: a code we asked for more than
-    /// [`CODE_GOOD_FOR`] ago is one the user was too slow with, and anything
-    /// sooner is one they got wrong. A rejection with no code ever sent is not
-    /// reachable — nothing submits before [`Self::code_sent`] — and reads as
-    /// wrong, which is the safer of the two to be mistaken about: it leaves
-    /// the digits on screen instead of telling somebody to wait for mail.
-    pub(crate) fn code_rejected(&mut self, now: Timestamp) {
-        let expired = self.sent_at.is_some_and(|sent| {
-            now.as_secs().saturating_sub(sent.as_secs()) >= CODE_GOOD_FOR.as_secs()
-        });
-
-        self.fault = Some(if expired {
-            Fault::CodeExpired
-        } else {
-            Fault::CodeWrong
-        });
+    pub(crate) fn code_rejected(&mut self) {
+        self.fault = Some(Fault::CodeWrong);
     }
 
     pub(crate) fn bank_linked(&mut self, institution: &str) {
@@ -361,7 +334,7 @@ mod tests {
         let mut flow = StateOnboarding::new();
 
         flow.type_code("407193");
-        flow.code_rejected(Timestamp::EPOCH);
+        flow.code_rejected();
         assert_eq!(flow.fault(), Some(Fault::CodeWrong));
 
         flow.type_code("40719");

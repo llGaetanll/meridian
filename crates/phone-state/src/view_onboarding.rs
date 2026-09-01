@@ -45,8 +45,8 @@ pub enum ViewOnboarding {
         title: String,
         body: Vec<ViewRun>,
         cells: Vec<ViewCodeCell>,
-        /// `"That code has expired. They last ten minutes."` Wrong and too
-        /// late are different problems, one sentence apart.
+        /// `"That code is not right."` One sentence for every way a code can
+        /// fail, because the server answers with one.
         fault: Option<String>,
         resend: ViewResend,
     },

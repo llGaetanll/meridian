@@ -211,16 +211,18 @@ fn a_wrong_code_reddens_every_box() {
     );
 }
 
-/// Wrong and too late are different problems, one sentence apart, and the way
-/// out of each is different.
+/// A code that has certainly expired says exactly what a mistyped one says.
 ///
-/// The server says only that the code was refused, so what makes this the
-/// expired screen rather than the wrong one is the clock: eleven minutes have
-/// passed since the code went out. Which is also why the resend is a button
-/// here and a countdown in the test above — by the time a code can expire, a
-/// new one has been available for ten minutes.
+/// Deliberate, and worth a test of its own because the obvious "improvement"
+/// is to tell the user which it was. The server answers alike for wrong,
+/// expired and too many guesses so that nobody can ask it whether an address
+/// has a code standing against it, and a screen saying "that one expired"
+/// would hand back what answering alike was protecting.
+///
+/// Eleven minutes have passed here, so the resend is a button rather than a
+/// countdown — which is the real way out, and the same one either way.
 #[test]
-fn an_expired_code_says_so_and_offers_a_new_one() {
+fn an_expired_code_reads_as_a_wrong_one() {
     let mut state = at_the_code_screen();
 
     eval!(&mut state,
@@ -231,7 +233,7 @@ fn an_expired_code_says_so_and_offers_a_new_one() {
         < Event::FromSource { event: EventSource::CodeRejected },
         > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code has expired. They last ten minutes."), resend: Ready { label: "Send a new code" } } }, dock: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code is not right."), resend: Ready { label: "Send a new code" } } }, dock: None } }"#,
     );
 }
 
