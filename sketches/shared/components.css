@@ -315,6 +315,27 @@
 }
 .ui .btn.dead:active { transform: none; }
 
+/* Working, for a button that has been tapped and is waiting on something far
+   away.
+
+   Its own state rather than `.dead`, because the two say different things: a
+   dead button is one there is no point pressing, and a busy one is a press
+   that landed and has not finished. The phone draws one — Connect a bank,
+   where the server opens a Plaid session and iOS raises a web sheet over the
+   app, about a second all told. Nothing moving during that second reads as a
+   button that missed the tap.
+
+   The glyph is the same three-quarter arc the sync rows turn, at the same
+   speed. One spinner in the app. */
+.ui .btn.busy {
+  cursor: default;
+  transform: none;
+}
+.ui .btn.busy:active { transform: none; }
+.ui .btn.busy svg { animation: spin 0.9s linear infinite; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* The mark.
 
    Who a row is: a merchant's logo in the ledger, a bank's initials on

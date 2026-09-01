@@ -57,13 +57,19 @@ struct IconRow: View {
     }
 }
 
-/// The one row that turns. Its glyph is a three-quarter arc, so the turning is
-/// the whole of what says "working".
-private struct Spinner: View {
+/// The glyph that turns. A three-quarter arc, so the turning is the whole of
+/// what says "working" — which is why it is drawn rather than borrowed from
+/// `ProgressView`: one spinner in the app, and it is the one on the sheet.
+///
+/// Used by the sync rows and by the button that opens Plaid, so it takes a
+/// size rather than assuming the row's.
+struct Spinner: View {
+    var size: CGFloat = 18
+
     @State private var turned = false
 
     var body: some View {
-        Icon(name: "spin", size: 18, weight: 2.4)
+        Icon(name: "spin", size: size, weight: 2.4)
             .rotationEffect(.degrees(turned ? 360 : 0))
             .onAppear {
                 withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) {

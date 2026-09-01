@@ -4922,6 +4922,14 @@ sealed class ViewOnboarding {
         val `body`: List<uniffi.phone_state.ViewRun>,
         val `rows`: List<uniffi.phone_state.ViewIconRow>,
         val `action`: kotlin.String,
+        /**
+         * Whether the button is waiting on Plaid's page to appear.
+         *
+         * A second or so passes between the tap and the sheet — the server
+         * creates a Link session and iOS raises a web view — and a button
+         * that looks untapped for a second is a button people tap twice.
+         */
+        val `opening`: kotlin.Boolean,
         val `legal`: kotlin.String,
     ) : ViewOnboarding() {
         companion object
@@ -4977,6 +4985,11 @@ sealed class ViewOnboarding {
         val `body`: List<uniffi.phone_state.ViewRun>,
         val `rows`: List<uniffi.phone_state.ViewIconRow>,
         val `action`: kotlin.String,
+        /**
+         * The same wait as [`Bank`](ViewOnboarding::Bank)'s: Try again opens
+         * the very same page.
+         */
+        val `opening`: kotlin.Boolean,
     ) : ViewOnboarding() {
         companion object
     }
@@ -5028,6 +5041,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                     FfiConverterSequenceTypeViewRun.read(buf),
                     FfiConverterSequenceTypeViewIconRow.read(buf),
                     FfiConverterString.read(buf),
+                    FfiConverterBoolean.read(buf),
                     FfiConverterString.read(buf),
                 )
             }
@@ -5059,6 +5073,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                     FfiConverterSequenceTypeViewRun.read(buf),
                     FfiConverterSequenceTypeViewIconRow.read(buf),
                     FfiConverterString.read(buf),
+                    FfiConverterBoolean.read(buf),
                 )
             }
 
@@ -5115,6 +5130,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                         FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
                         FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`) +
                         FfiConverterString.allocationSize(value.`action`) +
+                        FfiConverterBoolean.allocationSize(value.`opening`) +
                         FfiConverterString.allocationSize(value.`legal`)
                 )
             }
@@ -5151,7 +5167,8 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                         FfiConverterString.allocationSize(value.`title`) +
                         FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
                         FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`) +
-                        FfiConverterString.allocationSize(value.`action`)
+                        FfiConverterString.allocationSize(value.`action`) +
+                        FfiConverterBoolean.allocationSize(value.`opening`)
                 )
             }
         }
@@ -5199,6 +5216,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
                 FfiConverterSequenceTypeViewIconRow.write(value.`rows`, buf)
                 FfiConverterString.write(value.`action`, buf)
+                FfiConverterBoolean.write(value.`opening`, buf)
                 FfiConverterString.write(value.`legal`, buf)
                 Unit
             }
@@ -5230,6 +5248,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
                 FfiConverterSequenceTypeViewIconRow.write(value.`rows`, buf)
                 FfiConverterString.write(value.`action`, buf)
+                FfiConverterBoolean.write(value.`opening`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }

@@ -65,6 +65,12 @@ pub enum ViewOnboarding {
         body: Vec<ViewRun>,
         rows: Vec<ViewIconRow>,
         action: String,
+        /// Whether the button is waiting on Plaid's page to appear.
+        ///
+        /// A second or so passes between the tap and the sheet — the server
+        /// creates a Link session and iOS raises a web view — and a button
+        /// that looks untapped for a second is a button people tap twice.
+        opening: bool,
         legal: String,
     },
 
@@ -102,6 +108,9 @@ pub enum ViewOnboarding {
         body: Vec<ViewRun>,
         rows: Vec<ViewIconRow>,
         action: String,
+        /// The same wait as [`Bank`](ViewOnboarding::Bank)'s: Try again opens
+        /// the very same page.
+        opening: bool,
     },
 }
 

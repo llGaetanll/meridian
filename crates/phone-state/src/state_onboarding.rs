@@ -95,6 +95,13 @@ pub struct StateOnboarding {
     /// The bank most recently connected, which is the one the sync is for.
     bank: Option<String>,
 
+    /// Whether a bank sign-in is being opened.
+    ///
+    /// True from the tap until Plaid's page has been and gone, one way or the
+    /// other. It is a fact about the flow rather than about the runtime — the
+    /// screen has to say something during it, and what it says is a decision.
+    opening: bool,
+
     sync: Progress,
 }
 
@@ -125,6 +132,10 @@ impl StateOnboarding {
 
     pub(crate) fn bank(&self) -> Option<&str> {
         self.bank.as_deref()
+    }
+
+    pub(crate) fn opening(&self) -> bool {
+        self.opening
     }
 
     pub(crate) fn sync(&self) -> Progress {
@@ -244,8 +255,15 @@ impl StateOnboarding {
     /// Connect a bank — the button on the bank screen, Try again on the
     /// failure, and Add another bank on the last screen. One event, because it
     /// is one thing: the next tap opens Plaid.
+    /// Connect a bank, Try again, and Add another bank all land here.
+    ///
+    /// `opening` is what the button reads while the server creates a Link
+    /// session and iOS raises the sheet — around a second between the two, and
+    /// a button that looked untapped for a second is a button people tap
+    /// twice.
     pub(crate) fn connect_bank(&mut self) {
         self.step = Step::Bank;
+        self.opening = true;
         self.sync = Progress::default();
     }
 
@@ -267,6 +285,7 @@ impl StateOnboarding {
     /// [`EventSource::BankLinked`](crate::EventSource) — so the screen opens
     /// on the fallback and [`Self::bank_named`] fills it in.
     pub(crate) fn bank_linked(&mut self) {
+        self.opening = false;
         self.bank = None;
         self.sync = Progress::default();
         self.step = Step::Sync;
@@ -278,6 +297,7 @@ impl StateOnboarding {
     }
 
     pub(crate) fn bank_abandoned(&mut self) {
+        self.opening = false;
         self.step = Step::Failed;
     }
 

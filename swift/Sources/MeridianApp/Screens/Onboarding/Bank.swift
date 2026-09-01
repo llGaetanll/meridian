@@ -19,6 +19,7 @@ struct BankScreen: View {
     let runs: [ViewRun]
     let rows: [ViewIconRow]
     let action: String
+    let opening: Bool
     let legal: String
 
     @EnvironmentObject private var runtime: RuntimeApp
@@ -34,12 +35,7 @@ struct BankScreen: View {
 
             OnbFill()
 
-            Button {
-                runtime.ui(.bankConnectRequested)
-            } label: {
-                IconLabel(icon: "bank", text: action)
-            }
-            .buttonStyle(.primaryBlock)
+            OpenBankButton(icon: "bank", text: action, opening: opening)
 
             OnbLegal(text: legal)
         }
@@ -58,6 +54,7 @@ struct FailedScreen: View {
     let runs: [ViewRun]
     let rows: [ViewIconRow]
     let action: String
+    let opening: Bool
 
     @EnvironmentObject private var runtime: RuntimeApp
 
@@ -83,12 +80,43 @@ struct FailedScreen: View {
             // The icon is honest about where the tap goes: Plaid's page is over
             // the web, so trying again leaves the app the same way it did the
             // first time.
-            Button {
-                runtime.ui(.bankConnectRequested)
-            } label: {
-                IconLabel(icon: "ext", text: action)
-            }
-            .buttonStyle(.primaryBlock)
+            OpenBankButton(icon: "ext", text: action, opening: opening)
         }
+    }
+}
+
+/// The button that opens Plaid, on both screens that have one.
+///
+/// A second or so passes between the tap and the sheet: the server has to
+/// create a Link session, then iOS has to raise a web view over the app.
+/// Nothing moved on screen during it, which reads as a button that missed the
+/// tap — so it says what it is doing, and stops taking taps while it does.
+///
+/// `opening` is the machine's, not this view's. Whether a bank sign-in is in
+/// flight is a fact about the flow, and the flow is where the screens are
+/// decided.
+private struct OpenBankButton: View {
+    let icon: String
+    let text: String
+    let opening: Bool
+
+    @EnvironmentObject private var runtime: RuntimeApp
+
+    var body: some View {
+        Button {
+            runtime.ui(.bankConnectRequested)
+        } label: {
+            if opening {
+                HStack(spacing: 9) {
+                    Spinner(size: 17)
+
+                    Text("Opening Plaid…")
+                }
+            } else {
+                IconLabel(icon: icon, text: text)
+            }
+        }
+        .buttonStyle(.primaryBlock)
+        .disabled(opening)
     }
 }

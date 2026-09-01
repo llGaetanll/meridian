@@ -430,6 +430,37 @@ fn the_sync_says_what_has_landed_so_far() {
     );
 }
 
+/// The button says what it is doing while Plaid's page is being opened.
+///
+/// Around a second passes between the tap and the sheet — the server creates a
+/// Link session, then iOS raises a web view over the app — and nothing moved
+/// on screen during it, which reads as a button that missed the tap. It is the
+/// flow's state and not the view's, because what a screen says is a decision.
+///
+/// It clears on either ending, so Try again is a live button rather than one
+/// still claiming to be opening something that closed.
+#[test]
+fn the_button_says_it_is_opening_plaid() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
+            view: ViewOnboarding::Bank { opening: true, .. } }, .. } },
+
+        < Event::FromSource { event: EventSource::BankAbandoned },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
+            view: ViewOnboarding::Failed { opening: false, .. } }, .. } },
+
+        // And again from the failed screen, which opens the very same page.
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
+            view: ViewOnboarding::Bank { opening: true, .. } }, .. } },
+    );
+}
+
 /// The sync screen opens before anyone knows what the bank is called.
 ///
 /// Nothing has the name at the moment a bank is attached — it is in neither
