@@ -102,6 +102,13 @@ program — follows all of them.
    decides which ticks are worth drawing for — today only that screen's — so
    the runtime sends them unconditionally and holds no rule of its own.
 
+   **The clock is the device's, and only the device's.** A snapshot carries the
+   timestamps *of* things — when a sync landed, when a stream is next due — and
+   never a reading of its own. The phone has a clock, it is right, and a phone
+   that had to be told the time would draw nothing until the first fetch
+   answered and would stop moving between fetches. `synced_at` on a connection
+   is data; `now` was a second clock, and there is one clock.
+
    **Randomness arrives the same way, as a seed.** `server-main` takes 32 bytes
    of OS entropy on `EventProcess::Seeded` and draws sign-in codes and session
    tokens from a ChaCha20 generator seeded with it. So generation is a decision
@@ -275,9 +282,9 @@ stating here, because they are what the design actually buys:
 - **The whole screen crosses, not a diff.** `UiAction::Render` carries the
   finished screen, so the view is a pure function of the last action it saw and
   holds no state to apply a diff against.
-- **The clock is an event field.** Nothing in a machine reads one, so `"in 3
-  days"` is a function of two timestamps and a replay lands where it did the
-  first time.
+- **The clock is an event.** Nothing in a machine reads one, so `"in 3 days"`
+  is a function of two timestamps — the tick that last arrived and the date on
+  the thing — and a replay lands where it did the first time.
 
 ### Where Leptos fits
 

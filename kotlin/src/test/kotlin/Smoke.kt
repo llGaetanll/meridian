@@ -42,7 +42,6 @@ fun main() {
     // write theirs: the fewest records that exercise the shapes crossing FFI.
     val snapshot = """
         {
-            "now": 1787097600,
             "entries": [
                 {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
                 {"id":"b","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}

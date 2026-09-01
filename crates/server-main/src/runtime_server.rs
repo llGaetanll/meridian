@@ -1031,8 +1031,6 @@ impl RuntimeServer {
     /// be a projection of it, which was only ever right because there was one
     /// user — and a second would have been served the first one's transactions.
     pub(crate) async fn project_snapshot(&self, user_id: Uuid) -> WireSnapshot {
-        let now = unix_now();
-
         let entries = src_postgres::load_entries(&self.db, user_id).await;
         let streams = src_postgres::load_streams(&self.db, user_id).await;
         let connections = self.connections_for(user_id).await;
@@ -1048,7 +1046,6 @@ impl RuntimeServer {
             &entries.unwrap_or_default(),
             &connections.unwrap_or_default(),
             &streams.unwrap_or_default(),
-            now,
         )
     }
 
