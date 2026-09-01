@@ -78,34 +78,39 @@ struct Waiting {
 }
 
 /// Where the server is in its own life.
-///
-/// The two things the machine cannot do in every state are minting credentials
-/// and starting work, and each belongs to a state rather than to a flag beside
-/// one: the generator lives in [`Phase::Running`], so having one is the same
-/// fact as being in it, and there is no state in which asking for it can fail.
-#[derive(Debug, Default)]
-enum Phase {
-    /// Up, with no entropy yet.
+#[derive(Debug, Default, PartialEq, Eq)]
+enum State {
+    /// Nothing has happened yet: the process has not said it is up.
     #[default]
+    Stopped,
+
+    /// Up, and without entropy. Nothing that needs a credential can be
+    /// answered.
     Starting,
 
-    /// Seeded, and serving.
-    ///
-    /// The generator is ChaCha20 rather than a fast PRNG: these are
-    /// credentials, and a generator whose state can be recovered from a couple
-    /// of outputs would hand an attacker every code after the ones they saw.
-    /// It is boxed because it is two orders of magnitude larger than the other
-    /// variants.
-    Running { rng: Box<ChaCha20Rng> },
+    /// Up and seeded. Everything the machine does is available.
+    Started,
 
-    /// A signal has arrived. What is outstanding finishes; nothing new starts,
+    /// A signal has arrived. What is outstanding finishes; nothing new starts
     /// and nothing new is minted.
-    Draining,
+    Stopping,
 }
 
 #[derive(Debug, Default)]
 pub struct StateServer {
-    phase: Phase,
+    state: State,
+
+    /// Where sign-in codes and session tokens come from, seeded from the edge
+    /// by [`EventProcess::Seeded`](crate::EventProcess).
+    ///
+    /// ChaCha20 rather than a fast PRNG: these are credentials, and a
+    /// generator whose state can be recovered from a couple of outputs would
+    /// hand an attacker every code after the ones they saw.
+    ///
+    /// `Some` whenever the machine is [`State::Started`] — that is what being
+    /// started means — so the two places that draw from it check the state and
+    /// take the generator out of the option without a second answer to give.
+    rng: Option<ChaCha20Rng>,
 
     /// What Plaid will let us send. The one thing here that genuinely cannot
     /// be read back from the store — it is a fact about this process's last
@@ -212,12 +217,19 @@ impl StateServer {
                 // way into somebody's bank, and there is no fallback that is
                 // better than saying no. A machine on its way out refuses for
                 // the same reason it starts no fetches.
-                let Phase::Running { rng } = &mut self.phase else {
-                    tracing::error!("asked for a sign-in code with no generator to draw it from");
+                if self.state != State::Started {
+                    tracing::error!(
+                        state = ?self.state,
+                        "asked for a sign-in code by a machine that is not started",
+                    );
 
                     self.answer(request_id, ActionRouter::Unavailable, actions);
 
                     return;
+                }
+
+                let Some(rng) = self.rng.as_mut() else {
+                    unreachable!("a started machine has a generator")
                 };
 
                 let code = login_code::generate(rng);
@@ -281,12 +293,19 @@ impl StateServer {
                     return;
                 }
 
-                let Phase::Running { rng } = &mut self.phase else {
-                    tracing::error!("a code was accepted with no generator to draw a token from");
+                if self.state != State::Started {
+                    tracing::error!(
+                        state = ?self.state,
+                        "a code was accepted by a machine that is not started",
+                    );
 
                     self.answer(request_id, ActionRouter::Rejected, actions);
 
                     return;
+                }
+
+                let Some(rng) = self.rng.as_mut() else {
+                    unreachable!("a started machine has a generator")
                 };
 
                 let token = login_code::generate_token(rng);
@@ -533,22 +552,33 @@ impl StateServer {
 
     fn handle_event_process(&mut self, event: &EventProcess, actions: &mut Vec<Action>) {
         match event {
-            // Nothing to do. The store is read per request, for the user who
-            // asked, so there is nothing to pull into memory at boot — which
-            // is what makes a second server process possible.
-            EventProcess::Started => {}
+            // Up. Nothing is pulled into memory at boot: the store is read per
+            // request, for the user who asked, which is what makes a second
+            // server process possible. Entropy is what it is still waiting
+            // for, and the seed behind this event is what brings it.
+            EventProcess::Started => {
+                if self.state == State::Stopped {
+                    self.state = State::Starting;
+                }
+            }
 
-            EventProcess::Seeded { seed } => match self.phase {
-                // Reseeding replaces the generator; a seed arriving on the way
-                // out is dropped, because nothing will be drawn from it.
-                Phase::Starting | Phase::Running { .. } => {
-                    self.phase = Phase::Running {
-                        rng: Box::new(ChaCha20Rng::from_seed(*seed)),
-                    };
+            EventProcess::Seeded { seed } => {
+                // A seed on the way out is dropped: nothing will be drawn from
+                // it, and taking it would put a stopping machine back in
+                // service.
+                if self.state == State::Stopping {
+                    return;
                 }
 
-                Phase::Draining => {}
-            },
+                self.rng = Some(ChaCha20Rng::from_seed(*seed));
+
+                // Reseeding is the same event as the first seed, and on a
+                // machine already started it changes nothing but the
+                // generator.
+                if self.state == State::Starting {
+                    self.state = State::Started;
+                }
+            }
 
             EventProcess::Tick { now } => {
                 // Time only ever moves forward. A runtime handing in a stale
@@ -590,11 +620,11 @@ impl StateServer {
             EventTerminal::SigInt | EventTerminal::SigTerm => {
                 // Idempotent: a second ^C while the first is still draining
                 // should not queue a second shutdown.
-                if matches!(self.phase, Phase::Draining) {
+                if self.state == State::Stopping {
                     return;
                 }
 
-                self.phase = Phase::Draining;
+                self.state = State::Stopping;
 
                 actions.push(Action::ToProcess {
                     action: ActionProcess::Shutdown,
@@ -747,7 +777,7 @@ impl StateServer {
     /// the whole reason this lives in a state machine.
     fn should_fetch(&mut self, item: &ItemFacts, force: bool) -> bool {
         // Nothing new starts once we are on the way out.
-        if matches!(self.phase, Phase::Draining) {
+        if self.state == State::Stopping {
             return false;
         }
 
@@ -784,6 +814,6 @@ impl StateServer {
     }
 
     pub fn shutting_down(&self) -> bool {
-        matches!(self.phase, Phase::Draining)
+        self.state == State::Stopping
     }
 }

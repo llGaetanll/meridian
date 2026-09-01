@@ -232,11 +232,11 @@ impl RuntimeServer {
         });
 
         runtime.exchange.push(Event::FromProcess {
-            event: EventProcess::Seeded { seed: fresh_seed() },
+            event: EventProcess::Started,
         });
 
         runtime.exchange.push(Event::FromProcess {
-            event: EventProcess::Started,
+            event: EventProcess::Seeded { seed: fresh_seed() },
         });
 
         // The clock, from the edge, on its own timer. Nothing inside the
