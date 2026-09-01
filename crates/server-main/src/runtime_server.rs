@@ -996,11 +996,12 @@ impl RuntimeServer {
         // waiting for the return below. Nothing is parked on these — they
         // release no route — so they are facts arriving mid-call, and the
         // machine is what decides they are worth keeping.
-        let report = |stage, accounts, transactions, streams| {
+        let report = |stage, institution: Option<&str>, accounts, transactions, streams| {
             self.exchange.push(Event::FromSource {
                 event: EventSource::PlaidProgressed {
                     item_id: item_id.to_string(),
                     stage,
+                    institution: institution.map(str::to_string),
                     accounts,
                     transactions,
                     streams,

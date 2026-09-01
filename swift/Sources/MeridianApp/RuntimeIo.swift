@@ -61,6 +61,78 @@ enum RuntimeIo {
         return json
     }
 
+    /// Open a Link session, and answer with the page that hosts it.
+    ///
+    /// Plaid's own page over the web rather than an SDK, which is what keeps
+    /// the bank sign-in out of this app entirely — nothing platform-specific
+    /// is integrated, and no token of either kind is ever held here
+    /// (`docs/PLAID.md`). Safe to call again if somebody backs out: a session
+    /// nobody finishes costs nothing and expires on its own.
+    static func startLink(token: String) async throws -> URL {
+        guard let url = URL(string: "\(server)/link/start") else {
+            throw Failure.unreachable
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, status) = try await send(request)
+
+        guard (200..<300).contains(status) else {
+            throw Failure.answered(status: status)
+        }
+
+        guard
+            let body = try? JSONDecoder().decode(Started.self, from: data),
+            let page = URL(string: body.url)
+        else {
+            throw Failure.emptyBody
+        }
+
+        return page
+    }
+
+    /// Collect whatever the Link session came to, and answer with how many
+    /// banks it attached.
+    ///
+    /// A count rather than a yes: one call collects every session the caller
+    /// has open, so it can attach more than one. Zero is the ordinary outcome
+    /// of somebody closing the sheet.
+    ///
+    /// It does not name them. Nothing knows what a bank is called until the
+    /// balances call inside its first sync answers — `syncStatus` is where
+    /// the name turns up.
+    static func finishLink(token: String) async throws -> UInt32 {
+        guard let url = URL(string: "\(server)/link/finish") else {
+            throw Failure.unreachable
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, status) = try await send(request)
+
+        guard (200..<300).contains(status) else {
+            throw Failure.answered(status: status)
+        }
+
+        guard let body = try? JSONDecoder().decode(Finished.self, from: data) else {
+            throw Failure.emptyBody
+        }
+
+        return body.linked
+    }
+
+    private struct Started: Decodable {
+        let url: String
+    }
+
+    private struct Finished: Decodable {
+        let linked: UInt32
+    }
+
     /// How far the first sync has got, as JSON.
     ///
     /// Handed back as a string rather than parsed, the same as the snapshot:

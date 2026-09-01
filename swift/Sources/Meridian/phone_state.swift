@@ -3666,10 +3666,20 @@ public enum EventSource: Equatable, Hashable {
      */
     case codeRejected
     /**
-     * Plaid came back with a bank attached, and this is what it is called.
+     * Plaid came back with at least one bank attached.
+     *
+     * No name, because at that moment nobody has one: it is in neither the
+     * Link session nor the token exchange, and the server first learns it
+     * from the balances call inside the sync that follows. It arrives a
+     * second or two later on
+     * [`SyncStatusLoaded`](EventSource::SyncStatusLoaded), and the screen
+     * says "Your bank" until it does.
+     *
+     * No count either, though the server sends one: attaching two banks at
+     * once and attaching one lead to the same screen, and a number the flow
+     * does not read is a number that can be wrong without anything noticing.
      */
-    case bankLinked(institution: String
-    )
+    case bankLinked
     /**
      * The bank sign-in ended with nothing — dismissed, failed, timed out.
      * The common ending, not a rare one.
@@ -3725,8 +3735,7 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
         
         case 6: return .codeRejected
         
-        case 7: return .bankLinked(institution: try FfiConverterString.read(from: &buf)
-        )
+        case 7: return .bankLinked
         
         case 8: return .bankAbandoned
         
@@ -3768,10 +3777,9 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(6))
         
         
-        case let .bankLinked(institution):
+        case .bankLinked:
             writeInt(&buf, Int32(7))
-            FfiConverterString.write(institution, into: &buf)
-            
+        
         
         case .bankAbandoned:
             writeInt(&buf, Int32(8))

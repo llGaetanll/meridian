@@ -208,9 +208,16 @@ async fn link_start(
 /// What `POST /link/finish` answers with.
 #[derive(Debug, serde::Serialize)]
 struct LinkFinished {
-    /// Whether a bank is now attached. False is the ordinary outcome of
+    /// How many banks this collection attached.
+    ///
+    /// A count, because one call collects every session the caller has open
+    /// and so can attach more than one. Zero is the ordinary outcome of
     /// somebody closing the sheet, not an error.
-    linked: bool,
+    ///
+    /// It does not name them: nothing knows what a bank is called until the
+    /// balances call inside its first sync answers. `/sync/status` carries the
+    /// name once it does.
+    linked: u32,
 }
 
 /// `POST /link/finish` — collect whatever the Link session came to.
@@ -235,9 +242,12 @@ async fn link_finish(
 
     let answer = runtime.request(EventRouter::LinkClosed { pending }).await;
 
-    Ok(Json(LinkFinished {
-        linked: matches!(answer, Some(ActionRouter::Linked)),
-    }))
+    let count = match answer {
+        Some(ActionRouter::Linked { count }) => count,
+        _ => 0,
+    };
+
+    Ok(Json(LinkFinished { linked: count }))
 }
 
 /// `GET /sync/status` — how far the caller's first sync has got.

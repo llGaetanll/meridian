@@ -55,7 +55,7 @@ pub async fn fetch_all(
     access_token: &str,
     cursor: Option<String>,
     now: api_common::Timestamp,
-    report: impl Fn(SyncStage, u32, u32, u32),
+    report: impl Fn(SyncStage, Option<&str>, u32, u32, u32),
 ) -> Result<Fetched, PlaidError> {
     // Guard rail, not decoration: nothing should be able to reach Production
     // by accident. `client` refuses anything but Sandbox — an error rather
@@ -68,7 +68,10 @@ pub async fn fetch_all(
     // Accounts first, which is both the order the screen draws and the one
     // that reads best: balances is the slowest of the three, so leading with
     // it gives the screen an early row rather than a stall on an empty one.
-    report(SyncStage::Accounts, 0, 0, 0);
+    // Nothing is known yet, the bank's own name included: it is in neither
+    // the Link session nor the exchange, and the call below is where it
+    // first appears.
+    report(SyncStage::Accounts, None, 0, 0, 0);
 
     let balances = src_plaid::fetch_balances(&client, token).await?;
     let connections = vec![project::connection(&balances, now)];
@@ -77,13 +80,15 @@ pub async fn fetch_all(
         .first()
         .map_or(0, |c| c.accounts.len().try_into().unwrap_or(u32::MAX));
 
-    report(SyncStage::Transactions, accounts, 0, 0);
+    let institution = connections.first().map(|c| c.name.as_str());
+
+    report(SyncStage::Transactions, institution, accounts, 0, 0);
 
     let sync = src_plaid::sync_transactions(&client, token, cursor).await?;
 
     let transactions = sync.added.len().try_into().unwrap_or(u32::MAX);
 
-    report(SyncStage::Streams, accounts, transactions, 0);
+    report(SyncStage::Streams, institution, accounts, transactions, 0);
 
     // Recurring is derived from transactions, so a freshly created Item has
     // none yet. That is a thin screen, not a failed sync.

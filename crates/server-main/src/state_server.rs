@@ -218,10 +218,7 @@ impl StateServer {
                     .iter()
                     .filter_map(|item| self.syncing.get(&item.item_id))
                     .min_by_key(|status| stage_index(status.stage()))
-                    .map_or_else(WireSyncStatus::idle, |status| WireSyncStatus {
-                        stage: status.stage.clone(),
-                        ..*status
-                    });
+                    .map_or_else(WireSyncStatus::idle, Clone::clone);
 
                 self.answer(request_id, ActionRouter::SyncStatus { status }, actions);
             }
@@ -231,7 +228,7 @@ impl StateServer {
                 // or collected this one already — either way there is nothing
                 // to go and ask about.
                 if pending.is_empty() {
-                    self.answer(request_id, ActionRouter::NotLinked, actions);
+                    self.answer(request_id, ActionRouter::Linked { count: 0 }, actions);
 
                     return;
                 }
@@ -422,6 +419,7 @@ impl StateServer {
                 self.syncing.insert(
                     item_id.clone(),
                     WireSyncStatus::done(
+                        connection.as_ref().map(|c| c.name.clone()),
                         connection
                             .as_ref()
                             .map_or(0, |c| c.accounts.len().try_into().unwrap_or(u32::MAX)),
@@ -526,7 +524,7 @@ impl StateServer {
                     });
                 }
 
-                self.answer(request_id, ActionRouter::NotLinked, actions);
+                self.answer(request_id, ActionRouter::Linked { count: 0 }, actions);
             }
 
             EventSource::ItemLinked {
@@ -578,7 +576,7 @@ impl StateServer {
                     },
                 });
 
-                self.answer(request_id, ActionRouter::Linked, actions);
+                self.linked_one(request_id, actions);
             }
 
             EventSource::LinkAbandoned {
@@ -596,19 +594,26 @@ impl StateServer {
                     },
                 });
 
-                self.answer(request_id, ActionRouter::NotLinked, actions);
+                self.answer(request_id, ActionRouter::Linked { count: 0 }, actions);
             }
 
             EventSource::PlaidProgressed {
                 item_id,
                 stage,
+                institution,
                 accounts,
                 transactions,
                 streams,
             } => {
                 self.syncing.insert(
                     item_id.clone(),
-                    WireSyncStatus::new(*stage, *accounts, *transactions, *streams),
+                    WireSyncStatus::new(
+                        *stage,
+                        institution.clone(),
+                        *accounts,
+                        *transactions,
+                        *streams,
+                    ),
                 );
             }
 
@@ -766,6 +771,26 @@ impl StateServer {
     }
 
     /// Whether this route started anything that has not come back.
+    /// One more bank attached on this request.
+    ///
+    /// Counted rather than set, because one `/link/finish` collects every
+    /// session the caller has open and can attach two. Each arrives as its
+    /// own `ItemLinked`, turns apart, and the route is owed one answer — so
+    /// the count is carried on the answer being held rather than in a tally
+    /// beside it that could be left behind when the request goes.
+    fn linked_one(&mut self, request_id: RequestId, actions: &mut Vec<Action>) {
+        let count = match self.held.get(&request_id) {
+            Some(ActionRouter::Linked { count }) => *count,
+            _ => 0,
+        };
+
+        self.answer(
+            request_id,
+            ActionRouter::Linked { count: count + 1 },
+            actions,
+        );
+    }
+
     fn outstanding(&self, request_id: RequestId) -> bool {
         self.waiting
             .values()

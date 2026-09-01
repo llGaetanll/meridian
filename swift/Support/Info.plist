@@ -24,6 +24,25 @@
     </array>
     <key>UILaunchScreen</key>
     <dict/>
+    <!-- The scheme Plaid redirects to when the bank sign-in ends. Registering
+         it is what lets iOS hand that redirect back to the app and close the
+         web sheet; without this the sheet sits there having succeeded.
+
+         It has to match COMPLETION_REDIRECT in crates/server-main's
+         runtime_plaid.rs, which is what the server puts on the link token.
+         The redirect carries no token — its only job is to close the sheet —
+         so nothing reads the URL, only the fact that it arrived. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.meridian.phone.link</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>meridian</string>
+            </array>
+        </dict>
+    </array>
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>

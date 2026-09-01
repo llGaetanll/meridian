@@ -273,12 +273,22 @@ impl WireStream {
 /// The counts and the stage are separate facts. The transactions row reads
 /// `48 so far` while that stage is still going, so a count is not a claim
 /// that its stage has finished.
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct WireSyncStatus {
     /// The stage's name, e.g. `"transactions"`. A name rather than an index,
     /// for the same reason a category is one: inserting a stage must not
     /// silently rename the others.
     pub stage: String,
+
+    /// What the bank is called, once anyone knows.
+    ///
+    /// Absent until the balances call inside the first sync answers, which is
+    /// the first moment the name exists anywhere — it is not in the Link
+    /// session and not in the exchange. A screen watching a sync therefore
+    /// opens without it and fills it in a second or two later, which is
+    /// better than holding the sheet open for a string.
+    #[serde(default)]
+    pub institution: Option<String>,
 
     #[serde(default)]
     pub accounts: u32,
@@ -308,9 +318,16 @@ impl WireSyncStatus {
         }
     }
 
-    pub fn new(stage: SyncStage, accounts: u32, transactions: u32, streams: u32) -> Self {
+    pub fn new(
+        stage: SyncStage,
+        institution: Option<String>,
+        accounts: u32,
+        transactions: u32,
+        streams: u32,
+    ) -> Self {
         Self {
             stage: stage_name(stage).to_string(),
+            institution,
             accounts,
             transactions,
             streams,
@@ -325,9 +342,15 @@ impl WireSyncStatus {
     /// sync added, which on a later one is "12 new" and not the total the
     /// store holds. The screen that reports a first run is asking about the
     /// sync, not about the ledger.
-    pub fn done(accounts: u32, transactions: u32, streams: u32) -> Self {
+    pub fn done(
+        institution: Option<String>,
+        accounts: u32,
+        transactions: u32,
+        streams: u32,
+    ) -> Self {
         Self {
             stage: stage_name(SyncStage::Streams).to_string(),
+            institution,
             accounts,
             transactions,
             streams,
