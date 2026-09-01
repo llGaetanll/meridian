@@ -92,16 +92,6 @@ struct CodeScreen: View {
 
     @EnvironmentObject private var runtime: RuntimeApp
 
-    /// The countdown is the one thing in the app that changes while nobody is
-    /// touching it. The timer lives here rather than in the runtime so that it
-    /// runs on this screen and on no other — a tick a second behind the Ledger
-    /// would rebuild that list sixty times a minute for nothing.
-    ///
-    /// `@State` rather than a plain `let`, because the core rebuilds this view
-    /// on every event: a new publisher each time would be a new subscription
-    /// each time, and the second would start again from zero every keystroke.
-    @State private var second = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
     var body: some View {
         OnbColumn(back: { runtime.ui(.backPressed) }) {
             OnbStep(text: step)
@@ -138,6 +128,5 @@ struct CodeScreen: View {
 
             OnbFill()
         }
-        .onReceive(second) { _ in runtime.ui(.ticked) }
     }
 }

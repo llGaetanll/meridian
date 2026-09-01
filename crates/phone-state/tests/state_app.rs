@@ -11,33 +11,36 @@
 //! field but `now` defaults, so `{"now": …}` is a whole snapshot, and a screen
 //! whose claim needs no records asks for none.
 
-use api_common::Timestamp;
 use api_eval::eval;
 use phone_state::*;
 
 /// 2026-08-19 00:00 UTC — a Wednesday, and the day the sketch is drawn
 /// against, so "in 3 days" and the rest line up with what it shows. The
 /// snapshots below carry the same instant as their `now`.
-const NOW: Timestamp = Timestamp::from_secs(1_787_097_600);
+const NOW: u64 = 1_787_097_600;
 
-/// A machine past first run, with its clock set — where every test here
+/// A machine past first run, told what time it is — where every test here
 /// starts.
 ///
-/// The app assumes a device it has never run on, so saying who is signed in is
-/// what puts it on the Ledger. What that answer draws is
-/// `a_session_opens_the_app_on_its_data`'s claim rather than every test's, so
-/// the actions go nowhere here. `tests/state_onboarding.rs` is the file that
-/// does not sign in.
+/// Two facts from the edge, neither of them this file's claim. The clock
+/// arrives as a tick, which is the only way it ever arrives; saying who is
+/// signed in is what puts the app on the Ledger, and what that draws is
+/// `a_session_opens_the_app_on_its_data`'s claim. `tests/state_onboarding.rs`
+/// is the file that does not sign in.
 fn app() -> StateApp {
     let mut state = StateApp::new();
-    state.set_now(NOW);
 
     state.handle_events(
-        &[Event::FromSource {
-            event: EventSource::SessionLoaded {
-                email: Some("al@example.com".to_string()),
+        &[
+            Event::FromRuntime {
+                event: EventRuntime::Tick { now: NOW },
             },
-        }],
+            Event::FromSource {
+                event: EventSource::SessionLoaded {
+                    email: Some("al@example.com".to_string()),
+                },
+            },
+        ],
         &mut Vec::new(),
     );
 
@@ -61,9 +64,12 @@ fn rows(ledger: &ViewLedger) -> Vec<&ViewTxRow> {
 #[test]
 fn starting_asks_who_is_signed_in() {
     let mut state = StateApp::new();
-    state.set_now(NOW);
 
     eval!(&mut state,
+        // The clock, before anything else: it is a fact from the edge like
+        // any other, and on a machine this new nothing draws for it.
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW } },
+
         < Event::FromUi { event: EventUi::Started },
         > @r#"ToSource { action: LoadSession }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
@@ -74,9 +80,10 @@ fn starting_asks_who_is_signed_in() {
 #[test]
 fn a_session_opens_the_app_on_its_data() {
     let mut state = StateApp::new();
-    state.set_now(NOW);
 
     eval!(&mut state,
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW } },
+
         < Event::FromSource { event: EventSource::SessionLoaded { email: Some("al@example.com".to_string()) } },
         > @r#"ToSource { action: LoadSnapshot { force: false } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
@@ -1213,8 +1220,7 @@ fn every_ui_event_produces_a_render() {
         < Event::FromUi { event: EventUi::CalendarDaySelected { id: "20687".to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromUi { event: EventUi::Ticked },
-        > Action::ToUi { action: ActionUi::Render { .. } },
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 1 } },
     );
 }
 
@@ -1222,12 +1228,17 @@ fn every_ui_event_produces_a_render() {
 /// otherwise render a confidently wrong "in 3 days".
 #[test]
 fn the_servers_clock_wins_over_the_devices() {
-    let mut state = app();
-
-    // A device that thinks it is a year earlier than the server.
-    state.set_now(NOW.saturating_sub_secs(365 * 86_400));
+    let mut state = StateApp::new();
 
     eval!(&mut state,
+        // A device that thinks it is a year earlier than the server. Every
+        // other test here starts from `app()`, whose tick is the server's own
+        // reading, so this is the one that builds its own machine.
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW - 365 * 86_400 } },
+        < Event::FromSource { event: EventSource::SessionLoaded { email: Some("al@example.com".to_string()) } },
+        > Action::ToSource { action: ActionSource::LoadSnapshot { force: false } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
         < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"now":1787097600,"streams":[
             {"id":"s","label":"Netflix","category":"Entertainment","amount":-15.99,"frequency":"MONTHLY","next_date":1787356800,"is_active":true}]}"#.to_string() } },
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },

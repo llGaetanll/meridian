@@ -239,6 +239,10 @@ means adding, changing or removing its example here.
   thin screen rather than a failed sync.
 - `WARN server_main::runtime_server plaid fetch failed code=ITEM_LOGIN_REQUIRED error="Plaid error ITEM_LOGIN_REQUIRED: …"`
   — the connection needs the user to sign in again, and no retry will fix it.
+- `DEBUG phone_main::runtime_app turn events=[FromUi { event: MaskToggled }] actions=[ToUi { action: Render { .. } }]`
+  — one per turn of the loop, both vectors paired, the same shape the server
+  logs. The exception is a tick that decided nothing: time arrives once a
+  second whatever is on screen, and a line each would bury everything else.
 - `INFO phone_main::runtime_app snapshot asked for force=false`
   — the phone asking the server for everything. `force=true` is pull-to-refresh.
 - `WARN phone_main::runtime_app load failed message="could not reach the server at http://127.0.0.1:8082 — is `cargo run -p server-main` running?"`

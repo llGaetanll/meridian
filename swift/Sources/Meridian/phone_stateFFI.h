@@ -261,7 +261,7 @@ uint64_t uniffi_phone_state_fn_constructor_core_new(RustCallStatus *_Nonnull out
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_PHONE_STATE_FN_METHOD_CORE_HANDLE_EVENTS
 #define UNIFFI_FFIDEF_UNIFFI_PHONE_STATE_FN_METHOD_CORE_HANDLE_EVENTS
-RustBuffer uniffi_phone_state_fn_method_core_handle_events(uint64_t ptr, uint64_t now, RustBuffer events, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_phone_state_fn_method_core_handle_events(uint64_t ptr, RustBuffer events, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_PHONE_STATE_RUSTBUFFER_ALLOC

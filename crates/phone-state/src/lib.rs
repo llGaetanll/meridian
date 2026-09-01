@@ -13,6 +13,7 @@ mod action;
 mod action_source;
 mod action_ui;
 mod event;
+mod event_runtime;
 mod event_source;
 mod event_ui;
 mod fmt;
@@ -36,6 +37,7 @@ pub use action::Action;
 pub use action_source::ActionSource;
 pub use action_ui::ActionUi;
 pub use event::Event;
+pub use event_runtime::EventRuntime;
 pub use event_source::EventSource;
 pub use event_source::SyncStage;
 pub use event_ui::EventUi;
@@ -80,8 +82,6 @@ pub use view_tx_row::ViewTxRow;
 
 use std::sync::Mutex;
 
-use api_common::Timestamp;
-
 uniffi::setup_scaffolding!();
 
 /// The state machine, as the platforms see it.
@@ -105,14 +105,15 @@ impl Core {
 
     /// Hand in what happened, get back what to do about it.
     ///
-    /// `now` is the platform's clock, read at the edge and passed in — the
-    /// machine has none of its own.
+    /// No clock: the machine has none of its own and is not given one here
+    /// either. The runtime reads the platform's clock and sends it in as an
+    /// [`EventRuntime::Tick`] like anything else it observed.
     ///
     /// The owning counterpart to [`StateApp::handle_events`]: a `&mut Vec` does
     /// not cross FFI, so the buffer is allocated here instead of reused. The
     /// borrowing version stays for replay and tests, where the allocation is
     /// worth avoiding.
-    pub fn handle_events(&self, now: u64, events: Vec<Event>) -> Vec<Action> {
+    pub fn handle_events(&self, events: Vec<Event>) -> Vec<Action> {
         let mut actions = Vec::new();
 
         // A poisoned mutex means another thread panicked while holding it.
@@ -132,7 +133,7 @@ impl Core {
             }
         };
 
-        state.handle_events_at(Timestamp::from_secs(now), &events, &mut actions);
+        state.handle_events(&events, &mut actions);
 
         actions
     }
