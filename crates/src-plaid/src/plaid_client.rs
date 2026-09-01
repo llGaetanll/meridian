@@ -136,7 +136,7 @@ impl PlaidClient {
         // reformat it and nothing more, so far. See `ApiCall::post` for why
         // that is worth what it costs, and `docs/LOGGING.md` for what has to
         // change before Production.
-        let call = ApiCall::post(SOURCE, &url, &body.to_string());
+        let call = ApiCall::post(module_path!(), SOURCE, &url, &body.to_string());
 
         let response = match self.client.post(url).json(&body).send().await {
             Ok(response) => response,

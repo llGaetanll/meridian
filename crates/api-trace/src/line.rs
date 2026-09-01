@@ -22,15 +22,38 @@ const MAX_VALUE: usize = 400;
 ///
 /// Fields are kept apart until [`Line::render`] so that a name can be dimmed
 /// and its value left bright, which is the whole point of colouring a log.
+///
+/// Two field names are not fields. `message` is the message, and `module` is
+/// the module the line came from, printed in the target column — see
+/// [`Line::module`].
 #[derive(Clone, Default)]
 pub struct Line {
     message: String,
+    module: Option<String>,
     fields: Vec<(String, String)>,
 }
 
 impl Line {
     pub fn is_empty(&self) -> bool {
         self.message.is_empty() && self.fields.is_empty()
+    }
+
+    /// Where the line says it came from, if it said.
+    ///
+    /// `tracing` fixes an event's target at the callsite, baked into a static
+    /// that has to be a constant, so a helper that logs on somebody else's
+    /// behalf can only ever report *itself*. Every `->`/`<-` pair is logged
+    /// inside [`crate::ApiCall`] and [`crate::Served`], which would make the
+    /// whole of the network half of this log read `api_trace::call`.
+    ///
+    /// So the caller passes its own `module_path!()` in as a field and the
+    /// renderer prints that in the target column instead. Underneath, the
+    /// event keeps the target `tracing` gave it — `api_trace::call`, which is
+    /// where it really happened, and what a level filter still sees. The
+    /// reader is shown the other one, because the module a reader wants is the
+    /// one to go and look in.
+    pub fn module(&self) -> Option<&str> {
+        self.module.as_deref()
     }
 
     /// The message, then every `key=value`, separated by single spaces.
@@ -58,6 +81,11 @@ impl Line {
     fn push(&mut self, name: &str, value: &str) {
         if name == "message" {
             self.message = escape(value);
+            return;
+        }
+
+        if name == "module" {
+            self.module = Some(escape(value));
             return;
         }
 
@@ -141,6 +169,16 @@ mod tests {
     #[test]
     fn keeps_multiline_values_on_one_line() {
         assert_eq!(escape("a\nb"), "a\\nb");
+    }
+
+    #[test]
+    fn a_module_is_taken_off_the_fields() {
+        let mut line = Line::default();
+        line.push("module", "src_plaid::plaid_client");
+        line.push("id", "1");
+
+        assert_eq!(line.module(), Some("src_plaid::plaid_client"));
+        assert_eq!(line.render(Paint::Off), "id=1");
     }
 
     #[test]

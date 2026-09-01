@@ -91,7 +91,7 @@ impl ResendClient {
 
         // The key is a header rather than part of the body, so unlike Plaid
         // the logged body carries no credential.
-        let call = ApiCall::post(SOURCE, &url, &body);
+        let call = ApiCall::post(module_path!(), SOURCE, &url, &body);
 
         let response = match self
             .client

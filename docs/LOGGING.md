@@ -15,8 +15,9 @@ first thing in `main`, before anything worth logging happens.
   same words for the same event, so a log can be scanned down the left and
   grepped for. Nothing is logged that the reader could work out from the line
   above.
-- **Every call to an external API is logged**, request and response both. A bug
-  we cannot reproduce has to be fixed from the log alone.
+- **Every call crossing the network is logged**, both halves of it. The ones
+  we make out to Plaid and the price feeds, and the ones a phone makes of us.
+  A bug we cannot reproduce has to be fixed from the log alone.
 - **A POST body is logged exactly as it is sent** — see the warning below.
 - **Data served from the cache is logged too**, marked as cached. A log showing
   only the requests that went out would leave most of a session unaccounted
@@ -25,7 +26,7 @@ first thing in `main`, before anything worth logging happens.
 ## The shape of a line
 
 ```
-2026-08-07T18:42:03.401Z 6e917a6 INFO  api quote{symbol=SPY range=1D} -> id=1 source=yahoo method=GET url=…
+2026-08-07T18:42:03.401Z 6e917a6 INFO  src_yahoo::yahoo_client quote{symbol=SPY range=1D} -> id=1 source=yahoo method=GET url=…
 ```
 
 Timestamp (UTC), the commit the build came from, level, target, the spans the
@@ -41,14 +42,53 @@ tree has changes the commit does not account for.
 
 A line's target is the module it came from — `server_main::runtime_server`,
 `web_main::io::markets` — unless it names one of the few that cut across
-modules: `api` for anything crossing the network, `cache` for what the store
-decides, `panic` and `trace` for logging's own problems. Do not invent others;
-a module name is what tells you where to go and look.
+modules: `cache` for what the store decides, `panic` and `trace` for logging's
+own problems. Do not invent others; a module name is what tells you where to go
+and look.
+
+`->` and `<-` lines are logged on a caller's behalf, inside `ApiCall` and
+`Served`, so `tracing` reports them all as `api_trace::call` — it fixes a
+target at the callsite, and the callsite is the helper. The caller passes its
+own `module_path!()` in as a field instead and that is what prints, which is
+why a Plaid request says `src_plaid::plaid_client` like everything else in the
+file. The `api_trace` target underneath is left alone rather than replaced with
+a made-up one: only a level filter sees it, and it is at least true.
 
 Requests and responses come in pairs sharing an `id`, so they can be matched up
-when several are in flight. `->` and `<-` mean only that: what left and what
-came back. What we then make of a response — whether it parses, whether it
-holds what we wanted — happened afterwards and gets its own line.
+when several are in flight. `->` and `<-` mean only which way the traffic went:
+`->` left this process, `<-` arrived at it. What we then make of a response —
+whether it parses, whether it holds what we wanted — happened afterwards and
+gets its own line.
+
+So a call we make reads `->` then `<-` and names the far end with `source=`; a
+call a client makes of us reads `<-` then `->` and names it with `client=`. The
+first arrow and the field together say which kind of conversation a pair is,
+and one counter mints both, so an `id` belongs to exactly one of them.
+
+## The requests clients make of us
+
+The server logs every request it is asked and every answer it gives, in
+`server_main::router_trace` — a layer rather than a line in each handler,
+because a handler that forgets is the gap this closes, and because a 401, a 404
+and a body that would not deserialize are all answered before any handler runs.
+The preflight `OPTIONS` a browser sends is not logged: the layer sits inside
+CORS, which answers those, and a line each would double the traffic in the log
+without saying anything about it.
+
+**Neither line carries a body**, which is the one place this half departs from
+the other. A request body here is at most an address and a sign-in code, both
+already logged by name where something is decided about them. A response body
+is somebody's ledger, and the first 400 characters of it is enough to be
+personal data and not enough to debug from — the server's own lines already say
+what it decided to serve. `bytes` is what is worth knowing about an answer: a
+snapshot that left as 300 bytes rather than 300 kilobytes is the bug.
+
+The phone logs its own half of the same conversation, `source=meridian`, and
+that one does carry the body: it is the string the machine is about to parse,
+and whether an error page or a snapshot arrived is the question. Two logs on
+two machines, so each has to stand on its own — and only the web build keeps
+one at all. **The Swift and Kotlin clients do their HTTP in platform code and
+write nothing here**, which is most of why the server end of this matters.
 
 ## A log file is currently a credential
 
@@ -153,6 +193,17 @@ means adding, changing or removing its example here.
   starts with credentials or it does not start. Only ever Sandbox; see
   [PLAID.md](PLAID.md).
 - `INFO server_main::runtime_server server listening port=8082`
+- `INFO server_main::router_trace <- id=7 client=192.168.1.24:53112 method=GET url="/snapshot?refresh=true"`
+- `INFO server_main::router_trace -> id=7 client=192.168.1.24:53112 status=200 ms=41 bytes=91233`
+  — a client's request and the answer it got, one pair per request the server
+  is asked. `client` is whoever the socket says, which is what tells the web
+  front-end on loopback apart from a phone on the LAN. No bodies; see
+  [The requests clients make of us](#the-requests-clients-make-of-us).
+- `DEBUG server_main::router_trace answered nothing id=7 client=192.168.1.24:53112 ms=12`
+  — nothing went back: the client hung up mid-request, which is what closing
+  the app during a refresh looks like from here. `DEBUG` because it is
+  ordinary, logged at all because a request line with nothing under it reads
+  like a hang.
 - `INFO web_main::io::markets quote{symbol=SPY range=1D} quote asked for`
 - `INFO src_plaid link session opened update=false hosted=true expires=2026-08-29T01:57:48Z`
 - `DEBUG src_plaid link session polled sessions=1 finished=true tokens=1`
@@ -169,13 +220,13 @@ means adding, changing or removing its example here.
 - `INFO src_plaid::plaid_client plaid client env=sandbox base_url=https://sandbox.plaid.com/`
   — which environment a session ran against, logged once when the client is
   built. See [PLAID.md](PLAID.md).
-- `INFO api -> id=1 source=plaid method=POST url=https://sandbox.plaid.com/transactions/sync body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"cursor\":\"CAESJTM3…\",\"secret\":\"xxxx\"}"`
+- `INFO src_plaid::plaid_client -> id=1 source=plaid method=POST url=https://sandbox.plaid.com/transactions/sync body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"cursor\":\"CAESJTM3…\",\"secret\":\"xxxx\"}"`
   — the body as sent, credentials included. See the warning above.
-- `INFO api <- id=1 source=plaid status=200 ms=284 body="{\"added\":[{\"account_id\":\"6Pd…"`
+- `INFO src_plaid::plaid_client <- id=1 source=plaid status=200 ms=284 body="{\"added\":[{\"account_id\":\"6Pd…"`
   — Plaid pretty-prints, and this is the same body with the whitespace taken
   back out. See [Rules a body passes through](#rules-a-body-passes-through).
-- `INFO api -> id=2 source=plaid method=POST url=https://sandbox.plaid.com/accounts/balance/get body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}"`
-- `INFO api -> id=3 source=plaid method=POST url=https://sandbox.plaid.com/transactions/recurring/get body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}"`
+- `INFO src_plaid::plaid_client -> id=2 source=plaid method=POST url=https://sandbox.plaid.com/accounts/balance/get body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}"`
+- `INFO src_plaid::plaid_client -> id=3 source=plaid method=POST url=https://sandbox.plaid.com/transactions/recurring/get body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}"`
   — a GET carries no `body` field at all, rather than an empty one. Yahoo and
   CoinGecko lines below are the same shape as before.
 - `INFO src_plaid transactions synced added=18 modified=0 removed=1`
@@ -243,23 +294,28 @@ means adding, changing or removing its example here.
   — one per turn of the loop, both vectors paired, the same shape the server
   logs. The exception is a tick that decided nothing: time arrives once a
   second whatever is on screen, and a line each would bury everything else.
-- `INFO phone_main::runtime_app snapshot asked for force=false`
-  — the phone asking the server for everything. `force=true` is pull-to-refresh.
+- `INFO phone_main::runtime_io -> id=2 source=meridian method=GET url="http://127.0.0.1:8082/snapshot?refresh=true"`
+- `INFO phone_main::runtime_io <- id=2 source=meridian status=200 ms=44 body="{\"accounts\":[{\"id\":\"6Pd…"`
+  — the phone asking the server for everything, and the body it is about to
+  hand the machine to parse. `?refresh=true` is pull-to-refresh, which is why
+  there is no longer a separate `snapshot asked for` line: it said what this
+  one already says. Only the web build writes these — the Swift and Kotlin
+  clients do their HTTP in platform code.
 - `WARN phone_main::runtime_app load failed message="could not reach the server at http://127.0.0.1:8082 — is `cargo run -p server-main` running?"`
 - `WARN phone_main::runtime_app first run is not drawn on the web action=StartBankLink`
   — first run is a phone flow for now, and the web answers `LoadSession` as
   already signed in so that it is never walked. A line here means that answer
   changed and the web reached a road it cannot draw.
-- `INFO api quote{symbol=SPY range=1D} -> id=2 source=yahoo method=GET url="/v8/finance/chart/SPY?period1=1785542400&period2=1785628800&interval=1m"`
-- `INFO api quote{symbol=SPY range=1D} <- id=2 source=yahoo status=200 ms=412 body="{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"USD\",\"symbol\":\"SPY\"…"`
+- `INFO src_yahoo::yahoo_client quote{symbol=SPY range=1D} -> id=2 source=yahoo method=GET url="/v8/finance/chart/SPY?period1=1785542400&period2=1785628800&interval=1m"`
+- `INFO src_yahoo::yahoo_client quote{symbol=SPY range=1D} <- id=2 source=yahoo status=200 ms=412 body="{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"USD\",\"symbol\":\"SPY\"…"`
   — the body as it arrived, cut at 400 characters.
 - `INFO cache quote{symbol=SPY range=1D} served symbol=SPY interval=Min1 window=1785542400..1785628800 bars=930 cached=false`
 - `INFO cache quote{symbol=BTC-USD range=1D} source substituted an interval symbol=BTC-USD asked=Min1 served=Hour1`
-- `WARN api quote{symbol=SPY range=1D} request failed id=3 source=yahoo ms=30012 error="Network error: operation timed out"`
+- `WARN src_yahoo::yahoo_client quote{symbol=SPY range=1D} request failed id=3 source=yahoo ms=30012 error="Network error: operation timed out"`
   — nothing came back, so there is no response line.
-- `ERROR api quote{symbol=SPY range=1D} [parse error id=4] source=yahoo error="missing field \`chart\`"`
+- `ERROR src_yahoo::yahoo_client quote{symbol=SPY range=1D} [parse error id=4] source=yahoo error="missing field \`chart\`"`
   — the body is already on the `<-` line for the same `id`.
-- `DEBUG api quote{symbol=SPY range=1W} request cancelled id=5 source=yahoo ms=12`
+- `DEBUG src_yahoo::yahoo_client quote{symbol=SPY range=1W} request cancelled id=5 source=yahoo ms=12`
   — the request was dropped before an answer, which is what switching range
   mid-fetch looks like from here.
 - `DEBUG server_main::runtime_server turn events=[FromRouter { request_id: 3, event: SnapshotRequested { .. } }] actions=[ToSource { action: FetchPlaid { call_id: 1, .. } }]`

@@ -322,7 +322,13 @@ impl RuntimeServer {
 
         let signals = Arc::clone(&runtime);
 
-        axum::serve(listener, router)
+        // With connection info, so every line about a request can say which
+        // client made it. A dev server is talked to by the web front-end on
+        // loopback and a phone on the LAN at the same time, and untangling
+        // their requests is most of what the log is for.
+        let service = router.into_make_service_with_connect_info::<std::net::SocketAddr>();
+
+        axum::serve(listener, service)
             .with_graceful_shutdown(async move { signals.await_shutdown().await })
             .await?;
 

@@ -1,8 +1,13 @@
-//! Logging one call to an external API.
+//! Logging one call we make to somebody else's API.
+//!
+//! These events keep the target `tracing` gives them, which is this module.
+//! What prints in the target column is the caller's `module_path!()` instead —
+//! see [`crate::line::Line::module`] for why it has to be passed in.
 //!
 //! `->` is a request leaving, `<-` is a response arriving, and that is all the
 //! arrows mean. They carry the same `id`, so a response can be tied to its
-//! request even when several are in flight.
+//! request even when several are in flight. A call somebody makes of *us* is
+//! the same pair the other way round — [`crate::Served`].
 //!
 //! The two lines record what crossed the network and nothing else. What we
 //! then make of a response — whether it parses, whether it holds what we
@@ -25,15 +30,21 @@ use crate::Source;
 use crate::scrub::Context;
 use crate::scrub::Direction;
 
-/// Everything about talking to the outside world logs under this target, so
-/// `target=api` alone gives the full story of what we asked for and got back.
-pub const TARGET: &str = "api";
-
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+/// The next id for a pair of lines. Shared with [`crate::Served`], so one
+/// counter covers every conversation the process is in and an id in a log
+/// belongs to exactly one of them.
+pub(crate) fn next_id() -> u64 {
+    NEXT_ID.fetch_add(1, Ordering::Relaxed)
+}
 
 #[must_use = "an ApiCall must be given an outcome"]
 pub struct ApiCall {
     id: u64,
+    /// The caller's `module_path!()`, printed where a target would be. Carried
+    /// rather than read off the callsite because the callsite is in here.
+    module: &'static str,
     source: Source,
     /// Kept for the response's rules, which are told the endpoint the body
     /// came back from. The call already knows it, so asking for it again at
@@ -46,10 +57,13 @@ pub struct ApiCall {
 impl ApiCall {
     /// Log an outgoing request and start its clock.
     ///
-    /// `source` names the API ("yahoo", "coingecko") and `url` is the request
-    /// as sent, query string and all, so it can be replayed from the log.
-    pub fn get(source: Source, url: impl Display) -> Self {
-        Self::new(source, "GET", url, None)
+    /// `module` is the caller's own `module_path!()`, which is what the line
+    /// is printed under: `tracing` fixes a target at the callsite and the
+    /// callsite is in here, so it has to be passed in. `source` names the API
+    /// ("yahoo", "coingecko") and `url` is the request as sent, query string
+    /// and all, so it can be replayed from the log.
+    pub fn get(module: &'static str, source: Source, url: impl Display) -> Self {
+        Self::new(module, source, "GET", url, None)
     }
 
     /// The same, for an API that only answers POSTs, and the body it carries.
@@ -66,12 +80,18 @@ impl ApiCall {
     /// rides in every body, and it is account-wide rather than per-user.
     /// `docs/LOGGING.md` says so, and says what has to change before anything
     /// runs against Production.
-    pub fn post(source: Source, url: impl Display, body: &str) -> Self {
-        Self::new(source, "POST", url, Some(body))
+    pub fn post(module: &'static str, source: Source, url: impl Display, body: &str) -> Self {
+        Self::new(module, source, "POST", url, Some(body))
     }
 
-    fn new(source: Source, method: &'static str, url: impl Display, body: Option<&str>) -> Self {
-        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+    fn new(
+        module: &'static str,
+        source: Source,
+        method: &'static str,
+        url: impl Display,
+        body: Option<&str>,
+    ) -> Self {
+        let id = next_id();
 
         // Rendered once: `url` is only `Display`, and the rules are told which
         // endpoint they are looking at.
@@ -93,7 +113,7 @@ impl ApiCall {
         // carrying a `body=""` that reads as a request that sent one.
         match body {
             Some(body) => tracing::info!(
-                target: TARGET,
+                module,
                 id,
                 source = source.name(),
                 method,
@@ -102,7 +122,7 @@ impl ApiCall {
                 "->",
             ),
             None => tracing::info!(
-                target: TARGET,
+                module,
                 id,
                 source = source.name(),
                 method,
@@ -113,6 +133,7 @@ impl ApiCall {
 
         Self {
             id,
+            module,
             source,
             url,
             start: crate::clock::instant(),
@@ -142,7 +163,7 @@ impl ApiCall {
         );
 
         tracing::info!(
-            target: TARGET,
+            module = self.module,
             id = self.id,
             source = self.source.name(),
             status,
@@ -153,6 +174,7 @@ impl ApiCall {
 
         Response {
             id: self.id,
+            module: self.module,
             source: self.source,
         }
     }
@@ -162,7 +184,7 @@ impl ApiCall {
         self.done = true;
 
         tracing::warn!(
-            target: TARGET,
+            module = self.module,
             id = self.id,
             source = self.source.name(),
             ms = crate::clock::millis_since(self.start),
@@ -182,7 +204,7 @@ impl Drop for ApiCall {
         // an error — a range switch abandons the request for the old range —
         // but a request line with no answer would read like a hang.
         tracing::debug!(
-            target: TARGET,
+            module = self.module,
             id = self.id,
             source = self.source.name(),
             ms = crate::clock::millis_since(self.start),
@@ -194,6 +216,7 @@ impl Drop for ApiCall {
 /// A response that arrived and has already been logged.
 pub struct Response {
     id: u64,
+    module: &'static str,
     source: Source,
 }
 
@@ -202,7 +225,7 @@ impl Response {
     /// under the same id, so this line only has to say what went wrong.
     pub fn parse_error(self, error: impl Display) {
         tracing::error!(
-            target: TARGET,
+            module = self.module,
             source = self.source.name(),
             error = %error,
             "[parse error id={}]", self.id,

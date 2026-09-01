@@ -4,19 +4,22 @@
 //!
 //! - **One event is one line.** Logs are read with `grep` and sent to us in a
 //!   chat window; a stack of wrapped lines is neither.
-//! - **Every call to an external API is logged**, request and response both.
-//!   A bug we cannot reproduce is a bug we have to fix from the log alone, and
-//!   we may not get a second run to collect it.
+//! - **Every call crossing the network is logged**, both halves of it. One we
+//!   make ([`ApiCall`]) and one made of us ([`Served`]) are the same pair of
+//!   lines the other way round. A bug we cannot reproduce is a bug we have to
+//!   fix from the log alone, and we may not get a second run to collect it.
 //!
 //! Lines look like this:
 //!
 //! ```text
-//! 2026-08-07T18:42:03.401Z 6e917a6 INFO  api quote{symbol=SPY range=1D} -> id=1 source=yahoo method=GET url=/v8/finance/chart/SPY?range=1d&interval=1m
-//! 2026-08-07T18:42:03.813Z 6e917a6 INFO  api quote{symbol=SPY range=1D} <- id=1 source=yahoo status=200 bytes=91233 ms=412
+//! 2026-08-07T18:42:03.401Z 6e917a6 INFO  src_yahoo::yahoo_client quote{symbol=SPY range=1D} -> id=1 source=yahoo method=GET url=/v8/finance/chart/SPY?range=1d&interval=1m
+//! 2026-08-07T18:42:03.813Z 6e917a6 INFO  src_yahoo::yahoo_client quote{symbol=SPY range=1D} <- id=1 source=yahoo status=200 bytes=91233 ms=412
 //! ```
 //!
 //! `6e917a6` is the commit the build came from, and `quote{…}` is the span the
 //! event happened in, so a response can be read back to the thing the user did.
+//! The module is the caller's, passed in as `module_path!()`, because these two
+//! lines are logged inside this crate and would otherwise both say so.
 //!
 //! Every line this app writes is listed in `docs/LOGGING.md`, and changing one
 //! means changing that list too.
@@ -33,6 +36,7 @@ mod clock;
 mod layer;
 mod line;
 pub mod scrub;
+mod served;
 mod sink;
 mod source;
 mod style;
@@ -46,7 +50,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 pub use call::ApiCall;
-pub use call::TARGET as API;
+pub use served::Served;
 pub use source::Source;
 pub use tracing::Level;
 
