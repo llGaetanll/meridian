@@ -190,8 +190,9 @@ starts from, the screen it reads back afterwards — but not on a `<` line.
 
 Time is not part of the syntax either: it is an event like any other, so a test
 that is *about* time sends one, as above. That is what makes "we waited long
-enough" a test rather than a stopwatch. `phone-state` has not moved yet and
-still sets its clock with `set_now`.
+enough" a test rather than a stopwatch. Both machines work this way —
+`EventProcess::Tick` on the server, `EventRuntime::Tick` on the phone — and
+neither has a way to be told the time other than by being sent it.
 
 **A `>` line may bind and carry a block**, which runs when the action matches:
 

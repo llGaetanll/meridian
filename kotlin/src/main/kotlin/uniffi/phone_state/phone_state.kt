@@ -825,7 +825,6 @@ internal object UniffiLib {
 
     external fun uniffi_phone_state_fn_method_core_handle_events(
         `ptr`: Long,
-        `now`: Long,
         `events`: RustBuffer.ByValue,
         uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -1044,7 +1043,7 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
-    if (lib.uniffi_phone_state_checksum_method_core_handle_events() != 17243) {
+    if (lib.uniffi_phone_state_checksum_method_core_handle_events() != 25690) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_phone_state_checksum_constructor_core_new() != 22848) {
@@ -1488,18 +1487,16 @@ public interface CoreInterface {
     /**
      * Hand in what happened, get back what to do about it.
      *
-     * `now` is the platform's clock, read at the edge and passed in — the
-     * machine has none of its own.
+     * No clock: the machine has none of its own and is not given one here
+     * either. The runtime reads the platform's clock and sends it in as an
+     * [`EventRuntime::Tick`] like anything else it observed.
      *
      * The owning counterpart to [`StateApp::handle_events`]: a `&mut Vec` does
      * not cross FFI, so the buffer is allocated here instead of reused. The
      * borrowing version stays for replay and tests, where the allocation is
      * worth avoiding.
      */
-    fun `handleEvents`(
-        `now`: kotlin.ULong,
-        `events`: List<Event>,
-    ): List<Action>
+    fun `handleEvents`(`events`: List<Event>): List<Action>
 
     companion object
 }
@@ -1625,24 +1622,21 @@ open class Core :
     /**
      * Hand in what happened, get back what to do about it.
      *
-     * `now` is the platform's clock, read at the edge and passed in — the
-     * machine has none of its own.
+     * No clock: the machine has none of its own and is not given one here
+     * either. The runtime reads the platform's clock and sends it in as an
+     * [`EventRuntime::Tick`] like anything else it observed.
      *
      * The owning counterpart to [`StateApp::handle_events`]: a `&mut Vec` does
      * not cross FFI, so the buffer is allocated here instead of reused. The
      * borrowing version stays for replay and tests, where the allocation is
      * worth avoiding.
      */
-    override fun `handleEvents`(
-        `now`: kotlin.ULong,
-        `events`: List<Event>,
-    ): List<Action> =
+    override fun `handleEvents`(`events`: List<Event>): List<Action> =
         FfiConverterSequenceTypeAction.lift(
             callWithHandle {
                 uniffiRustCall { _status ->
                     UniffiLib.uniffi_phone_state_fn_method_core_handle_events(
                         it,
-                        FfiConverterULong.lower(`now`),
                         FfiConverterSequenceTypeEvent.lower(`events`),
                         _status,
                     )
@@ -3584,10 +3578,11 @@ public object FfiConverterTypeActionUi : FfiConverterRustBuffer<ActionUi> {
  * Grouping by origin is what keeps a match on `Event` readable as the app
  * grows, and makes a recorded log read as a story rather than a flat list.
  *
- * Note what this enum does *not* carry: a timestamp. Time is handed to
- * [`StateApp::handle_events`](crate::StateApp::handle_events) once per batch
- * rather than stapled to every event, so no event has to invent a clock
- * reading it does not have.
+ * Note what this enum does *not* carry: a timestamp. Time arrives as its own
+ * event, [`EventRuntime::Tick`](crate::EventRuntime), rather than stapled to
+ * every other one — so no event has to invent a clock reading it does not
+ * have, and a log of events is a recording of the session rather than a list
+ * of things that happened at whatever time the replay runs at.
  */
 sealed class Event {
     data class FromUi(
@@ -3598,6 +3593,12 @@ sealed class Event {
 
     data class FromSource(
         val `event`: uniffi.phone_state.EventSource,
+    ) : Event() {
+        companion object
+    }
+
+    data class FromRuntime(
+        val `event`: uniffi.phone_state.EventRuntime,
     ) : Event() {
         companion object
     }
@@ -3623,6 +3624,12 @@ public object FfiConverterTypeEvent : FfiConverterRustBuffer<Event> {
                 )
             }
 
+            3 -> {
+                Event.FromRuntime(
+                    FfiConverterTypeEventRuntime.read(buf),
+                )
+            }
+
             else -> {
                 throw RuntimeException("invalid enum value, something is very wrong!!")
             }
@@ -3645,6 +3652,14 @@ public object FfiConverterTypeEvent : FfiConverterRustBuffer<Event> {
                         FfiConverterTypeEventSource.allocationSize(value.`event`)
                 )
             }
+
+            is Event.FromRuntime -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypeEventRuntime.allocationSize(value.`event`)
+                )
+            }
         }
 
     override fun write(
@@ -3661,6 +3676,79 @@ public object FfiConverterTypeEvent : FfiConverterRustBuffer<Event> {
             is Event.FromSource -> {
                 buf.putInt(2)
                 FfiConverterTypeEventSource.write(value.`event`, buf)
+                Unit
+            }
+
+            is Event.FromRuntime -> {
+                buf.putInt(3)
+                FfiConverterTypeEventRuntime.write(value.`event`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+sealed class EventRuntime {
+    /**
+     * What time it is now, in seconds since the epoch.
+     *
+     * The clock is an event rather than an argument to `handle_events`, and
+     * that is the whole point: nothing inside the machine reads one, so a
+     * replay of the log lands where it did the first time. The runtime sends
+     * one about once a second.
+     *
+     * A bare `u64` rather than a [`Timestamp`](api_common::Timestamp),
+     * because this crosses FFI and `custom_newtype!` cannot be applied to a
+     * type from another crate — the same reason
+     * [`RangeSelection::Between`](crate::RangeSelection) carries integers.
+     * The conversion happens where the tick is handled, so nothing downstream
+     * sees a raw one.
+     */
+    data class Tick(
+        val `now`: kotlin.ULong,
+    ) : EventRuntime() {
+        companion object
+    }
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeEventRuntime : FfiConverterRustBuffer<EventRuntime> {
+    override fun read(buf: ByteBuffer): EventRuntime =
+        when (buf.getInt()) {
+            1 -> {
+                EventRuntime.Tick(
+                    FfiConverterULong.read(buf),
+                )
+            }
+
+            else -> {
+                throw RuntimeException("invalid enum value, something is very wrong!!")
+            }
+        }
+
+    override fun allocationSize(value: EventRuntime): ULong =
+        when (value) {
+            is EventRuntime.Tick -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterULong.allocationSize(value.`now`)
+                )
+            }
+        }
+
+    override fun write(
+        value: EventRuntime,
+        buf: ByteBuffer,
+    ) {
+        when (value) {
+            is EventRuntime.Tick -> {
+                buf.putInt(1)
+                FfiConverterULong.write(value.`now`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -4131,18 +4219,6 @@ sealed class EventUi {
      */
     object OnboardingFinished : EventUi()
 
-    /**
-     * A second has passed, and nothing else happened.
-     *
-     * The resend countdown is the one thing in the app that changes while
-     * nobody is touching it, and it is a function of `now` — so this carries
-     * nothing and asks only to be redrawn against a newer clock. The runtime
-     * sends it while the code screen is up and not otherwise; a tick per
-     * second behind the Ledger would rebuild that list sixty times a minute
-     * for nothing.
-     */
-    object Ticked : EventUi()
-
     companion object
 }
 
@@ -4244,10 +4320,6 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
 
             19 -> {
                 EventUi.OnboardingFinished
-            }
-
-            20 -> {
-                EventUi.Ticked
             }
 
             else -> {
@@ -4398,13 +4470,6 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
                     4UL
                 )
             }
-
-            is EventUi.Ticked -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
         }
 
     override fun write(
@@ -4513,11 +4578,6 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
 
             is EventUi.OnboardingFinished -> {
                 buf.putInt(19)
-                Unit
-            }
-
-            is EventUi.Ticked -> {
-                buf.putInt(20)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }

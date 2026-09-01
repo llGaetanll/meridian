@@ -75,16 +75,6 @@ pub enum EventUi {
 
     /// Open Meridian, on the last screen of first run.
     OnboardingFinished,
-
-    /// A second has passed, and nothing else happened.
-    ///
-    /// The resend countdown is the one thing in the app that changes while
-    /// nobody is touching it, and it is a function of `now` — so this carries
-    /// nothing and asks only to be redrawn against a newer clock. The runtime
-    /// sends it while the code screen is up and not otherwise; a tick per
-    /// second behind the Ledger would rebuild that list sixty times a minute
-    /// for nothing.
-    Ticked,
 }
 
 /// Which half of the filter panel.

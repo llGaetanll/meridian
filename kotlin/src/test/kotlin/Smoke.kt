@@ -14,18 +14,18 @@
 // strings it was handed. Every number below arrives already formatted.
 
 import uniffi.phone_state.*
-import java.io.File
 
 fun main() {
     val core = Core()
 
-    // 2026-08-19, the day the sketches are drawn against. The clock is handed
-    // in rather than read, which is what makes a replay land in the same place.
-    val now = 1_787_097_600UL
+    // 2026-08-19, the day the sketches are drawn against. The clock arrives as
+    // an event rather than being read, which is what makes a replay land in the
+    // same place.
+    core.handleEvents(listOf(Event.FromRuntime(EventRuntime.Tick(1_787_097_600UL))))
 
     // ── starting up ────────────────────────────────────────────────────────
 
-    val started = core.handleEvents(now, listOf(Event.FromUi(EventUi.Started)))
+    val started = core.handleEvents(listOf(Event.FromUi(EventUi.Started)))
 
     for (action in started) {
         println("action: ${describe(action)}")
@@ -38,13 +38,25 @@ fun main() {
 
     // ── feeding a snapshot back in ─────────────────────────────────────────
 
-    // The same fixture api-core's own tests use: the real captured Plaid
-    // Sandbox feed, so this exercises the shapes the app will actually see.
-    val snapshot = File("crates/phone-state/tests/snapshot.json")
-        .readText()
-        .replace("\"now\": 0", "\"now\": $now")
+    // The snapshot the server sends, written out here the way the Rust tests
+    // write theirs: the fewest records that exercise the shapes crossing FFI.
+    val snapshot = """
+        {
+            "now": 1787097600,
+            "entries": [
+                {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
+                {"id":"b","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}
+            ],
+            "connections": [
+                {"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
+                    {"id":"acc-1","name":"Plaid Checking","balance":100.0,"group":"depository"},
+                    {"id":"acc-2","name":"Plaid Mortgage","balance":56302.06,"group":"loan"}
+                ]}
+            ]
+        }
+    """.trimIndent()
 
-    val loaded = core.handleEvents(now, listOf(Event.FromSource(EventSource.SnapshotLoaded(snapshot))))
+    val loaded = core.handleEvents(listOf(Event.FromSource(EventSource.SnapshotLoaded(snapshot))))
 
     val home = loaded.filterIsInstance<Action.ToUi>()
         .map { it.action }
@@ -67,10 +79,9 @@ fun main() {
 
     // ── revealing, and switching screens ───────────────────────────────────
 
-    core.handleEvents(now, listOf(Event.FromUi(EventUi.MaskToggled)))
+    core.handleEvents(listOf(Event.FromUi(EventUi.MaskToggled)))
 
     val balances = core.handleEvents(
-        now,
         listOf(Event.FromUi(EventUi.ScreenOpened(Screen.BALANCES))),
     ).render()
 
@@ -78,8 +89,8 @@ fun main() {
     check(balancesView is ViewScreen.Balances)
 
     println("held: ${balancesView.view.headline} — ${balancesView.view.subtitle}")
-    check(balancesView.view.headline == "$86,541.74") {
-        "expected the sandbox total, got ${balancesView.view.headline}"
+    check(balancesView.view.headline == "$100.00") {
+        "expected the snapshot's held total, got ${balancesView.view.headline}"
     }
 
     // The dock says which tab is lit; the view does not work it out.
@@ -89,13 +100,12 @@ fun main() {
 
     // Debts come back as their own blocks, already split and totalled.
     val debts = balancesView.view.connections.filter { it.isDebts }
-    check(debts.isNotEmpty()) { "the sandbox feed has debts" }
+    check(debts.isNotEmpty()) { "the snapshot has a mortgage in it" }
     println("owed: ${debts.first().total} across ${debts.first().accounts.size} accounts")
 
     // ── filtering ──────────────────────────────────────────────────────────
 
     val filtered = core.handleEvents(
-        now,
         listOf(
             Event.FromUi(EventUi.ScreenOpened(Screen.LEDGER)),
             Event.FromUi(EventUi.CategoryToggled("FoodAndDrink")),

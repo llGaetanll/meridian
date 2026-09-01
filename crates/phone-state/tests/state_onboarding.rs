@@ -11,19 +11,27 @@
 //! the field, the six boxes and the countdown, exactly as the machine built
 //! them. Nothing here reads a view back out of an action list.
 
-use std::time::Duration;
-
-use api_common::Timestamp;
 use api_eval::eval;
 use phone_state::*;
 
 /// 2026-08-19 00:00 UTC, the same clock the rest of the tests are set to.
-const NOW: Timestamp = Timestamp::from_secs(1_787_097_600);
+const NOW: u64 = 1_787_097_600;
 
-/// A machine on a device the app has never run on, with its clock set.
+/// A machine on a device the app has never run on, told what time it is.
+///
+/// A tick is how the clock arrives, here and everywhere else: the machine
+/// reads none of its own. This one draws nothing — a tick only redraws while
+/// the resend countdown is running.
 fn first_run() -> StateApp {
     let mut state = StateApp::new();
-    state.set_now(NOW);
+
+    state.handle_events(
+        &[Event::FromRuntime {
+            event: EventRuntime::Tick { now: NOW },
+        }],
+        &mut Vec::new(),
+    );
+
     state
 }
 
@@ -100,8 +108,9 @@ fn no_session_leaves_the_flow_where_it_is() {
         < Event::FromSource { event: EventSource::SessionLoaded { email: None } },
         > @r#"ToUi { action: Render { screen: Onboarding { view: Welcome { title: "Every account,\none ledger.", body: [ViewRun { text: "Meridian reads your banks and puts what you spend, hold and owe on one page.", strong: false }], action: "Continue with email", legal: "By continuing you agree to our Terms and Privacy Policy." } }, dock: None } }"#,
 
-        < Event::FromUi { event: EventUi::Ticked },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Welcome { title: "Every account,\none ledger.", body: [ViewRun { text: "Meridian reads your banks and puts what you spend, hold and owe on one page.", strong: false }], action: "Continue with email", legal: "By continuing you agree to our Terms and Privacy Policy." } }, dock: None } }"#,
+        // And a second passing moves nothing either: Welcome says nothing
+        // about the clock, so there is nothing to redraw.
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 1 } },
     );
 }
 
@@ -166,7 +175,7 @@ fn the_code_screen_says_where_the_code_went() {
     let mut state = at_the_code_screen();
 
     eval!(&mut state,
-        < Event::FromUi { event: EventUi::Ticked },
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW } },
         > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None } }"#,
     );
 }
@@ -222,22 +231,18 @@ fn the_resend_counts_down_before_it_offers() {
     let mut state = at_the_code_screen();
 
     eval!(&mut state,
-        < Event::FromUi { event: EventUi::Ticked },
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW } },
         > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None } }"#,
     );
 
-    state.set_now(NOW + Duration::from_secs(42));
-
     eval!(&mut state,
-        < Event::FromUi { event: EventUi::Ticked },
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 42 } },
         > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, resend: Waiting { text: "Resend in 0:18", wrong_address: "Wrong address?" } } }, dock: None } }"#,
     );
 
-    state.set_now(NOW + Duration::from_secs(60));
-
     // Once there is nothing left to wait for it is a button.
     eval!(&mut state,
-        < Event::FromUi { event: EventUi::Ticked },
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 60 } },
         > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, resend: Ready { label: "Send a new code" } } }, dock: None } }"#,
     );
 }
@@ -253,9 +258,10 @@ fn resending_early_sends_nothing() {
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 
-    state.set_now(NOW + Duration::from_secs(60));
-
     eval!(&mut state,
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 60 } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
         < Event::FromUi { event: EventUi::ResendRequested },
         > @r#"ToSource { action: SendCode { email: "al@example.com" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
@@ -396,9 +402,6 @@ fn opening_meridian_ends_the_flow() {
         < Event::FromUi { event: EventUi::OnboardingFinished },
         > Action::ToSource { action: ActionSource::SaveSession { .. } },
         > @r#"ToSource { action: LoadSnapshot { force: false } }"#,
-        > Action::ToUi { action: ActionUi::Render { .. } },
-
-        < Event::FromUi { event: EventUi::Ticked },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { .. }, dock: Some(_) } },
     );
 }

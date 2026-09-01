@@ -15,13 +15,15 @@
 //! browser app is woken by events rather than polling for them. `dispatch` is
 //! one turn of the loop the server's runtime writes out in full.
 
-use api_common::Timestamp;
+use std::time::Duration;
+
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use phone_state::Action;
 use phone_state::ActionSource;
 use phone_state::ActionUi;
 use phone_state::Event;
+use phone_state::EventRuntime;
 use phone_state::EventSource;
 use phone_state::EventUi;
 use phone_state::StateApp;
@@ -63,11 +65,30 @@ impl RuntimeApp {
 
         provide_context(runtime);
 
+        // The clock first, so that nothing the app draws is drawn against a
+        // machine that has never been told the time.
+        runtime.tick();
+
         runtime.dispatch(Event::FromUi {
             event: EventUi::Started,
         });
 
+        set_interval(move || runtime.tick(), Duration::from_secs(1));
+
         runtime
+    }
+
+    /// The clock, read at the edge and sent in as an event like any other.
+    ///
+    /// Once a second whatever is on screen. Which ticks are worth drawing for
+    /// is the machine's decision — today only the code screen's countdown is —
+    /// so there is no rule here about when to send one.
+    fn tick(&self) {
+        self.dispatch(Event::FromRuntime {
+            event: EventRuntime::Tick {
+                now: (js_sys::Date::now() / 1000.0) as u64,
+            },
+        });
     }
 
     fn new() -> Self {
@@ -105,15 +126,17 @@ impl RuntimeApp {
         let events = [event];
         let mut actions = Vec::new();
 
-        // The clock is read here, at the edge, and handed in. Nothing below
-        // this line reads one — which is what makes a replay of the event log
-        // land where it did the first time.
-        let now = unix_now();
-
         self.state
-            .update_value(|state| state.handle_events_at(now, &events, &mut actions));
+            .update_value(|state| state.handle_events(&events, &mut actions));
 
-        tracing::debug!(?events, ?actions, "handled");
+        // Every turn is logged with its events and actions paired — except a
+        // tick that decided nothing, which is most of them and would bury the
+        // rest at sixty lines a minute.
+        let quiet_tick = actions.is_empty() && matches!(events, [Event::FromRuntime { .. }]);
+
+        if !quiet_tick {
+            tracing::debug!(?events, ?actions, "turn");
+        }
 
         self.perform_actions(&actions);
     }
@@ -234,14 +257,3 @@ pub fn use_runtime() -> RuntimeApp {
 
 /// Who the web says it is, until it has a way to ask.
 const WEB_SESSION: &str = "web";
-
-/// The wall clock, in seconds.
-///
-/// Read at the edge and handed to the machine, which has none of its own. The
-/// server's clock rides in with the snapshot and is the one used for anything
-/// the user sees — a phone with a wrong date should not render a confidently
-/// wrong "in 3 days" — but the app has to draw something before the first
-/// snapshot lands.
-fn unix_now() -> Timestamp {
-    Timestamp::from_secs((js_sys::Date::now() / 1000.0) as u64)
-}

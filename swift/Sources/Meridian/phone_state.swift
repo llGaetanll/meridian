@@ -611,15 +611,16 @@ public protocol CoreProtocol: AnyObject, Sendable {
     /**
      * Hand in what happened, get back what to do about it.
      *
-     * `now` is the platform's clock, read at the edge and passed in — the
-     * machine has none of its own.
+     * No clock: the machine has none of its own and is not given one here
+     * either. The runtime reads the platform's clock and sends it in as an
+     * [`EventRuntime::Tick`] like anything else it observed.
      *
      * The owning counterpart to [`StateApp::handle_events`]: a `&mut Vec` does
      * not cross FFI, so the buffer is allocated here instead of reused. The
      * borrowing version stays for replay and tests, where the allocation is
      * worth avoiding.
      */
-    func handleEvents(now: UInt64, events: [Event])  -> [Action]
+    func handleEvents(events: [Event])  -> [Action]
     
 }
 /**
@@ -693,20 +694,20 @@ public convenience init() {
     /**
      * Hand in what happened, get back what to do about it.
      *
-     * `now` is the platform's clock, read at the edge and passed in — the
-     * machine has none of its own.
+     * No clock: the machine has none of its own and is not given one here
+     * either. The runtime reads the platform's clock and sends it in as an
+     * [`EventRuntime::Tick`] like anything else it observed.
      *
      * The owning counterpart to [`StateApp::handle_events`]: a `&mut Vec` does
      * not cross FFI, so the buffer is allocated here instead of reused. The
      * borrowing version stays for replay and tests, where the allocation is
      * worth avoiding.
      */
-open func handleEvents(now: UInt64, events: [Event]) -> [Action]  {
+open func handleEvents(events: [Event]) -> [Action]  {
     return try!  FfiConverterSequenceTypeAction.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_phone_state_fn_method_core_handle_events(
             self.uniffiCloneHandle(),
-        FfiConverterUInt64.lower(now),
         FfiConverterSequenceTypeEvent.lower(events),uniffiCallStatus
     )
 })
@@ -3439,10 +3440,11 @@ public func FfiConverterTypeActionUi_lower(_ value: ActionUi) -> RustBuffer {
  * Grouping by origin is what keeps a match on `Event` readable as the app
  * grows, and makes a recorded log read as a story rather than a flat list.
  *
- * Note what this enum does *not* carry: a timestamp. Time is handed to
- * [`StateApp::handle_events`](crate::StateApp::handle_events) once per batch
- * rather than stapled to every event, so no event has to invent a clock
- * reading it does not have.
+ * Note what this enum does *not* carry: a timestamp. Time arrives as its own
+ * event, [`EventRuntime::Tick`](crate::EventRuntime), rather than stapled to
+ * every other one — so no event has to invent a clock reading it does not
+ * have, and a log of events is a recording of the session rather than a list
+ * of things that happened at whatever time the replay runs at.
  */
 
 public enum Event: Equatable, Hashable {
@@ -3450,6 +3452,8 @@ public enum Event: Equatable, Hashable {
     case fromUi(event: EventUi
     )
     case fromSource(event: EventSource
+    )
+    case fromRuntime(event: EventRuntime
     )
 
 
@@ -3478,6 +3482,9 @@ public struct FfiConverterTypeEvent: FfiConverterRustBuffer {
         case 2: return .fromSource(event: try FfiConverterTypeEventSource.read(from: &buf)
         )
         
+        case 3: return .fromRuntime(event: try FfiConverterTypeEventRuntime.read(from: &buf)
+        )
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -3494,6 +3501,11 @@ public struct FfiConverterTypeEvent: FfiConverterRustBuffer {
         case let .fromSource(event):
             writeInt(&buf, Int32(2))
             FfiConverterTypeEventSource.write(event, into: &buf)
+            
+        
+        case let .fromRuntime(event):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeEventRuntime.write(event, into: &buf)
             
         }
     }
@@ -3512,6 +3524,83 @@ public func FfiConverterTypeEvent_lift(_ buf: RustBuffer) throws -> Event {
 #endif
 public func FfiConverterTypeEvent_lower(_ value: Event) -> RustBuffer {
     return FfiConverterTypeEvent.lower(value)
+}
+
+
+
+
+public enum EventRuntime: Equatable, Hashable {
+    
+    /**
+     * What time it is now, in seconds since the epoch.
+     *
+     * The clock is an event rather than an argument to `handle_events`, and
+     * that is the whole point: nothing inside the machine reads one, so a
+     * replay of the log lands where it did the first time. The runtime sends
+     * one about once a second.
+     *
+     * A bare `u64` rather than a [`Timestamp`](api_common::Timestamp),
+     * because this crosses FFI and `custom_newtype!` cannot be applied to a
+     * type from another crate — the same reason
+     * [`RangeSelection::Between`](crate::RangeSelection) carries integers.
+     * The conversion happens where the tick is handled, so nothing downstream
+     * sees a raw one.
+     */
+    case tick(now: UInt64
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension EventRuntime: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeEventRuntime: FfiConverterRustBuffer {
+    typealias SwiftType = EventRuntime
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EventRuntime {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .tick(now: try FfiConverterUInt64.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: EventRuntime, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .tick(now):
+            writeInt(&buf, Int32(1))
+            FfiConverterUInt64.write(now, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEventRuntime_lift(_ buf: RustBuffer) throws -> EventRuntime {
+    return try FfiConverterTypeEventRuntime.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeEventRuntime_lower(_ value: EventRuntime) -> RustBuffer {
+    return FfiConverterTypeEventRuntime.lower(value)
 }
 
 
@@ -3813,17 +3902,6 @@ public enum EventUi: Equatable, Hashable {
      * Open Meridian, on the last screen of first run.
      */
     case onboardingFinished
-    /**
-     * A second has passed, and nothing else happened.
-     *
-     * The resend countdown is the one thing in the app that changes while
-     * nobody is touching it, and it is a function of `now` — so this carries
-     * nothing and asks only to be redrawn against a newer clock. The runtime
-     * sends it while the code screen is up and not otherwise; a tick per
-     * second behind the Ledger would rebuild that list sixty times a minute
-     * for nothing.
-     */
-    case ticked
 
 
 
@@ -3891,8 +3969,6 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
         case 18: return .bankConnectRequested
         
         case 19: return .onboardingFinished
-        
-        case 20: return .ticked
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3985,10 +4061,6 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
         
         case .onboardingFinished:
             writeInt(&buf, Int32(19))
-        
-        
-        case .ticked:
-            writeInt(&buf, Int32(20))
         
         }
     }
@@ -5589,7 +5661,7 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_phone_state_checksum_method_core_handle_events() != 17243) {
+    if (uniffi_phone_state_checksum_method_core_handle_events() != 25690) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_phone_state_checksum_constructor_core_new() != 22848) {

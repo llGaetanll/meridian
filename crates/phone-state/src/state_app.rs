@@ -13,6 +13,7 @@ use crate::Action;
 use crate::ActionSource;
 use crate::ActionUi;
 use crate::Event;
+use crate::EventRuntime;
 use crate::EventSource;
 use crate::EventUi;
 use crate::Screen;
@@ -20,6 +21,7 @@ use crate::StateLedger;
 use crate::StateOnboarding;
 use crate::screens;
 use crate::state_onboarding::Progress;
+use crate::state_onboarding::Step;
 
 /// Everything the app is, at one moment.
 ///
@@ -44,8 +46,9 @@ pub struct StateApp {
 
     streams: Vec<Stream>,
 
-    /// When the current batch of events is being handled, as the runtime
-    /// reported it. The machine never reads a clock itself.
+    /// The last reading the runtime sent, in its own clock. The machine never
+    /// reads one itself: this moves only when an
+    /// [`EventRuntime::Tick`](crate::EventRuntime) arrives.
     device_now: Timestamp,
 
     /// The server's clock as of the last snapshot, and the device's reading at
@@ -142,43 +145,18 @@ impl StateApp {
     /// The only entry point. Everything under it is one function per event
     /// group, mirroring the enums.
     ///
-    /// `now` is handed in once per batch rather than stapled to every event:
-    /// a batch happens at one instant, and an event that had to invent a clock
-    /// reading would be an event the runtime could get wrong. The machine
-    /// never reads a clock itself, which is what makes a replay of an event log
-    /// land where it did the first time.
+    /// No clock is handed in. Time arrives as an
+    /// [`EventRuntime::Tick`](crate::EventRuntime) like anything else the
+    /// machine cannot go and get for itself, which is what makes a log of the
+    /// events a recording of the session rather than a list of things that
+    /// happened at whatever time the replay runs at. A test that is *about*
+    /// time sends a tick.
     ///
     /// Actions are pushed into a buffer the caller owns, so a batch of events
     /// costs one allocation and a replay can reuse the same one. The FFI
     /// boundary in `lib.rs` wraps this with an owning version, since a `&mut
     /// Vec` does not cross.
-    /// The clock the machine already holds, for a caller that has no better
-    /// one. `eval!` uses this: a test that is *about* time sets the clock
-    /// first and then drives the machine, rather than carrying a reading
-    /// through the syntax.
-    ///
-    /// The server's machine takes time as a `Tick` event instead, which is
-    /// where this one is going too — see issue #19.
     pub fn handle_events(&mut self, events: &[Event], actions: &mut Vec<Action>) {
-        self.handle_events_at(self.now(), events, actions);
-    }
-
-    pub fn handle_events_at(
-        &mut self,
-        now: Timestamp,
-        events: &[Event],
-        actions: &mut Vec<Action>,
-    ) {
-        // Time only ever moves forward. A runtime handing in a stale reading
-        // would make "in 3 days" wrong in a way nothing else would catch.
-        debug_assert!(
-            now >= self.device_now,
-            "time went backwards: {now} after {}",
-            self.device_now,
-        );
-
-        self.device_now = now;
-
         for event in events {
             self.handle_event(event, actions);
         }
@@ -188,6 +166,34 @@ impl StateApp {
         match event {
             Event::FromUi { event } => self.handle_event_ui(event, actions),
             Event::FromSource { event } => self.handle_event_source(event, actions),
+            Event::FromRuntime { event } => self.handle_event_runtime(event, actions),
+        }
+    }
+
+    fn handle_event_runtime(&mut self, event: &EventRuntime, actions: &mut Vec<Action>) {
+        match event {
+            EventRuntime::Tick { now } => {
+                let now = Timestamp::from_secs(*now);
+
+                // Time only ever moves forward. A runtime sending a stale
+                // reading would make "in 3 days" wrong in a way nothing else
+                // here would catch.
+                debug_assert!(
+                    now >= self.device_now,
+                    "time went backwards: {now} after {}",
+                    self.device_now,
+                );
+
+                self.device_now = now;
+
+                // The countdown on the code screen is the one thing in the app
+                // that changes while nobody is touching it, so it is the one
+                // screen a tick redraws. Drawing on every tick would rebuild
+                // the Ledger sixty times a minute to arrive at the same list.
+                if self.draws_on_a_tick() {
+                    self.render(actions);
+                }
+            }
         }
     }
 
@@ -339,12 +345,6 @@ impl StateApp {
                         action: ActionSource::LoadSnapshot { force: false },
                     });
                 }
-            }
-
-            EventUi::Ticked => {
-                // Nothing to decide. The countdown is a function of `now`,
-                // which arrived with this batch, so the render at the foot of
-                // this function is the whole of the work.
             }
         }
 
@@ -542,6 +542,18 @@ impl StateApp {
     ///
     /// Public because `eval!` reads it: a test sets the time it wants before
     /// driving the machine, rather than the macro carrying a clock of its own.
+    /// Whether what is on screen is a function of the clock.
+    ///
+    /// The code screen is, and nothing else is: its countdown reads a new
+    /// value every second and then turns into a button, and the tick that
+    /// turns it has to draw as much as the ones before it.
+    fn draws_on_a_tick(&self) -> bool {
+        match &self.onboarding {
+            Some(flow) => flow.step() == Step::Code,
+            None => false,
+        }
+    }
+
     pub fn now(&self) -> Timestamp {
         match self.server_clock {
             Some((server, device_at)) => server + self.device_now.since(device_at),
@@ -616,14 +628,6 @@ impl StateApp {
 /// Read by tests. The view learns everything it needs from the actions it is
 /// handed, so nothing in the app calls these.
 impl StateApp {
-    /// Move the clock, for tests that are *about* time.
-    ///
-    /// In a running app time only ever arrives through `handle_events`, from
-    /// the runtime that read it.
-    pub fn set_now(&mut self, now: Timestamp) {
-        self.device_now = now;
-    }
-
     pub fn entry_count(&self) -> usize {
         self.entries.len()
     }

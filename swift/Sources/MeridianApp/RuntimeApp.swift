@@ -35,9 +35,32 @@ final class RuntimeApp: ObservableObject {
     /// to know it.
     @Published private(set) var loading = false
 
-    /// Start the app: send the first event.
+    /// The clock, once a second, for as long as the app is up.
+    ///
+    /// Held so it lives as long as the runtime does. It is the machine's only
+    /// source of time: nothing else hands one in.
+    private var clock: Timer?
+
+    /// Start the app: tell the machine what time it is, then send the first
+    /// event.
     func start() {
+        tick()
+
         dispatch(.fromUi(event: .started))
+
+        clock = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.tick() }
+        }
+    }
+
+    /// The clock, read at the edge and sent in as an event like any other.
+    ///
+    /// A tick a second whatever is on screen: the machine decides which of
+    /// them are worth drawing for, and today only the code screen's countdown
+    /// is. Deciding that here would be behaviour in the runtime, which is the
+    /// thing `docs/ARCHITECTURE.md` asks us not to have.
+    private func tick() {
+        dispatch(.fromRuntime(event: .tick(now: Self.unixNow())))
     }
 
     /// Shorthand for the common case. A view's tap handler calls this; it
@@ -95,17 +118,13 @@ final class RuntimeApp: ObservableObject {
         case .backPressed: "back"
         case .bankConnectRequested: "bankConnect"
         case .onboardingFinished: "onboardingFinished"
-        case .ticked: "tick"
         }
     }
 
     /// Send an event in, and carry out whatever comes back. One turn of the
     /// loop.
     private func dispatch(_ event: Event) {
-        // The clock is read here, at the edge, and handed in. Nothing below
-        // this line reads one — which is what makes a replay of the event log
-        // land where it did the first time.
-        let actions = core.handleEvents(now: Self.unixNow(), events: [event])
+        let actions = core.handleEvents(events: [event])
 
         performActions(actions)
     }
@@ -244,7 +263,7 @@ final class RuntimeApp: ObservableObject {
 
     /// The wall clock, in seconds.
     ///
-    /// Read at the edge and handed to the machine, which has none of its own.
+    /// Read at the edge and sent to the machine, which has none of its own.
     /// The server's clock rides in with the snapshot and is the one used for
     /// anything the user sees — a phone with a wrong date should not render a
     /// confidently wrong "in 3 days" — but the app has to draw something
