@@ -48,32 +48,15 @@ pub enum EventSource {
     /// The common ending, not a rare one.
     BankAbandoned,
 
-    /// How far the first sync has got, and what it has so far.
+    /// How far the first sync has got.
     ///
-    /// The stage and the counts are separate facts: the transactions row reads
-    /// `48 so far` while it is still running, so a count is not a claim that
-    /// the stage is done.
-    SyncProgressed {
-        stage: SyncStage,
-        accounts: u32,
-        transactions: u32,
-        streams: u32,
-    },
-
-    /// The whole history is in. `/transactions/sync` pages all of it the first
-    /// time and almost nothing every time after, which is why this happens
-    /// once per bank and never again.
-    SyncFinished,
-}
-
-/// Which part of the first sync is running.
-///
-/// In the order they happen, because that order is what the progress bar is a
-/// fraction of.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum SyncStage {
-    #[default]
-    Accounts,
-    Transactions,
-    Streams,
+    /// JSON for the same reason [`SnapshotLoaded`](EventSource::SnapshotLoaded)
+    /// is: the machine parses it, so all three platforms get the same parse and
+    /// there is one place that decides what a missing field means. It is
+    /// `server_wire::WireSyncStatus` on the way out of the server.
+    ///
+    /// One event rather than a progressed/finished pair, because the server
+    /// answers one question with one document — whether anything is still
+    /// running is a field in it, not a different reply.
+    SyncStatusLoaded { json: String },
 }

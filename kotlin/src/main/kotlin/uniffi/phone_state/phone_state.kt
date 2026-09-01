@@ -3309,13 +3309,23 @@ sealed class ActionSource {
     object StartBankLink : ActionSource()
 
     /**
-     * Follow the first sync, and report what lands.
+     * Ask how far the first sync has got.
      *
-     * The work is the server's — it holds the `access_token` and runs
-     * `/transactions/sync` — so this asks to be told about it rather than to
-     * do it. Backgrounding the app while it runs is safe for the same reason.
+     * One question, not a subscription: the runtime makes one request and
+     * sends one event back. Asking *again* is the machine's to decide, and it
+     * does so on the tick — so every poll is an action in the log and a
+     * replay makes the same number of them in the same places. A loop in the
+     * runtime would be a decision no log records.
+     *
+     * The work is the server's — it holds the `access_token` and runs the
+     * three calls — so this only ever reads. Backgrounding the app while it
+     * runs is safe for the same reason.
+     *
+     * It is a poll because the server can only answer questions it is asked.
+     * Issue #30 is the push channel this wants; when it lands, this action
+     * and the tick rule that repeats it are the whole of what goes away.
      */
-    object WatchSync : ActionSource()
+    object PollSync : ActionSource()
 
     companion object
 }
@@ -3358,7 +3368,7 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
             }
 
             7 -> {
-                ActionSource.WatchSync
+                ActionSource.PollSync
             }
 
             else -> {
@@ -3414,7 +3424,7 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
                 )
             }
 
-            is ActionSource.WatchSync -> {
+            is ActionSource.PollSync -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
                     4UL
@@ -3461,7 +3471,7 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
                 Unit
             }
 
-            is ActionSource.WatchSync -> {
+            is ActionSource.PollSync -> {
                 buf.putInt(7)
                 Unit
             }
@@ -3829,27 +3839,22 @@ sealed class EventSource {
     object BankAbandoned : EventSource()
 
     /**
-     * How far the first sync has got, and what it has so far.
+     * How far the first sync has got.
      *
-     * The stage and the counts are separate facts: the transactions row reads
-     * `48 so far` while it is still running, so a count is not a claim that
-     * the stage is done.
+     * JSON for the same reason [`SnapshotLoaded`](EventSource::SnapshotLoaded)
+     * is: the machine parses it, so all three platforms get the same parse and
+     * there is one place that decides what a missing field means. It is
+     * `server_wire::WireSyncStatus` on the way out of the server.
+     *
+     * One event rather than a progressed/finished pair, because the server
+     * answers one question with one document — whether anything is still
+     * running is a field in it, not a different reply.
      */
-    data class SyncProgressed(
-        val `stage`: uniffi.phone_state.SyncStage,
-        val `accounts`: kotlin.UInt,
-        val `transactions`: kotlin.UInt,
-        val `streams`: kotlin.UInt,
+    data class SyncStatusLoaded(
+        val `json`: kotlin.String,
     ) : EventSource() {
         companion object
     }
-
-    /**
-     * The whole history is in. `/transactions/sync` pages all of it the first
-     * time and almost nothing every time after, which is why this happens
-     * once per bank and never again.
-     */
-    object SyncFinished : EventSource()
 
     companion object
 }
@@ -3901,16 +3906,9 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
             }
 
             9 -> {
-                EventSource.SyncProgressed(
-                    FfiConverterTypeSyncStage.read(buf),
-                    FfiConverterUInt.read(buf),
-                    FfiConverterUInt.read(buf),
-                    FfiConverterUInt.read(buf),
+                EventSource.SyncStatusLoaded(
+                    FfiConverterString.read(buf),
                 )
-            }
-
-            10 -> {
-                EventSource.SyncFinished
             }
 
             else -> {
@@ -3980,21 +3978,11 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
                 )
             }
 
-            is EventSource.SyncProgressed -> {
+            is EventSource.SyncStatusLoaded -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
                     4UL +
-                        FfiConverterTypeSyncStage.allocationSize(value.`stage`) +
-                        FfiConverterUInt.allocationSize(value.`accounts`) +
-                        FfiConverterUInt.allocationSize(value.`transactions`) +
-                        FfiConverterUInt.allocationSize(value.`streams`)
-                )
-            }
-
-            is EventSource.SyncFinished -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
+                        FfiConverterString.allocationSize(value.`json`)
                 )
             }
         }
@@ -4048,17 +4036,9 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
                 Unit
             }
 
-            is EventSource.SyncProgressed -> {
+            is EventSource.SyncStatusLoaded -> {
                 buf.putInt(9)
-                FfiConverterTypeSyncStage.write(value.`stage`, buf)
-                FfiConverterUInt.write(value.`accounts`, buf)
-                FfiConverterUInt.write(value.`transactions`, buf)
-                FfiConverterUInt.write(value.`streams`, buf)
-                Unit
-            }
-
-            is EventSource.SyncFinished -> {
-                buf.putInt(10)
+                FfiConverterString.write(value.`json`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -4851,43 +4831,6 @@ public object FfiConverterTypeScreen : FfiConverterRustBuffer<Screen> {
 
     override fun write(
         value: Screen,
-        buf: ByteBuffer,
-    ) {
-        buf.putInt(value.ordinal + 1)
-    }
-}
-
-/**
- * Which part of the first sync is running.
- *
- * In the order they happen, because that order is what the progress bar is a
- * fraction of.
- */
-
-enum class SyncStage {
-    ACCOUNTS,
-    TRANSACTIONS,
-    STREAMS,
-    ;
-
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeSyncStage : FfiConverterRustBuffer<SyncStage> {
-    override fun read(buf: ByteBuffer) =
-        try {
-            SyncStage.values()[buf.getInt() - 1]
-        } catch (e: IndexOutOfBoundsException) {
-            throw RuntimeException("invalid enum value, something is very wrong!!", e)
-        }
-
-    override fun allocationSize(value: SyncStage) = 4UL
-
-    override fun write(
-        value: SyncStage,
         buf: ByteBuffer,
     ) {
         buf.putInt(value.ordinal + 1)

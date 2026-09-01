@@ -29,6 +29,11 @@ final class RuntimeApp: ObservableObject {
     /// The last failure, for the banner. Cleared by the next successful load.
     @Published private(set) var error: String?
 
+    /// Whether a sync poll is in flight. The runtime's own bookkeeping, like
+    /// `loading` below: the machine asks on a tick and does not need to be
+    /// told that the last ask has not come back.
+    private var polling = false
+
     /// Whether a fetch is in flight, for the refresh spinner. Deliberately not
     /// in the machine: it is a fact about the runtime rather than a decision,
     /// and the machine would have to be told when a request started in order
@@ -178,7 +183,7 @@ final class RuntimeApp: ObservableObject {
         // is left of the stub. Nothing above this line can tell the
         // difference, and nothing below it decides anything.
         case .startBankLink: startBankLink()
-        case .watchSync: watchSync()
+        case .pollSync: pollSync()
         }
     }
 
@@ -269,14 +274,39 @@ final class RuntimeApp: ObservableObject {
         }
     }
 
-    /// Follow the first sync. The work is the server's; this reports what
-    /// lands.
-    private func watchSync() {
-        Task { [weak self] in
-            for step in FirstRun.sync {
-                try? await Task.sleep(for: .milliseconds(650))
+    /// Ask how far the first sync has got, once.
+    ///
+    /// One request per action and no loop: asking again is the machine's
+    /// decision, made on the tick, which is what puts every poll in the event
+    /// log. A loop here would be behaviour no replay could reproduce.
+    ///
+    /// A poll that lands while one is still out is dropped rather than queued
+    /// — the same one-at-a-time rule `loadSnapshot` has, and for the same
+    /// reason: two answers racing to write the same state is one of them
+    /// losing, and the next tick is a second away regardless.
+    private func pollSync() {
+        if polling { return }
 
-                self?.dispatch(.fromSource(event: step))
+        guard let token else {
+            NSLog("MERIDIAN asked for sync progress with no session")
+
+            return
+        }
+
+        polling = true
+
+        Task { [weak self] in
+            defer { self?.polling = false }
+
+            do {
+                let json = try await RuntimeIo.syncStatus(token: token)
+
+                self?.dispatch(.fromSource(event: .syncStatusLoaded(json: json)))
+            } catch {
+                // Not reported to the machine. A poll that misses is answered
+                // by the next tick a second later, and a banner over the sync
+                // screen for one dropped request would be noise.
+                NSLog("MERIDIAN sync progress unavailable: %@", error.localizedDescription)
             }
         }
     }

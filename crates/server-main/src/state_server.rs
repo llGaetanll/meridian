@@ -409,10 +409,26 @@ impl StateServer {
                 streams,
                 cursor,
             } => {
-                // Over, so it stops being something to watch. Dropped on both
-                // endings rather than only this one: a screen polling a fetch
-                // that failed would otherwise sit on its last stage forever.
-                self.syncing.remove(item_id);
+                // Over — and what it brought, which is the last thing anybody
+                // watching it needs. Replaced rather than dropped because
+                // these counts exist nowhere else: `added` is what this sync
+                // brought, not what the store now holds, and the two stop
+                // agreeing the moment there is a second sync.
+                //
+                // It stays until the next fetch for this item overwrites it.
+                // One entry per bank is not growth worth managing, and a late
+                // poller reading the last sync's numbers is being told
+                // something true.
+                self.syncing.insert(
+                    item_id.clone(),
+                    WireSyncStatus::done(
+                        connection
+                            .as_ref()
+                            .map_or(0, |c| c.accounts.len().try_into().unwrap_or(u32::MAX)),
+                        added.len().try_into().unwrap_or(u32::MAX),
+                        streams.len().try_into().unwrap_or(u32::MAX),
+                    ),
+                );
 
                 // The wait moves from the fetch to the write it caused, so
                 // the route is answered once the rows are actually there
@@ -601,6 +617,9 @@ impl StateServer {
                 item_id,
                 code,
             } => {
+                // Nothing arrived, so there is nothing to report but that it
+                // is over. Dropped rather than marked done: a screen polling a
+                // fetch that died would otherwise sit on its last stage.
                 self.syncing.remove(item_id);
 
                 if code == "ITEM_LOGIN_REQUIRED" {

@@ -44,10 +44,20 @@ pub enum ActionSource {
     /// that signs both cannot ship inside an app (`docs/PLAID.md`).
     StartBankLink,
 
-    /// Follow the first sync, and report what lands.
+    /// Ask how far the first sync has got.
     ///
-    /// The work is the server's — it holds the `access_token` and runs
-    /// `/transactions/sync` — so this asks to be told about it rather than to
-    /// do it. Backgrounding the app while it runs is safe for the same reason.
-    WatchSync,
+    /// One question, not a subscription: the runtime makes one request and
+    /// sends one event back. Asking *again* is the machine's to decide, and it
+    /// does so on the tick — so every poll is an action in the log and a
+    /// replay makes the same number of them in the same places. A loop in the
+    /// runtime would be a decision no log records.
+    ///
+    /// The work is the server's — it holds the `access_token` and runs the
+    /// three calls — so this only ever reads. Backgrounding the app while it
+    /// runs is safe for the same reason.
+    ///
+    /// It is a poll because the server can only answer questions it is asked.
+    /// Issue #30 is the push channel this wants; when it lands, this action
+    /// and the tick rule that repeats it are the whole of what goes away.
+    PollSync,
 }

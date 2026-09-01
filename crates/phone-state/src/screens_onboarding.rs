@@ -14,7 +14,6 @@ use std::cmp::Ordering;
 use api_common::Timestamp;
 
 use crate::StateOnboarding;
-use crate::SyncStage;
 use crate::ViewCodeCell;
 use crate::ViewField;
 use crate::ViewIconRow;
@@ -28,6 +27,7 @@ use crate::state_onboarding::CODE_LENGTH;
 use crate::state_onboarding::Fault;
 use crate::state_onboarding::RESEND_AFTER;
 use crate::state_onboarding::Step;
+use server_wire::SyncStage;
 
 /// The three headings, which are the only reason the flow says how long it is.
 const STEP_ACCOUNT: &str = "Step 1 of 3 · Account";

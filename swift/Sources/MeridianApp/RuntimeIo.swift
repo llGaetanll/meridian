@@ -61,6 +61,32 @@ enum RuntimeIo {
         return json
     }
 
+    /// How far the first sync has got, as JSON.
+    ///
+    /// Handed back as a string rather than parsed, the same as the snapshot:
+    /// the machine parses, so all three platforms get one parse and one place
+    /// that decides what a missing field means.
+    static func syncStatus(token: String) async throws -> String {
+        guard let url = URL(string: "\(server)/sync/status") else {
+            throw Failure.unreachable
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        let (data, status) = try await send(request)
+
+        guard (200..<300).contains(status) else {
+            throw Failure.answered(status: status)
+        }
+
+        guard let json = String(data: data, encoding: .utf8) else {
+            throw Failure.emptyBody
+        }
+
+        return json
+    }
+
     /// Ask for a sign-in code.
     ///
     /// The server answers 204 whether or not the address is one it knows —

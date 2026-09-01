@@ -1,10 +1,9 @@
-/// What is left of the first-run stub: the bank link, and the sync behind it.
+/// What is left of the first-run stub: the bank link.
 ///
-/// **Everything here is standing in for a call that is not wired yet.** The
-/// account half is real — `/auth/request` and `/auth/verify` are live and
-/// `RuntimeApp` calls them — so what remains is Plaid: `/link/start` exists on
-/// the server and nothing opens it, and the sync has no progress to report at
-/// all (issue #25).
+/// **Everything here is standing in for a call that is not wired yet.** What
+/// remains is one thing: `/link/start` exists on the server and nothing opens
+/// it. The account half is real, and so is the sync behind this — the server
+/// reports its own progress now and `RuntimeApp` polls for it.
 ///
 /// It stays one file for the same reason it always was. The machine decides
 /// the whole flow, and each function here answers with the very event the real
@@ -46,34 +45,4 @@ enum FirstRun {
     static let institution = "First Platypus Bank"
 
     private static var attempts = 0
-
-    /// The first sync, page by page.
-    ///
-    /// The counts are the fixture's — 8 accounts, 48 transactions, 8 recurring
-    /// streams — so what the last screen of the flow says matches what the
-    /// Ledger behind it is about to show.
-    static let sync: [EventSource] = [
-        progress(.accounts, 0, 0, 0),
-        progress(.accounts, 8, 0, 0),
-        progress(.transactions, 8, 0, 0),
-        progress(.transactions, 8, 19, 0),
-        progress(.transactions, 8, 48, 0),
-        progress(.streams, 8, 48, 0),
-        progress(.streams, 8, 48, 8),
-        .syncFinished,
-    ]
-
-    private static func progress(
-        _ stage: SyncStage,
-        _ accounts: UInt32,
-        _ transactions: UInt32,
-        _ streams: UInt32
-    ) -> EventSource {
-        .syncProgressed(
-            stage: stage,
-            accounts: accounts,
-            transactions: transactions,
-            streams: streams
-        )
-    }
 }
