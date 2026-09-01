@@ -992,36 +992,57 @@ impl RuntimeServer {
             }];
         };
 
-        let event =
-            match runtime_plaid::fetch_all(&self.credentials, &access_token, cursor, unix_now())
-                .await
-            {
-                Ok(fetched) => EventSource::PlaidLoaded {
+        // Each stage reports as it lands, straight onto the queue rather than
+        // waiting for the return below. Nothing is parked on these — they
+        // release no route — so they are facts arriving mid-call, and the
+        // machine is what decides they are worth keeping.
+        let report = |stage, accounts, transactions, streams| {
+            self.exchange.push(Event::FromSource {
+                event: EventSource::PlaidProgressed {
+                    item_id: item_id.to_string(),
+                    stage,
+                    accounts,
+                    transactions,
+                    streams,
+                },
+            });
+        };
+
+        let event = match runtime_plaid::fetch_all(
+            &self.credentials,
+            &access_token,
+            cursor,
+            unix_now(),
+            report,
+        )
+        .await
+        {
+            Ok(fetched) => EventSource::PlaidLoaded {
+                call_id,
+                item_id: item_id.to_string(),
+                added: fetched.added,
+                modified: fetched.modified,
+                removed: fetched.removed,
+                connection: fetched.connections.into_iter().next(),
+                streams: fetched.streams,
+                cursor: fetched.cursor,
+            },
+
+            Err(e) => {
+                let code = match &e {
+                    src_plaid::PlaidError::Plaid { error_code, .. } => error_code.clone(),
+                    _ => "REQUEST_FAILED".to_string(),
+                };
+
+                tracing::warn!(error = %e, code, "plaid fetch failed");
+
+                EventSource::PlaidFailed {
                     call_id,
                     item_id: item_id.to_string(),
-                    added: fetched.added,
-                    modified: fetched.modified,
-                    removed: fetched.removed,
-                    connection: fetched.connections.into_iter().next(),
-                    streams: fetched.streams,
-                    cursor: fetched.cursor,
-                },
-
-                Err(e) => {
-                    let code = match &e {
-                        src_plaid::PlaidError::Plaid { error_code, .. } => error_code.clone(),
-                        _ => "REQUEST_FAILED".to_string(),
-                    };
-
-                    tracing::warn!(error = %e, code, "plaid fetch failed");
-
-                    EventSource::PlaidFailed {
-                        call_id,
-                        item_id: item_id.to_string(),
-                        code,
-                    }
+                    code,
                 }
-            };
+            }
+        };
 
         vec![Event::FromSource { event }]
     }

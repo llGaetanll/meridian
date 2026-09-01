@@ -39,6 +39,13 @@ pub enum ActionRouter {
     /// It ended without one, which is ordinary.
     NotLinked,
 
+    /// How far the sync this user is watching has got.
+    ///
+    /// Assembled here rather than read off the runtime, because unlike a
+    /// snapshot there is nothing in the store to read: progress exists only
+    /// in the machine and only while a fetch is running.
+    SyncStatus { status: server_wire::WireSyncStatus },
+
     /// The code was not good. Deliberately carries no reason: wrong, expired
     /// and exhausted are logged and are not told apart to the caller, because
     /// only somebody working through guesses benefits from knowing which.

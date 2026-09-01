@@ -9,6 +9,7 @@
 use api_ledger::Connection;
 use api_ledger::Entry;
 use api_ledger::Stream;
+use server_wire::SyncStage;
 use src_plaid::PlaidClient;
 use src_plaid::PlaidCredentials;
 use src_plaid::PlaidEnv;
@@ -39,11 +40,22 @@ pub struct Fetched {
 /// The three endpoints are independent, so a failure in the optional two does
 /// not sink the whole fetch: transactions are what the app is for, and a
 /// missing recurring list costs one screen rather than all of them.
+///
+/// **Sequential, and deliberately so.** Being independent, the three could run
+/// at once and halve a first sync — measured at 694ms, 1944ms and 1021ms
+/// against a Sandbox item. What that would cost is the first-run screen, which
+/// is three rows filling in one at a time; there is nothing to draw if
+/// everything lands together. See issue #25.
+///
+/// `report` is called as each stage completes, with what is known so far. It
+/// decides nothing — the caller turns each into an event — and a caller with
+/// nothing to report passes a closure that does nothing.
 pub async fn fetch_all(
     credentials: &PlaidCredentials,
     access_token: &str,
     cursor: Option<String>,
     now: api_common::Timestamp,
+    report: impl Fn(SyncStage, u32, u32, u32),
 ) -> Result<Fetched, PlaidError> {
     // Guard rail, not decoration: nothing should be able to reach Production
     // by accident. `client` refuses anything but Sandbox — an error rather
@@ -53,10 +65,25 @@ pub async fn fetch_all(
 
     let token = access_token;
 
-    let sync = src_plaid::sync_transactions(&client, token, cursor).await?;
+    // Accounts first, which is both the order the screen draws and the one
+    // that reads best: balances is the slowest of the three, so leading with
+    // it gives the screen an early row rather than a stall on an empty one.
+    report(SyncStage::Accounts, 0, 0, 0);
 
     let balances = src_plaid::fetch_balances(&client, token).await?;
     let connections = vec![project::connection(&balances, now)];
+
+    let accounts = connections
+        .first()
+        .map_or(0, |c| c.accounts.len().try_into().unwrap_or(u32::MAX));
+
+    report(SyncStage::Transactions, accounts, 0, 0);
+
+    let sync = src_plaid::sync_transactions(&client, token, cursor).await?;
+
+    let transactions = sync.added.len().try_into().unwrap_or(u32::MAX);
+
+    report(SyncStage::Streams, accounts, transactions, 0);
 
     // Recurring is derived from transactions, so a freshly created Item has
     // none yet. That is a thin screen, not a failed sync.
@@ -70,6 +97,13 @@ pub async fn fetch_all(
             Vec::new()
         }
     };
+
+    // No fourth report. One naming the finished stream count would be
+    // pushed and then, in the same turn, overtaken by the fetch answering —
+    // which is what stops a sync being something to watch. Nothing can
+    // observe it, so it is not written. The stream count reaches the screen
+    // with the snapshot it draws next, which is where the other final
+    // figures come from too.
 
     Ok(Fetched {
         added: sync.added.iter().map(project::entry).collect(),
