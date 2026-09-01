@@ -35,7 +35,7 @@ impl CoinGeckoClient {
         req: &dyn GcRequest,
     ) -> Result<Response, GcError> {
         let url = req.url();
-        let call = ApiCall::get(SOURCE, &url);
+        let call = ApiCall::get(module_path!(), SOURCE, &url);
 
         let response = match self.client.get(url).send().await {
             Ok(response) => response,

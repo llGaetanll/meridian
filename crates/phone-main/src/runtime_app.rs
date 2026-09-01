@@ -230,8 +230,6 @@ impl RuntimeApp {
         let runtime = *self;
 
         spawn_local(async move {
-            tracing::info!(force, "snapshot asked for");
-
             let event = match runtime_io::fetch_snapshot(force).await {
                 Ok(json) => EventSource::SnapshotLoaded { json },
                 Err(message) => EventSource::LoadFailed { message },

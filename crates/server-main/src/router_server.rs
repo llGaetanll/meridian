@@ -26,6 +26,7 @@ use tower_http::cors::CorsLayer;
 use crate::ActionRouter;
 use crate::EventRouter;
 use crate::RuntimeServer;
+use crate::router_trace;
 use server_wire::WireSnapshot;
 
 /// Every route, over one runtime.
@@ -37,6 +38,11 @@ pub(crate) fn router(runtime: Arc<RuntimeServer>) -> Router {
         .route("/link/start", post(link_start))
         .route("/link/finish", post(link_finish))
         .route("/health", get(health))
+        // Inside the CORS layer, so the preflight `OPTIONS` a browser sends
+        // ahead of an authenticated request is answered above this and never
+        // logged. It is transport, and a line for each would double the
+        // traffic in the log without saying anything about it.
+        .layer(axum::middleware::from_fn(router_trace::trace))
         // The phone app is served by trunk on another port, so every request
         // it makes is cross-origin. This is a development server on localhost;
         // a deployed one would name its origin instead.

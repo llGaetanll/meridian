@@ -104,8 +104,14 @@ fn render(
         out.push(' ');
     }
 
+    // The module the line came from, which for a line logged on somebody's
+    // behalf is the caller's rather than ours. See `Line::module`.
     out.push(' ');
-    paint.write(&mut out, style::TARGET, meta.target());
+    paint.write(
+        &mut out,
+        style::TARGET,
+        line.module().unwrap_or_else(|| meta.target()),
+    );
 
     for (name, fields) in scopes {
         out.push(' ');

@@ -53,7 +53,7 @@ impl YahooClient {
             .join(&req.path())
             .map_err(|e| YError::InvalidUrl(e.to_string()))?;
 
-        let call = ApiCall::get(SOURCE, &url);
+        let call = ApiCall::get(module_path!(), SOURCE, &url);
 
         let response = match self.client.get(url).send().await {
             Ok(response) => response,

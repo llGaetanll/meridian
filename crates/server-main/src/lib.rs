@@ -39,6 +39,7 @@ mod project;
 mod request_id;
 mod router_exchange;
 mod router_server;
+mod router_trace;
 mod runtime_plaid;
 mod runtime_server;
 mod session_token;

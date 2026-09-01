@@ -5,6 +5,8 @@
 //! it, so there is no "which of my requests has landed" state anywhere in the
 //! front end.
 
+use api_trace::ApiCall;
+use api_trace::Source;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::JsFuture;
@@ -16,6 +18,11 @@ use web_sys::Response;
 /// sketch crate that runs beside the server on one machine, and the native
 /// apps will point somewhere else entirely.
 const SERVER: &str = "http://127.0.0.1:8082";
+
+/// Our own server, as the log knows it. No rules: we write this JSON and
+/// already write it compact, so there is nothing for `compact_json` to take
+/// out that we put in.
+const MERIDIAN: Source = Source::new("meridian");
 
 /// The snapshot, as JSON.
 ///
@@ -37,28 +44,63 @@ pub async fn fetch_snapshot(force: bool) -> Result<String, String> {
 
     let window = web_sys::window().ok_or("no window")?;
 
-    let response = JsFuture::from(window.fetch_with_request(&request))
-        .await
-        .map_err(|e| {
+    // Logged like every other call that crosses the network, and the other
+    // half of what the server writes for the same request. Two logs, one
+    // conversation: the phone's says what it asked for and what it was given
+    // to parse, the server's says what it decided to answer.
+    let call = ApiCall::get(module_path!(), MERIDIAN, &url);
+
+    let response = match JsFuture::from(window.fetch_with_request(&request)).await {
+        Ok(response) => response,
+
+        Err(e) => {
+            call.failed(describe(e));
+
             // The overwhelmingly likely cause, and worth saying plainly rather
             // than surfacing a browser's opaque "TypeError: Failed to fetch".
-            let _ = describe(e);
-            format!(
+            return Err(format!(
                 "could not reach the server at {SERVER} — is `cargo run -p server-main` running?"
-            )
-        })?;
+            ));
+        }
+    };
 
-    let response: Response = response.dyn_into().map_err(|_| "not a response")?;
+    let Ok(response) = response.dyn_into::<Response>() else {
+        call.failed("not a response");
+
+        return Err(String::from("not a response"));
+    };
+
+    let text = match response.text().map(JsFuture::from) {
+        Ok(text) => text.await.map_err(describe),
+        Err(e) => Err(describe(e)),
+    };
+
+    let text = match text {
+        Ok(text) => text,
+
+        Err(e) => {
+            call.failed(&e);
+
+            return Err(e);
+        }
+    };
+
+    // Logged whatever we go on to do with it. An error page and a snapshot
+    // arrive the same way, and which one it was is the question a log of this
+    // has to answer.
+    let body = text.as_string().unwrap_or_default();
+
+    call.response(response.status(), &body);
 
     if !response.ok() {
         return Err(format!("the server answered {}", response.status()));
     }
 
-    let text = JsFuture::from(response.text().map_err(describe)?)
-        .await
-        .map_err(describe)?;
+    if body.is_empty() {
+        return Err(String::from("empty body"));
+    }
 
-    text.as_string().ok_or_else(|| "empty body".to_string())
+    Ok(body)
 }
 
 fn describe(value: JsValue) -> String {
