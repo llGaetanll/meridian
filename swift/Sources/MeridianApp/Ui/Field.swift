@@ -91,6 +91,11 @@ struct CodeField: View {
 
     let onChange: (String) -> Void
 
+    /// The keyboard's own return key, so a complete code can be sent without
+    /// reaching for the button. The button is still there — this is the
+    /// shortcut, not the way.
+    let onSubmit: () -> Void
+
     @FocusState private var focused: Bool
 
     /// What the boxes are showing, which is what the field behind them holds.
@@ -112,6 +117,7 @@ struct CodeField: View {
                 .keyboardType(.numberPad)
                 .textContentType(.oneTimeCode)
                 .focused($focused)
+                .onSubmit(onSubmit)
                 .frame(maxWidth: .infinity)
 
             HStack(spacing: 8) {

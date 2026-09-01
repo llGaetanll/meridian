@@ -57,9 +57,18 @@ pub enum EventUi {
     /// Continue, under the address.
     EmailSubmitted,
 
-    /// The code field, as it now reads. There is nothing to check before the
-    /// sixth digit, so the sixth digit submits and there is no Continue.
+    /// The code field, as it now reads.
+    ///
+    /// Typing alone never submits. It used to: the sixth digit went straight
+    /// to the server, on the reasoning that there is nothing to check before
+    /// it. What that missed is the typo — a wrong sixth digit spent the guess
+    /// before the user had seen what they had typed, and left six digits on
+    /// screen that could only be edited backwards.
     CodeTyped { digits: String },
+
+    /// Continue, under the six boxes. Only drawn once all six are in, since
+    /// there is nothing to submit before that.
+    CodeSubmitted,
 
     /// Send a new code.
     ResendRequested,

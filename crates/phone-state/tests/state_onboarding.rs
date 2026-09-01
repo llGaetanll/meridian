@@ -176,22 +176,64 @@ fn the_code_screen_says_where_the_code_went() {
 
     eval!(&mut state,
         < Event::FromRuntime { event: EventRuntime::Tick { now: NOW } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, action: None, resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None } }"#,
     );
 }
 
-/// There is nothing to check before the sixth digit, so the sixth digit
-/// submits and there is no Continue button on that screen.
+/// Typing never submits, however many digits land. The sixth digit only
+/// brings the button, and the tap is what spends the guess.
+///
+/// It used to submit on the sixth. The typo is what that missed: a wrong
+/// digit was gone before the user had seen what they had typed, and the six
+/// on screen could then only be edited backwards.
 #[test]
-fn the_sixth_digit_submits() {
+fn typing_the_sixth_digit_offers_a_button_rather_than_submitting() {
     let mut state = at_the_code_screen();
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::CodeTyped { digits: "40719".to_string() } },
-        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
+            view: ViewOnboarding::Code { action: None, .. } }, .. } },
 
         < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
+            view: ViewOnboarding::Code { action: Some(_), .. } }, .. } },
+
+        < Event::FromUi { event: EventUi::CodeSubmitted },
         > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+    );
+}
+
+/// A rejected code can be corrected in place. Every box is editable, the red
+/// clears on the first change, and the button is back the moment six digits
+/// are in again — so a typo costs one tap, not a new code.
+#[test]
+fn a_rejected_code_can_be_fixed_and_sent_again() {
+    let mut state = at_the_code_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
+        < Event::FromUi { event: EventUi::CodeSubmitted },
+        < Event::FromSource { event: EventSource::CodeRejected },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToSource { action: ActionSource::VerifyCode { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
+            view: ViewOnboarding::Code { fault: Some(_), .. } }, .. } },
+
+        // Taking the last digit back clears the red and takes the button away.
+        < Event::FromUi { event: EventUi::CodeTyped { digits: "40719".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
+            view: ViewOnboarding::Code { fault: None, action: None, .. } }, .. } },
+
+        // A different sixth digit, and it can go again.
+        < Event::FromUi { event: EventUi::CodeTyped { digits: "407194".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
+            view: ViewOnboarding::Code { fault: None, action: Some(_), .. } }, .. } },
+
+        < Event::FromUi { event: EventUi::CodeSubmitted },
+        > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407194" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }
@@ -204,10 +246,12 @@ fn a_wrong_code_reddens_every_box() {
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
+        < Event::FromUi { event: EventUi::CodeSubmitted },
         < Event::FromSource { event: EventSource::CodeRejected },
+        > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code is not right."), resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code is not right."), action: Some("Continue"), resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None } }"#,
     );
 }
 
@@ -230,10 +274,12 @@ fn an_expired_code_reads_as_a_wrong_one() {
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
+        < Event::FromUi { event: EventUi::CodeSubmitted },
         < Event::FromSource { event: EventSource::CodeRejected },
+        > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code is not right."), resend: Ready { label: "Send a new code" } } }, dock: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code is not right."), action: Some("Continue"), resend: Ready { label: "Send a new code" } } }, dock: None } }"#,
     );
 }
 
@@ -243,18 +289,18 @@ fn the_resend_counts_down_before_it_offers() {
 
     eval!(&mut state,
         < Event::FromRuntime { event: EventRuntime::Tick { now: NOW } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, action: None, resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None } }"#,
     );
 
     eval!(&mut state,
         < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 42 } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, resend: Waiting { text: "Resend in 0:18", wrong_address: "Wrong address?" } } }, dock: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, action: None, resend: Waiting { text: "Resend in 0:18", wrong_address: "Wrong address?" } } }, dock: None } }"#,
     );
 
     // Once there is nothing left to wait for it is a button.
     eval!(&mut state,
         < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 60 } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, resend: Ready { label: "Send a new code" } } }, dock: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 3 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, action: None, resend: Ready { label: "Send a new code" } } }, dock: None } }"#,
     );
 }
 
@@ -297,7 +343,9 @@ fn a_verified_code_asks_for_a_bank() {
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
+        < Event::FromUi { event: EventUi::CodeSubmitted },
         < Event::FromSource { event: EventSource::CodeAccepted },
+        > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Bank { .. } }, .. } },

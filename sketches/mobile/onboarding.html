@@ -178,9 +178,13 @@
 
       <div class="onb-back"><svg><use href="#i-back"/></svg></div>
 
-      <!-- Six fields and no Continue: there is nothing to check before the
-           sixth digit, so the sixth digit submits. iOS fills it from the
-           notification, which makes this screen a flash for most people.
+      <!-- Six fields, and a Continue that is not there yet: it appears once
+           all six are in, which is drawn in 3b.
+
+           The sixth digit used to submit on its own, on the reasoning that
+           there is nothing to check before it. The typo is what that missed —
+           a wrong digit spent the guess before the user had seen what they
+           had typed. Typing fills the boxes; the tap sends them.
 
            The address is on screen and one tap from being fixed. A typo in
            step 2 is otherwise a dead end — the code never arrives and
@@ -208,9 +212,9 @@
     </div>
   </section>
 
-  <!-- ══════════════════ 3b · Code expired ══════════════════ -->
+  <!-- ══════════════════ 3b · Code refused ══════════════════ -->
   <section class="screen">
-    <div class="screen-label">3b · Code · expired</div>
+    <div class="screen-label">3b · Code · refused</div>
     <div class="phone ui">
 
       <div class="statusbar">
@@ -220,9 +224,14 @@
 
       <div class="onb-back"><svg><use href="#i-back"/></svg></div>
 
-      <!-- Wrong and too late are different problems: one asks you to look
-           again, the other asks for a new code. Same screen, one sentence
-           apart, and the resend is live rather than counting down. -->
+      <!-- One sentence for every way a code can fail. The server answers
+           alike for wrong, expired and too many guesses so that nobody can
+           ask it whether an address has a code standing against it, and a
+           screen saying "that one expired" would give that back.
+
+           The code stays editable, and Continue is still there: correcting a
+           digit and going again costs one tap. Send a new code is below it
+           for the case where correcting will not help. -->
       <div class="onb">
         <div class="onb-step">Step 1 of 3 · Account</div>
 
@@ -238,7 +247,11 @@
           <span class="field bad"><span class="in">3</span></span>
         </div>
 
-        <div class="err"><svg><use href="#i-warn"/></svg>That code has expired. They last ten minutes.</div>
+        <div class="err"><svg><use href="#i-warn"/></svg>That code is not right.</div>
+
+        <div style="margin-top:12px">
+          <button class="btn primary lg block">Continue</button>
+        </div>
 
         <div style="margin-top:16px">
           <button class="btn lg block">Send a new code</button>

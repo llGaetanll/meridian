@@ -79,15 +79,18 @@ struct EmailScreen: View {
     }
 }
 
-/// Six boxes and no Continue: there is nothing to check before the sixth digit,
-/// so the sixth digit submits. iOS fills it from the notification, which makes
-/// this screen a flash for most people.
+/// Six boxes and a Continue that appears once all six are in.
+///
+/// Typing does not submit. It used to — the sixth digit went straight to the
+/// server — and the typo is what that missed: a wrong sixth digit spent the
+/// guess before the user had seen what they had typed.
 struct CodeScreen: View {
     let step: String
     let title: String
     let runs: [ViewRun]
     let cells: [ViewCodeCell]
     let fault: String?
+    let action: String?
     let resend: ViewResend
 
     @EnvironmentObject private var runtime: RuntimeApp
@@ -98,11 +101,23 @@ struct CodeScreen: View {
             OnbTitle(text: title)
             OnbBody(runs: runs)
 
-            CodeField(cells: cells, onChange: { runtime.ui(.codeTyped(digits: $0)) })
-                .padding(.top, 26)
+            CodeField(
+                cells: cells,
+                onChange: { runtime.ui(.codeTyped(digits: $0)) },
+                onSubmit: { runtime.ui(.codeSubmitted) }
+            )
+            .padding(.top, 26)
 
             if let fault {
                 OnbFault(message: fault)
+            }
+
+            // Absent until the code is complete, because there is nothing to
+            // submit before that. The machine decides which; this draws it.
+            if let action {
+                Button(action) { runtime.ui(.codeSubmitted) }
+                    .buttonStyle(.primaryBlock)
+                    .padding(.top, 12)
             }
 
             switch resend {

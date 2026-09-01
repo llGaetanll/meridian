@@ -277,13 +277,17 @@ impl StateApp {
             }
 
             EventUi::CodeTyped { digits } => {
+                if let Some(flow) = &mut self.onboarding {
+                    flow.type_code(digits);
+                }
+            }
+
+            EventUi::CodeSubmitted => {
                 let filled = self
                     .onboarding
                     .as_mut()
-                    .and_then(|flow| flow.type_code(digits));
+                    .and_then(StateOnboarding::submit_code);
 
-                // The sixth digit submits: there is nothing to check before it,
-                // so a Continue button would only be a second tap.
                 if let Some((email, code)) = filled {
                     actions.push(Action::ToSource {
                         action: ActionSource::VerifyCode { email, code },
