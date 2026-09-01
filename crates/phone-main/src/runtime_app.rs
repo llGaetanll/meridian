@@ -187,7 +187,7 @@ impl RuntimeApp {
             | ActionSource::SendCode { .. }
             | ActionSource::VerifyCode { .. }
             | ActionSource::StartBankLink
-            | ActionSource::WatchSync => {
+            | ActionSource::PollSync => {
                 tracing::warn!(?action, "first run is not drawn on the web");
             }
         }

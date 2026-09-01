@@ -388,7 +388,7 @@ fn a_linked_bank_asks_for_its_history() {
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromSource { event: EventSource::BankLinked { institution: "First Platypus Bank".to_string() } },
-        > @r#"ToSource { action: WatchSync }"#,
+        > @r#"ToSource { action: PollSync }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }
@@ -421,12 +421,62 @@ fn the_sync_says_what_has_landed_so_far() {
     eval!(&mut state,
         < Event::FromUi { event: EventUi::BankConnectRequested },
         < Event::FromSource { event: EventSource::BankLinked { institution: "First Platypus Bank".to_string() } },
-        < Event::FromSource { event: EventSource::SyncProgressed { stage: SyncStage::Transactions, accounts: 8, transactions: 48, streams: 0 } },
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"transactions","accounts":8,"transactions":48,"streams":0,"finished":false}"#.to_string() } },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToSource { action: WatchSync }"#,
+        > @r#"ToSource { action: PollSync }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToUi { action: Render { screen: Onboarding { view: Sync { step: "Step 3 of 3 · Sync", title: "Reading your history", body: [ViewRun { text: "First time only. Every refresh after this one takes a moment.", strong: false }], progress: 0.625, rows: [ViewIconRow { icon: "tick-circle", tone: Done, title: "First Platypus Bank", sub: None, value: Some("connected") }, ViewIconRow { icon: "tick-circle", tone: Done, title: "Accounts", sub: None, value: Some("8") }, ViewIconRow { icon: "spin", tone: Running, title: "Transactions", sub: None, value: Some("48 so far") }, ViewIconRow { icon: "dot", tone: Waiting, title: "Recurring bills", sub: None, value: Some("waiting") }] } }, dock: None } }"#,
+    );
+}
+
+/// The clock is what goes and looks. A sync runs on the server and finishes
+/// whether or not anybody asks, so while that screen is up every tick asks
+/// again — and because it is the machine deciding, every ask is an action in
+/// the log and a replay makes the same ones.
+///
+/// It is a poll because the server can only answer questions it is asked;
+/// #30 is the push channel that replaces it, and this rule is the whole of
+/// what goes away.
+#[test]
+fn every_tick_asks_how_the_sync_is_going() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankLinked { institution: "First Platypus Bank".to_string() } },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToSource { action: PollSync }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 1 } },
+        > @r#"ToSource { action: PollSync }"#,
+
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 2 } },
+        > @r#"ToSource { action: PollSync }"#,
+    );
+}
+
+/// Leaving the screen ends the polling, and nothing is cancelled to do it —
+/// the machine simply stops asking. That is the whole of stopping a poll that
+/// was never a subscription.
+#[test]
+fn the_asking_stops_when_the_sync_screen_does() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankLinked { institution: "First Platypus Bank".to_string() } },
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"streams","accounts":8,"transactions":48,"streams":8,"finished":true}"#.to_string() } },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToSource { action: PollSync }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        // On Ready now, so the clock has nothing to ask about.
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 1 } },
     );
 }
 
@@ -438,11 +488,11 @@ fn a_finished_sync_counts_what_arrived() {
     eval!(&mut state,
         < Event::FromUi { event: EventUi::BankConnectRequested },
         < Event::FromSource { event: EventSource::BankLinked { institution: "First Platypus Bank".to_string() } },
-        < Event::FromSource { event: EventSource::SyncProgressed { stage: SyncStage::Streams, accounts: 8, transactions: 48, streams: 8 } },
-        < Event::FromSource { event: EventSource::SyncFinished },
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"streams","accounts":8,"transactions":48,"streams":8,"finished":false}"#.to_string() } },
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"streams","accounts":8,"transactions":48,"streams":8,"finished":true}"#.to_string() } },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToSource { action: WatchSync }"#,
+        > @r#"ToSource { action: PollSync }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToUi { action: Render { screen: Onboarding { view: Ready { title: "You're set.", body: [ViewRun { text: "First Platypus Bank", strong: true }, ViewRun { text: " is connected and syncing.", strong: false }], tally: [ViewTally { value: "8", label: "accounts" }, ViewTally { value: "48", label: "transactions" }, ViewTally { value: "8", label: "recurring bills found" }], another: "Add another bank", open: "Open Meridian" } }, dock: None } }"#,

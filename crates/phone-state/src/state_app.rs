@@ -8,6 +8,7 @@ use api_ledger::Connection;
 use api_ledger::Entry;
 use api_ledger::Stream;
 use server_wire::WireSnapshot;
+use server_wire::WireSyncStatus;
 
 use crate::Action;
 use crate::ActionSource;
@@ -174,6 +175,17 @@ impl StateApp {
                 );
 
                 self.device_now = now;
+
+                // A sync runs on the server and finishes whether or not
+                // anybody asks, so while that screen is up the clock is what
+                // makes the app go and look. Deciding it here rather than
+                // looping in the runtime is what puts every poll in the log:
+                // a replay makes the same number of them in the same places.
+                if self.polls_on_a_tick() {
+                    actions.push(Action::ToSource {
+                        action: ActionSource::PollSync,
+                    });
+                }
 
                 // The countdown on the code screen is the one thing in the app
                 // that changes while nobody is touching it, so it is the one
@@ -421,10 +433,11 @@ impl StateApp {
                     flow.bank_linked(institution);
 
                     // The bank being attached is what starts the history
-                    // arriving, so the ask follows the news rather than the
-                    // runtime deciding a sync must be next.
+                    // arriving, so the first ask follows the news rather than
+                    // the runtime deciding a sync must be next. Every ask
+                    // after this one is a tick's.
                     actions.push(Action::ToSource {
-                        action: ActionSource::WatchSync,
+                        action: ActionSource::PollSync,
                     });
                 }
 
@@ -439,27 +452,29 @@ impl StateApp {
                 self.render(actions);
             }
 
-            EventSource::SyncProgressed {
-                stage,
-                accounts,
-                transactions,
-                streams,
-            } => {
-                if let Some(flow) = &mut self.onboarding {
-                    flow.sync_progressed(Progress {
-                        stage: *stage,
-                        accounts: *accounts,
-                        transactions: *transactions,
-                        streams: *streams,
-                    });
-                }
+            EventSource::SyncStatusLoaded { json } => {
+                // A status we cannot read leaves the screen where it is. The
+                // next tick asks again, which is a better answer than throwing
+                // somebody out of first run over one malformed reply.
+                match serde_json::from_str::<WireSyncStatus>(json) {
+                    Ok(status) => {
+                        if let Some(flow) = &mut self.onboarding {
+                            if status.finished {
+                                flow.sync_finished();
+                            } else {
+                                flow.sync_progressed(Progress {
+                                    stage: status.stage(),
+                                    accounts: status.accounts,
+                                    transactions: status.transactions,
+                                    streams: status.streams,
+                                });
+                            }
+                        }
+                    }
 
-                self.render(actions);
-            }
-
-            EventSource::SyncFinished => {
-                if let Some(flow) = &mut self.onboarding {
-                    flow.sync_finished();
+                    Err(e) => {
+                        self.load_failed = Some(format!("could not read the sync status: {e}"));
+                    }
                 }
 
                 self.render(actions);
@@ -528,6 +543,17 @@ impl StateApp {
     fn draws_on_a_tick(&self) -> bool {
         match &self.onboarding {
             Some(flow) => flow.step() == Step::Code,
+            None => false,
+        }
+    }
+
+    /// Whether there is a sync worth asking about.
+    ///
+    /// Only the screen that draws one. Leaving it is what ends the polling —
+    /// there is nothing to cancel, because nothing was ever started.
+    fn polls_on_a_tick(&self) -> bool {
+        match &self.onboarding {
+            Some(flow) => flow.step() == Step::Sync,
             None => false,
         }
     }

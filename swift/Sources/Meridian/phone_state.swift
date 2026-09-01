@@ -3240,13 +3240,23 @@ public enum ActionSource: Equatable, Hashable {
      */
     case startBankLink
     /**
-     * Follow the first sync, and report what lands.
+     * Ask how far the first sync has got.
      *
-     * The work is the server's — it holds the `access_token` and runs
-     * `/transactions/sync` — so this asks to be told about it rather than to
-     * do it. Backgrounding the app while it runs is safe for the same reason.
+     * One question, not a subscription: the runtime makes one request and
+     * sends one event back. Asking *again* is the machine's to decide, and it
+     * does so on the tick — so every poll is an action in the log and a
+     * replay makes the same number of them in the same places. A loop in the
+     * runtime would be a decision no log records.
+     *
+     * The work is the server's — it holds the `access_token` and runs the
+     * three calls — so this only ever reads. Backgrounding the app while it
+     * runs is safe for the same reason.
+     *
+     * It is a poll because the server can only answer questions it is asked.
+     * Issue #30 is the push channel this wants; when it lands, this action
+     * and the tick rule that repeats it are the whole of what goes away.
      */
-    case watchSync
+    case pollSync
 
 
 
@@ -3283,7 +3293,7 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
         
         case 6: return .startBankLink
         
-        case 7: return .watchSync
+        case 7: return .pollSync
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3321,7 +3331,7 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(6))
         
         
-        case .watchSync:
+        case .pollSync:
             writeInt(&buf, Int32(7))
         
         }
@@ -3666,20 +3676,19 @@ public enum EventSource: Equatable, Hashable {
      */
     case bankAbandoned
     /**
-     * How far the first sync has got, and what it has so far.
+     * How far the first sync has got.
      *
-     * The stage and the counts are separate facts: the transactions row reads
-     * `48 so far` while it is still running, so a count is not a claim that
-     * the stage is done.
+     * JSON for the same reason [`SnapshotLoaded`](EventSource::SnapshotLoaded)
+     * is: the machine parses it, so all three platforms get the same parse and
+     * there is one place that decides what a missing field means. It is
+     * `server_wire::WireSyncStatus` on the way out of the server.
+     *
+     * One event rather than a progressed/finished pair, because the server
+     * answers one question with one document — whether anything is still
+     * running is a field in it, not a different reply.
      */
-    case syncProgressed(stage: SyncStage, accounts: UInt32, transactions: UInt32, streams: UInt32
+    case syncStatusLoaded(json: String
     )
-    /**
-     * The whole history is in. `/transactions/sync` pages all of it the first
-     * time and almost nothing every time after, which is why this happens
-     * once per bank and never again.
-     */
-    case syncFinished
 
 
 
@@ -3721,10 +3730,8 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
         
         case 8: return .bankAbandoned
         
-        case 9: return .syncProgressed(stage: try FfiConverterTypeSyncStage.read(from: &buf), accounts: try FfiConverterUInt32.read(from: &buf), transactions: try FfiConverterUInt32.read(from: &buf), streams: try FfiConverterUInt32.read(from: &buf)
+        case 9: return .syncStatusLoaded(json: try FfiConverterString.read(from: &buf)
         )
-        
-        case 10: return .syncFinished
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3770,17 +3777,10 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(8))
         
         
-        case let .syncProgressed(stage,accounts,transactions,streams):
+        case let .syncStatusLoaded(json):
             writeInt(&buf, Int32(9))
-            FfiConverterTypeSyncStage.write(stage, into: &buf)
-            FfiConverterUInt32.write(accounts, into: &buf)
-            FfiConverterUInt32.write(transactions, into: &buf)
-            FfiConverterUInt32.write(streams, into: &buf)
+            FfiConverterString.write(json, into: &buf)
             
-        
-        case .syncFinished:
-            writeInt(&buf, Int32(10))
-        
         }
     }
 }
@@ -4433,85 +4433,6 @@ public func FfiConverterTypeScreen_lift(_ buf: RustBuffer) throws -> Screen {
 #endif
 public func FfiConverterTypeScreen_lower(_ value: Screen) -> RustBuffer {
     return FfiConverterTypeScreen.lower(value)
-}
-
-
-
-/**
- * Which part of the first sync is running.
- *
- * In the order they happen, because that order is what the progress bar is a
- * fraction of.
- */
-
-public enum SyncStage: Equatable, Hashable {
-    
-    case accounts
-    case transactions
-    case streams
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension SyncStage: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeSyncStage: FfiConverterRustBuffer {
-    typealias SwiftType = SyncStage
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SyncStage {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .accounts
-        
-        case 2: return .transactions
-        
-        case 3: return .streams
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: SyncStage, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case .accounts:
-            writeInt(&buf, Int32(1))
-        
-        
-        case .transactions:
-            writeInt(&buf, Int32(2))
-        
-        
-        case .streams:
-            writeInt(&buf, Int32(3))
-        
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeSyncStage_lift(_ buf: RustBuffer) throws -> SyncStage {
-    return try FfiConverterTypeSyncStage.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeSyncStage_lower(_ value: SyncStage) -> RustBuffer {
-    return FfiConverterTypeSyncStage.lower(value)
 }
 
 

@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use api_common::Timestamp;
 
-use crate::SyncStage;
+use server_wire::SyncStage;
 
 /// How long before another code can be asked for.
 pub(crate) const RESEND_AFTER: Duration = Duration::from_secs(60);

@@ -39,7 +39,6 @@ pub use action_ui::ActionUi;
 pub use event::Event;
 pub use event_runtime::EventRuntime;
 pub use event_source::EventSource;
-pub use event_source::SyncStage;
 pub use event_ui::EventUi;
 pub use event_ui::FilterGroup;
 pub use range::RangeSelection;

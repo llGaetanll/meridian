@@ -318,6 +318,23 @@ impl WireSyncStatus {
         }
     }
 
+    /// A sync that is over, and what it brought.
+    ///
+    /// The counts stay rather than being cleared with the sync, because they
+    /// are not recoverable from anywhere else: `transactions` is what *this*
+    /// sync added, which on a later one is "12 new" and not the total the
+    /// store holds. The screen that reports a first run is asking about the
+    /// sync, not about the ledger.
+    pub fn done(accounts: u32, transactions: u32, streams: u32) -> Self {
+        Self {
+            stage: stage_name(SyncStage::Streams).to_string(),
+            accounts,
+            transactions,
+            streams,
+            finished: true,
+        }
+    }
+
     pub fn stage(&self) -> SyncStage {
         stage_from_name(&self.stage)
     }
