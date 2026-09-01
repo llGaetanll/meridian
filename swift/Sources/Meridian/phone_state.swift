@@ -4498,7 +4498,14 @@ public enum ViewOnboarding: Equatable, Hashable {
      * it. No skip: every screen in the app is a view of transactions, so an
      * app that let someone past this would open on three empty tabs.
      */
-    case bank(step: String, title: String, body: [ViewRun], rows: [ViewIconRow], action: String, legal: String
+    case bank(step: String, title: String, body: [ViewRun], rows: [ViewIconRow], action: String, 
+        /**
+         * Whether the button is waiting on Plaid's page to appear.
+         *
+         * A second or so passes between the tap and the sheet — the server
+         * creates a Link session and iOS raises a web view — and a button
+         * that looks untapped for a second is a button people tap twice.
+         */opening: Bool, legal: String
     )
     /**
      * The one slow screen in the app, and it happens once per bank.
@@ -4528,7 +4535,11 @@ public enum ViewOnboarding: Equatable, Hashable {
      * find a password. Nothing was created, and saying so plainly is the
      * whole job.
      */
-    case failed(step: String, title: String, body: [ViewRun], rows: [ViewIconRow], action: String
+    case failed(step: String, title: String, body: [ViewRun], rows: [ViewIconRow], action: String, 
+        /**
+         * The same wait as [`Bank`](ViewOnboarding::Bank)'s: Try again opens
+         * the very same page.
+         */opening: Bool
     )
 
 
@@ -4560,7 +4571,7 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
         case 3: return .code(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), cells: try FfiConverterSequenceTypeViewCodeCell.read(from: &buf), fault: try FfiConverterOptionString.read(from: &buf), action: try FfiConverterOptionString.read(from: &buf), resend: try FfiConverterTypeViewResend.read(from: &buf)
         )
         
-        case 4: return .bank(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf), legal: try FfiConverterString.read(from: &buf)
+        case 4: return .bank(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf), opening: try FfiConverterBool.read(from: &buf), legal: try FfiConverterString.read(from: &buf)
         )
         
         case 5: return .sync(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), progress: try FfiConverterDouble.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf)
@@ -4569,7 +4580,7 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
         case 6: return .ready(title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), tally: try FfiConverterSequenceTypeViewTally.read(from: &buf), another: try FfiConverterString.read(from: &buf), open: try FfiConverterString.read(from: &buf)
         )
         
-        case 7: return .failed(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf)
+        case 7: return .failed(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf), opening: try FfiConverterBool.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -4608,13 +4619,14 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
             FfiConverterTypeViewResend.write(resend, into: &buf)
             
         
-        case let .bank(step,title,body,rows,action,legal):
+        case let .bank(step,title,body,rows,action,opening,legal):
             writeInt(&buf, Int32(4))
             FfiConverterString.write(step, into: &buf)
             FfiConverterString.write(title, into: &buf)
             FfiConverterSequenceTypeViewRun.write(body, into: &buf)
             FfiConverterSequenceTypeViewIconRow.write(rows, into: &buf)
             FfiConverterString.write(action, into: &buf)
+            FfiConverterBool.write(opening, into: &buf)
             FfiConverterString.write(legal, into: &buf)
             
         
@@ -4636,13 +4648,14 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
             FfiConverterString.write(`open`, into: &buf)
             
         
-        case let .failed(step,title,body,rows,action):
+        case let .failed(step,title,body,rows,action,opening):
             writeInt(&buf, Int32(7))
             FfiConverterString.write(step, into: &buf)
             FfiConverterString.write(title, into: &buf)
             FfiConverterSequenceTypeViewRun.write(body, into: &buf)
             FfiConverterSequenceTypeViewIconRow.write(rows, into: &buf)
             FfiConverterString.write(action, into: &buf)
+            FfiConverterBool.write(opening, into: &buf)
             
         }
     }

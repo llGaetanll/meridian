@@ -36,8 +36,16 @@ struct OnboardingScreen: View {
                 resend: resend
             )
 
-        case .bank(let step, let title, let runs, let rows, let action, let legal):
-            BankScreen(step: step, title: title, runs: runs, rows: rows, action: action, legal: legal)
+        case .bank(let step, let title, let runs, let rows, let action, let opening, let legal):
+            BankScreen(
+                step: step,
+                title: title,
+                runs: runs,
+                rows: rows,
+                action: action,
+                opening: opening,
+                legal: legal
+            )
 
         case .sync(let step, let title, let runs, let progress, let rows):
             SyncScreen(step: step, title: title, runs: runs, progress: progress, rows: rows)
@@ -45,8 +53,15 @@ struct OnboardingScreen: View {
         case .ready(let title, let runs, let tally, let another, let open):
             ReadyScreen(title: title, runs: runs, tally: tally, another: another, open: open)
 
-        case .failed(let step, let title, let runs, let rows, let action):
-            FailedScreen(step: step, title: title, runs: runs, rows: rows, action: action)
+        case .failed(let step, let title, let runs, let rows, let action, let opening):
+            FailedScreen(
+                step: step,
+                title: title,
+                runs: runs,
+                rows: rows,
+                action: action,
+                opening: opening
+            )
         }
     }
 }

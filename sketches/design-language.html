@@ -95,6 +95,7 @@ body {
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
+    <symbol id="i-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"/><path d="M3.5 12A8.5 8.5 0 0 1 12 3.5" opacity="0.2"/></symbol>
     <symbol id="i-caret" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 9 18 9 12 16"/></symbol>
     <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></symbol>
     <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="m3 7 9 6 9-6"/></symbol>
@@ -357,6 +358,31 @@ body {
           controls to keep in agreement.
         </div>
         <div class="use">.btn.primary.lg.block</div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="demo">
+        <button class="btn primary lg block busy"><svg><use href="#i-spin"/></svg>Opening Plaid&hellip;</button>
+      </div>
+      <div class="body">
+        <h3>Working</h3>
+        <p>
+          A press that landed and has not finished. The label says what is
+          being waited on rather than "Loading", and the button stops taking
+          taps while it waits.
+        </p>
+        <div class="why">
+          Not <code>.dead</code>, which is a button there is no point pressing.
+          This one was pressed. The phone draws it on Connect a bank: the
+          server opens a Plaid session and iOS raises a web sheet over the app,
+          about a second between the tap and anything appearing, and a second
+          of nothing reads as a tap that missed.
+
+          The glyph is the arc the sync rows turn, at the same speed &mdash;
+          one spinner in the app rather than each platform reaching for its own.
+        </div>
+        <div class="use">.btn.busy</div>
       </div>
     </div>
 

@@ -43,10 +43,10 @@ pub(crate) fn onboarding(flow: &StateOnboarding, now: Timestamp) -> ViewOnboardi
         Step::Welcome => welcome(),
         Step::Email => email(flow),
         Step::Code => code(flow, now),
-        Step::Bank => bank(),
+        Step::Bank => bank(flow),
         Step::Sync => sync(flow),
         Step::Ready => ready(flow),
-        Step::Failed => failed(),
+        Step::Failed => failed(flow),
     }
 }
 
@@ -160,7 +160,7 @@ fn resend(flow: &StateOnboarding, now: Timestamp) -> ViewResend {
 /// this usually leaves out. Meridian sees your transactions and stores them.
 /// That is the product, and an app that implies otherwise has told its first
 /// lie on the screen where it is asking to be trusted.
-fn bank() -> ViewOnboarding {
+fn bank(flow: &StateOnboarding) -> ViewOnboarding {
     ViewOnboarding::Bank {
         step: STEP_BANK.to_string(),
         title: "Connect your bank".to_string(),
@@ -194,6 +194,7 @@ fn bank() -> ViewOnboarding {
         ],
 
         action: "Connect a bank".to_string(),
+        opening: flow.opening(),
 
         // Plaid's own end-user policy, named here rather than in a settings
         // screen: this is where the data starts moving.
@@ -289,7 +290,7 @@ fn ready(flow: &StateOnboarding) -> ViewOnboarding {
 /// Nothing was created, and saying so plainly is the whole job — "something
 /// went wrong" leaves someone wondering whether their bank is half-attached to
 /// an app they have not finished setting up.
-fn failed() -> ViewOnboarding {
+fn failed(flow: &StateOnboarding) -> ViewOnboarding {
     ViewOnboarding::Failed {
         step: STEP_BANK.to_string(),
         title: "That didn't finish".to_string(),
@@ -305,6 +306,7 @@ fn failed() -> ViewOnboarding {
         )],
 
         action: "Try again".to_string(),
+        opening: flow.opening(),
     }
 }
 

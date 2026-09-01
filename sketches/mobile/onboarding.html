@@ -335,6 +335,82 @@
     </div>
   </section>
 
+  <!-- ══════════════════ 4b · Connect a bank · opening ══════════════════ -->
+  <!-- The second between the tap and Plaid's page: the server opens a Link
+       session and iOS raises a web sheet over the app. A second of nothing
+       reads as a tap that missed, so the button says what it is waiting on
+       and stops taking taps. -->
+  <section class="screen">
+    <div class="screen-label">4b · Connect a bank · opening</div>
+    <div class="phone ui">
+
+      <div class="statusbar">
+        <span class="num">9:41</span>
+        <span class="glyphs"><svg viewBox="0 0 90 24" style="width:74px;height:16px"><use href="#i-status"/></svg></span>
+      </div>
+
+      <!--
+        The screen this whole flow exists for. Everything before it is
+        bookkeeping; this is where a stranger decides whether to sign in to
+        their bank on their phone.
+
+        So the four lines are true ones, including the third, which is the
+        one apps like this usually leave out. Meridian sees your
+        transactions. It stores them. That is the product — a ledger cannot
+        be drawn from data nobody holds — and an app that implies otherwise
+        has told its first lie on the screen where it is asking to be
+        trusted.
+
+        What is worth saying is the part that is genuinely narrow: the
+        credentials go to Plaid and never to us, nothing here can move money,
+        and the way out deletes what we kept. "We don't sell your data" is
+        not on the list. It is the law, not a favour, and a promise nobody
+        can check is worth nothing on this screen.
+
+        Plaid's own end-user policy is linked here rather than in a settings
+        screen: this is where the data starts moving.
+
+        No skip. There is no Meridian without a bank in it — every screen in
+        the app is a view of transactions — so an app that let someone past
+        this would be an app that opens on four empty tabs.
+      -->
+      <div class="onb">
+        <div class="onb-step">Step 2 of 3 · Bank</div>
+
+        <div class="onb-title">Connect your bank</div>
+        <div class="onb-body">Meridian uses <b>Plaid</b> to connect. You sign in on your bank's own page.</div>
+
+        <div style="margin-top:18px">
+          <div class="row top">
+            <svg><use href="#i-lock"/></svg>
+            <div class="rt">Your bank password goes to Plaid<div class="rs">Never to Meridian. We are handed a key to read with, not your sign-in.</div></div>
+          </div>
+          <div class="row top">
+            <svg><use href="#i-tick-c"/></svg>
+            <div class="rt">Read-only<div class="rs">Balances, transactions and recurring bills. Nothing can move money.</div></div>
+          </div>
+          <div class="row top">
+            <svg><use href="#i-ledger"/></svg>
+            <div class="rt">Meridian keeps your transactions<div class="rs">They are stored on our server. That is what the ledger is made of.</div></div>
+          </div>
+          <div class="row top">
+            <svg><use href="#i-trash"/></svg>
+            <div class="rt">Removing a bank deletes them<div class="rs">One tap in Account, and its history goes with it.</div></div>
+          </div>
+        </div>
+
+        <div class="onb-fill"></div>
+
+        <button class="btn primary lg block busy"><svg><use href="#i-spin"/></svg>Opening Plaid&hellip;</button>
+
+        <div class="legal">
+          Plaid handles the connection under its <a href="#">end-user privacy policy</a>.
+        </div>
+      </div>
+
+    </div>
+  </section>
+
   <!-- ══════════════════ 5 · Plaid ══════════════════ -->
   <section class="screen">
     <div class="screen-label">5 · Plaid Hosted Link — not ours to draw</div>
