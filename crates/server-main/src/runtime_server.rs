@@ -634,9 +634,9 @@ impl RuntimeServer {
         let call_id = action.call_id();
 
         let event = match self.write_store(action).await {
-            Ok(()) => EventStore::Written { call_id },
+            Ok(()) => EventStore::WriteSuccess { call_id },
 
-            Err(e) => EventStore::SaveFailed {
+            Err(e) => EventStore::WriteError {
                 call_id,
                 message: e.to_string(),
             },

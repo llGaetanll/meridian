@@ -15,7 +15,7 @@
 //! time arrives as a `Tick` like any other fact from the edge, call ids are
 //! handed out in order from 1 so an answer comes back on the one that asked,
 //! and a route is released only once everything it started has been written —
-//! which is what `EventStore::Written` is doing on its own line.
+//! which is what `EventStore::WriteSuccess` is doing on its own line.
 
 use api_common::Timestamp;
 use api_eval::eval;
@@ -158,7 +158,7 @@ fn a_failed_write_still_answers_the_route() {
         < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
         > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::SaveFailed { call_id: 2, message: "connection refused".to_string() } },
+        < Event::FromStore { event: EventStore::WriteError { call_id: 2, message: "connection refused".to_string() } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -355,6 +355,24 @@ fn a_second_signal_is_ignored() {
     );
 }
 
+/// A machine on its way out mints nothing. The generator belongs to the
+/// running state and a drain has left it, so a sign-in arriving during a
+/// shutdown is refused rather than half-finished by a process that is going
+/// away — the same rule that stops a fetch.
+#[test]
+fn a_draining_machine_mints_nothing() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
+        < Event::FromTerminal { event: EventTerminal::SigInt },
+        > Action::ToProcess { action: ActionProcess::Shutdown },
+
+        < Event::FromRouter { request_id: 1, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
+        > Action::ToRouter { action: ActionRouter::Unavailable, .. },
+    );
+}
+
 /// Asking for a code stores its hash and sends the code, in that order and as
 /// two actions: only one of them may ever hold the plaintext.
 #[test]
@@ -368,7 +386,7 @@ fn asking_for_a_code_stores_a_hash_and_sends_the_code() {
         > Action::ToStore { action: ActionStore::SaveCode { call_id: 1, .. } },
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
 
-        < Event::FromStore { event: EventStore::Written { call_id: 1 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }
@@ -428,11 +446,11 @@ fn the_right_code_signs_you_in_and_spends_itself() {
         > Action::ToStore { action: ActionStore::CreateSession { call_id: 1, .. } },
         > Action::ToStore { action: ActionStore::DeleteCode { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::Written { call_id: 1 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
 
         // Only now: a token that reaches the phone before its session row
         // exists is a sign-in that 401s on its own first request.
-        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::SignedIn { .. }, .. },
     );
 }
@@ -449,7 +467,7 @@ fn a_wrong_code_only_counts_a_guess() {
         < Event::FromRouter { request_id: 1, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "654321".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
         > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::Written { call_id: 1 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -466,7 +484,7 @@ fn an_expired_code_is_rejected_and_still_counts() {
         < Event::FromRouter { request_id: 1, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs()), attempts: 0 }) } },
         > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::Written { call_id: 1 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -482,7 +500,7 @@ fn an_exhausted_code_rejects_the_right_answer() {
         < Event::FromRouter { request_id: 1, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 5 }) } },
         > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::Written { call_id: 1 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -545,7 +563,7 @@ fn a_session_is_written_down_before_its_url_is_handed_over() {
         < Event::FromSource { event: EventSource::LinkOpened { call_id: 1, user_id: uuid::Uuid::nil(), link_token: "link-1".to_string(), hosted_link_url: "https://secure.plaid.com/x".to_string() } },
         > Action::ToStore { action: ActionStore::SaveLink { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::LinkOpened { .. }, .. },
     );
 }
@@ -579,7 +597,7 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }] } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::NotLinked, .. },
     );
 }
@@ -615,9 +633,9 @@ fn a_linked_bank_is_stored_and_its_session_closed() {
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 3, .. } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
 
-        < Event::FromStore { event: EventStore::Written { call_id: 3 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
 
-        < Event::FromStore { event: EventStore::Written { call_id: 4 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
         > Action::ToRouter { action: ActionRouter::Linked, .. },
     );
 }
@@ -662,11 +680,11 @@ fn many_sessions_still_produce_one_answer() {
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 3, .. } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
 
-        < Event::FromStore { event: EventStore::Written { call_id: 2 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
 
-        < Event::FromStore { event: EventStore::Written { call_id: 3 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
 
-        < Event::FromStore { event: EventStore::Written { call_id: 4 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
         > Action::ToRouter { action: ActionRouter::NotLinked, .. },
     );
 }

@@ -80,17 +80,14 @@ use syn::parse_macro_input;
 
 /// What a `>` line says about one action.
 enum Expected {
-    /// `> Action::ToUi { .. }` — a pattern, matched with `matches!`. Boxed
-    /// because a `Pat` is thirty times the size of the other variant, and a
-    /// parse tree is built once and never in a hot path.
+    /// `> Action::ToUi { .. }`, and the block after `=>` if the line carried
+    /// one.
     ///
-    /// With a block after `=>`, the pattern's bindings are in scope in it and
-    /// it runs when the action matches: a screen too large to write out is
-    /// asserted on where it arrives rather than dug back out afterwards.
+    /// Boxed because a `Pat` is two orders of magnitude larger than the other
+    /// variant, and a parse tree is built once and never in a hot path.
     Shape(Box<Pat>, Option<Box<Block>>),
 
-    /// `> @"ToUi { … }"` — the action's `{:?}`, compared as a string. Values a
-    /// pattern cannot reach are what this is for; see the module docs.
+    /// `> @"ToUi { … }"` — the text an action's `{:?}` must equal.
     Debug(LitStr),
 }
 

@@ -14,15 +14,11 @@ use crate::CallId;
 
 #[derive(Debug)]
 pub enum EventStore {
-    /// It is written. The rows a route is about to read are the new ones.
-    Written { call_id: CallId },
+    /// The write landed. The rows a route is about to read are the new ones.
+    WriteSuccess { call_id: CallId },
 
-    /// Nothing could be written. What was fetched is gone, and the cursor not
-    /// having moved is what makes that recoverable rather than a hole: the
-    /// next sync re-reads the same range.
-    ///
-    /// It ends the wait the same way [`Written`](Self::Written) does. A route
-    /// held until a write that failed would be held forever, and serving the
-    /// rows we already had is the right answer to a sync that did not land.
-    SaveFailed { call_id: CallId, message: String },
+    /// The write did not land, and why. What was fetched is gone, and the
+    /// cursor not having moved is what makes that recoverable rather than a
+    /// hole: the next sync re-reads the same range.
+    WriteError { call_id: CallId, message: String },
 }
