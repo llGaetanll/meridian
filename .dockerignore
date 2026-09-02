@@ -13,6 +13,13 @@ logs/
 .env.*
 !.env.example
 
+# How the server is *run*, which is nothing the compiler needs — and every one
+# of these is edited far more often than the code. Left in the context, a
+# comment reworded in the Caddyfile invalidates `COPY . .` and rebuilds
+# server-main to produce a byte-identical binary.
+Caddyfile
+docker-compose*.yml
+
 # Nothing the server is built from.
 swift/
 kotlin/
