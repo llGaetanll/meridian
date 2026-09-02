@@ -98,9 +98,16 @@ services:
       CLICOLOR_FORCE: "1"
 
     ports:
-      # Every interface, because a real phone on the LAN is one of the clients
-      # and nothing answers on loopback from another device.
-      - "8082:8082"
+      # Every interface on a laptop, because a real phone on the LAN is one of
+      # the clients and nothing answers on loopback from another device.
+      #
+      # On the box it is loopback, and that is the whole of the difference
+      # between the two deployments: Caddy reaches the server by service name
+      # over this network and needs no published port at all, so publishing one
+      # anywhere but loopback would be a second door into the same building.
+      # What it is still good for there is `curl localhost:8082/health` from a
+      # shell on the box, which asks the server rather than the proxy.
+      - "${SERVER_BIND:-0.0.0.0}:8082:8082"
 
 volumes:
   meridian-db:

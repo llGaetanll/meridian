@@ -1,0 +1,42 @@
+# The only thing on the box that meets the internet.
+#
+# Caddy holds 80 and 443 and reaches the server over the compose network, which
+# is why docker-compose.yml publishes 8082 on loopback in production instead of
+# on every interface: there is exactly one door, and this is it.
+#
+# TLS is automatic. Caddy asks Let's Encrypt for a certificate the first time it
+# serves the name and renews it from then on, so nothing here names a
+# certificate file and nothing has to be renewed by hand. What that costs is
+# that the name has to resolve to this box *before* Caddy starts, or the
+# challenge fails — see docs/DEPLOY.md, where DNS comes before the first deploy
+# for this reason.
+#
+# The two variables come from the box's `.env` by way of
+# docker-compose.prod.yml. They are not written in here because a second box
+# would be this same file with a different name in it.
+{
+	# Where Let's Encrypt writes when renewal has been failing. It is the one
+	# warning that arrives *before* an outage rather than during it, so it is
+	# worth a real address that somebody reads.
+	email {$TLS_EMAIL}
+}
+
+{$MERIDIAN_DOMAIN} {
+	# `server` rather than an address: inside the compose network the server is
+	# a service name, the same way the database is `db`.
+	reverse_proxy server:8082
+
+	header {
+		# Six months, and deliberately no `preload`. Every client of this host
+		# is our own app speaking https, so there is no plain-http caller to
+		# break — and without preload this stays a decision that can be taken
+		# back, which a preload listing is not.
+		Strict-Transport-Security "max-age=15552000"
+	}
+
+	# Off by default in Caddy, and worth having on: this is the only record of
+	# a request that was refused before it ever reached the server, which is
+	# the failure the server's own log cannot explain. It lands in
+	# `docker compose logs` beside everything else.
+	log
+}

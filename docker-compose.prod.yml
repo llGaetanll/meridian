@@ -1,0 +1,95 @@
+# What the dev stack becomes on the box. Merged over docker-compose.yml, never
+# used on its own:
+#
+#     COMPOSE_PROFILES=server docker compose \
+#         -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# `scripts/deploy.sh` is what actually types that, so nobody has to.
+#
+# Almost everything here only *adds*. Compose merges the two files rather than
+# letting one replace the other, so anything that has to *differ* between a
+# laptop and the box is a variable in docker-compose.yml instead —
+# `SERVER_BIND` is the only one, and it is there rather than here for exactly
+# that reason.
+#
+# The one exception is `image:` on the server, which supersedes the `build:`
+# that docker-compose.yml carries. The box does not compile: see below.
+
+services:
+  db:
+    # The box reboots for a kernel update and nothing is watching. Without this
+    # the stack comes back only when somebody notices it is gone.
+    restart: unless-stopped
+
+    # Docker's default is an unbounded log file, which fills a disk in weeks and
+    # takes Postgres down with it — a failure that reads as a database problem
+    # and is not one.
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  server:
+    # Built on a laptop and shipped as an image, so this names a tag rather than
+    # a build. `build:` from docker-compose.yml is still merged in here and is
+    # deliberately never reached: compose builds only when the tag is missing,
+    # and `scripts/deploy.sh ship` has loaded it before it runs `up`.
+    #
+    # Pinned to the commit rather than `latest` so that what is running is
+    # named, and so the previous image is still on the box under its own tag —
+    # which is the whole of a rollback now that there is no source here to
+    # rebuild from.
+    #
+    # There is no source tree on the box, so a `--build` typed here fails
+    # rather than quietly recompiling 427 crates on a 1 GB machine. That is the
+    # right answer: the failure is the message.
+    image: meridian-server:${MERIDIAN_SHA:?}
+
+    restart: unless-stopped
+    logging: *logging
+
+  caddy:
+    # Behind the same profile as the server, so a bare `up` on the box still
+    # gets the database alone and the two halves cannot disagree about whether
+    # the server is part of the stack.
+    profiles: ["server"]
+
+    # Pinned to a major, like Postgres. Caddy does upgrade cleanly across
+    # minors, so this is the version that gets patches without a surprise.
+    image: caddy:2-alpine
+
+    restart: unless-stopped
+    logging: *logging
+
+    ports:
+      - "80:80"
+      - "443:443"
+      # HTTP/3. Harmless where it is unsupported — a client that cannot speak
+      # it never learns the port is open.
+      - "443:443/udp"
+
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+
+      # The certificate and the account key. This is the volume that matters:
+      # without it every restart is a fresh Let's Encrypt account asking for a
+      # fresh certificate, and their rate limit — five per name per week —
+      # turns a few restarts into a box that cannot serve https until it
+      # expires.
+      - caddy-data:/data
+      - caddy-config:/config
+
+    environment:
+      # No defaults. A box that has not said which name it answers to would get
+      # a certificate for nothing, and one that has not named an address would
+      # never hear that renewal is failing.
+      MERIDIAN_DOMAIN: ${MERIDIAN_DOMAIN:?}
+      TLS_EMAIL: ${TLS_EMAIL:?}
+
+    depends_on:
+      - server
+
+volumes:
+  caddy-data:
+  caddy-config:
