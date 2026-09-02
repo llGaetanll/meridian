@@ -97,14 +97,16 @@ Sub-machines do not handle events themselves. The app's `handle_events` routes
 the ones that are theirs, so there is still exactly one way anything changes.
 
 **Derive as little as possible on events and actions.** `Debug` is needed for
-logging. `Clone` only if something genuinely needs to own one — they are passed
+logging and for failure messages. `Clone` only if something genuinely needs to own one — they are passed
 by reference all the way down. **`PartialEq` in particular is not needed**:
 `eval!` matches actions as patterns rather than comparing them, and a derive on
 a top-level enum spreads a bound through every type it touches.
 
-**No clock, no IO, no randomness inside the machine.** Time comes in as an
-argument to `handle_events`. This is what makes a log of events a recording of
-a session.
+**No clock, no IO, no randomness inside the machine.** Time arrives as an
+event — a `Tick` the runtime sends once a second — rather than as an argument
+to `handle_events`, because an argument never appears in the event log and so
+cannot be replayed. This is what makes a log of events a recording of a
+session. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Tests
 
@@ -202,6 +204,15 @@ assertions on a return value.
 string, which means it passes or fails on formatting and `Debug` output that
 nobody chose deliberately; a pattern says what the test actually cares about and
 ignores the rest.
+
+## Logging
+
+**No `println!` or `eprintln!` anywhere.** Everything goes through `tracing`, so
+every line gets a level, a target, structured fields and the commit it came
+from. A print has none of those, and it is exactly the line missing from the log
+we are handed. The exception is a command whose output *is* the answer — an
+example, or a build script — which writes to stdout. What gets logged is in
+[LOGGING.md](LOGGING.md).
 
 ## JSON
 

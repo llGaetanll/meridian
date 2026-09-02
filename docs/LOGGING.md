@@ -5,6 +5,10 @@ first thing in `main`, before anything worth logging happens.
 
 ## The rules
 
+- **Everything goes through `tracing`. Nothing prints.** No `println!`, no
+  `eprintln!`, no hand-rolled logger — a print is a line with no level, no
+  target, no fields and no commit. The exception is a command whose output *is*
+  the answer.
 - **One event is one line.** Long values are escaped and cut, never wrapped.
 - **Structured, concise, easy to skim.** Anything worth reading back goes in a
   `key=value` field rather than into prose. Messages are short and always the

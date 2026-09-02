@@ -137,6 +137,27 @@ program — follows all of them.
    (`api-ratelimit`, with the per-API limiter in that API's crate) rather than
    being guessed at by the runtime.
 
+### Waiting without sleeping
+
+A machine often needs to wait: back off before retrying, give up on a call that
+has been out too long, do not ask Plaid again yet. That is a rule, so by rule 7
+it belongs in the machine — but sleeping is IO, and the machine cannot do IO.
+
+It does not need to. It holds the time the last tick brought, so every waiting
+rule is arithmetic it can do on the spot:
+
+```rust
+.filter(|(_, waiter)| now.since(waiter.since).as_secs() >= CALL_GOOD_FOR_SECS)
+```
+
+So "wait half a minute, then answer the route anyway" is never a sleep
+anywhere. It is *this call is older than thirty seconds* — asked again on every
+tick, and answered the same way every time it is replayed.
+
+**A second is close enough.** The machine's clock is a rounded copy of the real
+one, and that is deliberate: a rule needing finer resolution than the tick is a
+rule about to depend on scheduling luck.
+
 ### The runtime on the other side
 
 Every program is two pieces: a machine that decides and a runtime that acts.
