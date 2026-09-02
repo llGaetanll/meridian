@@ -467,15 +467,21 @@ impl StateApp {
                                 flow.bank_named(institution);
                             }
 
+                            // The same counts either way: whether this is
+                            // the last reply decides the step and nothing
+                            // else. The totals are on the finished one too,
+                            // and Ready is the screen that shows them.
+                            let progress = Progress {
+                                stage: status.stage(),
+                                accounts: status.accounts,
+                                transactions: status.transactions,
+                                streams: status.streams,
+                            };
+
                             if status.finished {
-                                flow.sync_finished();
+                                flow.sync_finished(progress);
                             } else {
-                                flow.sync_progressed(Progress {
-                                    stage: status.stage(),
-                                    accounts: status.accounts,
-                                    transactions: status.transactions,
-                                    streams: status.streams,
-                                });
+                                flow.sync_progressed(progress);
                             }
                         }
                     }

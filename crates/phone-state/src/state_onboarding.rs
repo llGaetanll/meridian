@@ -311,7 +311,22 @@ impl StateOnboarding {
         self.sync = sync;
     }
 
-    pub(crate) fn sync_finished(&mut self) {
+    /// The last reply, which carries the totals as well as the news that there
+    /// will be no more of them.
+    ///
+    /// They are taken from this reply rather than left to the one before,
+    /// because a sync that finishes between two ticks has no reply before —
+    /// the first status the phone reads is already the last. Dropping its
+    /// counts is how "You're set." came to say nought accounts over a ledger
+    /// with fourteen in it.
+    pub(crate) fn sync_finished(&mut self, sync: Progress) {
+        debug_assert_eq!(
+            self.step,
+            Step::Sync,
+            "a sync reports its end only while one is running",
+        );
+
+        self.sync = sync;
         self.step = Step::Ready;
     }
 }

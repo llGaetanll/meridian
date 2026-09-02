@@ -555,6 +555,30 @@ fn a_finished_sync_counts_what_arrived() {
     );
 }
 
+/// The counts are read off the reply that says the sync is over, and not only
+/// off the ones before it.
+///
+/// A sync can finish between two ticks — a Sandbox one nearly always does — so
+/// the first status the phone reads is already the last. Taking the totals
+/// only from a reply that said `finished: false` is how a real link of
+/// fourteen accounts and forty-eight transactions landed on a "You're set."
+/// that counted nought of each.
+#[test]
+fn a_sync_already_over_on_its_first_reply_still_counts() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankLinked },
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"streams","institution":"Citibank Online","accounts":14,"transactions":48,"streams":8,"finished":true}"#.to_string() } },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToSource { action: PollSync }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Ready { title: "You're set.", body: [ViewRun { text: "Citibank Online", strong: true }, ViewRun { text: " is connected and syncing.", strong: false }], tally: [ViewTally { value: "14", label: "accounts" }, ViewTally { value: "48", label: "transactions" }, ViewTally { value: "8", label: "recurring bills found" }], another: "Add another bank", open: "Open Meridian" } }, dock: None } }"#,
+    );
+}
+
 /// The end of the road: the flow is dropped, the session the runtime is
 /// holding is committed so the next launch skips first run, and the app goes
 /// and gets its data. The Ledger it lands on is far too large to write out, so
