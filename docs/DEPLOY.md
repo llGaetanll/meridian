@@ -60,11 +60,23 @@ ssh-keygen -t ed25519 -C meridian
 cat ~/.ssh/id_ed25519.pub    # this is what the droplet is created with
 ```
 
-**Verify the domain in Resend**, if sign-in mail is going to come from
-`meridiancash.io` rather than `onboarding@resend.dev`. It is a handful of DNS
-records at the registrar and it is the slowest thing here, so it wants starting
-early. `EMAIL_SEND=log` is a legitimate answer for a first deploy and this can
-wait.
+**Verify the domain in Resend.** Done: `mail.meridiancash.io` is verified, and
+mail is sent from `noreply@mail.meridiancash.io`. It is three records at the
+registrar — DKIM at `resend._domainkey.mail`, and an SPF `TXT` and an `MX` at
+`send.mail` — and they go wherever the domain's nameservers actually are, which
+for `meridiancash.io` is Namecheap and not DigitalOcean. `dig
+@dns1.registrar-servers.com resend._domainkey.mail.meridiancash.io TXT` asks
+the authority directly and so tells propagation apart from a record that was
+never added.
+
+It is the slowest thing here, so on a new domain it still wants starting first.
+`EMAIL_SEND=log` remains a legitimate answer for a first deploy: it writes the
+code to the log and sends nothing, which is enough to walk a sign-in.
+
+DMARC is the one record not in the set above and Resend does not require it,
+but without it neither SPF nor DKIM is enforceable by a receiver. A
+`v=DMARC1; p=none; rua=…` at `_dmarc.meridiancash.io` covers the `mail.`
+subdomain too, since a receiver falls back to the organizational domain.
 
 **Nothing in the Plaid dashboard yet.** The redirect URI and the webhook both
 name `api.meridiancash.io`, which is fine to register before it resolves — but
@@ -219,11 +231,11 @@ PLAID_SECRET=…            # the Sandbox one; the two environments differ
 PLAID_ENV=sandbox
 PLAID_COLLECT=poll        # `webhook` needs a route that does not exist yet
 
-# `log` writes the sign-in code to the server log and sends nothing, which is a
-# real answer for a first deploy rather than a fallback.
-EMAIL_SEND=log
-RESEND_API_KEY=
-RESEND_FROM=
+# Real mail, from the verified domain. `log` writes the code to the server log
+# and sends nothing, which is the answer before Resend is set up.
+EMAIL_SEND=resend
+RESEND_API_KEY=…          # the box's own key, not a copy of the laptop's
+RESEND_FROM=noreply@mail.meridiancash.io
 ```
 
 `chmod 600 .env`. It holds the Plaid secret, which grants access to every Item
