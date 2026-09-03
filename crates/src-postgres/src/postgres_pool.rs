@@ -61,6 +61,15 @@ pub enum PostgresError {
     /// already-applied migration whose file has since been edited, which sqlx
     /// refuses on purpose — see [`migrate`](crate::migrate).
     Migrate(sqlx::migrate::MigrateError),
+
+    /// `MERIDIAN_DB_KEY` is missing, or is not 32 bytes of base64. Carries a
+    /// sentence rather than a code because the only reader is a person looking
+    /// at why the server would not start.
+    Key(String),
+
+    /// A token could not be sealed or opened. Never says anything about the
+    /// value — the message reaches a log, and the value is the credential.
+    Crypto(&'static str),
 }
 
 impl From<sqlx::Error> for PostgresError {
@@ -74,6 +83,8 @@ impl std::fmt::Display for PostgresError {
         match self {
             PostgresError::Sql(e) => write!(f, "postgres error: {e}"),
             PostgresError::Migrate(e) => write!(f, "migration failed: {e}"),
+            PostgresError::Key(message) => write!(f, "{message}"),
+            PostgresError::Crypto(message) => write!(f, "{message}"),
         }
     }
 }
@@ -83,6 +94,10 @@ impl std::error::Error for PostgresError {
         match self {
             PostgresError::Sql(e) => Some(e),
             PostgresError::Migrate(e) => Some(e),
+
+            // Nothing underneath: both are our own words about our own
+            // configuration, not another error wearing a hat.
+            PostgresError::Key(_) | PostgresError::Crypto(_) => None,
         }
     }
 }

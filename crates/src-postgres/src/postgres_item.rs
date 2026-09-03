@@ -8,8 +8,10 @@ use api_common::Timestamp;
 use uuid::Uuid;
 
 use crate::Db;
+use crate::DbKey;
 use crate::PostgresError;
 use crate::postgres_ledger::seconds;
+use crate::postgres_secret;
 
 /// One bank connection, as it is stored.
 ///
@@ -24,9 +26,13 @@ pub struct StoredItem {
     /// optional and never inferred.
     pub user_id: Uuid,
 
-    /// Permanent, and a live credential to somebody's bank. Never logged,
-    /// never sent to a client, and encrypted before the first Production Item
-    /// — see issue #21.
+    /// Permanent, and a live credential to somebody's bank. Never logged and
+    /// never sent to a client.
+    ///
+    /// Plain text here and sealed in the column: this struct is what the server
+    /// works with, and a caller that had to seal and open it itself would be a
+    /// caller that can forget to. [`save_item`] and [`load_items`] are the only
+    /// two functions that know the column is not what it looks like.
     pub access_token: String,
 
     pub institution_id: Option<String>,
@@ -53,7 +59,11 @@ pub struct StoredItem {
 /// are deliberately *not* in the update — the cursor, which moves only through
 /// [`save_cursor`] so a re-save cannot rewind a sync, and `user_id`, so that
 /// re-linking cannot move somebody else's bank onto your account.
-pub async fn save_item(db: &Db, item: &StoredItem) -> Result<(), PostgresError> {
+pub async fn save_item(db: &Db, key: &DbKey, item: &StoredItem) -> Result<(), PostgresError> {
+    // Sealed here rather than by the caller, so that the only way to write this
+    // column is through a function that seals it. See `postgres_secret`.
+    let access_token = postgres_secret::seal(key, &item.access_token)?;
+
     sqlx::query!(
         "INSERT INTO items (item_id, user_id, access_token, institution_id, institution_name, error_code, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, now())
@@ -65,7 +75,7 @@ pub async fn save_item(db: &Db, item: &StoredItem) -> Result<(), PostgresError> 
              updated_at       = now()",
         item.item_id,
         item.user_id,
-        item.access_token,
+        access_token,
         item.institution_id,
         item.institution_name,
         item.error_code,
@@ -103,7 +113,11 @@ pub async fn name_item(
 /// Scoped, and there is no unscoped version on purpose. This query used to have
 /// no `WHERE` at all, which read as "everything I know" while there was one
 /// user and as "everyone's banks" the moment there were two.
-pub async fn load_items(db: &Db, user_id: Uuid) -> Result<Vec<StoredItem>, PostgresError> {
+pub async fn load_items(
+    db: &Db,
+    key: &DbKey,
+    user_id: Uuid,
+) -> Result<Vec<StoredItem>, PostgresError> {
     let rows = sqlx::query!(
         "SELECT item_id, user_id, access_token, institution_id, institution_name, cursor, error_code, updated_at
          FROM items
@@ -114,19 +128,27 @@ pub async fn load_items(db: &Db, user_id: Uuid) -> Result<Vec<StoredItem>, Postg
     .fetch_all(db)
     .await?;
 
-    Ok(rows
-        .into_iter()
-        .map(|row| StoredItem {
-            item_id: row.item_id,
-            user_id: row.user_id,
-            access_token: row.access_token,
-            institution_id: row.institution_id,
-            institution_name: row.institution_name,
-            cursor: row.cursor,
-            error_code: row.error_code,
-            synced_at: seconds(row.updated_at),
+    // A row that will not open fails the whole load rather than being skipped.
+    //
+    // The overwhelmingly likely cause is the wrong key, and then *every* row
+    // fails: a server that skipped them would come up healthy, serving a ledger
+    // with no banks in it, which reads as data loss rather than as a
+    // misconfiguration. Refusing to load says which of the two it is while the
+    // rows are still there.
+    rows.into_iter()
+        .map(|row| {
+            Ok(StoredItem {
+                item_id: row.item_id,
+                user_id: row.user_id,
+                access_token: postgres_secret::open(key, &row.access_token)?,
+                institution_id: row.institution_id,
+                institution_name: row.institution_name,
+                cursor: row.cursor,
+                error_code: row.error_code,
+                synced_at: seconds(row.updated_at),
+            })
         })
-        .collect())
+        .collect()
 }
 
 /// One Item, by the id Plaid names it with.
@@ -134,7 +156,11 @@ pub async fn load_items(db: &Db, user_id: Uuid) -> Result<Vec<StoredItem>, Postg
 /// The read a webhook needs, and the reason it is not [`load_items`]: a
 /// webhook arrives with no session and names a bank rather than a person, so
 /// there is nobody to scope on until this row says who owns it.
-pub async fn load_item(db: &Db, item_id: &str) -> Result<Option<StoredItem>, PostgresError> {
+pub async fn load_item(
+    db: &Db,
+    key: &DbKey,
+    item_id: &str,
+) -> Result<Option<StoredItem>, PostgresError> {
     let row = sqlx::query!(
         "SELECT item_id, user_id, access_token, institution_id, institution_name, cursor, error_code, updated_at
          FROM items
@@ -144,16 +170,21 @@ pub async fn load_item(db: &Db, item_id: &str) -> Result<Option<StoredItem>, Pos
     .fetch_optional(db)
     .await?;
 
-    Ok(row.map(|row| StoredItem {
-        item_id: row.item_id,
-        user_id: row.user_id,
-        access_token: row.access_token,
-        institution_id: row.institution_id,
-        institution_name: row.institution_name,
-        cursor: row.cursor,
-        error_code: row.error_code,
-        synced_at: seconds(row.updated_at),
-    }))
+    // `transpose` rather than a `?` inside the closure: there is no row to
+    // open when there is no row, and that is not a failure.
+    row.map(|row| {
+        Ok(StoredItem {
+            item_id: row.item_id,
+            user_id: row.user_id,
+            access_token: postgres_secret::open(key, &row.access_token)?,
+            institution_id: row.institution_id,
+            institution_name: row.institution_name,
+            cursor: row.cursor,
+            error_code: row.error_code,
+            synced_at: seconds(row.updated_at),
+        })
+    })
+    .transpose()
 }
 
 /// Move the cursor.

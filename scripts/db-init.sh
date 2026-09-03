@@ -19,6 +19,33 @@ cd "$(dirname "$0")/.."
 DB_USER=${POSTGRES_USER:-meridian}
 DB_NAME=${POSTGRES_DB:-meridian}
 
+# The key the access token column is sealed with, if `.env` has not got one.
+#
+# Written rather than defaulted: a default key is a key that ships, and one
+# invented per run would open nothing the last run wrote. Generated here
+# because this is the script somebody runs once after a clone, which is exactly
+# when a key should come into existence.
+#
+# Only ever added, never replaced. Overwriting it would turn every stored token
+# into scrap, and the message says so rather than making that easy to do by
+# accident.
+if [ -f .env ] && ! grep -q '^MERIDIAN_DB_KEY=.' .env; then
+    key=$(openssl rand -base64 32)
+
+    # `.env.example` carries the empty line, so a clone has the key commented
+    # into place already; this fills it in where it is rather than appending a
+    # second one, which `.` would then read last and silently prefer.
+    if grep -q '^MERIDIAN_DB_KEY=' .env; then
+        # A literal `/` and `+` are base64's alphabet, so `|` is the delimiter.
+        sed -i.bak "s|^MERIDIAN_DB_KEY=.*|MERIDIAN_DB_KEY=$key|" .env && rm -f .env.bak
+    else
+        echo "MERIDIAN_DB_KEY=$key" >> .env
+    fi
+
+    echo "wrote a new MERIDIAN_DB_KEY into .env — back it up with the database,"
+    echo "and note that losing it means relinking every bank."
+fi
+
 if ! docker info >/dev/null 2>&1; then
     echo "docker is not running — start Docker Desktop and try again." >&2
     exit 1
