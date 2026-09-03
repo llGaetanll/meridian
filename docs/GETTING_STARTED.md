@@ -244,6 +244,33 @@ reports every one of them as "Unable to Install" or a launch that is refused:
   Development" -p | openssl x509 -noout -issuer`) and `security import` it
 - *the phone was never trusted* — the Settings path above
 
+**A phone the Mac cannot see at all.** This one looks different: nothing
+reaches the phone. `xcrun devicectl list devices` reports it as `unavailable`
+and `ios-device.sh` dies at the install with "CoreDeviceService was unable to
+locate a device matching the requested device identifier". The phone can be
+enumerating over USB perfectly — right serial, 480 Mb/s — and still look like
+this, because what is stale is the pairing record, not the cable.
+
+The tell is in the daemon log, where `log` is usually shadowed by a shell
+function, so spell it out:
+
+```
+/usr/bin/log show --last 5m --predicate 'process == "usbmuxd"' --style compact
+# E usbmuxd Could not start session with device: kAMDInvalidHostIDError
+```
+
+The Mac offers a host identity the phone no longer recognises, lockdownd
+refuses the session, and the device is dropped as fast as it attaches — which
+is why `devicectl` keeps answering from a cached record whose
+`lastConnectionDate` never moves. **Forget the trusted computers and trust the
+Mac again: Settings → Developer → Clear Trusted Computers, then replug and tap
+Trust with the phone unlocked.** The next attach logs "Successfully paired".
+
+Reach for this before rebooting. A reboot clears a different fault — IOKit
+refusing usbmuxd a plug-in interface, which logs `Ignored device,
+IOCreatePlugInInterfaceForService failed: kIOReturnNoResources` — and does
+nothing at all for a stale host ID.
+
 ### Regenerating the bindings
 
 After any change to `phone-state`'s public types:
