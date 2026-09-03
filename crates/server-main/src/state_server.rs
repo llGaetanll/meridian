@@ -370,13 +370,9 @@ impl StateServer {
                     .collect();
 
                 for (item_id, cursor) in asked {
-                    actions.push(Action::ToSource {
-                        action: ActionSource::FetchPlaid {
-                            call_id: self.calling(request_id),
-                            item_id,
-                            cursor,
-                        },
-                    });
+                    let call_id = self.calling(request_id);
+
+                    self.fetch(call_id, item_id, cursor, actions);
                 }
 
                 // Decided here and released when the last of those has landed
@@ -564,17 +560,11 @@ impl StateServer {
                 // it gets asked. Registering a waiter here would hold
                 // `/link/finish` open for the whole first sync, which is the
                 // wait this is meant to remove.
-                actions.push(Action::ToSource {
-                    action: ActionSource::FetchPlaid {
-                        call_id: self.call(),
-                        item_id: item_id.clone(),
+                let call_id = self.call();
 
-                        // A bank attached seconds ago has no cursor. Passing
-                        // one would ask Plaid to resume a sync that never
-                        // happened.
-                        cursor: None,
-                    },
-                });
+                // A bank attached seconds ago has no cursor. Passing one would
+                // ask Plaid to resume a sync that never happened.
+                self.fetch(call_id, item_id.clone(), None, actions);
 
                 self.linked_one(request_id, actions);
             }
@@ -770,7 +760,42 @@ impl StateServer {
         actions.push(Action::ToRouter { request_id, action });
     }
 
-    /// Whether this route started anything that has not come back.
+    /// Go and read one Item, and remember that we are.
+    ///
+    /// The two happen together, and that is the whole point of the function.
+    /// `syncing` used to fill in when the first stage *landed*, which left a
+    /// gap: `/link/finish` answered, the phone asked how the sync was going,
+    /// and the fetch had not started yet — so it was told nothing was running.
+    /// "Nothing is running" and "it has finished" are the same answer, so the
+    /// screen watching it decided the sync was over before it began and never
+    /// asked again.
+    ///
+    /// Recording it here closes that, and closes it properly rather than by
+    /// being quicker: this happens in the same turn as the action, so there is
+    /// no interval in which a fetch has been asked for and nothing says so.
+    fn fetch(
+        &mut self,
+        call_id: CallId,
+        item_id: String,
+        cursor: Option<String>,
+        actions: &mut Vec<Action>,
+    ) {
+        // Nothing is known yet — not the counts and not even the bank's name.
+        // What matters is that it is *not* finished.
+        self.syncing.insert(
+            item_id.clone(),
+            WireSyncStatus::new(SyncStage::Accounts, None, 0, 0, 0),
+        );
+
+        actions.push(Action::ToSource {
+            action: ActionSource::FetchPlaid {
+                call_id,
+                item_id,
+                cursor,
+            },
+        });
+    }
+
     /// One more bank attached on this request.
     ///
     /// Counted rather than set, because one `/link/finish` collects every
@@ -791,6 +816,7 @@ impl StateServer {
         );
     }
 
+    /// Whether this route started anything that has not come back.
     fn outstanding(&self, request_id: RequestId) -> bool {
         self.waiting
             .values()
