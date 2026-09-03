@@ -72,6 +72,10 @@ services:
       # server in a container and one on the host.
       DATABASE_URL: postgres://${POSTGRES_USER:-meridian}:${POSTGRES_PASSWORD:-meridian}@db:5432/${POSTGRES_DB:-meridian}
 
+      # Required wherever DATABASE_URL is: it opens the access token column,
+      # and a server that cannot read its own credentials has nothing to serve.
+      MERIDIAN_DB_KEY: ${MERIDIAN_DB_KEY:?}
+
       # Passed through rather than read from an `env_file`, so they are never
       # baked into the image, where they would survive in `docker history` for
       # anyone who pulled it.
