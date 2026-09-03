@@ -3686,6 +3686,17 @@ public enum EventSource: Equatable, Hashable {
      */
     case bankAbandoned
     /**
+     * The server has not been told what the sign-in came to.
+     *
+     * The third answer, and it exists because the two events that end a Link
+     * session — the browser coming back, and Plaid telling the server —
+     * race, and only the server sees both. It waited, and Plaid was still
+     * late. So the bank may yet be attached: this leads to the sync screen,
+     * which polls and will see it arrive, rather than to the one that says
+     * nothing was connected.
+     */
+    case bankPending
+    /**
      * How far the first sync has got.
      *
      * JSON for the same reason [`SnapshotLoaded`](EventSource::SnapshotLoaded)
@@ -3739,7 +3750,9 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
         
         case 8: return .bankAbandoned
         
-        case 9: return .syncStatusLoaded(json: try FfiConverterString.read(from: &buf)
+        case 9: return .bankPending
+        
+        case 10: return .syncStatusLoaded(json: try FfiConverterString.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -3785,8 +3798,12 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(8))
         
         
-        case let .syncStatusLoaded(json):
+        case .bankPending:
             writeInt(&buf, Int32(9))
+        
+        
+        case let .syncStatusLoaded(json):
+            writeInt(&buf, Int32(10))
             FfiConverterString.write(json, into: &buf)
             
         }

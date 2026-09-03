@@ -444,6 +444,24 @@ impl StateApp {
                 self.render(actions);
             }
 
+            EventSource::BankPending => {
+                let now = self.now();
+
+                if let Some(flow) = &mut self.onboarding {
+                    flow.bank_pending(now);
+
+                    // The same first ask as a bank that did land. There may be
+                    // no sync to report yet — that is what pending means — and
+                    // the flow is what knows an empty status is the gap rather
+                    // than the end.
+                    actions.push(Action::ToSource {
+                        action: ActionSource::PollSync,
+                    });
+                }
+
+                self.render(actions);
+            }
+
             EventSource::BankAbandoned => {
                 if let Some(flow) = &mut self.onboarding {
                     flow.bank_abandoned();
@@ -453,6 +471,8 @@ impl StateApp {
             }
 
             EventSource::SyncStatusLoaded { json } => {
+                let now = self.now();
+
                 // A status we cannot read leaves the screen where it is. The
                 // next tick asks again, which is a better answer than throwing
                 // somebody out of first run over one malformed reply.
@@ -479,7 +499,7 @@ impl StateApp {
                             };
 
                             if status.finished {
-                                flow.sync_finished(progress);
+                                flow.sync_finished(progress, now);
                             } else {
                                 flow.sync_progressed(progress);
                             }

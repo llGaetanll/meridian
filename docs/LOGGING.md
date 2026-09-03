@@ -345,6 +345,11 @@ means adding, changing or removing its example here.
   — Plaid is still sending about an Item whose row has gone. Nothing to sync
   against, and the webhook is answered 2xx anyway, because anything else means
   it arrives again in a minute.
+- `INFO server_main::state_server plaid has not said what a link session came to yet request_id=3`
+  — `/link/finish` waited ten seconds and gave up, and the caller is told
+  `pending` rather than "no bank". A run of these means webhooks are arriving
+  late or not at all, which is the one thing that would otherwise look like
+  everybody abandoning their sign-in.
 - `DEBUG server_main::state_server a webhook nothing acts on webhook_type=ASSETS webhook_code=PRODUCT_READY`
   — taken and ignored. Plaid sends types nobody planned for; `DEBUG` because a
   healthy server sees them routinely.

@@ -103,6 +103,15 @@ pub struct StateOnboarding {
     /// enough for the rest of the app to have something to draw.
     linked: bool,
 
+    /// When the server last said it did not know how the sign-in ended.
+    ///
+    /// The sync screen is watching a sync that may not have started, so while
+    /// this is set a status saying nothing is running is *not* news that one
+    /// finished — it is the gap before Plaid has spoken. It is a timestamp
+    /// rather than a flag because the wait is bounded: the machine reads no
+    /// clock, so the giving-up is arithmetic against the `now` handed in.
+    awaiting: Option<Timestamp>,
+
     /// Whether a bank sign-in is being opened.
     ///
     /// True from the tap until Plaid's page has been and gone, one way or the
@@ -314,12 +323,31 @@ impl StateOnboarding {
         self.step = Step::Failed;
     }
 
+    /// The server does not know yet, and neither do we.
+    ///
+    /// The sync screen rather than the failed one: a bank that is still
+    /// landing arrives on the very next status, and this is the screen that
+    /// asks for one. What it does *not* do is set
+    /// [`linked`](Self::linked) — nothing has finished connecting, and the
+    /// claim that there is a Meridian to open has not been earned.
+    pub(crate) fn bank_pending(&mut self, now: Timestamp) {
+        self.opening = false;
+        self.bank = None;
+        self.sync = Progress::default();
+        self.step = Step::Sync;
+        self.awaiting = Some(now);
+    }
+
     pub(crate) fn sync_progressed(&mut self, sync: Progress) {
         debug_assert_eq!(
             self.step,
             Step::Sync,
             "a sync reports progress only while one is running",
         );
+
+        // A sync that is running is a bank that exists, which is the proof a
+        // pending answer was waiting for.
+        self.arrived();
 
         self.sync = sync;
     }
@@ -332,16 +360,58 @@ impl StateOnboarding {
     /// the first status the phone reads is already the last. Dropping its
     /// counts is how "You're set." came to say nought accounts over a ledger
     /// with fourteen in it.
-    pub(crate) fn sync_finished(&mut self, sync: Progress) {
+    pub(crate) fn sync_finished(&mut self, sync: Progress, now: Timestamp) {
         debug_assert_eq!(
             self.step,
             Step::Sync,
             "a sync reports its end only while one is running",
         );
 
+        // Nothing is running and nothing ever was. Ordinarily that cannot
+        // happen here — the server starts the sync in the same turn as it
+        // attaches the bank — but after a pending answer there may be no bank
+        // yet, and this is that gap rather than the end of anything.
+        if let Some(since) = self.awaiting.filter(|_| nothing_arrived(&self.bank, sync)) {
+            // Long enough is long enough. The server had already waited
+            // before it answered pending, so by here Plaid is late twice
+            // over and there is nothing left to wait for.
+            if now.since(since) >= AWAIT_GOOD_FOR {
+                self.awaiting = None;
+                self.step = Step::Failed;
+            }
+
+            return;
+        }
+
+        self.arrived();
+
         self.sync = sync;
         self.step = Step::Ready;
     }
+
+    /// A bank has finished connecting, however roundabout the news was.
+    fn arrived(&mut self) {
+        self.awaiting = None;
+        self.linked = true;
+    }
+}
+
+/// How long the phone waits after the server has given up waiting.
+///
+/// Twice what the server allows itself, because a request cannot be held open
+/// that long and a screen can. Past it, Plaid is late enough that a bank is
+/// not coming and saying so beats a spinner that never stops.
+pub const AWAIT_GOOD_FOR_SECS: u64 = 20;
+
+const AWAIT_GOOD_FOR: Duration = Duration::from_secs(AWAIT_GOOD_FOR_SECS);
+
+/// Whether a status says anything at all.
+///
+/// The name is the strongest of the three: it arrives one poll into a sync and
+/// exists nowhere before the balances call answers, so a flow that has one has
+/// certainly got a bank.
+fn nothing_arrived(bank: &Option<String>, sync: Progress) -> bool {
+    bank.is_none() && sync.accounts == 0 && sync.transactions == 0 && sync.streams == 0
 }
 
 /// Whether this could be an address.

@@ -67,6 +67,24 @@ pub const FRESH_FOR_SECS: u64 = 30;
 /// which a call has almost certainly gone quiet rather than gone slow.
 pub const CALL_GOOD_FOR_SECS: u64 = 30;
 
+/// How long `/link/finish` waits for Plaid to say what a session came to.
+///
+/// The two events that end a Link session — the browser being redirected, and
+/// Plaid's POST to us — have no ordering between them, and this server is the
+/// only party that sees both. So the route waits, and this is how long
+/// somebody is left looking at a spinner before being moved on to a screen
+/// that is doing something instead. Ten seconds: long enough that a webhook
+/// held up by a slow network still lands inside it, short enough not to read
+/// as a hang.
+pub const LINK_ANSWER_GOOD_FOR_SECS: u64 = 10;
+
+/// How long an outcome nobody has asked about is kept.
+///
+/// Plaid's POST usually beats the phone, so an outcome is written down for
+/// whoever asks next. A phone that has not asked within ten minutes is not
+/// going to: the sheet is long closed and the flow it belonged to is gone.
+pub const OUTCOME_GOOD_FOR_SECS: u64 = 10 * 60;
+
 /// How long a session lasts. Long, because the alternative is asking somebody
 /// to check their email to look at their own balance; short enough that a
 /// phone lost in a drawer stops working eventually.
@@ -79,6 +97,52 @@ struct Waiting {
 
     /// When the call went out, so one that never answers can be given up on.
     /// Without it a source that goes quiet is a route parked forever.
+    since: Timestamp,
+}
+
+/// What a Link session came to.
+///
+/// Two answers, and Plaid says which — `SESSION_FINISHED` carries a `status`
+/// of `SUCCESS` or `EXITED`. That is the change webhooks bring to this: "no
+/// bank" used to be inferred from a poll that came back empty, and is now
+/// something we were told.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LinkOutcome {
+    /// A bank is attached.
+    Linked,
+
+    /// The session ended without one — the sheet was closed, or the exchange
+    /// failed. The common ending, not a rare one.
+    Nothing,
+}
+
+impl LinkOutcome {
+    /// What the route waiting on it is told.
+    fn answer(self) -> ActionRouter {
+        match self {
+            LinkOutcome::Linked => ActionRouter::Linked { count: 1 },
+            LinkOutcome::Nothing => ActionRouter::Linked { count: 0 },
+        }
+    }
+}
+
+/// An outcome nobody has asked about yet.
+#[derive(Debug)]
+struct Settled {
+    outcome: LinkOutcome,
+
+    /// When it was recorded, so one nobody ever collects does not sit here
+    /// for the life of the process.
+    at: Timestamp,
+}
+
+/// A route parked on a session Plaid has not reported on yet.
+#[derive(Debug)]
+struct Watching {
+    request_id: RequestId,
+
+    /// When it parked, so it can be let go rather than held until the phone
+    /// gives up on its own.
     since: Timestamp,
 }
 
@@ -156,6 +220,24 @@ pub struct StateServer {
     /// or fails. Empty therefore means nothing is running, which is what a
     /// user who is not syncing is told.
     syncing: HashMap<String, WireSyncStatus>,
+
+    /// What each Link session came to, for a route that has not asked yet.
+    ///
+    /// Keyed by `link_token`, which `SESSION_FINISHED` carries and
+    /// `link_sessions` already stores against the user who opened it — so
+    /// matching a webhook to the route waiting on it needs nothing new in the
+    /// schema.
+    ///
+    /// Always empty under `PLAID_COLLECT=poll`: there the close is what
+    /// *causes* the collection, so there is never a later asker.
+    outcomes: HashMap<String, Settled>,
+
+    /// The other order: a route that asked before Plaid said anything.
+    ///
+    /// The redirect that closes the sheet and the POST that carries the result
+    /// race, and either can win. This is the half that is waiting, and
+    /// [`outcomes`](Self::outcomes) is the half that arrived first.
+    watching: HashMap<String, Watching>,
 
     /// Which channel collects the result of a Link session, as the runtime
     /// read it out of the environment on [`EventProcess::Started`].
@@ -236,32 +318,13 @@ impl StateServer {
                 self.answer(request_id, ActionRouter::SyncStatus { status }, actions);
             }
 
-            EventRouter::LinkClosed { pending, attached } => {
-                // Already collected, by Plaid calling us the moment the
-                // session ended. So this is the read the route's own comment
-                // has always expected rather than a question for Plaid —
-                // asking again would spend a call on an answer we hold, and
-                // get `finished` with a token that has already been exchanged.
-                if self.collect == Some(PlaidCollect::Webhook) {
-                    // A session still standing is one no webhook ever came
-                    // for: somebody who closed the sheet before signing in, or
-                    // a call we missed. Marked done either way — nothing else
-                    // ever revisits one, so a session left pending is pending
-                    // forever.
-                    for link_token in pending {
-                        actions.push(Action::ToStore {
-                            action: ActionStore::CollectLink {
-                                call_id: self.calling(request_id),
-                                link_token: link_token.clone(),
-                            },
-                        });
-                    }
-
-                    self.answer(
-                        request_id,
-                        ActionRouter::Linked { count: *attached },
-                        actions,
-                    );
+            EventRouter::LinkClosed { pending } => {
+                // Collection already happens, unprompted, so this route sets
+                // nothing going: it stops being a trigger and becomes a
+                // question. Asking Plaid again would spend a call to be told
+                // about a token that has already been exchanged.
+                if self.collects_by_webhook() {
+                    self.handle_link_closed_by_webhook(request_id, pending, actions);
 
                     return;
                 }
@@ -431,6 +494,139 @@ impl StateServer {
         }
     }
 
+    /// A sheet closed, on a server Plaid calls.
+    ///
+    /// The redirect that closed it says nothing — Plaid's own documentation is
+    /// explicit that reaching the completion URI is not a successful
+    /// connection, and that the answer is `SESSION_FINISHED` or
+    /// `/link/token/get`. So this route no longer counts anything. It asks
+    /// what became of the session, and the answer is either already here or
+    /// about to be.
+    fn handle_link_closed_by_webhook(
+        &mut self,
+        request_id: RequestId,
+        pending: &[String],
+        actions: &mut Vec<Action>,
+    ) {
+        // Looked for before anybody is parked, because the POST usually wins
+        // the race: the phone has a redirect, an app switch and a request to
+        // get through, and Plaid has none of that. Waiting first would make
+        // the ordinary case sit until it timed out.
+        if let Some((link_token, outcome)) = self.collected(pending) {
+            self.report(request_id, &link_token, outcome, actions);
+
+            return;
+        }
+
+        // Nothing open and nothing recorded. There is no session to hear
+        // about, so `Pending` would be a promise nothing can keep.
+        if pending.is_empty() {
+            self.answer(request_id, ActionRouter::Linked { count: 0 }, actions);
+
+            return;
+        }
+
+        // Parked on every session the caller has open. The first to report
+        // answers, and `handle_timeouts` is what stops this being forever.
+        for link_token in pending {
+            let displaced = self.watching.insert(
+                link_token.clone(),
+                Watching {
+                    request_id,
+                    since: self.now,
+                },
+            );
+
+            // Two calls about the same session. The older one is let go
+            // rather than left parked on a key it no longer owns, which would
+            // be a request nothing ever answers.
+            if let Some(displaced) = displaced
+                && displaced.request_id != request_id
+            {
+                self.answer(displaced.request_id, ActionRouter::LinkPending, actions);
+            }
+        }
+    }
+
+    /// The recorded outcome for one of these sessions, taken as it is read.
+    ///
+    /// A bank attached wins over one that was not: somebody who backed out of
+    /// their first bank and connected a second has two sessions, and the one
+    /// that worked is the answer to give.
+    fn collected(&mut self, pending: &[String]) -> Option<(String, LinkOutcome)> {
+        let found = pending
+            .iter()
+            .filter_map(|link_token| Some((link_token, self.outcomes.get(link_token)?.outcome)))
+            .max_by_key(|(_, outcome)| *outcome == LinkOutcome::Linked)
+            .map(|(link_token, outcome)| (link_token.clone(), outcome))?;
+
+        self.outcomes.remove(&found.0);
+
+        Some(found)
+    }
+
+    /// Tell one route what a session came to, and close the session.
+    ///
+    /// The two happen together, and that is the point: a collected session is
+    /// one `/link/finish` can no longer see, so it is collected by the call
+    /// that reports it and not a moment earlier. That is also what makes a
+    /// second close of the same session answer nothing rather than the same
+    /// bank twice.
+    fn report(
+        &mut self,
+        request_id: RequestId,
+        link_token: &str,
+        outcome: LinkOutcome,
+        actions: &mut Vec<Action>,
+    ) {
+        // Everything else this route was parked on. It is owed one answer and
+        // is about to get it, and an entry left behind would send the next
+        // settlement to a request that has gone.
+        self.watching
+            .retain(|_, watching| watching.request_id != request_id);
+
+        actions.push(Action::ToStore {
+            action: ActionStore::CollectLink {
+                call_id: self.calling(request_id),
+                link_token: link_token.to_string(),
+            },
+        });
+
+        self.answer(request_id, outcome.answer(), actions);
+    }
+
+    /// One Link session has come to something, on a server Plaid calls.
+    ///
+    /// Either a route is parked on it, or one will ask — those are the two
+    /// orders the race can come out in, and this is the one place that does
+    /// not care which.
+    fn settled(&mut self, link_token: &str, outcome: LinkOutcome, actions: &mut Vec<Action>) {
+        // A session with no token is `/link/start` failing before there was
+        // one, which is not a session anybody can be waiting on.
+        if link_token.is_empty() {
+            return;
+        }
+
+        let Some(watching) = self.watching.remove(link_token) else {
+            self.outcomes.insert(
+                link_token.to_string(),
+                Settled {
+                    outcome,
+                    at: self.now,
+                },
+            );
+
+            return;
+        };
+
+        self.report(watching.request_id, link_token, outcome, actions);
+    }
+
+    /// Whether Plaid calls us with the result of a Link session.
+    fn collects_by_webhook(&self) -> bool {
+        self.collect == Some(PlaidCollect::Webhook)
+    }
+
     /// What a webhook Plaid sent us is worth doing about.
     ///
     /// Every one of them answers, and answers 2xx: Plaid retries anything
@@ -453,17 +649,14 @@ impl StateServer {
                 public_tokens,
             } => {
                 // Finished with nothing: they closed the sheet. An outcome and
-                // not a failure, and the session is marked done so nothing
-                // goes back to it.
+                // not a failure — and for the first time it is something Plaid
+                // *said* rather than something inferred from a poll that came
+                // back empty, which is what lets "That didn't finish" be true
+                // rather than a guess.
                 if public_tokens.is_empty() {
-                    actions.push(Action::ToStore {
-                        action: ActionStore::CollectLink {
-                            call_id: self.calling(request_id),
-                            link_token: link_token.clone(),
-                        },
-                    });
-
                     self.answer(request_id, ActionRouter::Accepted, actions);
+
+                    self.settled(link_token, LinkOutcome::Nothing, actions);
 
                     return;
                 }
@@ -704,12 +897,18 @@ impl StateServer {
                     },
                 });
 
-                actions.push(Action::ToStore {
-                    action: ActionStore::CollectLink {
-                        call_id: self.calling(request_id),
-                        link_token: link_token.clone(),
-                    },
-                });
+                // Collected here only when a close is what asked for it. A
+                // webhook arrives unprompted, so the session has to stay
+                // standing until `/link/finish` reports it — a collected one
+                // is a session that route can no longer see.
+                if !self.collects_by_webhook() {
+                    actions.push(Action::ToStore {
+                        action: ActionStore::CollectLink {
+                            call_id: self.calling(request_id),
+                            link_token: link_token.clone(),
+                        },
+                    });
+                }
 
                 // Start reading the history now rather than waiting for the
                 // next `/snapshot` to trigger it. Two reasons: the first sync
@@ -730,6 +929,18 @@ impl StateServer {
                 // ask Plaid to resume a sync that never happened.
                 self.fetch(call_id, item_id.clone(), None, actions);
 
+                // Plaid's POST caused this, so the route that caused it is not
+                // the route that wants the answer: it is owed nothing beyond
+                // "taken", and what became of the session goes to
+                // `/link/finish` — now, or when it asks.
+                if self.collects_by_webhook() {
+                    self.answer(request_id, ActionRouter::Accepted, actions);
+
+                    self.settled(link_token, LinkOutcome::Linked, actions);
+
+                    return;
+                }
+
                 self.linked_one(request_id, actions);
             }
 
@@ -740,6 +951,17 @@ impl StateServer {
                 let Some(request_id) = self.answered(*call_id) else {
                     return;
                 };
+
+                // An exchange that failed, on a session Plaid told us about.
+                // Nothing came of it, which is an answer somebody is waiting
+                // for — see [`Self::settled`].
+                if self.collects_by_webhook() && !link_token.is_empty() {
+                    self.answer(request_id, ActionRouter::Accepted, actions);
+
+                    self.settled(link_token, LinkOutcome::Nothing, actions);
+
+                    return;
+                }
 
                 actions.push(Action::ToStore {
                     action: ActionStore::CollectLink {
@@ -1052,6 +1274,8 @@ impl StateServer {
     fn handle_timeouts(&mut self, actions: &mut Vec<Action>) {
         let now = self.now;
 
+        self.handle_link_timeouts(actions);
+
         let given_up: Vec<CallId> = self
             .waiting
             .iter()
@@ -1082,6 +1306,48 @@ impl StateServer {
                 .unwrap_or(ActionRouter::Unavailable);
 
             actions.push(Action::ToRouter { request_id, action });
+        }
+    }
+
+    /// Let go of the routes waiting on a Link session Plaid has not reported.
+    ///
+    /// The answer is `Pending` rather than "nothing came of it", because at
+    /// this point neither is known: the bank may still be landing. The screen
+    /// that follows a pending answer is the one that polls `/sync/status`, so
+    /// a bank that arrives a moment later still shows up — which is the whole
+    /// reason there is a third answer rather than a guess between the two.
+    ///
+    /// Outcomes nobody ever came back for go here too. They are written down
+    /// for a route that has not called yet, and one that never calls would
+    /// otherwise keep its entry for the life of the process.
+    fn handle_link_timeouts(&mut self, actions: &mut Vec<Action>) {
+        let now = self.now;
+
+        self.outcomes
+            .retain(|_, settled| now.since(settled.at).as_secs() < OUTCOME_GOOD_FOR_SECS);
+
+        let mut waited_out: Vec<RequestId> = self
+            .watching
+            .values()
+            .filter(|watching| now.since(watching.since).as_secs() >= LINK_ANSWER_GOOD_FOR_SECS)
+            .map(|watching| watching.request_id)
+            .collect();
+
+        // One route parked on two sessions times out twice, and is owed one
+        // answer either way.
+        waited_out.sort_unstable();
+        waited_out.dedup();
+
+        for request_id in waited_out {
+            self.watching
+                .retain(|_, watching| watching.request_id != request_id);
+
+            tracing::info!(
+                request_id,
+                "plaid has not said what a link session came to yet",
+            );
+
+            self.answer(request_id, ActionRouter::LinkPending, actions);
         }
     }
 

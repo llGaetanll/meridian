@@ -276,7 +276,9 @@ final class RuntimeApp: ObservableObject {
     ///
     /// Nothing here decides. Dismissing the sheet and finishing with no bank
     /// both arrive as the same event, because both are the same fact: nothing
-    /// was attached.
+    /// was attached. A server that has not heard from Plaid yet is a third
+    /// fact and arrives as a third event — it is not "no bank", and the flow
+    /// has somewhere else to go with it.
     private func startBankLink() {
         guard let token else {
             NSLog("MERIDIAN asked to connect a bank with no session")
@@ -299,9 +301,11 @@ final class RuntimeApp: ObservableObject {
                     return
                 }
 
-                let linked = try await RuntimeIo.finishLink(token: token)
-
-                self?.dispatch(.fromSource(event: linked > 0 ? .bankLinked : .bankAbandoned))
+                switch try await RuntimeIo.finishLink(token: token) {
+                case .linked: self?.dispatch(.fromSource(event: .bankLinked))
+                case .abandoned: self?.dispatch(.fromSource(event: .bankAbandoned))
+                case .pending: self?.dispatch(.fromSource(event: .bankPending))
+                }
             } catch {
                 // A failure to reach the server on either call leaves no bank
                 // attached, which is the same screen as backing out — with the

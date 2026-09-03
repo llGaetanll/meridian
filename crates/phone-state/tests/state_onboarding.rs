@@ -441,6 +441,88 @@ fn a_second_sign_in_that_did_not_finish_leaves_a_way_out() {
     );
 }
 
+/// The server waited and Plaid was still late, so nobody knows yet. That is
+/// not the same sentence as "nothing was connected", and it does not get the
+/// screen that says so — it gets the one that keeps asking.
+#[test]
+fn a_pending_sign_in_watches_for_the_bank_rather_than_failing() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource { event: EventSource::BankPending },
+        > @r#"ToSource { action: PollSync }"#,
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Sync { .. } }, .. } },
+    );
+}
+
+/// Nothing is running, and after a pending answer that is the gap rather than
+/// the end: the sync this screen is watching may not have started. Reading it
+/// as "finished" is how somebody who is about to get a bank sees `You're set.`
+/// over nought accounts.
+#[test]
+fn a_status_that_says_nothing_is_not_the_end_of_a_pending_sign_in() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankPending },
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"accounts","institution":null,"accounts":0,"transactions":0,"streams":0,"finished":true}"#.to_string() } },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToSource { action: PollSync }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Sync { .. } }, .. } },
+    );
+}
+
+/// The bank was late and then it landed, which is the whole reason the pending
+/// answer exists rather than a guess between the other two.
+#[test]
+fn a_bank_that_lands_after_a_pending_answer_carries_the_flow_on() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankPending },
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"accounts","institution":null,"accounts":0,"transactions":0,"streams":0,"finished":true}"#.to_string() } },
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"streams","institution":"First Platypus Bank","accounts":8,"transactions":48,"streams":8,"finished":true}"#.to_string() } },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToSource { action: PollSync }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Ready { .. } }, .. } },
+    );
+}
+
+/// Waiting is bounded. The server had already waited before it answered
+/// pending, so past this the bank is not coming and saying so beats a spinner
+/// that never stops — and it says the true thing, that no bank was connected.
+#[test]
+fn a_pending_sign_in_that_never_lands_says_nothing_was_connected() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankPending },
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + AWAIT_GOOD_FOR_SECS } },
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"accounts","institution":null,"accounts":0,"transactions":0,"streams":0,"finished":true}"#.to_string() } },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToSource { action: PollSync }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        // The tick's own ask, which is what a screen watching a sync does
+        // between answers.
+        > @r#"ToSource { action: PollSync }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 2 of 3 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so no bank was connected.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: false, open: None } }, dock: None } }"#,
+    );
+}
+
 /// The sync screen names the bank it is reading and counts what has landed so
 /// far, which is the only thing on it that moves.
 #[test]

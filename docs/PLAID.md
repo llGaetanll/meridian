@@ -171,11 +171,38 @@ sends types nobody planned for and **retries anything not answered 2xx**:
 | `TRANSACTIONS` / `SYNC_UPDATES_AVAILABLE` | That Item is synced, freshness window skipped. |
 | `ITEM` / `ERROR` with `ITEM_LOGIN_REQUIRED` | Written down, so a restart does not ask again and be refused again. |
 
-`/link/finish` is still called by the phone in both modes. In webhook mode it
-no longer asks Plaid anything: by then the bank is stored, so the route reads
-how many banks arrived while a session of this user's could have been open.
-There is a race in that — a phone that calls it before the webhook lands is
-told nothing was attached — and the bank still appears on the next snapshot.
+### What `/link/finish` is for
+
+Two jobs, and only one of them survives webhooks.
+
+With `PLAID_COLLECT=poll` it is a **trigger**: nothing else ever collects, so
+this is what goes and asks Plaid. With `PLAID_COLLECT=webhook` collection
+happens unprompted, and it degrades to a **question** — "what happened to my
+session?" — asked, often, a fraction of a second before the answer exists.
+
+That gap is not a bug to design away. Plaid redirects the *browser* and POSTs
+the *server*, with no ordering between them, and the phone only ever sees the
+first. Plaid's own documentation says you cannot assume the redirect means a
+successful connection and must listen for `SESSION_FINISHED` or call
+`/link/token/get`. So the server — the only party that sees both — waits:
+
+- The outcome may already be here. Plaid usually wins the race, so a recorded
+  one is looked for before anybody is parked, or the ordinary case would sit
+  until it timed out.
+- Otherwise the route parks on the caller's open sessions, matched by
+  `link_token`. `SESSION_FINISHED` carries one and `link_sessions` already
+  stores it, so this needs nothing new in the schema.
+- After ten seconds it answers **pending**. Not failure: the bank may still be
+  landing, and the screen that follows polls `/sync/status` and will see it.
+
+A session is collected — `collected_at` — by whatever *reports* it, and not a
+moment earlier. A collected session is one `/link/finish` can no longer see,
+so collecting it when the webhook lands would throw away the record the route
+is about to match against.
+
+The three answers are `linked`, `abandoned` and `pending`. `abandoned` is now
+something Plaid *said* — `SESSION_FINISHED` carries `status: SUCCESS | EXITED`
+— where it used to be inferred from a poll that came back empty.
 
 ### Believing one
 

@@ -156,31 +156,6 @@ pub async fn load_item(db: &Db, item_id: &str) -> Result<Option<StoredItem>, Pos
     }))
 }
 
-/// How many of this user's banks were attached in the last `seconds`.
-///
-/// What `/link/finish` answers with when the webhook is what collected the
-/// session (`PLAID_COLLECT=webhook`): by then the bank is already stored, so
-/// the honest thing to do is read it rather than go and ask Plaid a question
-/// that has been answered. The window is the link token's own lifetime — a
-/// bank attached inside it came from a session this caller opened, because a
-/// session is the only thing that attaches one.
-pub async fn items_linked_since(
-    db: &Db,
-    user_id: Uuid,
-    seconds: i64,
-) -> Result<u32, PostgresError> {
-    let row = sqlx::query!(
-        "SELECT count(*) AS \"count!\" FROM items
-         WHERE user_id = $1 AND created_at > now() - make_interval(secs => $2)",
-        user_id,
-        seconds as f64,
-    )
-    .fetch_one(db)
-    .await?;
-
-    Ok(row.count.try_into().unwrap_or(u32::MAX))
-}
-
 /// Move the cursor.
 ///
 /// Its own function, and the only thing that writes the column. The cursor is
