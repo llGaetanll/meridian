@@ -66,6 +66,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // does. So this works before anybody has ever asked for a code.
     let user_id = src_postgres::upsert_user(&db, &email).await?;
 
+    // The same key the server uses, from the same place. This writes a row the
+    // server has to be able to read, so a key of its own would be an Item that
+    // exists and cannot be used.
+    let db_key = src_postgres::DbKey::from_env()?;
+
     let client = PlaidClient::new(credentials)?;
 
     let created = src_plaid::create_sandbox_public_token(&client, &institution_id).await?;
@@ -76,6 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // guess here would be a row claiming to know something it does not.
     src_postgres::save_item(
         &db,
+        &db_key,
         &src_postgres::StoredItem {
             item_id: exchanged.item_id.clone(),
             user_id,

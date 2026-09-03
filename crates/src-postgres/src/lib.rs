@@ -20,6 +20,7 @@ mod postgres_login;
 mod postgres_migrate;
 mod postgres_money;
 mod postgres_pool;
+mod postgres_secret;
 mod postgres_session;
 mod postgres_user;
 
@@ -53,6 +54,7 @@ pub use postgres_pool::Db;
 pub use postgres_pool::PostgresError;
 pub use postgres_pool::connect;
 pub use postgres_pool::ping;
+pub use postgres_secret::DbKey;
 pub use postgres_session::create_session;
 pub use postgres_session::delete_session;
 pub use postgres_session::session_expiry;

@@ -113,6 +113,38 @@ so the only safe move is to refuse.
 The schema will be wrong. That is expected and is not a problem — it is a
 problem only if it gets edited in place.
 
+## The one column that is not what it looks like
+
+`items.access_token` is `BYTEA`, and what is in it is not the token. Plaid's
+access token never expires and reads somebody's bank account, so it is sealed
+with AES-256-GCM before it goes in and opened on the way out. The blob is
+`version || nonce || ciphertext || tag`, and the version byte is there so a
+future key or algorithm can tell what it is holding instead of guessing.
+
+`MERIDIAN_DB_KEY` is the key: 32 random bytes, base64, required whenever
+`DATABASE_URL` is, and with no default — a default key is a key that ships.
+`scripts/db-init.sh` writes one into `.env` if there is not one already, and
+never replaces an existing one.
+
+Only `save_item` and `load_items` know about any of this. `StoredItem` carries
+a plain `String` and every caller above the store works with the token as it
+is, because a caller that had to seal and open it itself is a caller that can
+forget to.
+
+**What it buys:** a stolen volume, a leaked backup, a `pg_dump` pasted into a
+ticket, a replica, anyone with database credentials but not the server. That is
+how this data actually escapes. It is no protection at all against someone who
+has the server, because the server has the key.
+
+**What it costs:** lose the key and every access token is scrap. Every bank has
+to be relinked, and in Production relinking spends Item slots that do not come
+back. Back the key up as carefully as the database, and not in the same place —
+one theft should not get both.
+
+Not the ledger. Encrypting transactions at the column level would make them
+permanently unqueryable in SQL — no date ranges, no aggregation, no indexes —
+to duplicate what an encrypted volume already does.
+
 ## Resetting
 
 `./scripts/db-reset.sh` destroys the database and builds an empty one. **Every

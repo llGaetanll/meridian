@@ -51,6 +51,7 @@ use src_plaid::PlaidRejection;
 use src_plaid::PlaidWebhook;
 use src_plaid::PlaidWebhookKind;
 use src_postgres::Db;
+use src_postgres::DbKey;
 use src_resend::ResendClient;
 use src_resend::ResendCredentials;
 use uuid::Uuid;
@@ -102,6 +103,14 @@ pub struct RuntimeServer {
     /// nothing to serve. It used to be optional and hold state in memory,
     /// which was the last variable in the server with a fallback behind it.
     db: Db,
+
+    /// What the access token column is sealed with.
+    ///
+    /// Beside the pool because it is the same kind of fact — how to reach the
+    /// store, and how to read the one column in it that is not plain. Read on
+    /// the way up with everything else, so a key that is missing or the wrong
+    /// length is a server that does not start.
+    db_key: DbKey,
 
     /// The machine.
     ///
@@ -202,6 +211,11 @@ impl RuntimeServer {
 
         let db = Self::open_store().await?;
 
+        // Before the first query rather than at the first bank connection: a
+        // server that cannot open the column it keeps credentials in has
+        // nothing to serve, and the honest moment to say so is now.
+        let db_key = DbKey::from_env()?;
+
         let email_send = EmailSend::from_env()?;
 
         // Built at startup rather than per send, so a missing key is a server
@@ -241,6 +255,7 @@ impl RuntimeServer {
             webhooks: WebhookVerifier::default(),
             webhook: public_url.as_ref().map(PublicUrl::webhook),
             db,
+            db_key,
             shutdown: Notify::new(),
         });
 
@@ -784,6 +799,7 @@ impl RuntimeServer {
 
         src_postgres::save_item(
             db,
+            &self.db_key,
             &src_postgres::StoredItem {
                 item_id: item_id.to_string(),
                 user_id,
@@ -815,7 +831,7 @@ impl RuntimeServer {
         &self,
         user_id: Uuid,
     ) -> Result<Vec<api_ledger::Connection>, src_postgres::PostgresError> {
-        let items = src_postgres::load_items(&self.db, user_id).await?;
+        let items = src_postgres::load_items(&self.db, &self.db_key, user_id).await?;
 
         let mut connections = Vec::with_capacity(items.len());
 
@@ -947,7 +963,7 @@ impl RuntimeServer {
     /// because there is nothing it could do differently: it has no cursor to
     /// sync from.
     async fn item_facts(&self, item_id: &str) -> Option<crate::ItemFacts> {
-        let item = match src_postgres::load_item(&self.db, item_id).await {
+        let item = match src_postgres::load_item(&self.db, &self.db_key, item_id).await {
             Ok(item) => item?,
 
             Err(e) => {
@@ -980,7 +996,7 @@ impl RuntimeServer {
         &self,
         user_id: Uuid,
     ) -> Result<Vec<crate::ItemFacts>, src_postgres::PostgresError> {
-        let items = src_postgres::load_items(&self.db, user_id).await?;
+        let items = src_postgres::load_items(&self.db, &self.db_key, user_id).await?;
 
         // Every token this user's banks need, so the fetch below can find one
         // without going back to the database for it.
