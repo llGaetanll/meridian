@@ -24,7 +24,6 @@ mod postgres_session;
 mod postgres_user;
 
 pub use postgres_item::StoredItem;
-pub use postgres_item::items_linked_since;
 pub use postgres_item::load_item;
 pub use postgres_item::load_items;
 pub use postgres_item::name_item;

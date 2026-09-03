@@ -601,7 +601,7 @@ fn a_public_token_is_exchanged_even_before_the_session_finishes() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 0 } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
@@ -616,7 +616,7 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 0 } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }] } },
@@ -634,7 +634,7 @@ fn an_open_session_is_left_pending() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 0 } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec![] }] } },
@@ -648,7 +648,7 @@ fn a_linked_bank_is_stored_and_its_session_closed() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 0 } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
@@ -677,7 +677,7 @@ fn a_new_bank_starts_syncing_without_holding_the_route() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 0 } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
@@ -706,7 +706,7 @@ fn a_bank_is_syncing_the_moment_the_fetch_is_asked_for() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 0 } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
@@ -777,7 +777,7 @@ fn closing_a_sheet_with_no_session_open_asks_nothing() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec![], attached: 0 } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec![] } },
         > Action::ToRouter { action: ActionRouter::Linked { count: 0 }, .. },
     );
 }
@@ -789,7 +789,7 @@ fn every_open_session_is_polled() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()], attached: 0 } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
     );
 }
@@ -802,7 +802,7 @@ fn many_sessions_still_produce_one_answer() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string(), "link-3".to_string()], attached: 0 } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string(), "link-3".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-2".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-3".to_string(), finished: true, public_tokens: vec![] }] } },
@@ -819,24 +819,6 @@ fn many_sessions_still_produce_one_answer() {
     );
 }
 
-/// The webhook doing what polling does: the token arrives on its own, and the
-/// bank is attached from it. Everything after the exchange is the same path a
-/// poll takes, which is the point — there is one way to attach a bank.
-#[test]
-fn a_finished_session_webhook_exchanges_its_token() {
-    let mut state = state_collecting_by_webhook();
-
-    eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string()] } } },
-        > @r#"ToSource { action: ExchangePublicToken { call_id: 1, link_token: "link-1", public_token: "public-1" } }"#,
-
-        < Event::FromSource { event: EventSource::ItemLinked { call_id: 1, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
-        > Action::ToStore { action: ActionStore::SaveItem { call_id: 2, .. } },
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 3, .. } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 4, .. } },
-    );
-}
-
 /// One webhook can carry two banks, and there is no second call to collect the
 /// one that was left — Plaid says this once.
 #[test]
@@ -850,18 +832,192 @@ fn every_token_a_session_produced_is_exchanged() {
     );
 }
 
-/// They closed the sheet. An outcome, not a failure — and the session is
-/// marked done so nothing goes back to it.
+/// The common order: Plaid's POST wins the race, because the phone has a
+/// redirect, an app switch and a request of its own to get through first. The
+/// outcome waits, and the close collects it — which is also when the session
+/// is marked done.
 #[test]
-fn a_session_webhook_with_no_token_closes_the_session() {
+fn an_outcome_that_arrives_first_is_waiting_when_the_phone_asks() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string()] } } },
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 1, .. } },
+
+        // No `CollectLink`: the session has to stay standing, because a
+        // collected one is a session `/link/finish` can no longer see.
+        < Event::FromSource { event: EventSource::ItemLinked { call_id: 1, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 2, .. } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 3, .. } },
+
+        // Plaid is owed nothing beyond "taken", once the bank is stored.
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
+        > @r#"ToRouter { request_id: 1, action: Accepted }"#,
+
+        // The phone catches up, and is told what it came to.
+        < Event::FromRouter { request_id: 2, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
+        > @r#"ToRouter { request_id: 2, action: Linked { count: 1 } }"#,
+    );
+}
+
+/// The other order, which is the one the whole design is for: the phone asks
+/// before Plaid has said anything, and is parked rather than guessed at.
+#[test]
+fn a_close_that_arrives_first_waits_for_the_outcome() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        // Nothing at all comes back. Not an empty answer — no answer yet.
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+
+        < Event::FromRouter { request_id: 2, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string()] } } },
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 1, .. } },
+
+        < Event::FromSource { event: EventSource::ItemLinked { call_id: 1, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 2, .. } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 3, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
+        > @r#"ToRouter { request_id: 2, action: Accepted }"#,
+
+        // The route that was waiting, answered once the session it is being
+        // told about has actually been closed.
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
+        > @r#"ToRouter { request_id: 1, action: Linked { count: 1 } }"#,
+    );
+}
+
+/// They closed the sheet. Plaid says so in as many words, which is the change:
+/// "no bank" used to be inferred from a poll that came back empty.
+#[test]
+fn a_session_that_ends_with_nothing_is_said_rather_than_inferred() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+
+        < Event::FromRouter { request_id: 2, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec![] } } },
+        > @r#"ToRouter { request_id: 2, action: Accepted }"#,
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
+        > @r#"ToRouter { request_id: 1, action: Linked { count: 0 } }"#,
+    );
+}
+
+/// An exchange that failed is nothing coming of the session, and the route
+/// waiting hears that rather than waiting out the clock.
+#[test]
+fn an_exchange_that_fails_settles_the_session_too() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+
+        < Event::FromRouter { request_id: 2, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string()] } } },
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 1, .. } },
+
+        < Event::FromSource { event: EventSource::LinkAbandoned { call_id: 1, link_token: "link-1".to_string() } },
+        > @r#"ToRouter { request_id: 2, action: Accepted }"#,
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
+        > @r#"ToRouter { request_id: 1, action: Linked { count: 0 } }"#,
+    );
+}
+
+/// Plaid never said. Not a failure — the bank may still be landing — so the
+/// answer is neither of the other two, and the screen it sends somebody to is
+/// the one that polls and will see a late bank arrive.
+#[test]
+fn a_session_nobody_reports_on_is_answered_pending() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS) } },
+        > @r#"ToRouter { request_id: 1, action: LinkPending }"#,
+    );
+}
+
+/// One route, two sessions, one answer. The route can only send one response,
+/// so a second timeout must not produce a second.
+#[test]
+fn two_sessions_timing_out_together_still_answer_once() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()] } },
+
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS) } },
+        > Action::ToRouter { action: ActionRouter::LinkPending, .. },
+    );
+}
+
+/// On a dismissal the phone never calls `/link/finish` at all, so the outcome
+/// written down for it is never collected. It goes on its own rather than
+/// staying for the life of the process.
+#[test]
+fn an_outcome_nobody_comes_back_for_expires() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec![] } } },
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 1, .. } },
-
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
+
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + OUTCOME_GOOD_FOR_SECS) } },
+
+        // Nothing recorded any more, so this parks rather than being answered
+        // from a record about a sheet closed ten minutes ago.
+        < Event::FromRouter { request_id: 2, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + OUTCOME_GOOD_FOR_SECS + LINK_ANSWER_GOOD_FOR_SECS) } },
+        > Action::ToRouter { action: ActionRouter::LinkPending, .. },
+    );
+}
+
+/// A caller with nothing open cannot be told anything else: there is no
+/// session to hear about, so `Pending` would be a promise nothing can keep.
+#[test]
+fn a_close_with_no_session_open_is_answered_at_once() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec![] } },
+        > @r#"ToRouter { request_id: 1, action: Linked { count: 0 } }"#,
+    );
+}
+
+/// Somebody who backed out of one bank and connected another has two
+/// sessions, and the one that worked is the answer to give.
+#[test]
+fn the_session_that_attached_a_bank_is_the_one_reported() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec![] } } },
+        > Action::ToRouter { action: ActionRouter::Accepted, .. },
+
+        < Event::FromRouter { request_id: 2, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-2".to_string(), public_tokens: vec!["public-2".to_string()] } } },
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 1, .. } },
+
+        < Event::FromSource { event: EventSource::ItemLinked { call_id: 1, link_token: "link-2".to_string(), item_id: "item-9".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 2, .. } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 3, .. } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
+        > Action::ToRouter { action: ActionRouter::Accepted, .. },
+
+        < Event::FromRouter { request_id: 3, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()] } },
+        > @r#"ToStore { action: CollectLink { call_id: 4, link_token: "link-2" } }"#,
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
+        > @r#"ToRouter { request_id: 3, action: Linked { count: 1 } }"#,
     );
 }
 
@@ -957,36 +1113,6 @@ fn an_unknown_webhook_is_taken_and_acted_on_by_nothing() {
     );
 }
 
-/// With Plaid calling us, a closed sheet is a read of what already arrived —
-/// no `PollLinks`, which is the whole claim. The sessions still standing are
-/// marked done, because nothing else ever revisits one.
-#[test]
-fn a_closed_sheet_is_read_rather_than_polled_when_plaid_calls_us() {
-    let mut state = state_collecting_by_webhook();
-
-    eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 1 } },
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 1, .. } },
-
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
-        > Action::ToRouter { action: ActionRouter::Linked { count: 1 }, .. },
-    );
-}
-
-/// The webhook has not arrived yet, so nothing has been attached and the
-/// answer says so. Zero is what somebody who closed the sheet gets too — the
-/// route has no way to tell those apart, and the bank still lands when the
-/// webhook does.
-#[test]
-fn a_closed_sheet_with_nothing_attached_answers_zero() {
-    let mut state = state_collecting_by_webhook();
-
-    eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec![], attached: 0 } },
-        > Action::ToRouter { action: ActionRouter::Linked { count: 0 }, .. },
-    );
-}
-
 /// The laptop cannot receive a webhook, so polling has to be untouched by all
 /// of the above: the same close, on a machine told to poll, still asks Plaid.
 #[test]
@@ -994,7 +1120,7 @@ fn a_closed_sheet_still_polls_when_we_collect_by_polling() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 1 } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
     );
 }

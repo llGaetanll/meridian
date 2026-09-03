@@ -57,12 +57,11 @@ pub enum EventRouter {
     /// carries no token, so the result has to be collected, and this is what
     /// says it is worth collecting now.
     ///
-    /// `attached` is how many banks this user has gained while a session of
-    /// theirs could have been open. It is read on every close and used on
-    /// none of the polling ones: with `PLAID_COLLECT=webhook` the collection
-    /// already happened, so this route answers from the store rather than
-    /// asking Plaid a question that has been answered.
-    LinkClosed { pending: Vec<String>, attached: u32 },
+    /// With `PLAID_COLLECT=webhook` it stops being a trigger and becomes a
+    /// question: collection happens unprompted, so the sessions are what the
+    /// machine matches Plaid's `SESSION_FINISHED` against rather than what it
+    /// goes and polls.
+    LinkClosed { pending: Vec<String> },
 
     /// Plaid called us, and the call was believed.
     ///

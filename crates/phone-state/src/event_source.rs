@@ -59,6 +59,16 @@ pub enum EventSource {
     /// The common ending, not a rare one.
     BankAbandoned,
 
+    /// The server has not been told what the sign-in came to.
+    ///
+    /// The third answer, and it exists because the two events that end a Link
+    /// session — the browser coming back, and Plaid telling the server —
+    /// race, and only the server sees both. It waited, and Plaid was still
+    /// late. So the bank may yet be attached: this leads to the sync screen,
+    /// which polls and will see it arrive, rather than to the one that says
+    /// nothing was connected.
+    BankPending,
+
     /// How far the first sync has got.
     ///
     /// JSON for the same reason [`SnapshotLoaded`](EventSource::SnapshotLoaded)

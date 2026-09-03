@@ -45,6 +45,7 @@ pub use range::RangeSelection;
 pub use range::RangeUnit;
 pub use state_app::StateApp;
 pub use state_ledger::StateLedger;
+pub use state_onboarding::AWAIT_GOOD_FOR_SECS;
 pub use state_onboarding::StateOnboarding;
 pub use view::Screen;
 pub use view::ViewScreen;

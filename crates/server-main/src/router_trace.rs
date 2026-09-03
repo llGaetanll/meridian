@@ -76,12 +76,12 @@ pub(crate) fn client_of(request: &Request) -> String {
         return String::from("unknown");
     };
 
-    if is_local(peer.ip()) {
-        if let Some(forwarded) = forwarded_for(request) {
-            // No port, because the proxy is not told one and inventing the
-            // socket's own would name Caddy's end of a different connection.
-            return forwarded;
-        }
+    if is_local(peer.ip())
+        && let Some(forwarded) = forwarded_for(request)
+    {
+        // No port, because the proxy is not told one and inventing the
+        // socket's own would name Caddy's end of a different connection.
+        return forwarded;
     }
 
     peer.to_string()

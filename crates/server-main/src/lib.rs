@@ -78,6 +78,8 @@ pub use runtime_server::RuntimeServer;
 pub use server_wire::WireSnapshot;
 pub use state_server::CALL_GOOD_FOR_SECS;
 pub use state_server::FRESH_FOR_SECS;
+pub use state_server::LINK_ANSWER_GOOD_FOR_SECS;
+pub use state_server::OUTCOME_GOOD_FOR_SECS;
 pub use state_server::StateServer;
 pub use webhook_facts::WebhookFacts;
 

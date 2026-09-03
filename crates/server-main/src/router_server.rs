@@ -209,51 +209,74 @@ async fn link_start(
 }
 
 /// What `POST /link/finish` answers with.
+///
+/// Three answers rather than a count, because with webhooks there are three
+/// things that can be true. The redirect that closes the sheet says nothing —
+/// Plaid is explicit that reaching it is not a successful connection — so
+/// "Plaid has not said yet" is a real state and used to be reported as zero,
+/// which is a different sentence and sometimes a false one.
+///
+/// Tagged rather than a count and a flag: `pending` with three banks attached
+/// is not a thing that can happen, and a shape that can express it is a shape
+/// somebody has to check.
 #[derive(Debug, serde::Serialize)]
-struct LinkFinished {
-    /// How many banks this collection attached.
+#[serde(tag = "outcome", rename_all = "snake_case")]
+enum LinkFinished {
+    /// Banks were attached, and this is how many.
     ///
     /// A count, because one call collects every session the caller has open
-    /// and so can attach more than one. Zero is the ordinary outcome of
-    /// somebody closing the sheet, not an error.
-    ///
-    /// It does not name them: nothing knows what a bank is called until the
-    /// balances call inside its first sync answers. `/sync/status` carries the
-    /// name once it does.
-    linked: u32,
+    /// and so can attach more than one. It does not name them: nothing knows
+    /// what a bank is called until the balances call inside its first sync
+    /// answers, and `/sync/status` carries the name once it does.
+    Linked { count: u32 },
+
+    /// The session ended without a bank. The ordinary outcome of somebody
+    /// closing the sheet, not an error.
+    Abandoned,
+
+    /// Plaid has not said what the session came to. Neither of the above is
+    /// known yet, and the bank may still be landing.
+    Pending,
 }
 
-/// `POST /link/finish` — collect whatever the Link session came to.
+/// `POST /link/finish` — what did the Link session come to?
 ///
-/// Called when the web sheet closes. The redirect that closed it carries no
-/// token (`docs/PLAID.md`), so this is what goes and asks Plaid; with
-/// `PLAID_COLLECT=webhook` the same collection would arrive on its own and
-/// this becomes a read of what already happened.
+/// Called when the web sheet closes, and it does two different jobs depending
+/// on how results are collected. With `PLAID_COLLECT=poll` it is a *trigger*:
+/// nothing else ever collects, so this is what goes and asks Plaid. With
+/// `PLAID_COLLECT=webhook` collection happens unprompted, and this degrades to
+/// a *question* — one that can be asked a fraction of a second before the
+/// answer exists, which is why the machine waits and why `Pending` is one of
+/// the three things it can answer.
+///
+/// The name is left alone. It is still what finishes a link in the mode a
+/// laptop runs, and renaming it would make it wrong there instead.
 async fn link_finish(
     State(runtime): State<Arc<RuntimeServer>>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<LinkFinished>, StatusCode> {
     let user_id = runtime.authenticate(&headers).await?;
 
-    // The sessions this user has open and the banks they have already gained,
-    // read before deciding — the same shape as everywhere else: the machine
-    // keeps nothing, so the facts arrive with the request. Which of the two it
-    // uses is its decision, on the channel it was told about at startup.
-    let (pending, attached) = runtime.link_facts(user_id).await.map_err(|e| {
+    // The sessions this user has open, read before deciding — the same shape
+    // as everywhere else: the machine keeps nothing, so the facts arrive with
+    // the request. They are what a webhook's `link_token` is matched against,
+    // and what a poll goes and asks about.
+    let pending = runtime.pending_links(user_id).await.map_err(|e| {
         tracing::error!(error = %e, "could not read this user's link sessions");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let answer = runtime
-        .request(EventRouter::LinkClosed { pending, attached })
-        .await;
+    let answer = runtime.request(EventRouter::LinkClosed { pending }).await;
 
-    let count = match answer {
-        Some(ActionRouter::Linked { count }) => count,
-        _ => 0,
-    };
+    Ok(Json(match answer {
+        Some(ActionRouter::Linked { count }) if count > 0 => LinkFinished::Linked { count },
+        Some(ActionRouter::LinkPending) => LinkFinished::Pending,
 
-    Ok(Json(LinkFinished { linked: count }))
+        // Everything else is a session that came to nothing, including the
+        // machine giving up on a poll that never answered: from here those are
+        // the same sentence, and the phone has the same road out of both.
+        _ => LinkFinished::Abandoned,
+    }))
 }
 
 /// `POST /plaid/webhook` — Plaid telling us something happened.
@@ -360,5 +383,25 @@ async fn health(State(runtime): State<Arc<RuntimeServer>>) -> (StatusCode, Strin
                 format!("store unreachable: {e}"),
             )
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The three words the phone switches on. They are a wire contract with
+    /// `RuntimeIo.finishLink`, so a rename here is a rename there — and a
+    /// silent one, because JSON has no type to disagree with.
+    #[test]
+    fn the_three_outcomes_are_named_on_the_wire() {
+        let json = |answer: LinkFinished| serde_json::to_string(&answer).expect("a plain struct");
+
+        assert_eq!(
+            json(LinkFinished::Linked { count: 1 }),
+            r#"{"outcome":"linked","count":1}"#,
+        );
+        assert_eq!(json(LinkFinished::Abandoned), r#"{"outcome":"abandoned"}"#);
+        assert_eq!(json(LinkFinished::Pending), r#"{"outcome":"pending"}"#);
     }
 }

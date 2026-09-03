@@ -91,15 +91,6 @@ const EMAIL_AT_ONCE: usize = 2;
 /// a call is not noticeably late.
 const TICK_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
 
-/// How long a Link session's result is worth reading back.
-///
-/// The link token's own lifetime. With `PLAID_COLLECT=webhook` the bank is
-/// already attached by the time `/link/finish` is called, so the route reads
-/// what arrived rather than asking Plaid — and a bank attached inside this
-/// window came from a session the caller opened, because a session is the only
-/// thing that attaches one.
-const LINK_GOOD_FOR_SECS: i64 = 30 * 60;
-
 /// How many writes may be in flight at once. Bounded by what the Postgres
 /// pool will hand out either way; this is what stops a burst queueing there
 /// instead, where it is invisible.
@@ -867,28 +858,20 @@ impl RuntimeServer {
             }))
     }
 
-    /// The Link sessions this user has open, and the banks they already have
-    /// to show for the half hour a session could have been running.
+    /// The Link sessions this user has open and has not collected.
     ///
-    /// Two reads for one event because the machine needs both and keeps
-    /// neither: which sessions are worth asking Plaid about, and — when Plaid
-    /// has already told us — how many banks arrived while they were open.
-    /// Which of the two is used is the machine's to decide, on the collection
-    /// channel it was told about at startup.
-    pub(crate) async fn link_facts(
+    /// A session is collected by whatever *reports* it, so an open one is one
+    /// nobody has been told about — which is exactly what a `SESSION_FINISHED`
+    /// is matched against, and what a poll goes and asks about.
+    pub(crate) async fn pending_links(
         &self,
         user_id: Uuid,
-    ) -> Result<(Vec<String>, u32), src_postgres::PostgresError> {
-        let pending = src_postgres::pending_links(&self.db, user_id)
+    ) -> Result<Vec<String>, src_postgres::PostgresError> {
+        Ok(src_postgres::pending_links(&self.db, user_id)
             .await?
             .into_iter()
             .map(|link| link.link_token)
-            .collect();
-
-        let attached =
-            src_postgres::items_linked_since(&self.db, user_id, LINK_GOOD_FOR_SECS).await?;
-
-        Ok((pending, attached))
+            .collect())
     }
 
     /// Whether a POST on the webhook route is really Plaid, and what it said.

@@ -52,6 +52,15 @@ pub enum ActionRouter {
     /// hold the sheet open for a string.
     Linked { count: u32 },
 
+    /// Plaid has not said what the Link session came to.
+    ///
+    /// The third answer, and the honest one: the redirect that closed the
+    /// sheet means nothing on its own, so a server that has not heard from
+    /// Plaid yet knows neither that a bank was attached nor that none was.
+    /// Saying so beats guessing between the two, and the screen it sends
+    /// somebody to is the one that polls and will see a late bank arrive.
+    LinkPending,
+
     /// How far the sync this user is watching has got.
     ///
     /// Assembled here rather than read off the runtime, because unlike a

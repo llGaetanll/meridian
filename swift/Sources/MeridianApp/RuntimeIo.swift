@@ -93,17 +93,31 @@ enum RuntimeIo {
         return page
     }
 
-    /// Collect whatever the Link session came to, and answer with how many
-    /// banks it attached.
+    /// Ask what the Link session came to.
     ///
-    /// A count rather than a yes: one call collects every session the caller
-    /// has open, so it can attach more than one. Zero is the ordinary outcome
-    /// of somebody closing the sheet.
+    /// Three answers, not two. The redirect that closed the sheet says nothing
+    /// on its own — Plaid is explicit that reaching it is not a successful
+    /// connection — so the server is the only party that sees both endings,
+    /// and it may not have seen the second one yet. `pending` is that, and it
+    /// is a real answer rather than a polite no.
     ///
-    /// It does not name them. Nothing knows what a bank is called until the
-    /// balances call inside its first sync answers — `syncStatus` is where
-    /// the name turns up.
-    static func finishLink(token: String) async throws -> UInt32 {
+    /// None of them names the bank. Nothing knows what one is called until the
+    /// balances call inside its first sync answers — `syncStatus` is where the
+    /// name turns up.
+    enum Outcome {
+        /// At least one bank is attached. The count is the server's; the
+        /// machine does not read it, because one bank and two lead to the same
+        /// screen.
+        case linked
+
+        /// The session ended without one. Plaid said so.
+        case abandoned
+
+        /// Plaid has not said. The bank may still be landing.
+        case pending
+    }
+
+    static func finishLink(token: String) async throws -> Outcome {
         guard let url = URL(string: "\(server)/link/finish") else {
             throw Failure.unreachable
         }
@@ -122,7 +136,15 @@ enum RuntimeIo {
             throw Failure.emptyBody
         }
 
-        return body.linked
+        switch body.outcome {
+        case "linked": return .linked
+        case "pending": return .pending
+
+        // Including a word this build has never heard of. A server saying
+        // something newer than the app is not a reason to leave somebody on a
+        // spinner, and every other outcome ends the same way.
+        default: return .abandoned
+        }
     }
 
     private struct Started: Decodable {
@@ -130,7 +152,7 @@ enum RuntimeIo {
     }
 
     private struct Finished: Decodable {
-        let linked: UInt32
+        let outcome: String
     }
 
     /// How far the first sync has got, as JSON.
