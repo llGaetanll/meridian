@@ -678,6 +678,37 @@ fn a_new_bank_starts_syncing_without_holding_the_route() {
     );
 }
 
+/// A sync is something to watch from the moment it is asked for, not from the
+/// moment its first stage lands.
+///
+/// The gap between those two used to be a real one, and it cost a screen: the
+/// phone asked how the sync was going in the instant after `/link/finish`
+/// answered, was told nothing was running — which reads identically to "it
+/// finished" — and decided the sync was over before Plaid had been called.
+#[test]
+fn a_bank_is_syncing_the_moment_the_fetch_is_asked_for() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 2, .. } },
+
+        < Event::FromSource { event: EventSource::ItemLinked { call_id: 2, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 3, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 5, .. } },
+
+        // Asked in the turn above and not yet begun — and already something to
+        // watch. No progress has been reported, so the counts are zero, but
+        // `finished` is what the screen reads and it says no.
+        < Event::FromRouter { request_id: 2, event: EventRouter::SyncStatusRequested { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        > @r#"ToRouter { request_id: 2, action: SyncStatus { status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: false } } }"#,
+    );
+}
+
 /// Nothing running is an answer, not a missing resource: a user who has never
 /// linked a bank gets `finished` and zeroes rather than a 404.
 #[test]
