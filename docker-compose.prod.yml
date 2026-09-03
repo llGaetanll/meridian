@@ -93,3 +93,30 @@ services:
 volumes:
   caddy-data:
   caddy-config:
+
+# The network, named here only so that it can be given an IPv6 subnet.
+#
+# Without this the network is v4-only, and a v6 caller to a published port is
+# terminated on the host by `docker-proxy`, which opens a *fresh v4 connection*
+# to the container. The caller's address is gone before Caddy sees it, so
+# `X-Forwarded-For` carries the bridge gateway and every v6 client reads as one
+# machine — see #35, where it was measured rather than guessed at. US mobile
+# carriers are largely v6, so that is the phone on cellular: the caller we most
+# want to tell apart, in the one bucket we cannot.
+#
+# With a v6 subnet the daemon DNATs instead of proxying and the source survives.
+# It needs `ip6tables` on in the daemon, which is the default from Docker 27 and
+# is why there is no `daemon.json` here.
+#
+# Only in this file. A laptop has no reason to route v6 to a container, and
+# Docker Desktop's networking is not the daemon's.
+#
+# A ULA prefix (`fd00::/8`), which is v6's private range: these addresses are
+# not routable on the internet and are not meant to be. Nothing dials the
+# containers directly — the published port is still the only door.
+networks:
+  default:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: fd4d:6572:6964::/64
