@@ -95,6 +95,14 @@ pub struct StateOnboarding {
     /// The bank most recently connected, which is the one the sync is for.
     bank: Option<String>,
 
+    /// Whether a bank has ever finished connecting in this flow.
+    ///
+    /// Separate from [`Self::bank`], which is a name and is cleared while the
+    /// next connection is being made. This one never goes back to false: what
+    /// it answers is whether there is a Meridian to open, and one bank is
+    /// enough for the rest of the app to have something to draw.
+    linked: bool,
+
     /// Whether a bank sign-in is being opened.
     ///
     /// True from the tap until Plaid's page has been and gone, one way or the
@@ -136,6 +144,10 @@ impl StateOnboarding {
 
     pub(crate) fn opening(&self) -> bool {
         self.opening
+    }
+
+    pub(crate) fn linked(&self) -> bool {
+        self.linked
     }
 
     pub(crate) fn sync(&self) -> Progress {
@@ -286,6 +298,7 @@ impl StateOnboarding {
     /// on the fallback and [`Self::bank_named`] fills it in.
     pub(crate) fn bank_linked(&mut self) {
         self.opening = false;
+        self.linked = true;
         self.bank = None;
         self.sync = Progress::default();
         self.step = Step::Sync;

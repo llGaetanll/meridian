@@ -163,7 +163,7 @@ fn resend(flow: &StateOnboarding, now: Timestamp) -> ViewResend {
 fn bank(flow: &StateOnboarding) -> ViewOnboarding {
     ViewOnboarding::Bank {
         step: STEP_BANK.to_string(),
-        title: "Connect your bank".to_string(),
+        title: "Just so you know".to_string(),
         body: vec![
             run("Meridian uses "),
             strong("Plaid"),
@@ -290,23 +290,48 @@ fn ready(flow: &StateOnboarding) -> ViewOnboarding {
 /// Nothing was created, and saying so plainly is the whole job — "something
 /// went wrong" leaves someone wondering whether their bank is half-attached to
 /// an app they have not finished setting up.
+///
+/// It reads two ways, because it is reached from two places. Before the first
+/// bank there is nothing behind this screen and Try again is the only honest
+/// button on it. After one, the same screen is the end of Add another bank —
+/// and a screen whose only button reopens the page somebody just closed is a
+/// trap rather than a road.
 fn failed(flow: &StateOnboarding) -> ViewOnboarding {
+    let linked = flow.linked();
+
+    let bank = flow.bank().unwrap_or("Your bank");
+
     ViewOnboarding::Failed {
         step: STEP_BANK.to_string(),
         title: "That didn't finish".to_string(),
-        body: plain("The bank sign-in closed before it was done, so no bank was connected."),
+
+        body: plain(if linked {
+            "The bank sign-in closed before it was done, so nothing was added."
+        } else {
+            "The bank sign-in closed before it was done, so no bank was connected."
+        }),
 
         // Since there is no skip, this row carries the way out instead. That is
         // the difference between insisting on a bank and trapping someone on a
         // screen.
-        rows: vec![fact(
-            "tick-circle",
-            "Your account is made",
-            "Close the app if you need to. Signing in again comes back to here.",
-        )],
+        rows: vec![if linked {
+            fact(
+                "tick-circle",
+                &format!("{bank} is still connected"),
+                "Nothing about it changed. This attempt is the only thing that did not finish.",
+            )
+        } else {
+            fact(
+                "tick-circle",
+                "Your account is made",
+                "Close the app if you need to. Signing in again comes back to here.",
+            )
+        }],
 
         action: "Try again".to_string(),
         opening: flow.opening(),
+
+        open: linked.then(|| "Open Meridian".to_string()),
     }
 }
 

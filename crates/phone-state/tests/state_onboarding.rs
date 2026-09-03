@@ -404,11 +404,40 @@ fn an_abandoned_sign_in_says_nothing_was_connected() {
         < Event::FromSource { event: EventSource::BankAbandoned },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Failed { .. } }, .. } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 2 of 3 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so no bank was connected.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: false, open: None } }, dock: None } }"#,
 
         < Event::FromUi { event: EventUi::BankConnectRequested },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Bank { .. } }, .. } },
+    );
+}
+
+/// The same screen, reached from Add another bank, is a different situation:
+/// there is a bank connected, a ledger behind it, and nothing about either was
+/// touched by the attempt that just closed. So it says so, and it carries a
+/// second button — a screen whose only way on reopens the page somebody just
+/// closed is a trap, and the flow has no back out of the bank step to fall
+/// back on.
+#[test]
+fn a_second_sign_in_that_did_not_finish_leaves_a_way_out() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankLinked },
+        < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"streams","institution":"First Platypus Bank","accounts":8,"transactions":48,"streams":8,"finished":true}"#.to_string() } },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToSource { action: PollSync }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Ready { .. } }, .. } },
+
+        // Add another bank, and then a change of mind on Plaid's page.
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankAbandoned },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 2 of 3 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so nothing was added.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "First Platypus Bank is still connected", sub: Some("Nothing about it changed. This attempt is the only thing that did not finish."), value: None }], action: "Try again", opening: false, open: Some("Open Meridian") } }, dock: None } }"#,
     );
 }
 
