@@ -34,16 +34,22 @@ use crate::EventSource;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::PlaidCollect;
+use crate::PublicUrl;
 use crate::StateServer;
 use crate::StoredCode;
+use crate::WebhookFacts;
 use crate::project;
 use crate::router_exchange::RouterExchange;
 use crate::router_server;
 use crate::runtime_plaid;
 use crate::session_token;
 use crate::source_pool::SourcePool;
+use crate::webhook_verifier::WebhookVerifier;
 use server_wire::WireSnapshot;
 use src_plaid::PlaidCredentials;
+use src_plaid::PlaidRejection;
+use src_plaid::PlaidWebhook;
+use src_plaid::PlaidWebhookKind;
 use src_postgres::Db;
 use src_resend::ResendClient;
 use src_resend::ResendCredentials;
@@ -84,6 +90,15 @@ const EMAIL_AT_ONCE: usize = 2;
 /// shortest window in it is thirty seconds — and fine enough that giving up on
 /// a call is not noticeably late.
 const TICK_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// How long a Link session's result is worth reading back.
+///
+/// The link token's own lifetime. With `PLAID_COLLECT=webhook` the bank is
+/// already attached by the time `/link/finish` is called, so the route reads
+/// what arrived rather than asking Plaid — and a bank attached inside this
+/// window came from a session the caller opened, because a session is the only
+/// thing that attaches one.
+const LINK_GOOD_FOR_SECS: i64 = 30 * 60;
 
 /// How many writes may be in flight at once. Bounded by what the Postgres
 /// pool will hand out either way; this is what stops a burst queueing there
@@ -134,19 +149,23 @@ pub struct RuntimeServer {
     /// carries an `item_id`.
     tokens: RwLock<HashMap<String, String>>,
 
-    /// Which channel collects the result of a Link session. Held here because
-    /// the link flow is not built yet; when it is, this becomes a fact on
-    /// `EventProcess::Started` and the machine decides what to do about it.
-    /// Read and validated at startup regardless, so a misconfigured server
-    /// says so on the way up rather than on the day somebody links a bank.
+    /// Where Plaid should call, or `None` when nothing should.
     ///
-    /// `expect` rather than `allow`: the day the link flow reads this, the
-    /// attribute itself starts warning and asks to be deleted.
-    #[expect(
-        dead_code,
-        reason = "read once the link flow lands; validated and logged at startup meanwhile"
-    )]
-    collect: PlaidCollect,
+    /// `Some` exactly when `PLAID_COLLECT=webhook`, because that is the only
+    /// mode in which an address means anything — and in that mode it is
+    /// required, read and validated on the way up. A server that cannot name
+    /// itself does not start, rather than starting and telling Plaid nothing.
+    webhook: Option<String>,
+
+    /// Whether a POST on the webhook route is really Plaid, and the signing
+    /// keys that answer it.
+    ///
+    /// Here rather than in the machine for the same reason the access tokens
+    /// are: it holds keys and it does IO, and the machine's job is to be
+    /// logged and replayed. What comes out of it is a fact — this webhook is
+    /// genuine and says the following — and every decision downstream of that
+    /// is the machine's.
+    webhooks: WebhookVerifier,
 
     /// Raised once the machine asks to shut down.
     shutdown: Notify,
@@ -180,6 +199,16 @@ impl RuntimeServer {
         // work says so in its first second rather than on its first request.
         let credentials = PlaidCredentials::from_env()?;
         let collect = PlaidCollect::from_env()?;
+
+        // Required in one mode and meaningless in the other, the same shape as
+        // `RESEND_*` under `EMAIL_SEND`. Read here rather than when a link is
+        // opened, so a server that cannot name its own address says so in its
+        // first second instead of on the day somebody connects a bank.
+        let public_url = match collect {
+            PlaidCollect::Webhook => Some(PublicUrl::from_env()?),
+            PlaidCollect::Poll => None,
+        };
+
         let db = Self::open_store().await?;
 
         let email_send = EmailSend::from_env()?;
@@ -201,6 +230,7 @@ impl RuntimeServer {
         tracing::info!(
             env = credentials.env.as_str(),
             collect = collect.as_str(),
+            webhook = public_url.as_ref().map(PublicUrl::as_str).unwrap_or("none"),
             email = email_send.as_str(),
             "serving live plaid data",
         );
@@ -217,7 +247,8 @@ impl RuntimeServer {
             email_send,
             resend,
             tokens: RwLock::new(HashMap::new()),
-            collect,
+            webhooks: WebhookVerifier::default(),
+            webhook: public_url.as_ref().map(PublicUrl::webhook),
             db,
             shutdown: Notify::new(),
         });
@@ -232,7 +263,7 @@ impl RuntimeServer {
         });
 
         runtime.exchange.push(Event::FromProcess {
-            event: EventProcess::Started,
+            event: EventProcess::Started { collect },
         });
 
         runtime.exchange.push(Event::FromProcess {
@@ -519,7 +550,13 @@ impl RuntimeServer {
 
     /// Open a Link session and report the page that hosts it.
     async fn open_link(&self, call_id: crate::CallId, user_id: Uuid) -> Vec<Event> {
-        let event = match runtime_plaid::open_link(&self.credentials, &user_id.to_string()).await {
+        let event = match runtime_plaid::open_link(
+            &self.credentials,
+            &user_id.to_string(),
+            self.webhook.as_deref(),
+        )
+        .await
+        {
             Ok((link_token, Some(hosted_link_url))) => EventSource::LinkOpened {
                 call_id,
                 user_id,
@@ -830,16 +867,124 @@ impl RuntimeServer {
             }))
     }
 
-    /// The Link sessions this user has open and has not collected.
-    pub(crate) async fn pending_links(
+    /// The Link sessions this user has open, and the banks they already have
+    /// to show for the half hour a session could have been running.
+    ///
+    /// Two reads for one event because the machine needs both and keeps
+    /// neither: which sessions are worth asking Plaid about, and — when Plaid
+    /// has already told us — how many banks arrived while they were open.
+    /// Which of the two is used is the machine's to decide, on the collection
+    /// channel it was told about at startup.
+    pub(crate) async fn link_facts(
         &self,
         user_id: Uuid,
-    ) -> Result<Vec<String>, src_postgres::PostgresError> {
-        Ok(src_postgres::pending_links(&self.db, user_id)
+    ) -> Result<(Vec<String>, u32), src_postgres::PostgresError> {
+        let pending = src_postgres::pending_links(&self.db, user_id)
             .await?
             .into_iter()
             .map(|link| link.link_token)
-            .collect())
+            .collect();
+
+        let attached =
+            src_postgres::items_linked_since(&self.db, user_id, LINK_GOOD_FOR_SECS).await?;
+
+        Ok((pending, attached))
+    }
+
+    /// Whether a POST on the webhook route is really Plaid, and what it said.
+    ///
+    /// The twin of [`authenticate`](RuntimeServer::authenticate), and the only
+    /// place a webhook becomes something the machine will be told about. The
+    /// bytes are the ones that arrived, untouched — see
+    /// [`WebhookVerifier::believe`](crate::webhook_verifier::WebhookVerifier).
+    pub(crate) async fn believe_webhook(
+        &self,
+        headers: &axum::http::HeaderMap,
+        body: &[u8],
+    ) -> Result<PlaidWebhook, PlaidRejection> {
+        let webhook = self
+            .webhooks
+            .believe(&self.credentials, headers, body, unix_now())
+            .await?;
+
+        tracing::info!(
+            webhook_type = webhook.webhook_type,
+            webhook_code = webhook.webhook_code,
+            "a webhook arrived from plaid",
+        );
+
+        Ok(webhook)
+    }
+
+    /// What a webhook names, as the store holds it.
+    ///
+    /// The read that has to happen before the machine can decide anything: a
+    /// webhook arrives with no session and names a bank rather than a person,
+    /// so where its last sync reached is looked up here, exactly as
+    /// [`facts_for`](RuntimeServer::facts_for) does on the routes that have a
+    /// caller to scope on.
+    pub(crate) async fn webhook_facts(&self, webhook: PlaidWebhook) -> WebhookFacts {
+        match webhook.kind() {
+            PlaidWebhookKind::SessionFinished {
+                link_token,
+                public_tokens,
+            } => WebhookFacts::SessionFinished {
+                link_token,
+                public_tokens,
+            },
+
+            PlaidWebhookKind::SyncUpdatesAvailable { item_id } => {
+                WebhookFacts::SyncUpdatesAvailable {
+                    item: self.item_facts(&item_id).await,
+                    item_id,
+                }
+            }
+
+            PlaidWebhookKind::LoginRequired { item_id } => WebhookFacts::Login {
+                item_id,
+                required: true,
+            },
+
+            PlaidWebhookKind::LoginRepaired { item_id } => WebhookFacts::Login {
+                item_id,
+                required: false,
+            },
+
+            PlaidWebhookKind::Other => WebhookFacts::Ignored {
+                webhook_type: webhook.webhook_type,
+                webhook_code: webhook.webhook_code,
+            },
+        }
+    }
+
+    /// One bank, by the id Plaid names it with, and its token remembered.
+    ///
+    /// `None` covers both a bank the store has no row for and a store that
+    /// would not answer. The machine is told the same thing either way,
+    /// because there is nothing it could do differently: it has no cursor to
+    /// sync from.
+    async fn item_facts(&self, item_id: &str) -> Option<crate::ItemFacts> {
+        let item = match src_postgres::load_item(&self.db, item_id).await {
+            Ok(item) => item?,
+
+            Err(e) => {
+                tracing::error!(item_id, error = %e, "could not read the bank a webhook names");
+
+                return None;
+            }
+        };
+
+        // The same as `facts_for`: the token goes into the runtime's map so a
+        // fetch the machine asks for can find one without going back.
+        self.write_tokens()
+            .insert(item.item_id.clone(), item.access_token.clone());
+
+        Some(crate::ItemFacts {
+            item_id: item.item_id,
+            cursor: item.cursor,
+            synced_at: Some(item.synced_at),
+            login_required: item.error_code.as_deref() == Some(src_plaid::ITEM_LOGIN_REQUIRED),
+        })
     }
 
     /// Whether the store answers. Asked rather than assumed from a pool.

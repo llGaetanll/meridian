@@ -23,6 +23,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use server_wire::SyncStage;
 use server_wire::WireSyncStatus;
+use src_plaid::ITEM_LOGIN_REQUIRED;
 use src_plaid::PlaidEndpoint;
 use src_plaid::PlaidRateCtx;
 use src_plaid::PlaidRateLimiter;
@@ -41,7 +42,9 @@ use crate::EventSource;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::ItemFacts;
+use crate::PlaidCollect;
 use crate::RequestId;
+use crate::WebhookFacts;
 use crate::login_code;
 use crate::session_token;
 
@@ -154,6 +157,16 @@ pub struct StateServer {
     /// user who is not syncing is told.
     syncing: HashMap<String, WireSyncStatus>,
 
+    /// Which channel collects the result of a Link session, as the runtime
+    /// read it out of the environment on [`EventProcess::Started`].
+    ///
+    /// A fact from the edge, like the clock and the seed, rather than
+    /// something the runtime consults on its own — see
+    /// `docs/ARCHITECTURE.md`. `None` is a machine that has not been told the
+    /// process is up, which is a machine that has not been asked anything
+    /// either.
+    collect: Option<PlaidCollect>,
+
     /// When the current batch is being handled.
     now: Timestamp,
 }
@@ -223,7 +236,36 @@ impl StateServer {
                 self.answer(request_id, ActionRouter::SyncStatus { status }, actions);
             }
 
-            EventRouter::LinkClosed { pending } => {
+            EventRouter::LinkClosed { pending, attached } => {
+                // Already collected, by Plaid calling us the moment the
+                // session ended. So this is the read the route's own comment
+                // has always expected rather than a question for Plaid —
+                // asking again would spend a call on an answer we hold, and
+                // get `finished` with a token that has already been exchanged.
+                if self.collect == Some(PlaidCollect::Webhook) {
+                    // A session still standing is one no webhook ever came
+                    // for: somebody who closed the sheet before signing in, or
+                    // a call we missed. Marked done either way — nothing else
+                    // ever revisits one, so a session left pending is pending
+                    // forever.
+                    for link_token in pending {
+                        actions.push(Action::ToStore {
+                            action: ActionStore::CollectLink {
+                                call_id: self.calling(request_id),
+                                link_token: link_token.clone(),
+                            },
+                        });
+                    }
+
+                    self.answer(
+                        request_id,
+                        ActionRouter::Linked { count: *attached },
+                        actions,
+                    );
+
+                    return;
+                }
+
                 // Nothing open. Somebody closed a sheet we have no record of,
                 // or collected this one already — either way there is nothing
                 // to go and ask about.
@@ -362,6 +404,10 @@ impl StateServer {
                 self.answer(request_id, ActionRouter::SignedIn { token }, actions);
             }
 
+            EventRouter::WebhookReceived { webhook } => {
+                self.handle_webhook(request_id, webhook, actions)
+            }
+
             EventRouter::SnapshotRequested { force, items } => {
                 let asked: Vec<_> = items
                     .iter()
@@ -381,6 +427,124 @@ impl StateServer {
                 // error, which is what "no bank linked yet" looks like and the
                 // state first run exists to leave.
                 self.answer(request_id, ActionRouter::Serve, actions);
+            }
+        }
+    }
+
+    /// What a webhook Plaid sent us is worth doing about.
+    ///
+    /// Every one of them answers, and answers 2xx: Plaid retries anything
+    /// else, so an error here is the same webhook arriving again in a minute
+    /// and again after that. What differs is what is set going first.
+    ///
+    /// Nothing about *believing* the webhook happens here. It is already
+    /// believed by the time it is an event — see
+    /// [`WebhookFacts`](crate::WebhookFacts) — the same way a `user_id` on any
+    /// other router event is already a session that checked out.
+    fn handle_webhook(
+        &mut self,
+        request_id: RequestId,
+        webhook: &WebhookFacts,
+        actions: &mut Vec<Action>,
+    ) {
+        match webhook {
+            WebhookFacts::SessionFinished {
+                link_token,
+                public_tokens,
+            } => {
+                // Finished with nothing: they closed the sheet. An outcome and
+                // not a failure, and the session is marked done so nothing
+                // goes back to it.
+                if public_tokens.is_empty() {
+                    actions.push(Action::ToStore {
+                        action: ActionStore::CollectLink {
+                            call_id: self.calling(request_id),
+                            link_token: link_token.clone(),
+                        },
+                    });
+
+                    self.answer(request_id, ActionRouter::Accepted, actions);
+
+                    return;
+                }
+
+                // Every token, where the polling path takes the first and
+                // leaves the rest for the next close to collect. There is no
+                // next close here — Plaid says this once — so a token nobody
+                // exchanges is a bank somebody connected and does not get.
+                for public_token in public_tokens {
+                    actions.push(Action::ToSource {
+                        action: ActionSource::ExchangePublicToken {
+                            call_id: self.calling(request_id),
+                            link_token: link_token.clone(),
+                            public_token: public_token.clone(),
+                        },
+                    });
+                }
+
+                // Held until the exchanges have landed and been written, by
+                // the ordinary rule. That is what makes a failure mid-exchange
+                // a webhook Plaid sends again rather than a bank quietly lost.
+                self.answer(request_id, ActionRouter::Accepted, actions);
+            }
+
+            WebhookFacts::SyncUpdatesAvailable { item_id, item } => {
+                // Plaid is still telling us about a bank the store has no row
+                // for. Nothing to sync and nothing to fix from here; said
+                // rather than dropped, because the two sides disagreeing is
+                // worth knowing about.
+                let Some(item) = item else {
+                    tracing::warn!(item_id, "plaid has news about a bank we do not hold");
+
+                    self.answer(request_id, ActionRouter::Accepted, actions);
+
+                    return;
+                };
+
+                // Forced: the webhook *is* the news that something changed, so
+                // the freshness window has nothing left to say. What still
+                // applies is the rate limit and a dead login, and
+                // `should_fetch` is where both of those live.
+                if self.should_fetch(item, true) {
+                    // Nobody waits on it. A first sync of a long history takes
+                    // far longer than Plaid waits for its 2xx, and a webhook
+                    // Plaid decides went unanswered is one it sends again.
+                    let call_id = self.call();
+
+                    self.fetch(call_id, item.item_id.clone(), item.cursor.clone(), actions);
+                }
+
+                self.answer(request_id, ActionRouter::Accepted, actions);
+            }
+
+            WebhookFacts::Login { item_id, required } => {
+                if *required {
+                    actions.push(Action::ToProcess {
+                        action: ActionProcess::ReportLoginRequired,
+                    });
+                }
+
+                // Written down, or the server comes back up and asks Plaid the
+                // same question it was just refused. This is also what the
+                // Reconnect button reads to know it has something to offer.
+                actions.push(Action::ToStore {
+                    action: ActionStore::SaveStatus {
+                        call_id: self.calling(request_id),
+                        item_id: item_id.clone(),
+                        error_code: required.then(|| ITEM_LOGIN_REQUIRED.to_string()),
+                    },
+                });
+
+                self.answer(request_id, ActionRouter::Accepted, actions);
+            }
+
+            WebhookFacts::Ignored {
+                webhook_type,
+                webhook_code,
+            } => {
+                tracing::debug!(webhook_type, webhook_code, "a webhook nothing acts on");
+
+                self.answer(request_id, ActionRouter::Accepted, actions);
             }
         }
     }
@@ -617,7 +781,7 @@ impl StateServer {
                 // fetch that died would otherwise sit on its last stage.
                 self.syncing.remove(item_id);
 
-                if code == "ITEM_LOGIN_REQUIRED" {
+                if code == ITEM_LOGIN_REQUIRED {
                     actions.push(Action::ToProcess {
                         action: ActionProcess::ReportLoginRequired,
                     });
@@ -648,7 +812,9 @@ impl StateServer {
             // request, for the user who asked, which is what makes a second
             // server process possible. Entropy is what it is still waiting
             // for, and the seed behind this event is what brings it.
-            EventProcess::Started => {
+            EventProcess::Started { collect } => {
+                self.collect = Some(*collect);
+
                 if self.state == State::Stopped {
                     self.state = State::Starting;
                 }

@@ -88,6 +88,11 @@ services:
       PLAID_ENV: ${PLAID_ENV:?}
       PLAID_COLLECT: ${PLAID_COLLECT:?}
 
+      # Required by the server only when PLAID_COLLECT=webhook, so it is empty
+      # here rather than `:?` — a laptop that polls has no public address and
+      # should not be made to invent one.
+      PUBLIC_URL: ${PUBLIC_URL:-}
+
       # The server's stdout here is a pipe to the daemon, never a terminal, so
       # left to work it out for itself it turns colour off — and the log is
       # then plain for `docker compose logs` too, which is a terminal and would

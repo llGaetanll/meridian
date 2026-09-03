@@ -36,6 +36,7 @@ mod link_poll;
 mod login_code;
 mod plaid_collect;
 mod project;
+mod public_url;
 mod request_id;
 mod router_exchange;
 mod router_server;
@@ -45,6 +46,8 @@ mod runtime_server;
 mod session_token;
 mod source_pool;
 mod state_server;
+mod webhook_facts;
+mod webhook_verifier;
 
 pub use action::Action;
 pub use action_email::ActionEmail;
@@ -68,12 +71,15 @@ pub use login_code::Verdict;
 /// against. Not part of the server's interface.
 pub use login_code::hash as hash_code;
 pub use plaid_collect::PlaidCollect;
+pub use public_url::PublicUrl;
+pub use public_url::WEBHOOK_PATH;
 pub use request_id::RequestId;
 pub use runtime_server::RuntimeServer;
 pub use server_wire::WireSnapshot;
 pub use state_server::CALL_GOOD_FOR_SECS;
 pub use state_server::FRESH_FOR_SECS;
 pub use state_server::StateServer;
+pub use webhook_facts::WebhookFacts;
 
 /// Reachable so that `examples/snapshot.rs` can generate the fixture the app's
 /// tests read. Not part of the server's interface.

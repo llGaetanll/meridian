@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::Router;
+use axum::body::Bytes;
 use axum::extract::Query;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -26,6 +27,7 @@ use tower_http::cors::CorsLayer;
 use crate::ActionRouter;
 use crate::EventRouter;
 use crate::RuntimeServer;
+use crate::WEBHOOK_PATH;
 use crate::router_trace;
 use server_wire::WireSnapshot;
 use server_wire::WireSyncStatus;
@@ -39,6 +41,7 @@ pub(crate) fn router(runtime: Arc<RuntimeServer>) -> Router {
         .route("/link/start", post(link_start))
         .route("/link/finish", post(link_finish))
         .route("/sync/status", get(sync_status))
+        .route(WEBHOOK_PATH, post(plaid_webhook))
         .route("/health", get(health))
         // Inside the CORS layer, so the preflight `OPTIONS` a browser sends
         // ahead of an authenticated request is answered above this and never
@@ -232,15 +235,18 @@ async fn link_finish(
 ) -> Result<Json<LinkFinished>, StatusCode> {
     let user_id = runtime.authenticate(&headers).await?;
 
-    // The sessions this user has open, read before deciding — the same shape
-    // as everywhere else: the machine keeps nothing, so the facts arrive with
-    // the request.
-    let pending = runtime.pending_links(user_id).await.map_err(|e| {
+    // The sessions this user has open and the banks they have already gained,
+    // read before deciding — the same shape as everywhere else: the machine
+    // keeps nothing, so the facts arrive with the request. Which of the two it
+    // uses is its decision, on the channel it was told about at startup.
+    let (pending, attached) = runtime.link_facts(user_id).await.map_err(|e| {
         tracing::error!(error = %e, "could not read this user's link sessions");
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let answer = runtime.request(EventRouter::LinkClosed { pending }).await;
+    let answer = runtime
+        .request(EventRouter::LinkClosed { pending, attached })
+        .await;
 
     let count = match answer {
         Some(ActionRouter::Linked { count }) => count,
@@ -248,6 +254,57 @@ async fn link_finish(
     };
 
     Ok(Json(LinkFinished { linked: count }))
+}
+
+/// `POST /plaid/webhook` — Plaid telling us something happened.
+///
+/// **The one route here with no session behind it.** Anybody can POST to it,
+/// so the first thing that happens is proving the POST is Plaid's — and the
+/// proof is over the *raw bytes*, which is why this takes [`Bytes`] and not
+/// `Json`. Plaid's hash is of what it put on the wire, pretty-printed with two
+/// spaces, so a body an extractor had already parsed would hash to something
+/// else and every genuine webhook would be refused.
+///
+/// One status for every way of being wrong, like `/auth/verify`: the reason is
+/// logged and not returned, because the difference is only useful to whoever
+/// is guessing.
+///
+/// A believed webhook is answered 2xx even when nothing is done about it.
+/// Plaid retries anything else, so an error on a type we do not act on is that
+/// webhook arriving again in a minute, and again after that.
+async fn plaid_webhook(
+    State(runtime): State<Arc<RuntimeServer>>,
+    headers: axum::http::HeaderMap,
+    body: Bytes,
+) -> StatusCode {
+    let webhook = match runtime.believe_webhook(&headers, &body).await {
+        Ok(webhook) => webhook,
+
+        Err(rejection) => {
+            tracing::warn!(%rejection, "a webhook was not believed");
+
+            return StatusCode::UNAUTHORIZED;
+        }
+    };
+
+    // Read before deciding, the same as every other route here: a webhook
+    // names a bank rather than a person, so what the store holds for it is
+    // looked up and handed in on the event.
+    let webhook = runtime.webhook_facts(webhook).await;
+
+    match runtime
+        .request(EventRouter::WebhookReceived { webhook })
+        .await
+    {
+        // `Linked` is the same acceptance one turn further on: a session
+        // whose token was exchanged answers with the count, and the webhook
+        // was still taken.
+        Some(ActionRouter::Accepted | ActionRouter::Linked { .. }) => StatusCode::NO_CONTENT,
+
+        // The machine said nothing, or said it could not. Not answered 2xx on
+        // purpose: Plaid sending it again is exactly what we want.
+        _ => StatusCode::SERVICE_UNAVAILABLE,
+    }
 }
 
 /// `GET /sync/status` — how far the caller's first sync has got.

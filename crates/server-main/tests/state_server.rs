@@ -31,7 +31,23 @@ const T0: Timestamp = Timestamp::from_secs(1_787_097_600);
 /// the first two events the runtime sends, and neither of them any test's
 /// claim. What it has *not* been told is a seed: the tests that mint anything
 /// send one.
+///
+/// It collects Link sessions by polling, which is what a laptop does and what
+/// every test here but the webhook ones is about.
 fn state() -> StateServer {
+    started(PlaidCollect::Poll)
+}
+
+/// The same machine, told that Plaid calls us instead.
+///
+/// The channel is a fact from the edge, on the event that says the process is
+/// up, so this is the whole difference between the two — and the reason
+/// `/link/finish` reads rather than polls is a decision made from it.
+fn state_collecting_by_webhook() -> StateServer {
+    started(PlaidCollect::Webhook)
+}
+
+fn started(collect: PlaidCollect) -> StateServer {
     let mut state = StateServer::new();
 
     state.handle_events(
@@ -40,7 +56,7 @@ fn state() -> StateServer {
                 event: EventProcess::Tick { now: T0 },
             },
             Event::FromProcess {
-                event: EventProcess::Started,
+                event: EventProcess::Started { collect },
             },
         ],
         &mut Vec::new(),
@@ -585,7 +601,7 @@ fn a_public_token_is_exchanged_even_before_the_session_finishes() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 0 } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
@@ -600,7 +616,7 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 0 } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }] } },
@@ -618,7 +634,7 @@ fn an_open_session_is_left_pending() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 0 } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec![] }] } },
@@ -632,7 +648,7 @@ fn a_linked_bank_is_stored_and_its_session_closed() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 0 } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
@@ -661,7 +677,7 @@ fn a_new_bank_starts_syncing_without_holding_the_route() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 0 } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
@@ -690,7 +706,7 @@ fn a_bank_is_syncing_the_moment_the_fetch_is_asked_for() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 0 } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
@@ -761,7 +777,7 @@ fn closing_a_sheet_with_no_session_open_asks_nothing() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec![] } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec![], attached: 0 } },
         > Action::ToRouter { action: ActionRouter::Linked { count: 0 }, .. },
     );
 }
@@ -773,7 +789,7 @@ fn every_open_session_is_polled() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()] } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()], attached: 0 } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
     );
 }
@@ -786,7 +802,7 @@ fn many_sessions_still_produce_one_answer() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string(), "link-3".to_string()] } },
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string(), "link-3".to_string()], attached: 0 } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-2".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-3".to_string(), finished: true, public_tokens: vec![] }] } },
@@ -800,5 +816,185 @@ fn many_sessions_still_produce_one_answer() {
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
         > Action::ToRouter { action: ActionRouter::Linked { count: 0 }, .. },
+    );
+}
+
+/// The webhook doing what polling does: the token arrives on its own, and the
+/// bank is attached from it. Everything after the exchange is the same path a
+/// poll takes, which is the point — there is one way to attach a bank.
+#[test]
+fn a_finished_session_webhook_exchanges_its_token() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string()] } } },
+        > @r#"ToSource { action: ExchangePublicToken { call_id: 1, link_token: "link-1", public_token: "public-1" } }"#,
+
+        < Event::FromSource { event: EventSource::ItemLinked { call_id: 1, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 2, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 3, .. } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 4, .. } },
+    );
+}
+
+/// One webhook can carry two banks, and there is no second call to collect the
+/// one that was left — Plaid says this once.
+#[test]
+fn every_token_a_session_produced_is_exchanged() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string(), "public-2".to_string()] } } },
+        > @r#"ToSource { action: ExchangePublicToken { call_id: 1, link_token: "link-1", public_token: "public-1" } }"#,
+        > @r#"ToSource { action: ExchangePublicToken { call_id: 2, link_token: "link-1", public_token: "public-2" } }"#,
+    );
+}
+
+/// They closed the sheet. An outcome, not a failure — and the session is
+/// marked done so nothing goes back to it.
+#[test]
+fn a_session_webhook_with_no_token_closes_the_session() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec![] } } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
+        > Action::ToRouter { action: ActionRouter::Accepted, .. },
+    );
+}
+
+/// Plaid saying there is something new is not a freshness question, so a bank
+/// synced a second ago is asked about anyway.
+#[test]
+fn a_sync_webhook_fetches_however_fresh_the_bank_is() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SyncUpdatesAvailable { item_id: "item-1".to_string(), item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }) } } },
+        > @r#"ToSource { action: FetchPlaid { call_id: 1, item_id: "item-1", cursor: Some("cursor-1") } }"#,
+        > Action::ToRouter { action: ActionRouter::Accepted, .. },
+    );
+}
+
+/// Nothing is parked on the fetch. A first sync of a long history takes longer
+/// than Plaid waits for its 2xx, and a webhook Plaid decides went unanswered
+/// is one it sends again.
+#[test]
+fn a_sync_webhook_is_answered_before_its_fetch_lands() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SyncUpdatesAvailable { item_id: "item-1".to_string(), item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }) } } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { .. } },
+        > Action::ToRouter { action: ActionRouter::Accepted, .. },
+    );
+}
+
+/// No amount of asking fixes a login, and a webhook does not change that.
+#[test]
+fn a_sync_webhook_does_not_retry_a_dead_login() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SyncUpdatesAvailable { item_id: "item-1".to_string(), item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: true }) } } },
+        > Action::ToRouter { action: ActionRouter::Accepted, .. },
+    );
+}
+
+/// Plaid still has news about a bank the store has no row for. There is
+/// nothing to sync against, and the webhook is taken anyway — refusing it
+/// would only make Plaid send it again.
+#[test]
+fn a_sync_webhook_for_a_bank_we_do_not_hold_is_still_taken() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SyncUpdatesAvailable { item_id: "item-gone".to_string(), item: None } } },
+        > Action::ToRouter { action: ActionRouter::Accepted, .. },
+    );
+}
+
+/// The write is what makes it survive a restart: a server that came back up
+/// having forgotten would ask Plaid the same question and be refused the same
+/// way. It is also what the Reconnect button reads.
+#[test]
+fn a_dead_login_webhook_is_written_down() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::Login { item_id: "item-1".to_string(), required: true } } },
+        > Action::ToProcess { action: ActionProcess::ReportLoginRequired },
+        > @r#"ToStore { action: SaveStatus { call_id: 1, item_id: "item-1", error_code: Some("ITEM_LOGIN_REQUIRED") } }"#,
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
+        > Action::ToRouter { action: ActionRouter::Accepted, .. },
+    );
+}
+
+/// They signed in again. The only thing that clears the flag without a sync
+/// being tried, which is what makes the connection usable again immediately.
+#[test]
+fn a_repaired_login_webhook_clears_it() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::Login { item_id: "item-1".to_string(), required: false } } },
+        > @r#"ToStore { action: SaveStatus { call_id: 1, item_id: "item-1", error_code: None } }"#,
+    );
+}
+
+/// Plaid sends types nobody planned for and retries anything not answered 2xx,
+/// so an unfamiliar one is taken and nothing is done about it.
+#[test]
+fn an_unknown_webhook_is_taken_and_acted_on_by_nothing() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::Ignored { webhook_type: "ASSETS".to_string(), webhook_code: "PRODUCT_READY".to_string() } } },
+        > Action::ToRouter { action: ActionRouter::Accepted, .. },
+    );
+}
+
+/// With Plaid calling us, a closed sheet is a read of what already arrived —
+/// no `PollLinks`, which is the whole claim. The sessions still standing are
+/// marked done, because nothing else ever revisits one.
+#[test]
+fn a_closed_sheet_is_read_rather_than_polled_when_plaid_calls_us() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 1 } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
+        > Action::ToRouter { action: ActionRouter::Linked { count: 1 }, .. },
+    );
+}
+
+/// The webhook has not arrived yet, so nothing has been attached and the
+/// answer says so. Zero is what somebody who closed the sheet gets too — the
+/// route has no way to tell those apart, and the bank still lands when the
+/// webhook does.
+#[test]
+fn a_closed_sheet_with_nothing_attached_answers_zero() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec![], attached: 0 } },
+        > Action::ToRouter { action: ActionRouter::Linked { count: 0 }, .. },
+    );
+}
+
+/// The laptop cannot receive a webhook, so polling has to be untouched by all
+/// of the above: the same close, on a machine told to poll, still asks Plaid.
+#[test]
+fn a_closed_sheet_still_polls_when_we_collect_by_polling() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()], attached: 1 } },
+        > Action::ToSource { action: ActionSource::PollLinks { .. } },
     );
 }

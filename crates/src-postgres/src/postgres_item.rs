@@ -129,6 +129,58 @@ pub async fn load_items(db: &Db, user_id: Uuid) -> Result<Vec<StoredItem>, Postg
         .collect())
 }
 
+/// One Item, by the id Plaid names it with.
+///
+/// The read a webhook needs, and the reason it is not [`load_items`]: a
+/// webhook arrives with no session and names a bank rather than a person, so
+/// there is nobody to scope on until this row says who owns it.
+pub async fn load_item(db: &Db, item_id: &str) -> Result<Option<StoredItem>, PostgresError> {
+    let row = sqlx::query!(
+        "SELECT item_id, user_id, access_token, institution_id, institution_name, cursor, error_code, updated_at
+         FROM items
+         WHERE item_id = $1",
+        item_id,
+    )
+    .fetch_optional(db)
+    .await?;
+
+    Ok(row.map(|row| StoredItem {
+        item_id: row.item_id,
+        user_id: row.user_id,
+        access_token: row.access_token,
+        institution_id: row.institution_id,
+        institution_name: row.institution_name,
+        cursor: row.cursor,
+        error_code: row.error_code,
+        synced_at: seconds(row.updated_at),
+    }))
+}
+
+/// How many of this user's banks were attached in the last `seconds`.
+///
+/// What `/link/finish` answers with when the webhook is what collected the
+/// session (`PLAID_COLLECT=webhook`): by then the bank is already stored, so
+/// the honest thing to do is read it rather than go and ask Plaid a question
+/// that has been answered. The window is the link token's own lifetime — a
+/// bank attached inside it came from a session this caller opened, because a
+/// session is the only thing that attaches one.
+pub async fn items_linked_since(
+    db: &Db,
+    user_id: Uuid,
+    seconds: i64,
+) -> Result<u32, PostgresError> {
+    let row = sqlx::query!(
+        "SELECT count(*) AS \"count!\" FROM items
+         WHERE user_id = $1 AND created_at > now() - make_interval(secs => $2)",
+        user_id,
+        seconds as f64,
+    )
+    .fetch_one(db)
+    .await?;
+
+    Ok(row.count.try_into().unwrap_or(u32::MAX))
+}
+
 /// Move the cursor.
 ///
 /// Its own function, and the only thing that writes the column. The cursor is

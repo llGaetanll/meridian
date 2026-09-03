@@ -124,14 +124,21 @@ pub async fn fetch_all(
 ///
 /// `client_user_id` is our own id for the person linking, which Plaid echoes
 /// back in webhooks. A uuid rather than an address: it ends up in Plaid's logs.
+///
+/// `webhook` is where Plaid should call when the session ends, and `None` is
+/// how a server with no address of its own asks for nothing to be called. The
+/// two channels are independent — see `docs/PLAID.md` — so a token with no
+/// webhook on it is collected by polling and a token with one is collected by
+/// both, whichever arrives first.
 pub async fn open_link(
     credentials: &PlaidCredentials,
     client_user_id: &str,
+    webhook: Option<&str>,
 ) -> Result<(String, Option<String>), PlaidError> {
     let client = client(credentials)?;
 
     // The redirect closes the sheet and carries no token — the result is
-    // collected afterwards, by polling. See `docs/PLAID.md`.
+    // collected afterwards, by webhook or by polling. See `docs/PLAID.md`.
     //
     // `is_mobile_app` is false, and that is a constraint rather than a choice:
     // Plaid rejects the request unless a top-level `redirect_uri` is set too,
@@ -142,6 +149,11 @@ pub async fn open_link(
     let request = src_plaid::LinkTokenRequest::hosted(client_user_id)
         .redirecting_to(COMPLETION_REDIRECT, false);
 
+    let request = match webhook {
+        Some(webhook) => request.notifying(webhook),
+        None => request,
+    };
+
     let res = src_plaid::create_link_token(&client, &request).await?;
 
     Ok((res.link_token, res.hosted_link_url))
@@ -150,7 +162,8 @@ pub async fn open_link(
 /// Where Plaid sends the browser when the flow ends.
 ///
 /// A custom scheme whose only job is to close the web session. It carries no
-/// token; the `public_token` arrives by polling, which is a separate channel.
+/// token; the `public_token` arrives by webhook or by polling, which are
+/// separate channels from this one and from each other.
 const COMPLETION_REDIRECT: &str = "meridian://linked";
 
 /// What became of a Link session: whether it has ended, and what it produced.
@@ -166,6 +179,22 @@ pub async fn poll_link(
         res.finished(),
         res.public_tokens().iter().map(|t| t.to_string()).collect(),
     ))
+}
+
+/// The public key one webhook was signed with.
+///
+/// Its own function beside the rest, and the only one here whose caller is an
+/// unauthenticated route. What keeps that from being a way to make this server
+/// call Plaid at will is entirely on the caller: the algorithm is checked
+/// before this is reached, and the answer — including a miss — is cached by
+/// `kid`.
+pub async fn webhook_key(
+    credentials: &PlaidCredentials,
+    key_id: &str,
+) -> Result<src_plaid::PlaidJwk, PlaidError> {
+    let client = client(credentials)?;
+
+    src_plaid::fetch_webhook_key(&client, key_id).await
 }
 
 /// Trade a `public_token` for the permanent one, and the Item it belongs to.
