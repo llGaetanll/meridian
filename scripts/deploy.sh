@@ -2,8 +2,8 @@
 # The box, driven from here.
 #
 # Everything runs over ssh, so nothing about a deploy needs a shell open on the
-# server, and the same one-shot shape as scripts/dev.sh applies: each
-# subcommand returns as soon as the daemon has done as asked.
+# server, and the same one-shot shape as scripts/dev.sh applies: every
+# subcommand but `watch` returns as soon as the daemon has done as asked.
 #
 #     ./scripts/deploy.sh ship          build here, load it there, swap
 #     ./scripts/deploy.sh rollback SHA  run an image the box already has
@@ -12,13 +12,15 @@
 #     ./scripts/deploy.sh restart       restart, same image
 #     ./scripts/deploy.sh ps            what is actually running
 #     ./scripts/deploy.sh logs          the last few minutes, and return
+#     ./scripts/deploy.sh watch         follow them, in a window of its own
 #     ./scripts/deploy.sh health        ask the server, through the proxy
 #     ./scripts/deploy.sh shell         an interactive shell, in the checkout
 #
-# `logs` deliberately does not follow. A deploy is driven from a laptop that
-# gets closed and carried somewhere, and `-f` over ssh is a command that never
-# returns and a window that dies with the wifi. Ask for a slice, read it, ask
-# again — the same rule CLAUDE.md sets for reading the dev stack's logs.
+# `logs` and `watch` are the two halves of the same question and are separate on
+# purpose. `logs` is asked something and answers it: it returns, so an agent or
+# a script can call it, which is the rule CLAUDE.md sets for the dev stack too.
+# `watch` never returns, because it is a window you leave open — the box's
+# equivalent of `scripts/dev.sh` with no arguments.
 #
 # The image is built *here* and shipped over the same ssh connection as
 # everything else. The box runs Postgres, Caddy and a ten-megabyte binary, and
@@ -138,6 +140,35 @@ case "$cmd" in
 
     logs)    remote "$COMPOSE logs --since ${MERIDIAN_SINCE:-5m} $*" ;;
 
+    # The box's logs in a tmux window, the way `scripts/dev.sh` with no
+    # arguments is the laptop's.
+    #
+    # The loop is not decoration. This runs over whatever connection the laptop
+    # has, and ssh dies with the wifi, with a lid closing, with a sleep — none
+    # of which is anything having gone wrong on the box. dev.sh reattaches for
+    # the same reason; there it is Docker Desktop restarting, here it is a
+    # train going into a tunnel. `ServerAliveInterval` is what makes a dropped
+    # connection noticed in seconds rather than whenever TCP gives up.
+    #
+    # No service argument, for dev.sh's reason: `logs -f` given one attaches to
+    # that container and dies with it, and this window has to survive the next
+    # `ship` replacing the server underneath it.
+    #
+    # It does not bring anything up first, which is where it parts company with
+    # dev.sh. On a laptop starting the stack is free; here it is a deploy, and
+    # a window opened to read logs should not be the thing that decides the box
+    # is running.
+    watch)
+        while :; do
+            ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+                "$MERIDIAN_HOST" \
+                "cd '$MERIDIAN_PATH' && $COMPOSE logs -f --tail=20" || true
+
+            echo "-- lost the connection to $MERIDIAN_HOST; retrying"
+            sleep 2
+        done
+        ;;
+
     # Through the proxy rather than at the server, so it answers the question
     # anyone actually has — can the phone reach this — and exercises DNS, TLS
     # and Caddy on the way to the same `/health` the dev stack has.
@@ -146,7 +177,7 @@ case "$cmd" in
     shell)   exec ssh -t "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && exec \$SHELL -l" ;;
 
     *)
-        echo "usage: $0 [ship|rollback|up|down|restart|ps|logs|health|shell] [args...]" >&2
+        echo "usage: $0 [ship|rollback|up|down|restart|ps|logs|watch|health|shell] [args...]" >&2
         exit 1
         ;;
 esac
