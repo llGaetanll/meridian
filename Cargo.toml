@@ -5,6 +5,8 @@ resolver = "2"
 [workspace.dependencies]
 anyhow = "1.0.98"
 axum = "0.8"
+aes-gcm = "0.10"
+base64 = "0.22"
 tower-http = { version = "0.6", features = ["cors"] }
 leptos = { version = "0.8.2", features = ["csr"] }
 leptos_meta = "0.8.2"
