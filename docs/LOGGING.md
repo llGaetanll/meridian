@@ -65,6 +65,28 @@ call a client makes of us reads `<-` then `->` and names it with `client=`. The
 first arrow and the field together say which kind of conversation a pair is,
 and one counter mints both, so an `id` belongs to exactly one of them.
 
+## Who the client is
+
+`client=` is the socket's peer, until the server is behind a proxy — and then
+the socket's peer is the proxy, and every line names it. Deployed, that made
+every request read `client=172.18.0.4`, which is Caddy.
+
+So when the peer is loopback or a private address, `X-Forwarded-For` is read
+instead. Two things about that are worth knowing, because both are easy to get
+backwards:
+
+- **The last entry is taken, not the first.** Caddy appends what it saw to
+  whatever the caller already sent, so the rightmost is our proxy's word and
+  everything to its left is the caller describing itself.
+- **A public peer's header is ignored.** Anyone can send `X-Forwarded-For`, so
+  it is only believed from an address that could not have come through the
+  proxy in the first place. Exposing the server directly therefore does not
+  quietly turn a forgeable header into what callers are told apart by.
+
+The address is parsed before it is logged. Unparsed it is attacker-controlled
+text going into a line of `key=value` pairs, and a caller could forge fields on
+the very line that names it.
+
 ## The requests clients make of us
 
 The server logs every request it is asked and every answer it gives, in
@@ -197,7 +219,9 @@ means adding, changing or removing its example here.
 - `INFO server_main::router_trace -> id=7 client=192.168.1.24:53112 status=200 ms=41 bytes=91233`
   — a client's request and the answer it got, one pair per request the server
   is asked. `client` is whoever the socket says, which is what tells the web
-  front-end on loopback apart from a phone on the LAN. No bodies; see
+  front-end on loopback apart from a phone on the LAN. Behind a proxy the
+  socket is the proxy, so there it is the address Caddy reports instead and
+  carries no port — see [Who the client is](#who-the-client-is). No bodies; see
   [The requests clients make of us](#the-requests-clients-make-of-us).
 - `DEBUG server_main::router_trace answered nothing id=7 client=192.168.1.24:53112 ms=12`
   — nothing went back: the client hung up mid-request, which is what closing
