@@ -13,9 +13,14 @@ pub enum ActionRouter {
     /// mean building it even when nobody is waiting for one.
     Serve,
 
-    /// The request was taken. Not "an email was sent": the address may be one
-    /// nobody has, and that is deliberately indistinguishable from one that
-    /// works — see the route's own note.
+    /// The request was taken, and nothing more is owed about it.
+    ///
+    /// Two routes answer with it and both mean it strictly. `/auth/request`
+    /// does not mean "an email was sent": the address may be one nobody has,
+    /// and that is deliberately indistinguishable from one that works — see
+    /// the route's own note. `/plaid/webhook` does not mean "and it was acted
+    /// on": a type nothing handles is taken too, because Plaid retries
+    /// anything not answered 2xx.
     Accepted,
 
     /// The machine cannot answer this yet. So far only one thing causes it:

@@ -17,6 +17,7 @@ mod plaid_env;
 mod plaid_error;
 mod plaid_http_request;
 mod plaid_ratelimit;
+mod plaid_rejection;
 mod plaid_request;
 mod plaid_request_balances;
 mod plaid_request_exchange;
@@ -25,6 +26,7 @@ mod plaid_request_link_token;
 mod plaid_request_recurring;
 mod plaid_request_sandbox_public_token;
 mod plaid_request_sync;
+mod plaid_request_webhook_key;
 mod plaid_response_balances;
 mod plaid_response_exchange;
 mod plaid_response_link_session;
@@ -32,13 +34,17 @@ mod plaid_response_link_token;
 mod plaid_response_recurring;
 mod plaid_response_sandbox_public_token;
 mod plaid_response_sync;
+mod plaid_response_webhook_key;
 mod plaid_transaction;
+mod plaid_webhook;
+mod plaid_webhook_jwt;
 
 pub use plaid_client::*;
 pub use plaid_env::*;
 pub use plaid_error::*;
 pub use plaid_http_request::*;
 pub use plaid_ratelimit::*;
+pub use plaid_rejection::*;
 pub use plaid_request::*;
 pub use plaid_request_balances::*;
 pub use plaid_request_exchange::*;
@@ -47,6 +53,7 @@ pub use plaid_request_link_token::*;
 pub use plaid_request_recurring::*;
 pub use plaid_request_sandbox_public_token::*;
 pub use plaid_request_sync::*;
+pub use plaid_request_webhook_key::*;
 pub use plaid_response_balances::*;
 pub use plaid_response_exchange::*;
 pub use plaid_response_link_session::*;
@@ -54,7 +61,10 @@ pub use plaid_response_link_token::*;
 pub use plaid_response_recurring::*;
 pub use plaid_response_sandbox_public_token::*;
 pub use plaid_response_sync::*;
+pub use plaid_response_webhook_key::*;
 pub use plaid_transaction::*;
+pub use plaid_webhook::*;
+pub use plaid_webhook_jwt::*;
 
 /// Open a Link session, and get the URL that hosts it.
 ///
@@ -101,6 +111,22 @@ pub async fn link_session(
     );
 
     Ok(res)
+}
+
+/// The public key one webhook was signed with.
+///
+/// Caused by an anonymous POST, which is what makes it different from every
+/// other call here: the `kid` it asks about came off a token a stranger sent.
+/// **The caller caches the answer, misses included.** Without that, anybody
+/// who can reach the webhook route can make this server call Plaid at will —
+/// and the `alg` check in [`PlaidWebhookJwt::parse`] is what a caller does
+/// first so that most junk never gets this far.
+pub async fn fetch_webhook_key(client: &PlaidClient, key_id: &str) -> Result<PlaidJwk, PlaidError> {
+    let res: WebhookKeyResponse = client.send_request(&WebhookKeyRequest::new(key_id)).await?;
+
+    tracing::info!(key_id, "webhook key fetched");
+
+    Ok(res.key)
 }
 
 /// Make an Item in Sandbox without anybody signing into anything.

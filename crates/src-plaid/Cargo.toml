@@ -6,10 +6,14 @@ edition = "2024"
 [dependencies]
 api-common = { path = "../api-common" }
 api-trace = { path = "../api-trace" }
+base64 = "0.22.1"
 chrono = { workspace = true }
+p256 = { version = "0.13", features = ["ecdsa"] }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = "0.10"
+subtle = "2.6.1"
 tracing = { workspace = true }
 
 [dev-dependencies]

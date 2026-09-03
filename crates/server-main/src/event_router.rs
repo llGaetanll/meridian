@@ -6,6 +6,7 @@
 
 use crate::ItemFacts;
 use crate::StoredCode;
+use crate::WebhookFacts;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -55,5 +56,20 @@ pub enum EventRouter {
     /// [`ItemFacts`](crate::ItemFacts). The redirect that closed the sheet
     /// carries no token, so the result has to be collected, and this is what
     /// says it is worth collecting now.
-    LinkClosed { pending: Vec<String> },
+    ///
+    /// `attached` is how many banks this user has gained while a session of
+    /// theirs could have been open. It is read on every close and used on
+    /// none of the polling ones: with `PLAID_COLLECT=webhook` the collection
+    /// already happened, so this route answers from the store rather than
+    /// asking Plaid a question that has been answered.
+    LinkClosed { pending: Vec<String>, attached: u32 },
+
+    /// Plaid called us, and the call was believed.
+    ///
+    /// Every check is behind this event — the algorithm, the signature, the
+    /// replay window and the body hash — the same way `user_id` on
+    /// [`LinkRequested`](EventRouter::LinkRequested) is behind a session
+    /// lookup. The machine decides what a webhook *means*, never whether it
+    /// is really Plaid's.
+    WebhookReceived { webhook: WebhookFacts },
 }

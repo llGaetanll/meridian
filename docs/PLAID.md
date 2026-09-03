@@ -89,13 +89,14 @@ mentions one is out of date about more than that.
 
 ## Credentials
 
-Three variables, never committed:
+The variables, never committed:
 
 ```sh
 export PLAID_CLIENT_ID=…      # one per team, same in both environments
 export PLAID_SECRET=…         # one per environment — Sandbox and Production differ
 export PLAID_ENV=sandbox      # required; `sandbox` or `production`, exactly
 export PLAID_COLLECT=poll     # required; `poll` or `webhook`
+export PUBLIC_URL=…           # required only when PLAID_COLLECT=webhook
 ```
 
 `DATABASE_URL` is required too, and for a reason that belongs here rather than
@@ -116,6 +117,14 @@ which is what lets there be a second bank.
 a finished Link session reaches us — see [The flow](#the-flow) — and the two
 are independent: polling against Production is sensible, and so is a webhook
 against Sandbox once there is a tunnel to receive it.
+
+`PUBLIC_URL` is required *only* when `PLAID_COLLECT=webhook`, the same way
+`RESEND_*` is only read when `EMAIL_SEND=resend`. It is this server's address
+on the internet, https and with no trailing slash — Plaid is told to call
+`<PUBLIC_URL>/plaid/webhook`. A process cannot work this out for itself: it
+knows the port it bound and nothing about the name or the proxy in front of it.
+A server in webhook mode that has not been told fails on the way up, rather
+than starting, telling Plaid nothing, and waiting forever for a call.
 
 They live in the Dashboard under
 [developers/keys](https://dashboard.plaid.com/developers/keys).
@@ -141,6 +150,61 @@ platform-specific has to be integrated to connect a bank.
 The `access_token` is permanent and the flow above is run once, ever. The
 `cursor` from `/transactions/sync` is what makes the next sync incremental, so
 it is saved beside the token and passed back on the following call.
+
+## Webhooks
+
+The other channel, and the one a deployed server should prefer. Plaid POSTs
+`<PUBLIC_URL>/plaid/webhook` and the server acts on it; nothing is polled. `PLAID_COLLECT` picks between the two, and the laptop stays on `poll`
+because Plaid cannot reach a home network.
+
+The route is registered in the Plaid dashboard *and* sent on each link token
+(`notifying()`), which is what makes `SESSION_FINISHED` arrive at all — the
+dashboard address covers Item and Transactions webhooks, and a Link session
+only calls the address its own token carried.
+
+Three types are acted on. Everything else is taken and ignored, because Plaid
+sends types nobody planned for and **retries anything not answered 2xx**:
+
+| Webhook | What happens |
+| --- | --- |
+| `LINK` / `SESSION_FINISHED` | The `public_token` is exchanged. This is what polling does. |
+| `TRANSACTIONS` / `SYNC_UPDATES_AVAILABLE` | That Item is synced, freshness window skipped. |
+| `ITEM` / `ERROR` with `ITEM_LOGIN_REQUIRED` | Written down, so a restart does not ask again and be refused again. |
+
+`/link/finish` is still called by the phone in both modes. In webhook mode it
+no longer asks Plaid anything: by then the bank is stored, so the route reads
+how many banks arrived while a session of this user's could have been open.
+There is a race in that — a phone that calls it before the webhook lands is
+told nothing was attached — and the bank still appears on the next snapshot.
+
+### Believing one
+
+**This is the first unauthenticated route in the server that does work.**
+Anyone can POST to it, so every webhook is verified before anything at all is
+decided, in this order and no other:
+
+1. The JWT comes out of the `Plaid-Verification` header.
+2. Its `alg` must be `ES256`. **Checked first**, because step 4 is an outbound
+   call and `alg: none` must never get that far.
+3. `kid` comes off the JWT header.
+4. The key is fetched from `/webhook_verification_key/get` — **and cached by
+   `kid`, misses included**. Without the cache an anonymous POST is a Plaid
+   request, which is a denial of service we would have built ourselves.
+5. The signature is checked against the key.
+6. `iat` must be within five minutes, in either direction. The signature never
+   expires, so this is the only thing that stops a captured webhook being
+   replayed tomorrow.
+7. The **raw body bytes** are SHA-256'd and compared with
+   `request_body_sha256`, in constant time.
+
+Step 7 is the one that catches people. Plaid hashes what it put on the wire,
+which is pretty-printed with two spaces, so a body that has been through a JSON
+extractor and printed again hashes to something else and *every* webhook is
+refused for a reason that reads like an attack. The route takes `Bytes`, and
+the body is not parsed until the hash has matched.
+
+Every failure answers 401 and says nothing about which check failed. The reason
+is in the log.
 
 ## Three ways to be quietly wrong
 

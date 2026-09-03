@@ -210,10 +210,11 @@ means adding, changing or removing its example here.
   — once at startup, and again on every sign-in below. A server running this
   way in front of anyone real is a mistake, so it says so rather than being
   quiet about it.
-- `INFO server_main::runtime_server serving live plaid data env=sandbox collect=poll email=log`
+- `INFO server_main::runtime_server serving live plaid data env=sandbox collect=poll webhook=none email=log`
   — once at startup. There is no second form of this line any more: the server
   starts with credentials or it does not start. Only ever Sandbox; see
-  [PLAID.md](PLAID.md).
+  [PLAID.md](PLAID.md). `webhook` is the address Plaid is told to call, and
+  `none` is `PLAID_COLLECT=poll`, where there is nothing to tell it.
 - `INFO server_main::runtime_server server listening port=8082`
 - `INFO server_main::router_trace <- id=7 client=192.168.1.24:53112 method=GET url="/snapshot?refresh=true"`
 - `INFO server_main::router_trace -> id=7 client=192.168.1.24:53112 status=200 ms=41 bytes=91233`
@@ -314,6 +315,39 @@ means adding, changing or removing its example here.
   — **the line that says a Production Item slot was spent**, and there are ten.
   The access token is deliberately not on it: it is a credential to somebody's
   bank, and a log is a file that gets pasted into issues.
+- `INFO server_main::runtime_server a webhook arrived from plaid webhook_type=LINK webhook_code=SESSION_FINISHED`
+  — one per webhook that was *believed*. Written after the signature, the
+  replay window and the body hash have all passed, so a line here is Plaid and
+  the line below is not.
+- `WARN server_main::router_server a webhook was not believed rejection="the signature does not match"`
+  — the other endings are `no Plaid-Verification header`, `algorithm is
+  \`HS256\`, not ES256`, `issued 3600s away from now` and `the body does not
+  match its hash`. All of them answer the caller the same 401: the reason is
+  worth logging and is not worth telling somebody who is guessing. A `body does
+  not match` is far more likely to be ours than theirs — Plaid hashes the bytes
+  it sent, so anything that reparsed the body breaks it.
+- `INFO src_plaid webhook key fetched key_id=6c5516e1…`
+  — one per `kid`, ever, because the answer is cached. Several of these for one
+  id means the cache is not doing its job, which matters: this call is caused by
+  an anonymous POST.
+- `WARN server_main::webhook_verifier could not fetch a webhook key kid=6c5516e1… error="Plaid error INVALID_FIELD: …"`
+  — remembered as a miss for five minutes, so a made-up `kid` costs one call
+  rather than one per POST.
+- `ERROR server_main::webhook_verifier refusing to fetch another webhook key: too many have been asked for kid=6c5516e1…`
+  — the cache is full of live keys, which cannot happen from Plaid's own
+  rotation. Refused rather than fetched: the cache exists to bound this call,
+  so it bounds it when full too.
+- `ERROR server_main::webhook_verifier plaid signed a body that is not JSON error=…`
+  — the hash matched, so these really are Plaid's bytes, and they are still not
+  something we can read.
+- `ERROR server_main::runtime_server could not read the bank a webhook names item_id=8Pd5Zx… error=…`
+- `WARN server_main::state_server plaid has news about a bank we do not hold item_id=8Pd5Zx…`
+  — Plaid is still sending about an Item whose row has gone. Nothing to sync
+  against, and the webhook is answered 2xx anyway, because anything else means
+  it arrives again in a minute.
+- `DEBUG server_main::state_server a webhook nothing acts on webhook_type=ASSETS webhook_code=PRODUCT_READY`
+  — taken and ignored. Plaid sends types nobody planned for; `DEBUG` because a
+  healthy server sees them routinely.
 - `WARN server_main::runtime_plaid recurring unavailable, continuing without it error="Plaid error PRODUCT_NOT_READY: …"`
   — recurring is derived from transactions, so a fresh Item has none yet. One
   thin screen rather than a failed sync.

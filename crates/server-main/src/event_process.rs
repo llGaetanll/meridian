@@ -12,20 +12,22 @@
 
 use api_common::Timestamp;
 
+use crate::PlaidCollect;
+
 #[derive(Debug)]
 pub enum EventProcess {
     /// The server came up, and this is what it came up with.
     ///
-    /// `store` is a *fact the runtime observed* — it read the environment and
-    /// either connected or did not — and not a decision. What to do about it
-    /// is the machine's: with a store it asks to be filled, and without one it
-    /// starts empty and fetches, which is what a first run does anyway.
+    /// `collect` is a *fact the runtime observed* — it read the environment
+    /// and validated it — and not a decision. What to do about it is the
+    /// machine's: with `Poll` a closed sheet is something to go and ask Plaid
+    /// about, and with `Webhook` it is a read of what has already arrived.
     ///
-    /// It is on the event rather than checked where the store is used, because
-    /// a runtime that inspects its own state to decide which events to emit is
-    /// a runtime with behaviour in it — behaviour no `eval!` test can reach and
-    /// no event log records.
-    Started,
+    /// It is on the event rather than checked where the link flow needs it,
+    /// because a runtime that inspects its own configuration to decide what
+    /// happens is a runtime with behaviour in it — behaviour no `eval!` test
+    /// can reach and no event log records.
+    Started { collect: PlaidCollect },
 
     /// Fresh entropy for the machine's own generator.
     ///
