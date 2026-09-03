@@ -224,6 +224,16 @@ DATABASE_URL=postgres://meridian:<the same password>@db:5432/meridian
 # and `+` have to be percent-encoded there or the connection string is wrong in
 # a way that reads as a bad password.
 
+# What the access token column is sealed with: 32 random bytes, base64.
+# `openssl rand -base64 32`. Not the laptop's key — a box and a laptop share no
+# rows, so sharing a key only widens what one leak costs.
+#
+# **Back this up somewhere other than the database.** Losing it means every
+# bank on this box has to be relinked, which in Production spends Item slots
+# that do not come back. Losing it *with* a backup of the database means the
+# backup is scrap. docs/DATABASE.md has the reasoning.
+MERIDIAN_DB_KEY=…
+
 # Sandbox. Deliberately, and for as long as it takes — see docs/PLAID.md, and
 # note that the ten Production Item slots do not come back.
 PLAID_CLIENT_ID=…
@@ -295,7 +305,9 @@ whole disk and restore to a working box rather than to a directory of files.
 That is the floor, and it is 20% of the droplet.
 
 It is not yet enough. Weekly means up to a week of transactions lost, and a
-whole-disk snapshot is a clumsy way to recover one table. `pg_dump` on a timer
+whole-disk snapshot is a clumsy way to recover one table. It is also not a
+backup of `MERIDIAN_DB_KEY` in any useful sense: the key lives on the same disk
+as the rows it opens, so a snapshot that loses one loses both. `pg_dump` on a timer
 to Spaces is the shape, and the volume it protects holds the Plaid access
 tokens and every transaction ever synced.
 
