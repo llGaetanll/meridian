@@ -4990,6 +4990,12 @@ sealed class ViewOnboarding {
          * the very same page.
          */
         val `opening`: kotlin.Boolean,
+        /**
+         * The way out, worded, when there is one — and there is one only
+         * once a bank has connected. Before that the screen has a single
+         * button because the flow has a single way on.
+         */
+        val `open`: kotlin.String?,
     ) : ViewOnboarding() {
         companion object
     }
@@ -5074,6 +5080,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                     FfiConverterSequenceTypeViewIconRow.read(buf),
                     FfiConverterString.read(buf),
                     FfiConverterBoolean.read(buf),
+                    FfiConverterOptionalString.read(buf),
                 )
             }
 
@@ -5168,7 +5175,8 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                         FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
                         FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`) +
                         FfiConverterString.allocationSize(value.`action`) +
-                        FfiConverterBoolean.allocationSize(value.`opening`)
+                        FfiConverterBoolean.allocationSize(value.`opening`) +
+                        FfiConverterOptionalString.allocationSize(value.`open`)
                 )
             }
         }
@@ -5249,6 +5257,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterSequenceTypeViewIconRow.write(value.`rows`, buf)
                 FfiConverterString.write(value.`action`, buf)
                 FfiConverterBoolean.write(value.`opening`, buf)
+                FfiConverterOptionalString.write(value.`open`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }

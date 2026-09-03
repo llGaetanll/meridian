@@ -4539,7 +4539,12 @@ public enum ViewOnboarding: Equatable, Hashable {
         /**
          * The same wait as [`Bank`](ViewOnboarding::Bank)'s: Try again opens
          * the very same page.
-         */opening: Bool
+         */opening: Bool, 
+        /**
+         * The way out, worded, when there is one — and there is one only
+         * once a bank has connected. Before that the screen has a single
+         * button because the flow has a single way on.
+         */`open`: String?
     )
 
 
@@ -4580,7 +4585,7 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
         case 6: return .ready(title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), tally: try FfiConverterSequenceTypeViewTally.read(from: &buf), another: try FfiConverterString.read(from: &buf), open: try FfiConverterString.read(from: &buf)
         )
         
-        case 7: return .failed(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf), opening: try FfiConverterBool.read(from: &buf)
+        case 7: return .failed(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf), opening: try FfiConverterBool.read(from: &buf), open: try FfiConverterOptionString.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -4648,7 +4653,7 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
             FfiConverterString.write(`open`, into: &buf)
             
         
-        case let .failed(step,title,body,rows,action,opening):
+        case let .failed(step,title,body,rows,action,opening,`open`):
             writeInt(&buf, Int32(7))
             FfiConverterString.write(step, into: &buf)
             FfiConverterString.write(title, into: &buf)
@@ -4656,6 +4661,7 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
             FfiConverterSequenceTypeViewIconRow.write(rows, into: &buf)
             FfiConverterString.write(action, into: &buf)
             FfiConverterBool.write(opening, into: &buf)
+            FfiConverterOptionString.write(`open`, into: &buf)
             
         }
     }

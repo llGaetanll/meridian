@@ -53,14 +53,15 @@ struct OnboardingScreen: View {
         case .ready(let title, let runs, let tally, let another, let open):
             ReadyScreen(title: title, runs: runs, tally: tally, another: another, open: open)
 
-        case .failed(let step, let title, let runs, let rows, let action, let opening):
+        case .failed(let step, let title, let runs, let rows, let action, let opening, let open):
             FailedScreen(
                 step: step,
                 title: title,
                 runs: runs,
                 rows: rows,
                 action: action,
-                opening: opening
+                opening: opening,
+                open: open
             )
         }
     }

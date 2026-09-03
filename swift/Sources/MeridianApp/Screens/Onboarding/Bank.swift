@@ -48,6 +48,10 @@ struct BankScreen: View {
 /// Since there is no skip, this screen carries the way out instead — the
 /// account is already made, and closing the app here loses nothing. That is the
 /// difference between insisting on a bank and trapping someone on a screen.
+///
+/// `open` is the second way out, and it is the machine's call whether there is
+/// one: reached from Add another bank there is a whole app behind this screen,
+/// and reached from first run there is not.
 struct FailedScreen: View {
     let step: String
     let title: String
@@ -55,6 +59,7 @@ struct FailedScreen: View {
     let rows: [ViewIconRow]
     let action: String
     let opening: Bool
+    let open: String?
 
     @EnvironmentObject private var runtime: RuntimeApp
 
@@ -77,10 +82,20 @@ struct FailedScreen: View {
 
             OnbFill()
 
-            // The icon is honest about where the tap goes: Plaid's page is over
-            // the web, so trying again leaves the app the same way it did the
-            // first time.
-            OpenBankButton(icon: "ext", text: action, opening: opening)
+            // The pair reads the way it does on Ready, which is the screen this
+            // one stands in for: the quieter way out above, the button the
+            // screen is about below.
+            OnbActions {
+                if let open {
+                    Button(open) { runtime.ui(.onboardingFinished) }
+                        .buttonStyle(.block)
+                }
+
+                // The icon is honest about where the tap goes: Plaid's page is
+                // over the web, so trying again leaves the app the same way it
+                // did the first time.
+                OpenBankButton(icon: "ext", text: action, opening: opening)
+            }
         }
     }
 }

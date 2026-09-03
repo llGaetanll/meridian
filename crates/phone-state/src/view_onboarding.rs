@@ -111,6 +111,10 @@ pub enum ViewOnboarding {
         /// The same wait as [`Bank`](ViewOnboarding::Bank)'s: Try again opens
         /// the very same page.
         opening: bool,
+        /// The way out, worded, when there is one — and there is one only
+        /// once a bank has connected. Before that the screen has a single
+        /// button because the flow has a single way on.
+        open: Option<String>,
     },
 }
 
