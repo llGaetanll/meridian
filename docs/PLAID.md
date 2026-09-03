@@ -27,6 +27,12 @@ environment that has not said which Plaid it means now reaches neither.
 
 Sandbox logins are `user_good` / `pass_good` at any institution.
 
+Link's first screen asks for a phone number, and in Sandbox it takes only
+Plaid's own test numbers — `415-555-0011` and its family. A real number is
+rejected there, and the rejection is Plaid's page rather than anything of ours;
+nothing in Meridian asks for a phone number at all. The screen offers a way
+past it to the institution list.
+
 ## Linking a Sandbox bank
 
 Two ways. The real one is Hosted Link, which the server now speaks:
