@@ -21,3 +21,8 @@ logs/
 # email address, and the sealed access tokens. Never in the tree's history.
 backups/
 *.dump
+
+# The database's TLS certificates, from scripts/db-certs.sh. Per machine and
+# never shared: the laptop makes its own and so does the box, because a private
+# key that travels has been on two disks and in whatever carried it.
+certs/
