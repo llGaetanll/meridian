@@ -304,6 +304,49 @@ mod tests {
         assert!(limiter.can_send(T0, &second));
     }
 
+    /// An IPv6 caller is not handed an address, they are handed a /64 — and
+    /// every one of the eighteen quintillion addresses in it is free to pick,
+    /// on a timer, by the operating system. Counting the address whole hands
+    /// them a budget per request, on the one route that mails a stranger.
+    #[test]
+    fn one_ipv6_prefix_shares_a_budget() {
+        let mut limiter = ServerRateLimiter::default();
+
+        for i in 0..EMAILS_PER_QUARTER_HOUR {
+            let client = anonymous(&format!("2001:db8:1234:5678::{i}"));
+
+            assert!(limiter.can_send(T0, &ServerRateCtx::new(Route::AuthRequest, client)));
+        }
+
+        let rotated = anonymous("2001:db8:1234:5678:aaaa:bbbb:cccc:dddd");
+
+        assert!(
+            !limiter.can_send(T0, &ServerRateCtx::new(Route::AuthRequest, rotated)),
+            "another address out of the same /64 is the same caller",
+        );
+    }
+
+    /// The prefix is where it stops. Two /64s are two allocations and two
+    /// callers, and sharing a budget between them lets either lock the other
+    /// out.
+    #[test]
+    fn separate_ipv6_prefixes_have_separate_budgets() {
+        let mut limiter = ServerRateLimiter::default();
+
+        for _ in 0..EMAILS_PER_QUARTER_HOUR {
+            let client = anonymous("2001:db8:1234:5678::1");
+
+            limiter.can_send(T0, &ServerRateCtx::new(Route::AuthRequest, client));
+        }
+
+        let elsewhere = anonymous("2001:db8:1234:9999::1");
+
+        assert!(
+            limiter.can_send(T0, &ServerRateCtx::new(Route::AuthRequest, elsewhere)),
+            "a different prefix is a different caller",
+        );
+    }
+
     /// The whole reason a session is counted as well as an address: spreading
     /// the same session across a thousand machines must not buy a thousand
     /// budgets.

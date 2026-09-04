@@ -94,6 +94,14 @@ connection — a budget counted by address and port would be a budget per
 request. One answer to "who is this", or the log and the limit are two rules
 that can disagree.
 
+**An IPv6 caller is named by their /64**, so those lines read
+`client=2001:db8:1234:5678::/64` rather than an address. For the same reason
+the port went: v6 delegates a whole /64 to a customer, and every address in it
+is theirs to pick and change at will — the operating system already rotates
+through them on a timer. An address is not a caller there; the prefix is. Over
+v4, where a second address has to be bought, `client=` is still the address
+whole.
+
 ## The requests clients make of us
 
 The server logs every request it is asked and every answer it gives, in
