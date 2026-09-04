@@ -6,12 +6,15 @@
 //! no IO, so it lives in the machine where an `eval!` test can reach it. See
 //! `api_common::ratelimit`.
 //!
-//! Two windows are counted for every request, one per half of
-//! [`Client`](crate::Client), and a request has to be under both. Counting
-//! only the address hands a botnet the whole server; counting only the session
-//! hands it to anyone willing to sign up twice.
+//! A request is counted against every window it falls in, and has to be under
+//! all of them. Two come from the halves of [`Client`](crate::Client):
+//! counting only the address hands a botnet the whole server, and counting
+//! only the session hands it to anyone willing to sign up twice. The third is
+//! the inbox a sign-in code would go to, which is not a fact about the caller
+//! at all — see [`ServerRateCtx::mailing`].
 
 use std::collections::HashMap;
+use std::hash::Hash;
 
 use api_common::Timestamp;
 use api_common::ratelimit::RateLimiter;
@@ -118,17 +121,65 @@ impl Route {
     }
 }
 
-/// What the limiter needs in order to answer: which route, and who is asking.
+/// What the limiter needs in order to answer: which route, who is asking, and
+/// who would be written to.
 #[derive(Debug, Clone)]
 pub struct ServerRateCtx {
     pub route: Route,
     pub client: Client,
+
+    /// The inbox a sign-in code would land in, on the one route that sends
+    /// one. Already reduced to the inbox rather than the address written —
+    /// see [`mailing`](Self::mailing).
+    inbox: Option<String>,
 }
 
 impl ServerRateCtx {
     pub fn new(route: Route, client: Client) -> Self {
-        Self { route, client }
+        Self {
+            route,
+            client,
+            inbox: None,
+        }
     }
+
+    /// Also count this against the inbox a code would be sent to.
+    ///
+    /// The one axis here that is not a fact about the caller, and #23 wants it
+    /// for a reason the other two cannot cover: a botnet is a thousand
+    /// addresses and one victim, so every address window has room while the
+    /// same inbox takes every message. What is metered is the mail we send,
+    /// and mail is addressed to a person.
+    ///
+    /// `None` on every route that sends nothing, which is all of them but one.
+    pub fn mailing(mut self, email: Option<&str>) -> Self {
+        self.inbox = email.map(inbox_of);
+        self
+    }
+}
+
+/// Which inbox an address delivers to, as far as can be told from outside.
+///
+/// Lowercased, and a `+tag` dropped from the local part. Both are free for a
+/// caller to vary and neither changes where the mail lands, so counting them
+/// apart is the same bug as counting a v6 caller by their address: one
+/// recipient, unlimited mail, a different hat each time.
+///
+/// It is a guess, and deliberately the cheap direction of one. A provider that
+/// treats `+` as an ordinary character has two real addresses sharing one
+/// budget of five per quarter hour; the other way round is a mailbomb. Only
+/// the bucket is reduced — what gets stored and written to is the address as
+/// the caller typed it.
+fn inbox_of(email: &str) -> String {
+    let email = email.trim().to_lowercase();
+
+    let Some((local, domain)) = email.split_once('@') else {
+        return email;
+    };
+
+    let local = local.split_once('+').map_or(local, |(before, _)| before);
+
+    format!("{local}@{domain}")
 }
 
 /// One sliding window per route per caller, and a caller is two things.
@@ -141,6 +192,7 @@ impl ServerRateCtx {
 pub struct ServerRateLimiter {
     by_ip: HashMap<(Route, ClientIp), Window>,
     by_user: HashMap<(Route, Uuid), Window>,
+    by_inbox: HashMap<(Route, String), Window>,
 }
 
 impl ServerRateLimiter {
@@ -153,57 +205,52 @@ impl ServerRateLimiter {
     pub fn sweep(&mut self, now: Timestamp) {
         self.by_ip.retain(|_, window| !window.is_idle(now));
         self.by_user.retain(|_, window| !window.is_idle(now));
+        self.by_inbox.retain(|_, window| !window.is_idle(now));
     }
 
     /// How many windows are being kept, so a test can say the sweep works.
     #[cfg(test)]
     fn kept(&self) -> usize {
-        self.by_ip.len() + self.by_user.len()
+        self.by_ip.len() + self.by_user.len() + self.by_inbox.len()
     }
 }
 
 impl RateLimiter for ServerRateLimiter {
     type Ctx = ServerRateCtx;
 
-    /// **Both windows are asked before either is told.**
+    /// **Every window is asked before any of them is told.**
     ///
     /// The two-step is the point: recording as we go would spend a slot in the
     /// address window on a request the session window then refuses, so a
-    /// caller who tripped one limit would slowly use up the other. Asking both
+    /// caller who tripped one limit would slowly use up the others. Asking
     /// first means a refusal costs nothing.
     fn can_send(&mut self, now: Timestamp, ctx: &ServerRateCtx) -> bool {
         let (limit, window_secs) = ctx.route.limit();
 
         let key_ip = (ctx.route, ctx.client.ip.clone());
+        let key_user = ctx.client.user.map(|user| (ctx.route, user));
+        let key_inbox = ctx.inbox.clone().map(|inbox| (ctx.route, inbox));
 
-        let allowed = self
-            .by_ip
-            .entry(key_ip.clone())
-            .or_insert_with(|| Window::new(limit, window_secs))
-            .allows(now);
-
-        if !allowed {
+        if !allows(&mut self.by_ip, key_ip.clone(), limit, window_secs, now) {
             return false;
         }
 
-        let key_user = ctx.client.user.map(|user| (ctx.route, user));
-
-        if let Some(key_user) = key_user {
-            let allowed = self
-                .by_user
-                .entry(key_user)
-                .or_insert_with(|| Window::new(limit, window_secs))
-                .allows(now);
-
-            if !allowed {
-                return false;
-            }
+        if let Some(key) = key_user
+            && !allows(&mut self.by_user, key, limit, window_secs, now)
+        {
+            return false;
         }
 
-        // Both said yes, so both are told. Reached through the maps again
-        // rather than held across the checks above, because two `&mut` into
-        // one map is not a thing, and the alternative is a lookup that has
-        // already happened this turn.
+        if let Some(key) = key_inbox.clone()
+            && !allows(&mut self.by_inbox, key, limit, window_secs, now)
+        {
+            return false;
+        }
+
+        // All of them said yes, so all of them are told. Reached through the
+        // maps again rather than held across the checks above, because two
+        // `&mut` into one map is not a thing, and the alternative is a lookup
+        // that has already happened this turn.
         if let Some(window) = self.by_ip.get_mut(&key_ip) {
             window.record(now);
         }
@@ -212,10 +259,14 @@ impl RateLimiter for ServerRateLimiter {
             window.record(now);
         }
 
+        if let Some(window) = key_inbox.and_then(|key| self.by_inbox.get_mut(&key)) {
+            window.record(now);
+        }
+
         true
     }
 
-    /// The sooner of the two windows' answers.
+    /// The soonest of the windows' answers.
     ///
     /// Implemented because the trait asks for it, and nothing here puts it on
     /// the wire: a 429 from this server says only that there were too many,
@@ -234,11 +285,28 @@ impl RateLimiter for ServerRateLimiter {
             .and_then(|user| self.by_user.get(&(ctx.route, user)))
             .and_then(|window| window.next_allowed(now));
 
-        match (by_ip, by_user) {
-            (Some(ip), Some(user)) => Some(ip.min(user)),
-            (only, None) | (None, only) => only,
-        }
+        let by_inbox = ctx
+            .inbox
+            .clone()
+            .and_then(|inbox| self.by_inbox.get(&(ctx.route, inbox)))
+            .and_then(|window| window.next_allowed(now));
+
+        [by_ip, by_user, by_inbox].into_iter().flatten().min()
     }
+}
+
+/// Whether one window has room, opening it if this key has not called before.
+fn allows<K: Eq + Hash>(
+    windows: &mut HashMap<K, Window>,
+    key: K,
+    limit: u32,
+    window_secs: u64,
+    now: Timestamp,
+) -> bool {
+    windows
+        .entry(key)
+        .or_insert_with(|| Window::new(limit, window_secs))
+        .allows(now)
 }
 
 #[cfg(test)]
@@ -420,6 +488,104 @@ mod tests {
                 "call {i} — the refusals cost this session nothing",
             );
         }
+    }
+
+    /// A botnet is a thousand addresses and one victim. Every address window
+    /// has room, so the only thing between one inbox and a thousand sign-in
+    /// codes is a window on the inbox itself.
+    #[test]
+    fn one_inbox_shares_a_budget_across_callers() {
+        let mut limiter = ServerRateLimiter::default();
+
+        for i in 0..EMAILS_PER_QUARTER_HOUR {
+            let client = anonymous(&format!("203.0.113.{i}"));
+            let ctx =
+                ServerRateCtx::new(Route::AuthRequest, client).mailing(Some("al@example.com"));
+
+            assert!(limiter.can_send(T0, &ctx), "code {i} from its own address");
+        }
+
+        let client = anonymous("198.51.100.4");
+        let ctx = ServerRateCtx::new(Route::AuthRequest, client).mailing(Some("al@example.com"));
+
+        assert!(
+            !limiter.can_send(T0, &ctx),
+            "a fresh address does not buy a fresh inbox",
+        );
+    }
+
+    /// The other direction, or one person signing in would silence the next.
+    #[test]
+    fn separate_inboxes_have_separate_budgets() {
+        let mut limiter = ServerRateLimiter::default();
+
+        for i in 0..EMAILS_PER_QUARTER_HOUR {
+            let client = anonymous(&format!("203.0.113.{i}"));
+            let ctx =
+                ServerRateCtx::new(Route::AuthRequest, client).mailing(Some("al@example.com"));
+
+            limiter.can_send(T0, &ctx);
+        }
+
+        let client = anonymous("198.51.100.4");
+        let ctx = ServerRateCtx::new(Route::AuthRequest, client).mailing(Some("sam@example.com"));
+
+        assert!(
+            limiter.can_send(T0, &ctx),
+            "somebody else's inbox is untouched"
+        );
+    }
+
+    /// A tag is free to add, so counting tagged addresses apart is the /64
+    /// bug with an `@` in it: one inbox, unlimited mail.
+    #[test]
+    fn a_tagged_address_is_the_same_inbox() {
+        let mut limiter = ServerRateLimiter::default();
+
+        for i in 0..EMAILS_PER_QUARTER_HOUR {
+            let ctx = ServerRateCtx::new(Route::AuthRequest, anonymous("203.0.113.7"))
+                .mailing(Some(&format!("al+{i}@example.com")));
+
+            limiter.can_send(T0, &ctx);
+        }
+
+        let ctx = ServerRateCtx::new(Route::AuthRequest, anonymous("198.51.100.4"))
+            .mailing(Some("AL@example.com"));
+
+        assert!(
+            !limiter.can_send(T0, &ctx),
+            "a tag and a capital letter are the same inbox",
+        );
+    }
+
+    /// A refusal on the inbox must not spend the caller's own budget either.
+    #[test]
+    fn a_refused_email_spends_no_address_budget() {
+        let mut limiter = ServerRateLimiter::default();
+
+        for i in 0..EMAILS_PER_QUARTER_HOUR {
+            let client = anonymous(&format!("203.0.113.{i}"));
+            let ctx =
+                ServerRateCtx::new(Route::AuthRequest, client).mailing(Some("al@example.com"));
+
+            limiter.can_send(T0, &ctx);
+        }
+
+        let flooder = anonymous("198.51.100.4");
+
+        for _ in 0..EMAILS_PER_QUARTER_HOUR {
+            let ctx = ServerRateCtx::new(Route::AuthRequest, flooder.clone())
+                .mailing(Some("al@example.com"));
+
+            assert!(!limiter.can_send(T0, &ctx));
+        }
+
+        let ctx = ServerRateCtx::new(Route::AuthRequest, flooder).mailing(Some("sam@example.com"));
+
+        assert!(
+            limiter.can_send(T0, &ctx),
+            "the refusals above cost this address nothing",
+        );
     }
 
     #[test]
