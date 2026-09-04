@@ -93,6 +93,14 @@ pub const OUTCOME_GOOD_FOR_SECS: u64 = 10 * 60;
 /// phone lost in a drawer stops working eventually.
 pub const SESSION_GOOD_FOR_SECS: u64 = 90 * 24 * 60 * 60;
 
+/// How often the expired sessions are swept out of the store.
+///
+/// Nothing depends on it being prompt: a session past its expiry signs nobody
+/// in from the moment it expires, so this is only about the table not growing
+/// for the life of the deployment (#24). An hour against a session that lasts
+/// ninety days is as near to continuous as makes no difference.
+pub const SWEEP_SESSIONS_EVERY_SECS: u64 = 60 * 60;
+
 /// A call in flight, and the route that wants its answer.
 #[derive(Debug)]
 struct Waiting {
@@ -263,6 +271,14 @@ pub struct StateServer {
 
     /// When the current batch is being handled.
     now: Timestamp,
+
+    /// When the store's expired sessions were last swept.
+    ///
+    /// `None` until the machine has been told the time. The first tick starts
+    /// the clock on this rather than sweeping, so a sweep is an hour of *this*
+    /// server running and not something a restart brings on — which also keeps
+    /// a boot from minting a call before the process has said it is up.
+    swept: Option<Timestamp>,
 }
 
 impl StateServer {
@@ -1120,6 +1136,11 @@ impl StateServer {
                 self.requests.sweep(self.now);
 
                 self.handle_timeouts(actions);
+
+                // The store's version of the limiter sweep above, and here
+                // for the same reason. Last, so a route being let go of is
+                // decided before the housekeeping behind it.
+                self.sweep_sessions(actions);
             }
         }
     }
@@ -1306,6 +1327,40 @@ impl StateServer {
         };
 
         Some(request_id)
+    }
+
+    /// Ask the store to drop the sessions that have expired, about hourly.
+    ///
+    /// Decided here rather than on a timer of the runtime's own, so it is a
+    /// decision with a clock handed to it like every other — and so a log of
+    /// the events replays the same sweeps.
+    fn sweep_sessions(&mut self, actions: &mut Vec<Action>) {
+        // Nothing new starts once we are on the way out, and a table that
+        // grows while a process shuts down grows by nothing.
+        if self.state == State::Stopping {
+            return;
+        }
+
+        // The first tick only starts the clock. Nothing is owed a sweep at
+        // boot: the rows it would drop have been harmless since they expired.
+        let Some(swept) = self.swept else {
+            self.swept = Some(self.now);
+
+            return;
+        };
+
+        if self.now.since(swept).as_secs() < SWEEP_SESSIONS_EVERY_SECS {
+            return;
+        }
+
+        self.swept = Some(self.now);
+
+        actions.push(Action::ToStore {
+            action: ActionStore::SweepSessions {
+                call_id: self.call(),
+                now: self.now,
+            },
+        });
     }
 
     /// Stop waiting on calls that have taken too long.

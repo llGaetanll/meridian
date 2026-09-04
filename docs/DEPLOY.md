@@ -367,7 +367,6 @@ access token, and sealing the access token is not a substitute for it.
 The box being up is not the same as it being ready, and #20 tracks the rest.
 What is specifically about facing the internet:
 
-- **`sweep_sessions` is never called** (#24), so expired sessions accumulate.
 - **The server talks to Postgres in plain text** (#34), and **the volume is not
   encrypted at rest** (#33) — the section above says what that does and does
   not protect.
