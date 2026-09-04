@@ -37,7 +37,8 @@ const NOW: Timestamp = Timestamp::from_secs(1_787_097_600);
 /// Fixed, and thirty-two nothings: a test wants the same answer twice, and
 /// there is no secret here to keep. The real one comes from `MERIDIAN_DB_KEY`.
 fn key() -> src_postgres::DbKey {
-    src_postgres::DbKey::parse("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=").expect("thirty-two bytes is a key")
+    src_postgres::DbKey::parse("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+        .expect("thirty-two bytes is a key")
 }
 
 /// The owner every test's data hangs off. Made per test, because
@@ -84,9 +85,13 @@ fn entry(id: &str, amount: f64) -> Entry {
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn an_item_round_trips(db: PgPool) {
     let user_id = user(&db).await;
-    src_postgres::save_item(&db, &key(), &item(user_id)).await.unwrap();
+    src_postgres::save_item(&db, &key(), &item(user_id))
+        .await
+        .unwrap();
 
-    let items = src_postgres::load_items(&db, &key(), user_id).await.unwrap();
+    let items = src_postgres::load_items(&db, &key(), user_id)
+        .await
+        .unwrap();
 
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].item_id, ITEM);
@@ -104,15 +109,21 @@ async fn an_item_round_trips(db: PgPool) {
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn saving_an_item_again_does_not_rewind_the_cursor(db: PgPool) {
     let user_id = user(&db).await;
-    src_postgres::save_item(&db, &key(), &item(user_id)).await.unwrap();
+    src_postgres::save_item(&db, &key(), &item(user_id))
+        .await
+        .unwrap();
     src_postgres::save_cursor(&db, ITEM, "cursor-abc")
         .await
         .unwrap();
 
     // Again, as a relink does.
-    src_postgres::save_item(&db, &key(), &item(user_id)).await.unwrap();
+    src_postgres::save_item(&db, &key(), &item(user_id))
+        .await
+        .unwrap();
 
-    let items = src_postgres::load_items(&db, &key(), user_id).await.unwrap();
+    let items = src_postgres::load_items(&db, &key(), user_id)
+        .await
+        .unwrap();
 
     assert_eq!(items[0].cursor.as_deref(), Some("cursor-abc"));
 }
@@ -120,7 +131,9 @@ async fn saving_an_item_again_does_not_rewind_the_cursor(db: PgPool) {
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn accounts_round_trip_with_their_money_intact(db: PgPool) {
     let user_id = user(&db).await;
-    src_postgres::save_item(&db, &key(), &item(user_id)).await.unwrap();
+    src_postgres::save_item(&db, &key(), &item(user_id))
+        .await
+        .unwrap();
 
     let accounts = vec![Account {
         id: "acc-1".to_string(),
@@ -150,7 +163,9 @@ async fn accounts_round_trip_with_their_money_intact(db: PgPool) {
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn applying_the_same_entries_twice_stores_them_once(db: PgPool) {
     let user_id = user(&db).await;
-    src_postgres::save_item(&db, &key(), &item(user_id)).await.unwrap();
+    src_postgres::save_item(&db, &key(), &item(user_id))
+        .await
+        .unwrap();
 
     let added = vec![entry("a", -25.0), entry("b", -4.33)];
 
@@ -170,7 +185,9 @@ async fn applying_the_same_entries_twice_stores_them_once(db: PgPool) {
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn a_modified_entry_replaces_its_old_self(db: PgPool) {
     let user_id = user(&db).await;
-    src_postgres::save_item(&db, &key(), &item(user_id)).await.unwrap();
+    src_postgres::save_item(&db, &key(), &item(user_id))
+        .await
+        .unwrap();
 
     src_postgres::apply_entries(&db, ITEM, &[entry("a", -25.0)], &[], &[])
         .await
@@ -196,7 +213,9 @@ async fn a_modified_entry_replaces_its_old_self(db: PgPool) {
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn a_posted_entry_drops_the_pending_one_it_replaces(db: PgPool) {
     let user_id = user(&db).await;
-    src_postgres::save_item(&db, &key(), &item(user_id)).await.unwrap();
+    src_postgres::save_item(&db, &key(), &item(user_id))
+        .await
+        .unwrap();
 
     let mut pending = entry("pending-1", -25.0);
     pending.pending = true;
@@ -221,7 +240,9 @@ async fn a_posted_entry_drops_the_pending_one_it_replaces(db: PgPool) {
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn a_retracted_entry_is_removed(db: PgPool) {
     let user_id = user(&db).await;
-    src_postgres::save_item(&db, &key(), &item(user_id)).await.unwrap();
+    src_postgres::save_item(&db, &key(), &item(user_id))
+        .await
+        .unwrap();
 
     src_postgres::apply_entries(&db, ITEM, &[entry("a", -25.0), entry("b", -4.33)], &[], &[])
         .await
@@ -241,7 +262,9 @@ async fn a_retracted_entry_is_removed(db: PgPool) {
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn entries_come_back_newest_first(db: PgPool) {
     let user_id = user(&db).await;
-    src_postgres::save_item(&db, &key(), &item(user_id)).await.unwrap();
+    src_postgres::save_item(&db, &key(), &item(user_id))
+        .await
+        .unwrap();
 
     let older = Entry {
         tx: Tx::Transfer {
@@ -267,7 +290,9 @@ async fn entries_come_back_newest_first(db: PgPool) {
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn streams_round_trip(db: PgPool) {
     let user_id = user(&db).await;
-    src_postgres::save_item(&db, &key(), &item(user_id)).await.unwrap();
+    src_postgres::save_item(&db, &key(), &item(user_id))
+        .await
+        .unwrap();
 
     let streams = vec![Stream {
         id: "stream-1".to_string(),
@@ -294,7 +319,9 @@ async fn streams_round_trip(db: PgPool) {
 #[sqlx::test(migrator = "src_postgres::MIGRATOR")]
 async fn removing_a_bank_deletes_everything_that_came_through_it(db: PgPool) {
     let user_id = user(&db).await;
-    src_postgres::save_item(&db, &key(), &item(user_id)).await.unwrap();
+    src_postgres::save_item(&db, &key(), &item(user_id))
+        .await
+        .unwrap();
     src_postgres::apply_entries(&db, ITEM, &[entry("a", -25.0)], &[], &[])
         .await
         .unwrap();
@@ -349,7 +376,9 @@ async fn removing_a_bank_deletes_everything_that_came_through_it(db: PgPool) {
 async fn the_access_token_is_not_in_the_column(db: PgPool) {
     let user_id = user(&db).await;
 
-    src_postgres::save_item(&db, &key(), &item(user_id)).await.unwrap();
+    src_postgres::save_item(&db, &key(), &item(user_id))
+        .await
+        .unwrap();
 
     let raw: Vec<u8> = sqlx::query_scalar("SELECT access_token FROM items WHERE item_id = $1")
         .bind(ITEM)
@@ -370,7 +399,9 @@ async fn the_access_token_is_not_in_the_column(db: PgPool) {
     );
 
     // And it comes back out for the server, which is the other half.
-    let items = src_postgres::load_items(&db, &key(), user_id).await.unwrap();
+    let items = src_postgres::load_items(&db, &key(), user_id)
+        .await
+        .unwrap();
 
     assert_eq!(items[0].access_token, token);
 }
