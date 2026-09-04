@@ -2946,6 +2946,7 @@ dependencies = [
  "src-postgres",
  "src-resend",
  "tokio",
+ "tower",
  "tower-http",
  "tracing",
  "uuid",

@@ -26,6 +26,7 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
 uuid = { workspace = true }
 api-common = { path = "../api-common" }
 api-ledger = { path = "../api-ledger" }

@@ -38,6 +38,7 @@ use crate::PlaidCollect;
 use crate::PublicUrl;
 use crate::StateServer;
 use crate::StoredCode;
+use crate::WebOrigins;
 use crate::WebhookFacts;
 use crate::project;
 use crate::router_exchange::RouterExchange;
@@ -219,6 +220,13 @@ impl RuntimeServer {
 
         let email_send = EmailSend::from_env()?;
 
+        // Read on the way up with the rest, though nothing serves a browser
+        // until the first request. A bad value here is the one misconfiguration
+        // this process can never notice on its own: a browser refused by CORS
+        // never sends the request, so the failure looks like silence from the
+        // server and like a broken web app from the outside.
+        let origins = WebOrigins::from_env()?;
+
         // Built at startup rather than per send, so a missing key is a server
         // that does not start rather than one that fails the first time
         // somebody tries to sign in.
@@ -238,6 +246,7 @@ impl RuntimeServer {
             collect = collect.as_str(),
             webhook = public_url.as_ref().map(PublicUrl::as_str).unwrap_or("none"),
             email = email_send.as_str(),
+            origins = origins.as_str(),
             "serving live plaid data",
         );
 
@@ -347,7 +356,7 @@ impl RuntimeServer {
             }
         });
 
-        let router = router_server::router(Arc::clone(&runtime));
+        let router = router_server::router(Arc::clone(&runtime), &origins);
 
         // Every interface rather than loopback, because a phone on the LAN is
         // one of the clients. The simulator shares the Mac's loopback and would

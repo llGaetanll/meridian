@@ -97,6 +97,10 @@ services:
       # should not be made to invent one.
       PUBLIC_URL: ${PUBLIC_URL:-}
 
+      # Required, like the rest. Which origins a browser may call this server
+      # from, and the only setting here that no other kind of client notices.
+      WEB_ORIGINS: ${WEB_ORIGINS:?}
+
       # The server's stdout here is a pipe to the daemon, never a terminal, so
       # left to work it out for itself it turns colour off — and the log is
       # then plain for `docker compose logs` too, which is a terminal and would

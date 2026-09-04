@@ -246,6 +246,11 @@ PLAID_COLLECT=poll        # `webhook` needs a route that does not exist yet
 EMAIL_SEND=resend
 RESEND_API_KEY=…          # the box's own key, not a copy of the laptop's
 RESEND_FROM=noreply@mail.meridiancash.io
+
+# The origins a browser may call this server from. The web app, and nothing
+# else — a laptop's `http://127.0.0.1:8080` here would be a value that matches
+# no browser on the internet and blocks the real one.
+WEB_ORIGINS=https://app.meridiancash.io
 ```
 
 `chmod 600 .env`. It holds the Plaid secret, which grants access to every Item
@@ -359,9 +364,8 @@ access token, and sealing the access token is not a substitute for it.
 ## What has to be true before this holds real money
 
 The box being up is not the same as it being ready, and #20 tracks the rest.
-The four that are specifically about facing the internet:
+The three that are specifically about facing the internet:
 
-- **CORS is `Any` and there is no rate limiting** (#23). Fine on a laptop.
 - **The Plaid access token is stored as plain text** (#21). A rented box
   holding Production tokens is a different risk from a laptop holding Sandbox
   ones.
