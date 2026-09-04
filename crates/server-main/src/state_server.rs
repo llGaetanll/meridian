@@ -329,7 +329,10 @@ impl StateServer {
         // [`EventRouter::route`](crate::EventRouter::route) is where it is
         // named and justified.
         if let Some(route) = event.route() {
-            let ctx = ServerRateCtx::new(route, client.clone());
+            // The caller, and — on the one route that sends mail — who it
+            // would be sent to. A botnet has an address each and one victim,
+            // so the inbox is the only window that sees them as one caller.
+            let ctx = ServerRateCtx::new(route, client.clone()).mailing(event.recipient());
 
             // Asking counts, so this happens once and where nothing can return
             // early past it and leave a request served but uncounted.

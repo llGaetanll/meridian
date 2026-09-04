@@ -1267,12 +1267,54 @@ fn one_caller_over_its_budget_does_not_refuse_the_next() {
         < Event::FromRouter { request_id: 6, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "al@example.com".to_string() } },
         > Action::ToRouter { action: ActionRouter::TooMany, .. },
 
-        // A different address, and the same request goes through. The email is
-        // the claim; the `Accepted` that follows is held until the write lands
-        // and belongs to the test about that.
-        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::CodeRequested { email: "al@example.com".to_string() } },
+        // A different address asking for a different inbox goes through. Both
+        // have to differ: the same inbox from a new address is the mailbomb
+        // the test below is about. The `Accepted` that follows is held until
+        // the write lands and belongs to the test about that.
+        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::CodeRequested { email: "sam@example.com".to_string() } },
         > Action::ToStore { action: ActionStore::SaveCode { .. } },
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
+    );
+}
+
+/// The other half of #23's limit on this route. A botnet has an address each
+/// and one victim, so every address window has room while one person takes
+/// every message — which is why what is metered is the mail, not only the
+/// caller.
+#[test]
+fn a_botnet_cannot_mailbomb_one_inbox() {
+    let mut state = state();
+
+    state.handle_events(
+        &[Event::FromProcess {
+            event: EventProcess::Seeded { seed: [7; 32] },
+        }],
+        &mut Vec::new(),
+    );
+
+    // Five codes, each asked for from an address of its own, so no address
+    // window is anywhere near its limit.
+    for request_id in 1..=5 {
+        state.handle_events(
+            &[Event::FromRouter {
+                request_id,
+                client: Client {
+                    ip: ClientIp::new(format!("203.0.113.{request_id}")),
+                    user: None,
+                },
+                event: EventRouter::CodeRequested {
+                    email: "al@example.com".to_string(),
+                },
+            }],
+            &mut Vec::new(),
+        );
+    }
+
+    eval!(&mut state,
+        // A sixth machine, and a tag on the address to go with it. Neither
+        // buys another message: it is one inbox.
+        < Event::FromRouter { request_id: 6, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::CodeRequested { email: "al+signup@example.com".to_string() } },
+        > @r#"ToRouter { request_id: 6, action: TooMany }"#,
     );
 }
 

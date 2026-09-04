@@ -97,4 +97,25 @@ impl EventRouter {
             EventRouter::WebhookReceived { .. } => None,
         }
     }
+
+    /// Who a request for this would put mail in front of.
+    ///
+    /// Derived from the variant for the same reason [`route`](Self::route) is:
+    /// a route that learns to send mail later cannot forget to be metered on
+    /// who it sends it to, because this match will not compile until it says.
+    ///
+    /// `None` is everything that writes to nobody, which today is everything
+    /// but one. What is done with it is `ServerRateCtx::mailing`.
+    pub fn recipient(&self) -> Option<&str> {
+        match self {
+            EventRouter::CodeRequested { email } => Some(email),
+
+            EventRouter::SnapshotRequested { .. }
+            | EventRouter::CodeSubmitted { .. }
+            | EventRouter::LinkRequested { .. }
+            | EventRouter::LinkClosed { .. }
+            | EventRouter::SyncStatusRequested { .. }
+            | EventRouter::WebhookReceived { .. } => None,
+        }
+    }
 }
