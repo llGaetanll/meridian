@@ -18,6 +18,7 @@ use std::sync::atomic::Ordering;
 use tokio::sync::oneshot;
 
 use crate::ActionRouter;
+use crate::Client;
 use crate::Event;
 use crate::EventRouter;
 use crate::RequestId;
@@ -54,7 +55,7 @@ impl RouterExchange {
     /// outcome — every router event owes exactly one action back — and until
     /// there is a clock in the machine to expire an outstanding call, the only
     /// way to see one is a handler that never returns.
-    pub(crate) async fn request(&self, event: EventRouter) -> Option<ActionRouter> {
+    pub(crate) async fn request(&self, client: Client, event: EventRouter) -> Option<ActionRouter> {
         let request_id = self.requests.fetch_add(1, Ordering::Relaxed);
 
         let (sender, receiver) = oneshot::channel();
@@ -64,7 +65,11 @@ impl RouterExchange {
         // the answer is dropped.
         self.parked().insert(request_id, sender);
 
-        self.push(Event::FromRouter { request_id, event });
+        self.push(Event::FromRouter {
+            request_id,
+            client,
+            event,
+        });
 
         match receiver.await {
             Ok(action) => Some(action),

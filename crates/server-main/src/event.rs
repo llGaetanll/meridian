@@ -1,5 +1,6 @@
 //! What happened to the server.
 
+use crate::Client;
 use crate::EventProcess;
 use crate::EventRouter;
 use crate::EventSource;
@@ -13,10 +14,18 @@ use crate::RequestId;
 pub enum Event {
     /// A route was asked for something.
     ///
-    /// The id says which handler is parked on the answer. The machine relays
-    /// it and nothing more — see [`RequestId`](crate::RequestId).
+    /// The id says which handler is parked on the answer, and the client says
+    /// who asked. The machine relays the first and buckets by the second — see
+    /// [`RequestId`](crate::RequestId) and [`Client`](crate::Client).
+    ///
+    /// Both ride here rather than on each [`EventRouter`](crate::EventRouter)
+    /// variant, because both are true of *every* request and neither is part
+    /// of what any one route is asking for. It is also what makes the rate
+    /// limit unforgettable: a new route gets one whether its author thought
+    /// about it or not.
     FromRouter {
         request_id: RequestId,
+        client: Client,
         event: EventRouter,
     },
 

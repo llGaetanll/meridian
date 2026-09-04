@@ -26,6 +26,7 @@ use crate::ActionProcess;
 use crate::ActionRouter;
 use crate::ActionSource;
 use crate::ActionStore;
+use crate::Client;
 use crate::EmailSend;
 use crate::Event;
 use crate::EventProcess;
@@ -377,8 +378,8 @@ impl RuntimeServer {
     /// Ask the machine something on a route's behalf, and wait for its answer.
     ///
     /// The one way a handler reaches the machine.
-    pub(crate) async fn request(&self, event: EventRouter) -> Option<ActionRouter> {
-        self.exchange.request(event).await
+    pub(crate) async fn request(&self, client: Client, event: EventRouter) -> Option<ActionRouter> {
+        self.exchange.request(client, event).await
     }
 
     /// One turn: everything queued since the last one, handed to the machine
@@ -984,11 +985,6 @@ impl RuntimeServer {
             synced_at: Some(item.synced_at),
             login_required: item.error_code.as_deref() == Some(src_plaid::ITEM_LOGIN_REQUIRED),
         })
-    }
-
-    /// Whether the store answers. Asked rather than assumed from a pool.
-    pub(crate) async fn ping_store(&self) -> Result<(), src_postgres::PostgresError> {
-        src_postgres::ping(&self.db).await
     }
 
     /// The facts the machine needs to decide whether to sync each of them.

@@ -87,6 +87,13 @@ The address is parsed before it is logged. Unparsed it is attacker-controlled
 text going into a line of `key=value` pairs, and a caller could forge fields on
 the very line that names it.
 
+**The address, never the port.** `client=` used to carry the socket's port when
+there was no proxy in the way. It does not any more, because the rate limit
+divides callers by exactly this field and a caller gets a fresh port on every
+connection — a budget counted by address and port would be a budget per
+request. One answer to "who is this", or the log and the limit are two rules
+that can disagree.
+
 ## The requests clients make of us
 
 The server logs every request it is asked and every answer it gives, in
@@ -216,15 +223,15 @@ means adding, changing or removing its example here.
   [PLAID.md](PLAID.md). `webhook` is the address Plaid is told to call, and
   `none` is `PLAID_COLLECT=poll`, where there is nothing to tell it.
 - `INFO server_main::runtime_server server listening port=8082`
-- `INFO server_main::router_trace <- id=7 client=192.168.1.24:53112 method=GET url="/snapshot?refresh=true"`
-- `INFO server_main::router_trace -> id=7 client=192.168.1.24:53112 status=200 ms=41 bytes=91233`
+- `INFO server_main::router_trace <- id=7 client=192.168.1.24 method=GET url="/snapshot?refresh=true"`
+- `INFO server_main::router_trace -> id=7 client=192.168.1.24 status=200 ms=41 bytes=91233`
   — a client's request and the answer it got, one pair per request the server
   is asked. `client` is whoever the socket says, which is what tells the web
   front-end on loopback apart from a phone on the LAN. Behind a proxy the
-  socket is the proxy, so there it is the address Caddy reports instead and
-  carries no port — see [Who the client is](#who-the-client-is). No bodies; see
+  socket is the proxy, so there it is the address Caddy reports instead — see
+  [Who the client is](#who-the-client-is). No bodies; see
   [The requests clients make of us](#the-requests-clients-make-of-us).
-- `DEBUG server_main::router_trace answered nothing id=7 client=192.168.1.24:53112 ms=12`
+- `DEBUG server_main::router_trace answered nothing id=7 client=192.168.1.24 ms=12`
   — nothing went back: the client hung up mid-request, which is what closing
   the app during a refresh looks like from here. `DEBUG` because it is
   ordinary, logged at all because a request line with nothing under it reads
@@ -281,6 +288,11 @@ means adding, changing or removing its example here.
   — the machine draws codes and tokens from a generator seeded at the edge,
   and mints neither before one arrives. There is no fallback: a predictable
   sign-in code is a way into somebody's bank.
+- `WARN server_main::state_server a caller is over its rate limit client=203.0.113.7 route=/auth/request`
+  — the machine refused a request for being one too many, and the route got a
+  429. `WARN` rather than `INFO`: one line is somebody double-tapping, and a
+  page of them is worth looking at. The caller is told none of this beyond the
+  status — see `ActionRouter::TooMany`.
 - `WARN server_main::state_server a sign-in code was rejected email=alex@example.com verdict=Wrong`
   — `Wrong`, `Expired` or `Exhausted`. Which one is logged and deliberately not
   told to the caller: only somebody working through guesses benefits from

@@ -15,6 +15,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::Router;
 use axum::body::Bytes;
+use axum::extract::Extension;
 use axum::extract::Query;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -25,6 +26,8 @@ use tower_http::cors::Any;
 use tower_http::cors::CorsLayer;
 
 use crate::ActionRouter;
+use crate::Client;
+use crate::ClientIp;
 use crate::EventRouter;
 use crate::RuntimeServer;
 use crate::WEBHOOK_PATH;
@@ -42,7 +45,6 @@ pub(crate) fn router(runtime: Arc<RuntimeServer>) -> Router {
         .route("/link/finish", post(link_finish))
         .route("/sync/status", get(sync_status))
         .route(WEBHOOK_PATH, post(plaid_webhook))
-        .route("/health", get(health))
         // Inside the CORS layer, so the preflight `OPTIONS` a browser sends
         // ahead of an authenticated request is answered above this and never
         // logged. It is transport, and a line for each would double the
@@ -70,6 +72,7 @@ struct SnapshotQuery {
 /// transactions.
 async fn snapshot(
     State(runtime): State<Arc<RuntimeServer>>,
+    Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
     Query(query): Query<SnapshotQuery>,
 ) -> Result<Json<WireSnapshot>, StatusCode> {
@@ -82,12 +85,20 @@ async fn snapshot(
         Vec::new()
     });
 
-    runtime
-        .request(EventRouter::SnapshotRequested {
-            force: query.refresh,
-            items,
-        })
+    let answer = runtime
+        .request(
+            Client::new(ip, Some(user_id)),
+            EventRouter::SnapshotRequested {
+                force: query.refresh,
+                items,
+            },
+        )
         .await;
+
+    // Read before the store is. A snapshot is the expensive answer this server
+    // gives — a whole ledger out of Postgres and projected — so a refused
+    // request must not pay for it on the way to a 429.
+    too_many(&answer)?;
 
     Ok(Json(runtime.project_snapshot(user_id).await))
 }
@@ -106,6 +117,7 @@ struct AuthRequestBody {
 /// error.
 async fn auth_request(
     State(runtime): State<Arc<RuntimeServer>>,
+    Extension(ip): Extension<ClientIp>,
     Json(body): Json<AuthRequestBody>,
 ) -> StatusCode {
     let email = body.email.trim().to_lowercase();
@@ -120,8 +132,18 @@ async fn auth_request(
     // Read off what the machine decided rather than assumed. `Unavailable` is
     // the machine refusing to mint a code it has no entropy for, and answering
     // 204 to that would leave somebody waiting for an email that is not coming.
-    match runtime.request(EventRouter::CodeRequested { email }).await {
+    let answer = runtime
+        .request(Client::anonymous(ip), EventRouter::CodeRequested { email })
+        .await;
+
+    match answer {
         Some(ActionRouter::Accepted) => StatusCode::NO_CONTENT,
+
+        // The one place the 204 rule bends, and it does not leak what the rule
+        // protects: 429 is a fact about the caller, not about whether the
+        // address they typed has an account here.
+        Some(ActionRouter::TooMany) => StatusCode::TOO_MANY_REQUESTS,
+
         _ => StatusCode::SERVICE_UNAVAILABLE,
     }
 }
@@ -147,6 +169,7 @@ struct AuthVerified {
 /// the screen it is on.
 async fn auth_verify(
     State(runtime): State<Arc<RuntimeServer>>,
+    Extension(ip): Extension<ClientIp>,
     Json(body): Json<AuthVerifyBody>,
 ) -> Result<Json<AuthVerified>, StatusCode> {
     let email = body.email.trim().to_lowercase();
@@ -167,12 +190,17 @@ async fn auth_verify(
     // The outcome is read off what the machine decided, not worked out again
     // here. There is exactly one answer that signs somebody in.
     let answer = runtime
-        .request(EventRouter::CodeSubmitted {
-            email,
-            code: body.code.trim().to_string(),
-            stored,
-        })
+        .request(
+            Client::anonymous(ip),
+            EventRouter::CodeSubmitted {
+                email,
+                code: body.code.trim().to_string(),
+                stored,
+            },
+        )
         .await;
+
+    too_many(&answer)?;
 
     let Some(ActionRouter::SignedIn { token }) = answer else {
         return Err(StatusCode::UNAUTHORIZED);
@@ -193,13 +221,19 @@ struct LinkStarted {
 /// this, so it is safe to call again if somebody backs out.
 async fn link_start(
     State(runtime): State<Arc<RuntimeServer>>,
+    Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<LinkStarted>, StatusCode> {
     let user_id = runtime.authenticate(&headers).await?;
 
     let answer = runtime
-        .request(EventRouter::LinkRequested { user_id })
+        .request(
+            Client::new(ip, Some(user_id)),
+            EventRouter::LinkRequested { user_id },
+        )
         .await;
+
+    too_many(&answer)?;
 
     let Some(ActionRouter::LinkOpened { url }) = answer else {
         return Err(StatusCode::BAD_GATEWAY);
@@ -253,6 +287,7 @@ enum LinkFinished {
 /// laptop runs, and renaming it would make it wrong there instead.
 async fn link_finish(
     State(runtime): State<Arc<RuntimeServer>>,
+    Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<LinkFinished>, StatusCode> {
     let user_id = runtime.authenticate(&headers).await?;
@@ -266,7 +301,14 @@ async fn link_finish(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    let answer = runtime.request(EventRouter::LinkClosed { pending }).await;
+    let answer = runtime
+        .request(
+            Client::new(ip, Some(user_id)),
+            EventRouter::LinkClosed { pending },
+        )
+        .await;
+
+    too_many(&answer)?;
 
     Ok(Json(match answer {
         Some(ActionRouter::Linked { count }) if count > 0 => LinkFinished::Linked { count },
@@ -297,6 +339,7 @@ async fn link_finish(
 /// webhook arriving again in a minute, and again after that.
 async fn plaid_webhook(
     State(runtime): State<Arc<RuntimeServer>>,
+    Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
     body: Bytes,
 ) -> StatusCode {
@@ -316,7 +359,13 @@ async fn plaid_webhook(
     let webhook = runtime.webhook_facts(webhook).await;
 
     match runtime
-        .request(EventRouter::WebhookReceived { webhook })
+        .request(
+            // Plaid, from addresses we do not choose. The one route with no
+            // bucket — `EventRouter::route` says why — so there is nothing to
+            // name it by here either.
+            Client::anonymous(ip),
+            EventRouter::WebhookReceived { webhook },
+        )
         .await
     {
         // `Linked` is the same acceptance one turn further on: a session
@@ -341,6 +390,7 @@ async fn plaid_webhook(
 /// "no sync is running" is an answer, not a missing resource.
 async fn sync_status(
     State(runtime): State<Arc<RuntimeServer>>,
+    Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<WireSyncStatus>, StatusCode> {
     let user_id = runtime.authenticate(&headers).await?;
@@ -354,8 +404,13 @@ async fn sync_status(
     });
 
     let answer = runtime
-        .request(EventRouter::SyncStatusRequested { items })
+        .request(
+            Client::new(ip, Some(user_id)),
+            EventRouter::SyncStatusRequested { items },
+        )
         .await;
+
+    too_many(&answer)?;
 
     let Some(ActionRouter::SyncStatus { status }) = answer else {
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
@@ -364,25 +419,16 @@ async fn sync_status(
     Ok(Json(status))
 }
 
-/// `GET /health`
-/// Whether the server is up, and whether what it depends on is.
+/// Stop here if the machine refused this request for being one too many.
 ///
-/// It reports the database by asking it something rather than by checking that
-/// a pool exists: a pool holds connections the far end may have closed since,
-/// so the only honest answer comes from a query. This is what `docker compose
-/// up` is checked with, so an optimistic answer here would defeat the point of
-/// having it.
-async fn health(State(runtime): State<Arc<RuntimeServer>>) -> (StatusCode, String) {
-    match runtime.ping_store().await {
-        Ok(()) => (StatusCode::OK, String::from("ok store=postgres")),
-        Err(e) => {
-            tracing::error!(error = %e, "the store is not answering");
-
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                format!("store unreachable: {e}"),
-            )
-        }
+/// A helper rather than an arm in each handler's match, because the answer is
+/// the same everywhere and a route that forgot it would serve a request the
+/// machine had already declined. It carries no `Retry-After`: see
+/// [`ActionRouter::TooMany`](crate::ActionRouter::TooMany).
+fn too_many(answer: &Option<ActionRouter>) -> Result<(), StatusCode> {
+    match answer {
+        Some(ActionRouter::TooMany) => Err(StatusCode::TOO_MANY_REQUESTS),
+        _ => Ok(()),
     }
 }
 

@@ -112,6 +112,18 @@ impl Window {
         }
     }
 
+    /// Whether nothing is left in the window.
+    ///
+    /// What a caller who has stopped calling looks like, and the only safe
+    /// moment to forget them: an idle window and a window that has never
+    /// existed answer every question the same way, so dropping one changes no
+    /// decision. A limiter keyed by anything a caller chooses — an address, an
+    /// account — grows for the life of the process without this.
+    pub fn is_idle(&mut self, now: Timestamp) -> bool {
+        self.expire(now);
+        self.sent.is_empty()
+    }
+
     /// When the oldest call ages out, which is the soonest there is room.
     pub fn next_allowed(&self, now: Timestamp) -> Option<Timestamp> {
         if (self.sent.len() as u32) < self.limit {
@@ -197,6 +209,22 @@ mod tests {
             [Some(1), Some(2), Some(4), Some(8), Some(16), None, None,],
             "five tries, doubling, then stop",
         );
+    }
+
+    #[test]
+    fn a_window_goes_idle_once_its_calls_age_out() {
+        let mut window = Window::new(2, 60);
+
+        assert!(window.is_idle(T0), "nothing has been sent");
+
+        window.record(T0);
+
+        assert!(!window.is_idle(T0));
+        assert!(
+            !window.is_idle(T0 + Duration::from_secs(59)),
+            "still inside the window",
+        );
+        assert!(window.is_idle(T0 + Duration::from_secs(61)));
     }
 
     #[test]

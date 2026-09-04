@@ -71,7 +71,7 @@ fn a_bank_that_has_never_synced_is_fetched() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
 
     );
@@ -86,7 +86,7 @@ fn a_user_with_no_banks_is_just_served() {
 
     eval!(&mut state,
         // Forced, which normally outranks everything short of a dead login.
-        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: true, items: vec![] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -96,7 +96,7 @@ fn a_fresh_bank_is_served_without_asking_plaid_again() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -108,7 +108,7 @@ fn a_stale_bank_is_refetched_from_its_cursor() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
 
     );
@@ -119,7 +119,7 @@ fn a_forced_request_refetches_however_fresh() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
 
     );
@@ -131,7 +131,7 @@ fn a_login_required_bank_is_not_retried_even_when_forced() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: true }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: true }] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -143,7 +143,7 @@ fn each_bank_is_decided_about_on_its_own() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: true }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: true }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
 
     );
@@ -157,7 +157,7 @@ fn a_snapshot_is_answered_after_its_last_bank() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 2, .. } },
 
@@ -177,7 +177,7 @@ fn a_failed_write_still_answers_the_route() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
 
         < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
@@ -198,7 +198,7 @@ fn a_call_that_never_answers_is_given_up_on() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
 
         // Plaid says nothing. Time passes and nothing else arrives.
@@ -217,7 +217,7 @@ fn a_route_with_nothing_decided_is_told_it_cannot_be_answered() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkRequested { user_id: uuid::Uuid::nil() } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { user_id: uuid::Uuid::nil() } },
         > Action::ToSource { action: ActionSource::OpenLink { call_id: 1, .. } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
@@ -284,37 +284,37 @@ fn a_burst_of_forced_refreshes_is_rate_limited() {
     // so the budget runs out in front of you: ten fetches, and then the
     // eleventh is answered from the store instead of asking Plaid again.
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 2, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 3, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 4, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 4, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 5, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 5, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 6, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 6, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 7, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 8, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 8, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 9, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 9, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 10, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 10, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 11, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -332,6 +332,10 @@ fn the_rate_limit_is_per_bank() {
         state.handle_events(
             &[Event::FromRouter {
                 request_id,
+                client: Client {
+                    ip: ClientIp::new("203.0.113.7"),
+                    user: None,
+                },
                 event: EventRouter::SnapshotRequested {
                     force: true,
                     items: vec![ItemFacts {
@@ -347,7 +351,7 @@ fn the_rate_limit_is_per_bank() {
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 11, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
     );
 }
@@ -360,7 +364,7 @@ fn shutting_down_stops_new_work() {
         < Event::FromTerminal { event: EventTerminal::SigInt },
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
-        < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 
@@ -393,7 +397,7 @@ fn a_draining_machine_mints_nothing() {
         < Event::FromTerminal { event: EventTerminal::SigInt },
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
-        < Event::FromRouter { request_id: 1, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
         > Action::ToRouter { action: ActionRouter::Unavailable, .. },
     );
 }
@@ -407,7 +411,7 @@ fn asking_for_a_code_stores_a_hash_and_sends_the_code() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
         > Action::ToStore { action: ActionStore::SaveCode { call_id: 1, .. } },
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
 
@@ -427,7 +431,7 @@ fn the_same_seed_produces_the_same_code() {
     eval!(&mut seven,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
         > Action::ToStore { action: ActionStore::SaveCode { call_id: 1, .. } },
         > @r#"ToEmail { action: SendCode { email: "alex@example.com", code: "470977" } }"#,
     );
@@ -437,7 +441,7 @@ fn the_same_seed_produces_the_same_code() {
     eval!(&mut eight,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [8; 32] } },
 
-        < Event::FromRouter { request_id: 1, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
         > Action::ToStore { action: ActionStore::SaveCode { call_id: 1, .. } },
         > @r#"ToEmail { action: SendCode { email: "alex@example.com", code: "751695" } }"#,
     );
@@ -455,7 +459,7 @@ fn an_unseeded_machine_will_not_mint_a_code() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
         > Action::ToRouter { action: ActionRouter::Unavailable, .. },
     );
 }
@@ -467,7 +471,7 @@ fn the_right_code_signs_you_in_and_spends_itself() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
         > Action::ToStore { action: ActionStore::CreateSession { call_id: 1, .. } },
         > Action::ToStore { action: ActionStore::DeleteCode { call_id: 2, .. } },
 
@@ -489,7 +493,7 @@ fn a_wrong_code_only_counts_a_guess() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "654321".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "654321".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
         > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
@@ -506,7 +510,7 @@ fn an_expired_code_is_rejected_and_still_counts() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs()), attempts: 0 }) } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs()), attempts: 0 }) } },
         > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
@@ -522,7 +526,7 @@ fn an_exhausted_code_rejects_the_right_answer() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 5 }) } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 5 }) } },
         > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
@@ -540,7 +544,7 @@ fn an_address_with_no_code_is_rejected_the_same_way() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: None } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: None } },
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -554,8 +558,8 @@ fn two_routes_asking_at_once_get_their_own_answers() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 7, event: EventRouter::SnapshotRequested { force: false, items: vec![] } },
-        < Event::FromRouter { request_id: 9, event: EventRouter::SnapshotRequested { force: false, items: vec![] } },
+        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![] } },
+        < Event::FromRouter { request_id: 9, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![] } },
         > Action::ToRouter { action: ActionRouter::Serve, request_id: 7 },
         > Action::ToRouter { action: ActionRouter::Serve, request_id: 9 },
     );
@@ -568,7 +572,7 @@ fn connecting_a_bank_opens_a_link_session() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkRequested { user_id: uuid::Uuid::nil() } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { user_id: uuid::Uuid::nil() } },
         > Action::ToSource { action: ActionSource::OpenLink { call_id: 1, .. } },
     );
 }
@@ -582,7 +586,7 @@ fn a_session_is_written_down_before_its_url_is_handed_over() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkRequested { user_id: uuid::Uuid::nil() } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { user_id: uuid::Uuid::nil() } },
         > Action::ToSource { action: ActionSource::OpenLink { .. } },
 
         < Event::FromSource { event: EventSource::LinkOpened { call_id: 1, user_id: uuid::Uuid::nil(), link_token: "link-1".to_string(), hosted_link_url: "https://secure.plaid.com/x".to_string() } },
@@ -601,7 +605,7 @@ fn a_public_token_is_exchanged_even_before_the_session_finishes() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
@@ -616,7 +620,7 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }] } },
@@ -634,7 +638,7 @@ fn an_open_session_is_left_pending() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec![] }] } },
@@ -648,7 +652,7 @@ fn a_linked_bank_is_stored_and_its_session_closed() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
@@ -677,7 +681,7 @@ fn a_new_bank_starts_syncing_without_holding_the_route() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
@@ -706,7 +710,7 @@ fn a_bank_is_syncing_the_moment_the_fetch_is_asked_for() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
@@ -720,7 +724,7 @@ fn a_bank_is_syncing_the_moment_the_fetch_is_asked_for() {
         // Asked in the turn above and not yet begun — and already something to
         // watch. No progress has been reported, so the counts are zero, but
         // `finished` is what the screen reads and it says no.
-        < Event::FromRouter { request_id: 2, event: EventRouter::SyncStatusRequested { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > @r#"ToRouter { request_id: 2, action: SyncStatus { status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: false } } }"#,
     );
 }
@@ -732,7 +736,7 @@ fn a_user_with_nothing_syncing_is_told_so() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::SyncStatusRequested { items: vec![] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { items: vec![] } },
         > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
     );
 }
@@ -748,7 +752,7 @@ fn a_running_sync_reports_the_stage_it_is_on() {
     eval!(&mut state,
         < Event::FromSource { event: EventSource::PlaidProgressed { item_id: "item-9".to_string(), stage: server_wire::SyncStage::Transactions, institution: Some("First Platypus Bank".to_string()), accounts: 8, transactions: 19, streams: 0 } },
 
-        < Event::FromRouter { request_id: 1, event: EventRouter::SyncStatusRequested { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "transactions", institution: Some("First Platypus Bank"), accounts: 8, transactions: 19, streams: 0, finished: false } } }"#,
     );
 }
@@ -765,7 +769,7 @@ fn a_failed_sync_stops_being_something_to_watch() {
 
         < Event::FromSource { event: EventSource::PlaidFailed { call_id: 1, item_id: "item-9".to_string(), code: "REQUEST_FAILED".to_string() } },
 
-        < Event::FromRouter { request_id: 1, event: EventRouter::SyncStatusRequested { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
     );
 }
@@ -777,7 +781,7 @@ fn closing_a_sheet_with_no_session_open_asks_nothing() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec![] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec![] } },
         > Action::ToRouter { action: ActionRouter::Linked { count: 0 }, .. },
     );
 }
@@ -789,7 +793,7 @@ fn every_open_session_is_polled() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
     );
 }
@@ -802,7 +806,7 @@ fn many_sessions_still_produce_one_answer() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string(), "link-3".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string(), "link-3".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-2".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-3".to_string(), finished: true, public_tokens: vec![] }] } },
@@ -826,7 +830,7 @@ fn every_token_a_session_produced_is_exchanged() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string(), "public-2".to_string()] } } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string(), "public-2".to_string()] } } },
         > @r#"ToSource { action: ExchangePublicToken { call_id: 1, link_token: "link-1", public_token: "public-1" } }"#,
         > @r#"ToSource { action: ExchangePublicToken { call_id: 2, link_token: "link-1", public_token: "public-2" } }"#,
     );
@@ -841,7 +845,7 @@ fn an_outcome_that_arrives_first_is_waiting_when_the_phone_asks() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string()] } } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string()] } } },
         > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 1, .. } },
 
         // No `CollectLink`: the session has to stay standing, because a
@@ -855,7 +859,7 @@ fn an_outcome_that_arrives_first_is_waiting_when_the_phone_asks() {
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
 
         // The phone catches up, and is told what it came to.
-        < Event::FromRouter { request_id: 2, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
@@ -871,9 +875,9 @@ fn a_close_that_arrives_first_waits_for_the_outcome() {
 
     eval!(&mut state,
         // Nothing at all comes back. Not an empty answer — no answer yet.
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
 
-        < Event::FromRouter { request_id: 2, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string()] } } },
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string()] } } },
         > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 1, .. } },
 
         < Event::FromSource { event: EventSource::ItemLinked { call_id: 1, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
@@ -898,9 +902,9 @@ fn a_session_that_ends_with_nothing_is_said_rather_than_inferred() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
 
-        < Event::FromRouter { request_id: 2, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec![] } } },
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec![] } } },
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 1, .. } },
 
@@ -916,9 +920,9 @@ fn an_exchange_that_fails_settles_the_session_too() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
 
-        < Event::FromRouter { request_id: 2, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string()] } } },
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string()] } } },
         > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 1, .. } },
 
         < Event::FromSource { event: EventSource::LinkAbandoned { call_id: 1, link_token: "link-1".to_string() } },
@@ -938,7 +942,7 @@ fn a_session_nobody_reports_on_is_answered_pending() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS) } },
         > @r#"ToRouter { request_id: 1, action: LinkPending }"#,
@@ -952,7 +956,7 @@ fn two_sessions_timing_out_together_still_answer_once() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()] } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS) } },
         > Action::ToRouter { action: ActionRouter::LinkPending, .. },
@@ -967,14 +971,14 @@ fn an_outcome_nobody_comes_back_for_expires() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec![] } } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec![] } } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + OUTCOME_GOOD_FOR_SECS) } },
 
         // Nothing recorded any more, so this parks rather than being answered
         // from a record about a sheet closed ten minutes ago.
-        < Event::FromRouter { request_id: 2, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + OUTCOME_GOOD_FOR_SECS + LINK_ANSWER_GOOD_FOR_SECS) } },
         > Action::ToRouter { action: ActionRouter::LinkPending, .. },
@@ -988,7 +992,7 @@ fn a_close_with_no_session_open_is_answered_at_once() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec![] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec![] } },
         > @r#"ToRouter { request_id: 1, action: Linked { count: 0 } }"#,
     );
 }
@@ -1000,10 +1004,10 @@ fn the_session_that_attached_a_bank_is_the_one_reported() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec![] } } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec![] } } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
 
-        < Event::FromRouter { request_id: 2, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-2".to_string(), public_tokens: vec!["public-2".to_string()] } } },
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-2".to_string(), public_tokens: vec!["public-2".to_string()] } } },
         > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 1, .. } },
 
         < Event::FromSource { event: EventSource::ItemLinked { call_id: 1, link_token: "link-2".to_string(), item_id: "item-9".to_string() } },
@@ -1013,7 +1017,7 @@ fn the_session_that_attached_a_bank_is_the_one_reported() {
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
 
-        < Event::FromRouter { request_id: 3, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()] } },
+        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()] } },
         > @r#"ToStore { action: CollectLink { call_id: 4, link_token: "link-2" } }"#,
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
@@ -1028,7 +1032,7 @@ fn a_sync_webhook_fetches_however_fresh_the_bank_is() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SyncUpdatesAvailable { item_id: "item-1".to_string(), item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }) } } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SyncUpdatesAvailable { item_id: "item-1".to_string(), item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }) } } },
         > @r#"ToSource { action: FetchPlaid { call_id: 1, item_id: "item-1", cursor: Some("cursor-1") } }"#,
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
@@ -1042,7 +1046,7 @@ fn a_sync_webhook_is_answered_before_its_fetch_lands() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SyncUpdatesAvailable { item_id: "item-1".to_string(), item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }) } } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SyncUpdatesAvailable { item_id: "item-1".to_string(), item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }) } } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
@@ -1054,7 +1058,7 @@ fn a_sync_webhook_does_not_retry_a_dead_login() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SyncUpdatesAvailable { item_id: "item-1".to_string(), item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: true }) } } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SyncUpdatesAvailable { item_id: "item-1".to_string(), item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: true }) } } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }
@@ -1067,7 +1071,7 @@ fn a_sync_webhook_for_a_bank_we_do_not_hold_is_still_taken() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SyncUpdatesAvailable { item_id: "item-gone".to_string(), item: None } } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SyncUpdatesAvailable { item_id: "item-gone".to_string(), item: None } } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }
@@ -1080,7 +1084,7 @@ fn a_dead_login_webhook_is_written_down() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::Login { item_id: "item-1".to_string(), required: true } } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::Login { item_id: "item-1".to_string(), required: true } } },
         > Action::ToProcess { action: ActionProcess::ReportLoginRequired },
         > @r#"ToStore { action: SaveStatus { call_id: 1, item_id: "item-1", error_code: Some("ITEM_LOGIN_REQUIRED") } }"#,
 
@@ -1096,7 +1100,7 @@ fn a_repaired_login_webhook_clears_it() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::Login { item_id: "item-1".to_string(), required: false } } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::Login { item_id: "item-1".to_string(), required: false } } },
         > @r#"ToStore { action: SaveStatus { call_id: 1, item_id: "item-1", error_code: None } }"#,
     );
 }
@@ -1108,7 +1112,7 @@ fn an_unknown_webhook_is_taken_and_acted_on_by_nothing() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::WebhookReceived { webhook: WebhookFacts::Ignored { webhook_type: "ASSETS".to_string(), webhook_code: "PRODUCT_READY".to_string() } } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::Ignored { webhook_type: "ASSETS".to_string(), webhook_code: "PRODUCT_READY".to_string() } } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }
@@ -1120,7 +1124,183 @@ fn a_closed_sheet_still_polls_when_we_collect_by_polling() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
+    );
+}
+
+/// The point of the whole thing: a caller past its budget is answered and
+/// nothing else happens — no fetch, no store write, no email.
+#[test]
+fn a_caller_past_its_budget_is_refused() {
+    let mut state = state();
+
+    // Twenty a minute on `/snapshot`, spent. What each turn does with them is
+    // the tests above; here they only fill the window.
+    for request_id in 1..=20 {
+        state.handle_events(
+            &[Event::FromRouter {
+                request_id,
+                client: Client {
+                    ip: ClientIp::new("203.0.113.7"),
+                    user: None,
+                },
+                event: EventRouter::SnapshotRequested {
+                    force: false,
+                    items: vec![],
+                },
+            }],
+            &mut Vec::new(),
+        );
+    }
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        > @r#"ToRouter { request_id: 21, action: TooMany }"#,
+    );
+}
+
+/// The refusal is the *only* thing that comes out. A forced refresh of a bank
+/// with no cursor would otherwise fetch, so this says the limit is checked
+/// before the work rather than after it.
+#[test]
+fn a_refused_request_starts_nothing() {
+    let mut state = state();
+
+    state.handle_events(
+        &[Event::FromProcess {
+            event: EventProcess::Seeded { seed: [7; 32] },
+        }],
+        &mut Vec::new(),
+    );
+
+    for request_id in 1..=5 {
+        state.handle_events(
+            &[Event::FromRouter {
+                request_id,
+                client: Client {
+                    ip: ClientIp::new("203.0.113.7"),
+                    user: None,
+                },
+                event: EventRouter::CodeRequested {
+                    email: "al@example.com".to_string(),
+                },
+            }],
+            &mut Vec::new(),
+        );
+    }
+
+    // A sixth inside the quarter hour. No `SaveCode`, and above all no
+    // `SendCode` — the mailbomb this limit exists to stop.
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 6, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "al@example.com".to_string() } },
+        > @r#"ToRouter { request_id: 6, action: TooMany }"#,
+    );
+}
+
+/// One caller running out must not touch another's budget.
+#[test]
+fn one_caller_over_its_budget_does_not_refuse_the_next() {
+    let mut state = state();
+
+    state.handle_events(
+        &[Event::FromProcess {
+            event: EventProcess::Seeded { seed: [7; 32] },
+        }],
+        &mut Vec::new(),
+    );
+
+    for request_id in 1..=5 {
+        state.handle_events(
+            &[Event::FromRouter {
+                request_id,
+                client: Client {
+                    ip: ClientIp::new("203.0.113.7"),
+                    user: None,
+                },
+                event: EventRouter::CodeRequested {
+                    email: "al@example.com".to_string(),
+                },
+            }],
+            &mut Vec::new(),
+        );
+    }
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 6, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "al@example.com".to_string() } },
+        > Action::ToRouter { action: ActionRouter::TooMany, .. },
+
+        // A different address, and the same request goes through. The email is
+        // the claim; the `Accepted` that follows is held until the write lands
+        // and belongs to the test about that.
+        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::CodeRequested { email: "al@example.com".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveCode { .. } },
+        > Action::ToEmail { action: ActionEmail::SendCode { .. } },
+    );
+}
+
+/// Plaid calls us from addresses we do not choose, so the webhook is the one
+/// route with no bucket. A hundred of them in a turn are all acted on.
+#[test]
+fn webhooks_are_not_rate_limited() {
+    let mut state = state();
+
+    for request_id in 1..=100 {
+        state.handle_events(
+            &[Event::FromRouter {
+                request_id,
+                client: Client {
+                    ip: ClientIp::new("203.0.113.7"),
+                    user: None,
+                },
+                event: EventRouter::WebhookReceived {
+                    webhook: WebhookFacts::Ignored {
+                        webhook_type: "ITEM".to_string(),
+                        webhook_code: "NEW_ACCOUNTS_AVAILABLE".to_string(),
+                    },
+                },
+            }],
+            &mut Vec::new(),
+        );
+    }
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 101, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::Ignored { webhook_type: "ITEM".to_string(), webhook_code: "NEW_ACCOUNTS_AVAILABLE".to_string() } } },
+        > @r#"ToRouter { request_id: 101, action: Accepted }"#,
+    );
+}
+
+/// The budget comes back on its own, without anything having to reset it.
+/// Time is the only thing that opens it, and time is an event.
+#[test]
+fn the_budget_returns_when_the_window_passes() {
+    let mut state = state();
+
+    for request_id in 1..=20 {
+        state.handle_events(
+            &[Event::FromRouter {
+                request_id,
+                client: Client {
+                    ip: ClientIp::new("203.0.113.7"),
+                    user: None,
+                },
+                event: EventRouter::SnapshotRequested {
+                    force: false,
+                    items: vec![],
+                },
+            }],
+            &mut Vec::new(),
+        );
+    }
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![] } },
+        > Action::ToRouter { action: ActionRouter::TooMany, .. },
+
+        // A minute passes. Nothing else happens in it.
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 61) } },
+
+        < Event::FromRouter { request_id: 22, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![] } },
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }

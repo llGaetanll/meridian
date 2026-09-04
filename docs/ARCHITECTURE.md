@@ -141,10 +141,17 @@ program — follows all of them.
    `handle_events` remains the only way anything changes.
 
 7. **Anything that is a *rule* belongs in the machine, even if it looks like
-   IO's business.** Rate limiting is the example: "may I send this?" is
-   arithmetic over what we have already sent, so it lives in the machine
-   (`api-ratelimit`, with the per-API limiter in that API's crate) rather than
-   being guessed at by the runtime.
+   IO's business.** Rate limiting is the example, in both directions. "May I
+   send this?" is arithmetic over what we have already sent, and "may they ask
+   this?" is arithmetic over what we have already answered; neither needs a
+   clock or a socket, so both live in the machine (`api_common::ratelimit`,
+   with each limiter beside the limits it knows — `src-plaid` for Plaid's,
+   `server-main` for our own) rather than being guessed at by the runtime.
+
+   What that buys is that a limit is an `eval!` test. "The twenty-first request
+   in a minute is refused, and starts no fetch" is a sequence of events and the
+   actions they do not produce, which is not a thing you can write about a
+   limiter living in a middleware.
 
 ### Waiting without sleeping
 

@@ -263,12 +263,19 @@ From the laptop, with `MERIDIAN_HOST=meridian@api.meridiancash.io` in `.env`:
 ./scripts/deploy.sh ship       # compiles here; the first one is slow
 ./scripts/deploy.sh ps
 ./scripts/deploy.sh logs
-./scripts/deploy.sh health     # through DNS, TLS and Caddy, to /health
+./scripts/deploy.sh health     # through DNS, TLS and Caddy, to the server
 ```
 
 `health` answering `ok store=postgres` over https means all four of DNS, the
 certificate, the proxy and the database are right. Migrations run at boot, so
 there is no separate step for the schema.
+
+It asks by presenting a token that is deliberately not a session, and expects a
+401. There is no `/health` route: an unauthenticated one is a thing anyone on
+the internet can make the server do, and rate limiting it would have meant
+counting Caddy's own address. The 401 proves more anyway — `authenticate` reads
+the token out of Postgres before it can reject it, so a database that is down
+answers 500 there rather than 401.
 
 After that, every deploy is that same command: build here, load it there, swap.
 It refuses a dirty tree, because the commit it stamps into every log line is
