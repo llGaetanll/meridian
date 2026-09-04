@@ -317,12 +317,39 @@ Droplet backups, enabled at create time above, are weekly snapshots of the
 whole disk and restore to a working box rather than to a directory of files.
 That is the floor, and it is 20% of the droplet.
 
-It is not yet enough. Weekly means up to a week of transactions lost, and a
-whole-disk snapshot is a clumsy way to recover one table. It is also not a
-backup of `MERIDIAN_DB_KEY` in any useful sense: the key lives on the same disk
-as the rows it opens, so a snapshot that loses one loses both. `pg_dump` on a timer
-to Spaces is the shape, and the volume it protects holds the Plaid access
-tokens and every transaction ever synced.
+It is not enough on its own. Weekly means up to a week of transactions lost,
+and a whole-disk snapshot is a clumsy way to recover one table.
+
+So there is a dump, taken by hand from a laptop:
+
+```sh
+./scripts/backup.sh          a dump of the box, into ./backups
+./scripts/backup.sh list     what is already there
+```
+
+It runs `pg_dump -Fc` inside the db container and streams the result back over
+the same ssh connection every other box command uses — nothing is written on
+the droplet, and no port has to be open for it. The archive is Postgres's own
+compressed format, which `pg_restore` can read a table out of without restoring
+the rest. `backups/` is gitignored: a dump holds every transaction, every email
+address and the sealed access tokens, and is as sensitive as the box.
+
+What is still missing is most of #38.
+
+**It is a person, not a timer.** A backup nobody remembers to take is a weekly
+snapshot with extra steps.
+
+**It is on a laptop, which is not off-site from a laptop.** `pg_dump` on a
+timer to Spaces is still the shape.
+
+**`MERIDIAN_DB_KEY` is not backed up.** The key that opens the access token
+column lives in `/srv/meridian/.env` on the box and nowhere else, so a dump
+restored without it is a ledger with every bank unlinked — and the rest of that
+file, the Plaid secret and the Postgres password, exists in exactly one place
+too.
+
+**No restore has been run.** A backup that has never been restored is a belief,
+not a backup.
 
 ## Encryption at rest, and why there is none
 
@@ -370,5 +397,5 @@ What is specifically about facing the internet:
 - **The server talks to Postgres in plain text** (#34), and **the volume is not
   encrypted at rest** (#33) — the section above says what that does and does
   not protect.
-- **Backups are weekly whole-disk snapshots** (#38). A week of transactions is
-  a lot to lose, and a snapshot is a clumsy way to get one table back.
+- **Backups are weekly whole-disk snapshots, plus a dump somebody remembers to
+  take** (#38). Neither is off-site, and neither carries `MERIDIAN_DB_KEY`.
