@@ -72,9 +72,7 @@ impl DbKey {
     pub fn parse(value: &str) -> Result<Self, PostgresError> {
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(value.trim())
-            .map_err(|_| {
-                PostgresError::Key(String::from("MERIDIAN_DB_KEY is not valid base64"))
-            })?;
+            .map_err(|_| PostgresError::Key(String::from("MERIDIAN_DB_KEY is not valid base64")))?;
 
         // The length is the whole of the validation. Anything that decodes to
         // 32 bytes is a key as far as AES is concerned, and a wrong one is
@@ -148,11 +146,9 @@ pub(crate) fn open(key: &DbKey, blob: &[u8]) -> Result<String, PostgresError> {
     // GCM verifies the tag before it hands anything back, so a wrong key or a
     // changed byte fails here rather than producing rubbish that looks like a
     // token and is refused by Plaid an hour later.
-    let plain = cipher
-        .decrypt(&nonce.into(), sealed)
-        .map_err(|_| {
-            PostgresError::Crypto("could not open the access token — wrong key, or the row changed")
-        })?;
+    let plain = cipher.decrypt(&nonce.into(), sealed).map_err(|_| {
+        PostgresError::Crypto("could not open the access token — wrong key, or the row changed")
+    })?;
 
     String::from_utf8(plain)
         .map_err(|_| PostgresError::Crypto("an opened access token is not text"))
