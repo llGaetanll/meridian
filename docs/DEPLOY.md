@@ -318,6 +318,44 @@ as the rows it opens, so a snapshot that loses one loses both. `pg_dump` on a ti
 to Spaces is the shape, and the volume it protects holds the Plaid access
 tokens and every transaction ever synced.
 
+## Encryption at rest, and why there is none
+
+Postgres writes to a docker named volume on the droplet's own disk, and a
+droplet's disk is not encrypted at rest. DigitalOcean is explicit about this
+and it is the one place their two storage products differ: Block Storage
+Volumes are LUKS-encrypted by DigitalOcean, with snapshots inheriting it, and
+a droplet's local disk is not.
+
+So balances, transactions, merchant names and email addresses sit in the clear
+on the box and in every weekly droplet backup. **This is accepted, as of
+2026-09-04, not overlooked.** Everything here is Plaid Sandbox: invented
+transactions belonging to nobody, on a box no one else can reach.
+
+Moving the data onto a Volume is the fix and it is cheap — about a dollar a
+month at any size this database will be for a long time, and no key management,
+because DigitalOcean holds that key rather than us. What makes it not worth
+doing today is that it is not urgent, and what makes it worth doing early is
+that the migration only gets more expensive: right now `0007` has just emptied
+`items` and cascaded the ledger with it, so there is nearly nothing to move.
+
+**Revisit before the first real customer**, which is the same trigger as
+applying for Plaid Production. Two things to know when that day comes:
+
+- Droplet backups snapshot the *droplet's* disk. The moment Postgres lives on
+  a Volume they stop covering the database, and Volume snapshots are not
+  scheduled for you. The move and a working `pg_dump` have to land together or
+  there is a window with neither.
+- A LUKS layer of our own on top of the Volume buys protection from
+  DigitalOcean themselves and costs a passphrase at every unattended reboot.
+  Decided against, for now, for that reason rather than for the effort.
+
+Worth being clear what any of this buys, because it is easy to overstate. Disk
+encryption protects a volume that is **not mounted**: a stolen drive, a
+decommissioned host, a snapshot copied somewhere it should not be. It does
+nothing against someone who gets onto a running box, because the volume is
+decrypted the whole time the box is up. It is not a substitute for sealing the
+access token, and sealing the access token is not a substitute for it.
+
 ## What has to be true before this holds real money
 
 The box being up is not the same as it being ready, and #20 tracks the rest.

@@ -143,7 +143,13 @@ one theft should not get both.
 
 Not the ledger. Encrypting transactions at the column level would make them
 permanently unqueryable in SQL — no date ranges, no aggregation, no indexes —
-to duplicate what an encrypted volume already does.
+to duplicate what an encrypted volume does.
+
+That volume does not exist yet. The droplet's disk is not encrypted at rest, so
+today the ledger really is in the clear and the sentence above is an argument
+for what to do rather than a description of what is true. Accepted on
+2026-09-04 because everything here is Sandbox; `docs/DEPLOY.md` has the
+decision and what triggers revisiting it.
 
 ## Resetting
 
