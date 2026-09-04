@@ -241,10 +241,16 @@ impl RuntimeServer {
             );
         }
 
+        // The address Plaid is told to call, worked out once and used for both
+        // the log and the client. `PUBLIC_URL` is the base; this is the route
+        // on the end of it, and it is what the log has to name — the base
+        // alone is neither the address we advertise nor the one we answer on.
+        let webhook = public_url.as_ref().map(PublicUrl::webhook);
+
         tracing::info!(
             env = credentials.env.as_str(),
             collect = collect.as_str(),
-            webhook = public_url.as_ref().map(PublicUrl::as_str).unwrap_or("none"),
+            webhook = webhook.as_deref().unwrap_or("none"),
             email = email_send.as_str(),
             origins = origins.as_str(),
             "serving live plaid data",
@@ -263,7 +269,7 @@ impl RuntimeServer {
             resend,
             tokens: RwLock::new(HashMap::new()),
             webhooks: WebhookVerifier::default(),
-            webhook: public_url.as_ref().map(PublicUrl::webhook),
+            webhook,
             db,
             db_key,
             shutdown: Notify::new(),
