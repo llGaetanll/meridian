@@ -213,6 +213,17 @@ mod tests {
         assert_eq!(client_of(&request), ClientIp::new("172.18.0.4"));
     }
 
+    /// A v6 caller is counted by the block delegated to them, not by the
+    /// address they happened to send from — that one is theirs to change, and
+    /// there are eighteen quintillion of them.
+    #[test]
+    fn buckets_a_forwarded_v6_caller_by_its_prefix() {
+        let forwarded = Some("2001:db8:1234:5678:aaaa:bbbb:cccc:dddd");
+        let request = request("172.18.0.4:38326", forwarded);
+
+        assert_eq!(client_of(&request).to_string(), "2001:db8:1234:5678::/64");
+    }
+
     #[test]
     fn reads_a_v4_peer_mapped_onto_a_v6_socket() {
         let request = request("[::ffff:172.18.0.4]:38326", Some("203.0.113.7"));
