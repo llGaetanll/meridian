@@ -77,12 +77,6 @@ impl PublicUrl {
     pub fn webhook(&self) -> String {
         format!("{}{WEBHOOK_PATH}", self.0)
     }
-
-    /// What the logs call it. It is not a secret — it is the address anybody
-    /// on the internet reaches this server at.
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
 }
 
 #[cfg(test)]
