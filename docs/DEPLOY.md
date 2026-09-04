@@ -79,9 +79,10 @@ but without it neither SPF nor DKIM is enforceable by a receiver. A
 subdomain too, since a receiver falls back to the organizational domain.
 
 **Nothing in the Plaid dashboard yet.** The redirect URI and the webhook both
-name `api.meridiancash.io`, which is fine to register before it resolves — but
-neither is read until the code that sends them exists, and the webhook route
-does not (#20). Sandbox and `PLAID_COLLECT=poll` is what the first deploy runs.
+name `api.meridiancash.io`, which is fine to register before it resolves. The
+webhook route exists now (#36), so `PLAID_COLLECT=webhook` is available once
+the dashboard names it and the box's `.env` carries a `PUBLIC_URL`; Sandbox and
+`PLAID_COLLECT=poll` is what the first deploy ran.
 
 ## The box
 
@@ -239,7 +240,7 @@ MERIDIAN_DB_KEY=…
 PLAID_CLIENT_ID=…
 PLAID_SECRET=…            # the Sandbox one; the two environments differ
 PLAID_ENV=sandbox
-PLAID_COLLECT=poll        # `webhook` needs a route that does not exist yet
+PLAID_COLLECT=poll        # `webhook` works now (#36); poll until it is chosen
 
 # Real mail, from the verified domain. `log` writes the code to the server log
 # and sends nothing, which is the answer before Resend is set up.
@@ -364,11 +365,11 @@ access token, and sealing the access token is not a substitute for it.
 ## What has to be true before this holds real money
 
 The box being up is not the same as it being ready, and #20 tracks the rest.
-The three that are specifically about facing the internet:
+What is specifically about facing the internet:
 
-- **The Plaid access token is stored as plain text** (#21). A rented box
-  holding Production tokens is a different risk from a laptop holding Sandbox
-  ones.
 - **`sweep_sessions` is never called** (#24), so expired sessions accumulate.
-- **No webhook route**, so `PLAID_COLLECT=webhook` parses and then behaves as
-  `poll`. Hosting is what makes a webhook possible, so the two land together.
+- **The server talks to Postgres in plain text** (#34), and **the volume is not
+  encrypted at rest** (#33) — the section above says what that does and does
+  not protect.
+- **Backups are weekly whole-disk snapshots** (#38). A week of transactions is
+  a lot to lose, and a snapshot is a clumsy way to get one table back.
