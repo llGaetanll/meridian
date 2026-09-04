@@ -11,6 +11,7 @@
 //! requests into events and events' answers into JSON.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Json;
 use axum::Router;
@@ -18,11 +19,13 @@ use axum::body::Bytes;
 use axum::extract::Extension;
 use axum::extract::Query;
 use axum::extract::State;
+use axum::http::Method;
 use axum::http::StatusCode;
+use axum::http::header::AUTHORIZATION;
+use axum::http::header::CONTENT_TYPE;
 use axum::routing::get;
 use axum::routing::post;
 use serde::Deserialize;
-use tower_http::cors::Any;
 use tower_http::cors::CorsLayer;
 
 use crate::ActionRouter;
@@ -31,12 +34,13 @@ use crate::ClientIp;
 use crate::EventRouter;
 use crate::RuntimeServer;
 use crate::WEBHOOK_PATH;
+use crate::WebOrigins;
 use crate::router_trace;
 use server_wire::WireSnapshot;
 use server_wire::WireSyncStatus;
 
 /// Every route, over one runtime.
-pub(crate) fn router(runtime: Arc<RuntimeServer>) -> Router {
+pub(crate) fn router(runtime: Arc<RuntimeServer>, origins: &WebOrigins) -> Router {
     Router::new()
         .route("/snapshot", get(snapshot))
         .route("/auth/request", post(auth_request))
@@ -50,11 +54,39 @@ pub(crate) fn router(runtime: Arc<RuntimeServer>) -> Router {
         // logged. It is transport, and a line for each would double the
         // traffic in the log without saying anything about it.
         .layer(axum::middleware::from_fn(router_trace::trace))
-        // The phone app is served by trunk on another port, so every request
-        // it makes is cross-origin. This is a development server on localhost;
-        // a deployed one would name its origin instead.
-        .layer(CorsLayer::new().allow_origin(Any).allow_methods(Any))
+        .layer(cors(origins))
         .with_state(runtime)
+}
+
+/// What a browser may do here, and from where.
+///
+/// Only a browser is affected by any of this. The webhook route is under the
+/// layer with everything else and is untouched by it: Plaid sends no `Origin`,
+/// and a request without one is passed through whatever this says.
+///
+/// `allow_headers` is the line that makes the web app work at all, and it is
+/// easy to leave out. Every route here takes either an `Authorization` header
+/// or a JSON `Content-Type`, and neither is on the browsers' safelist — so
+/// every one of them is preflighted, and a preflight that does not name the
+/// header back is a request the browser never sends. That failure arrives as
+/// nothing at all on this side, which is why it is worth writing down.
+///
+/// The headers are listed rather than `Any`, because the wildcard in
+/// `Access-Control-Allow-Headers` deliberately does not cover `Authorization`
+/// — the one header this server most needs to be sent.
+///
+/// Nothing allows credentials, and nothing should: the session is a bearer
+/// token in a header, so there is no cookie for a browser to attach on its own
+/// initiative and no request that carries authority the caller did not put in
+/// it deliberately.
+fn cors(origins: &WebOrigins) -> CorsLayer {
+    CorsLayer::new()
+        .allow_origin(origins.values())
+        .allow_methods([Method::GET, Method::POST])
+        .allow_headers([AUTHORIZATION, CONTENT_TYPE])
+        // How long a browser may reuse one preflight. Without it every call
+        // the web app makes is two round trips to the box rather than one.
+        .max_age(Duration::from_secs(3600))
 }
 
 /// Everything a request can ask for.
@@ -449,5 +481,75 @@ mod tests {
         );
         assert_eq!(json(LinkFinished::Abandoned), r#"{"outcome":"abandoned"}"#);
         assert_eq!(json(LinkFinished::Pending), r#"{"outcome":"pending"}"#);
+    }
+
+    /// The preflight a browser sends ahead of an authenticated call, answered
+    /// by the layer rather than by any route — which is what makes it testable
+    /// with no runtime behind it.
+    async fn preflight(origins: &str, from: &str) -> axum::http::HeaderMap {
+        use tower::ServiceExt;
+
+        let origins = WebOrigins::parse(origins).expect("a literal origin");
+
+        let app = Router::new()
+            .route("/snapshot", get(|| async { "" }))
+            .layer(cors(&origins));
+
+        let request = axum::http::Request::builder()
+            .method(Method::OPTIONS)
+            .uri("/snapshot")
+            .header("origin", from)
+            .header("access-control-request-method", "GET")
+            .header("access-control-request-headers", "authorization")
+            .body(axum::body::Body::empty())
+            .expect("a literal request");
+
+        app.oneshot(request)
+            .await
+            .expect("the layer answers every preflight")
+            .headers()
+            .clone()
+    }
+
+    /// The bug this replaced: `allow_headers` was never set, so the answer
+    /// named no headers and every browser dropped the request it was asking
+    /// about — with nothing arriving here to say so.
+    #[tokio::test]
+    async fn a_preflight_allows_the_headers_an_authenticated_call_carries() {
+        let headers = preflight("https://app.meridiancash.io", "https://app.meridiancash.io").await;
+
+        assert_eq!(
+            headers
+                .get("access-control-allow-origin")
+                .and_then(|value| value.to_str().ok()),
+            Some("https://app.meridiancash.io"),
+        );
+
+        let allowed = headers
+            .get("access-control-allow-headers")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_lowercase();
+
+        assert!(
+            allowed.contains("authorization"),
+            "every route here is behind a bearer token: {allowed}",
+        );
+        assert!(
+            allowed.contains("content-type"),
+            "a JSON body preflights too, and /auth/request has no token: {allowed}",
+        );
+    }
+
+    /// The other half, and the reason the variable exists: an origin nobody
+    /// named is answered without permission rather than with it.
+    #[tokio::test]
+    async fn an_origin_we_do_not_serve_is_not_allowed() {
+        let headers = preflight("https://app.meridiancash.io", "https://evil.example").await;
+
+        assert!(
+            headers.get("access-control-allow-origin").is_none(),
+            "only the origins we serve are named back",
+        );
     }
 }

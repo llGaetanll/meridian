@@ -217,7 +217,7 @@ means adding, changing or removing its example here.
   — once at startup, and again on every sign-in below. A server running this
   way in front of anyone real is a mistake, so it says so rather than being
   quiet about it.
-- `INFO server_main::runtime_server serving live plaid data env=sandbox collect=poll webhook=none email=log`
+- `INFO server_main::runtime_server serving live plaid data env=sandbox collect=poll webhook=none email=log origins=http://127.0.0.1:8080`
   — once at startup. There is no second form of this line any more: the server
   starts with credentials or it does not start. Only ever Sandbox; see
   [PLAID.md](PLAID.md). `webhook` is the address Plaid is told to call, and

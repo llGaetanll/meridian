@@ -48,6 +48,7 @@ mod runtime_server;
 mod session_token;
 mod source_pool;
 mod state_server;
+mod web_origins;
 mod webhook_facts;
 mod webhook_verifier;
 
@@ -86,6 +87,7 @@ pub use state_server::FRESH_FOR_SECS;
 pub use state_server::LINK_ANSWER_GOOD_FOR_SECS;
 pub use state_server::OUTCOME_GOOD_FOR_SECS;
 pub use state_server::StateServer;
+pub use web_origins::WebOrigins;
 pub use webhook_facts::WebhookFacts;
 
 /// Reachable so that `examples/snapshot.rs` can generate the fixture the app's
