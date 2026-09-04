@@ -114,8 +114,10 @@ services:
       # between the two deployments: Caddy reaches the server by service name
       # over this network and needs no published port at all, so publishing one
       # anywhere but loopback would be a second door into the same building.
-      # What it is still good for there is `curl localhost:8082/health` from a
-      # shell on the box, which asks the server rather than the proxy.
+      # What it is still good for there is asking the server something directly
+      # from a shell on the box, rather than through the proxy — see the
+      # `health` subcommand in `scripts/deploy.sh` for the request that says
+      # everything is up.
       - "${SERVER_BIND:-0.0.0.0}:8082:8082"
 
 volumes:

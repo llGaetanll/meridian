@@ -7,6 +7,7 @@
 use crate::ItemFacts;
 use crate::StoredCode;
 use crate::WebhookFacts;
+use crate::rate_limit::Route;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -71,4 +72,29 @@ pub enum EventRouter {
     /// lookup. The machine decides what a webhook *means*, never whether it
     /// is really Plaid's.
     WebhookReceived { webhook: WebhookFacts },
+}
+
+impl EventRouter {
+    /// Which bucket a request for this counts against.
+    ///
+    /// Derived from the variant rather than named by the handler, so a route
+    /// added later cannot forget to be limited — this match will not compile
+    /// until it says which bucket the new one is.
+    ///
+    /// `None` is exempt, and there is exactly one. A webhook is Plaid calling
+    /// us from addresses we do not choose, on a schedule we do not control,
+    /// and a limit set slightly wrong there breaks bank linking silently. What
+    /// protects it is the signature: an unbelieved webhook is refused before
+    /// the machine ever sees it, and believing one is a hash and a comparison.
+    pub fn route(&self) -> Option<Route> {
+        match self {
+            EventRouter::SnapshotRequested { .. } => Some(Route::Snapshot),
+            EventRouter::CodeRequested { .. } => Some(Route::AuthRequest),
+            EventRouter::CodeSubmitted { .. } => Some(Route::AuthVerify),
+            EventRouter::LinkRequested { .. } => Some(Route::LinkStart),
+            EventRouter::LinkClosed { .. } => Some(Route::LinkFinish),
+            EventRouter::SyncStatusRequested { .. } => Some(Route::SyncStatus),
+            EventRouter::WebhookReceived { .. } => None,
+        }
+    }
 }

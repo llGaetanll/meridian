@@ -35,6 +35,7 @@ use crate::ActionRouter;
 use crate::ActionSource;
 use crate::ActionStore;
 use crate::CallId;
+use crate::Client;
 use crate::Event;
 use crate::EventProcess;
 use crate::EventRouter;
@@ -46,6 +47,8 @@ use crate::PlaidCollect;
 use crate::RequestId;
 use crate::WebhookFacts;
 use crate::login_code;
+use crate::rate_limit::ServerRateCtx;
+use crate::rate_limit::ServerRateLimiter;
 use crate::session_token;
 
 /// How long a sync is good for before Plaid is asked again.
@@ -187,6 +190,15 @@ pub struct StateServer {
     /// than a guess in the runtime.
     limiter: PlaidRateLimiter,
 
+    /// What we will let a caller ask of us, which is the same question in the
+    /// other direction and for the same reason: a fact about the last minute,
+    /// held nowhere else, and a rule rather than mechanics.
+    ///
+    /// Swept on the tick. Its keys come from whoever calls us, so a limiter
+    /// that only ever inserted would be the thing that exhausts the server
+    /// (#40).
+    requests: ServerRateLimiter,
+
     /// The next [`CallId`] to hand out. A counter rather than anything drawn,
     /// so the same log replays to the same numbers.
     next_call: CallId,
@@ -273,9 +285,11 @@ impl StateServer {
 
     fn handle_event(&mut self, event: &Event, actions: &mut Vec<Action>) {
         match event {
-            Event::FromRouter { request_id, event } => {
-                self.handle_event_router(*request_id, event, actions)
-            }
+            Event::FromRouter {
+                request_id,
+                client,
+                event,
+            } => self.handle_event_router(*request_id, client, event, actions),
             Event::FromSource { event } => self.handle_event_source(event, actions),
             Event::FromStore { event } => self.handle_event_store(event, actions),
             Event::FromProcess { event } => self.handle_event_process(event, actions),
@@ -286,9 +300,36 @@ impl StateServer {
     fn handle_event_router(
         &mut self,
         request_id: RequestId,
+        client: &Client,
         event: &EventRouter,
         actions: &mut Vec<Action>,
     ) {
+        // Before anything is read, decided or sent. A route that is over its
+        // limit costs one map lookup and a 429, which is the only way a limit
+        // is worth having — checked after the work is a limit on how much we
+        // are thanked for, not on how much we do.
+        //
+        // A route with no bucket is not asked about. There is one, and
+        // [`EventRouter::route`](crate::EventRouter::route) is where it is
+        // named and justified.
+        if let Some(route) = event.route() {
+            let ctx = ServerRateCtx::new(route, client.clone());
+
+            // Asking counts, so this happens once and where nothing can return
+            // early past it and leave a request served but uncounted.
+            if !self.requests.can_send(self.now, &ctx) {
+                tracing::warn!(
+                    client = %client.ip,
+                    route = route.as_str(),
+                    "a caller is over its rate limit",
+                );
+
+                self.answer(request_id, ActionRouter::TooMany, actions);
+
+                return;
+            }
+        }
+
         match event {
             // Free to ask for, and creates nothing at Plaid's end — a session
             // nobody finishes costs nothing and expires on its own. So there
@@ -1071,6 +1112,12 @@ impl StateServer {
                 );
 
                 self.now = *now;
+
+                // Callers who have stopped calling are forgotten here, or the
+                // limiter's maps grow for the life of the process (#40). Free
+                // when there is nothing to drop, and this is the one turn that
+                // happens whether or not anything else did.
+                self.requests.sweep(self.now);
 
                 self.handle_timeouts(actions);
             }

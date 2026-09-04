@@ -171,8 +171,26 @@ case "$cmd" in
 
     # Through the proxy rather than at the server, so it answers the question
     # anyone actually has — can the phone reach this — and exercises DNS, TLS
-    # and Caddy on the way to the same `/health` the dev stack has.
-    health)  curl -fsS "https://${MERIDIAN_DOMAIN:-api.meridiancash.io}/health" && echo ;;
+    # and Caddy on the way.
+    #
+    # A deliberately bad token at `/snapshot`, because there is no `/health` any
+    # more: an unauthenticated route is one more thing anyone on the internet
+    # can make the server do, and this proves strictly more than the old one
+    # did. `authenticate` looks the token up in Postgres before it can reject
+    # it, so a 401 means DNS, TLS, Caddy, the server and the database are all
+    # answering. A store that is down says 500 here, not 401.
+    health)
+        code=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H 'Authorization: Bearer not-a-session' \
+            "https://${MERIDIAN_DOMAIN:-api.meridiancash.io}/snapshot")
+
+        if [ "$code" = "401" ]; then
+            echo "ok store=postgres"
+        else
+            echo "unhealthy: /snapshot answered $code, expected 401" >&2
+            exit 1
+        fi
+        ;;
 
     shell)   exec ssh -t "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && exec \$SHELL -l" ;;
 

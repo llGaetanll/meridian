@@ -68,6 +68,16 @@ pub enum ActionRouter {
     /// in the machine and only while a fetch is running.
     SyncStatus { status: server_wire::WireSyncStatus },
 
+    /// Too many requests, and this one is not being served.
+    ///
+    /// Carries nothing on purpose. The limiter knows when the next call would
+    /// be allowed and deliberately does not say: a caller behaving well does
+    /// not need it, and one behaving badly would be handed the exact shape of
+    /// the limit to sit just inside. One answer, no detail — the same reason
+    /// [`Rejected`](ActionRouter::Rejected) does not say which way the code
+    /// was wrong.
+    TooMany,
+
     /// The code was not good. Deliberately carries no reason: wrong, expired
     /// and exhausted are logged and are not told apart to the caller, because
     /// only somebody working through guesses benefits from knowing which.
