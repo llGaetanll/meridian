@@ -389,13 +389,56 @@ nothing against someone who gets onto a running box, because the volume is
 decrypted the whole time the box is up. It is not a substitute for sealing the
 access token, and sealing the access token is not a substitute for it.
 
+## The server's connection to Postgres
+
+The server reaches the database over TLS and checks the certificate:
+`sslmode=verify-full`, set in `docker-compose.yml` on the `DATABASE_URL` that
+compose builds. Postgres serves it with a certificate from a CA of our own,
+made by `scripts/db-certs.sh`.
+
+**The mode is stated rather than defaulted, and that is most of the point.**
+sqlx defaults to `prefer` — try TLS, fall back to plain text, say nothing
+either way — which is how this connection was in the clear with nothing in the
+repo admitting it. It is worse than it sounds: `prefer` against a server that
+does offer TLS takes it *without checking the certificate*, which looks secure
+and is not. `require` has the same hole on purpose — it encrypts and accepts
+any certificate at all, so it stops a listener and not the machine that
+answers. `verify-full` is the only one of the three that authenticates, and it
+also checks the name, which is why the certificate carries `db`.
+
+The certificates are made **on the machine that uses them** and never travel:
+the laptop has its own, the box has its own, and the two are unrelated. That is
+why `deploy.sh ship` pipes the script over ssh rather than copying a key — a
+private key that has been sent somewhere has been on two disks and in whatever
+carried it. `certs/` is gitignored.
+
+Two things worth knowing before this surprises somebody:
+
+- **Postgres will not start without them.** `ship` and `up` both run the script
+  before bringing anything up, and it is a no-op when the files are there, so
+  a box that has certificates keeps them rather than getting a new key under a
+  running database on every deploy. `./scripts/deploy.sh certs --force`
+  replaces them deliberately, and wants an `up` after it, not a `restart` —
+  Postgres reads the certificate when it starts.
+- **Ten years, on purpose.** A certificate that expires takes the database down
+  with no code having changed, at whatever hour it lands, and nobody here is
+  set up to rotate one. The key is worth what the machine it sits on is worth,
+  and that machine already holds the database it protects.
+
+`ssl = on` offers TLS; it does not require it. What requires it is the client
+saying so, which the server does and host tooling on loopback deliberately does
+not — `.env.example` has that reasoning. The day the database leaves this box,
+that changes with it: a managed Postgres, a replica or a second machine all
+mean `verify-full` everywhere, and it is the same trigger as the volume
+question above.
+
 ## What has to be true before this holds real money
 
 The box being up is not the same as it being ready, and #20 tracks the rest.
 What is specifically about facing the internet:
 
-- **The server talks to Postgres in plain text** (#34), and **the volume is not
-  encrypted at rest** (#33) — the section above says what that does and does
-  not protect.
+- **The volume is not encrypted at rest** (#33) — accepted, with a trigger. The
+  server no longer talks to Postgres in plain text (#34); the section above has
+  both.
 - **Backups are weekly whole-disk snapshots, plus a dump somebody remembers to
   take** (#38). Neither is off-site, and neither carries `MERIDIAN_DB_KEY`.

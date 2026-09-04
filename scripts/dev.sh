@@ -60,6 +60,13 @@ if ! docker info >/dev/null 2>&1; then
     exit 1
 fi
 
+# The database serves TLS and will not start without a certificate, so a fresh
+# clone would fail here with a Postgres error rather than a useful one. Making
+# them is instant and idempotent, so it costs a stat on every other run.
+if [ ! -f certs/server.key ]; then
+    ./scripts/db-certs.sh
+fi
+
 cmd=logs
 if [ $# -gt 0 ]; then
     cmd=$1

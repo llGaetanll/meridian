@@ -10,6 +10,7 @@
 #     ./scripts/deploy.sh up            after a down
 #     ./scripts/deploy.sh down          stop and remove everything
 #     ./scripts/deploy.sh restart       restart, same image
+#     ./scripts/deploy.sh certs         the database's TLS certificate
 #     ./scripts/deploy.sh ps            what is actually running
 #     ./scripts/deploy.sh logs          the last few minutes, and return
 #     ./scripts/deploy.sh watch         follow them, in a window of its own
@@ -104,6 +105,17 @@ case "$cmd" in
         scp docker-compose.yml docker-compose.prod.yml Caddyfile \
             "$MERIDIAN_HOST:$MERIDIAN_PATH/"
 
+        # Before `up`, because the compose file just copied mounts `./certs`
+        # and Postgres will not start without what is in it. A box that has
+        # them keeps them: the script is a no-op the second time, so this is
+        # not a key that changes under a running database on every deploy.
+        #
+        # Made *there* rather than sent. The private key stays on the one
+        # machine that needs it, which also means the laptop's certificate and
+        # the box's are unrelated — losing one tells you nothing about the
+        # other.
+        ssh "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && sh -s" < scripts/db-certs.sh
+
         # Gzipped because the layer that carries the binary does not compress
         # on the wire otherwise, and this runs over whatever connection the
         # laptop has rather than a datacentre one.
@@ -133,7 +145,26 @@ case "$cmd" in
         remote "$COMPOSE up -d"
         ;;
 
-    up)      remote "$COMPOSE up -d $*" ;;
+    # Certificates first, for `ship`'s reason: the compose file mounts them and
+    # Postgres will not start without them. A no-op once the box has them.
+    up)
+        ssh "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && sh -s" < scripts/db-certs.sh
+        remote "$COMPOSE up -d $*"
+        ;;
+
+    # The database's TLS certificate, made on the box and kept there. Only
+    # needed by hand to replace one — `ship` and `up` already call it, and it
+    # does nothing when they are already in place.
+    #
+    #     ./scripts/deploy.sh certs           make them if they are missing
+    #     ./scripts/deploy.sh certs --force   make them again
+    #
+    # `--force` is followed by an `up` rather than a `restart`: Postgres reads
+    # the certificate when it starts, and a restart of the container is what
+    # picks a new one up.
+    certs)
+        ssh "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && sh -s -- $*" < scripts/db-certs.sh
+        ;;
     down)    remote "$COMPOSE down $*" ;;
     restart) remote "$COMPOSE restart $*" ;;
     ps)      remote "$COMPOSE ps $*" ;;
@@ -195,7 +226,7 @@ case "$cmd" in
     shell)   exec ssh -t "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && exec \$SHELL -l" ;;
 
     *)
-        echo "usage: $0 [ship|rollback|up|down|restart|ps|logs|watch|health|shell] [args...]" >&2
+        echo "usage: $0 [ship|rollback|up|down|restart|certs|ps|logs|watch|health|shell] [args...]" >&2
         exit 1
         ;;
 esac

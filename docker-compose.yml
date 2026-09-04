@@ -31,6 +31,42 @@ services:
     volumes:
       - meridian-db:/var/lib/postgresql/data
 
+      # Made by scripts/db-certs.sh, per machine, and never committed. Read
+      # only: what the container needs from them it copies out below.
+      - ./certs:/certs:ro
+
+    # Postgres will not start with a key it considers readable by anyone else,
+    # and a bind mount arrives with whatever ownership the host gave it —
+    # `staff` on a Mac, `meridian` on the box, neither of them `postgres`.
+    # Copying to a private directory owned by `postgres` is what makes the same
+    # compose file work in both places, and it is why this runs before the real
+    # entrypoint rather than being solved with `chown` on the host.
+    #
+    # `$$@` is the `command:` below: compose appends it, `sh -c` takes it after
+    # the `--`, and `docker-entrypoint.sh` gets it unchanged.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        install -d -o postgres -g postgres -m 700 /etc/postgresql/certs
+        install -o postgres -g postgres -m 600 /certs/server.key /etc/postgresql/certs/server.key
+        install -o postgres -g postgres -m 644 /certs/server.crt /etc/postgresql/certs/server.crt
+        exec docker-entrypoint.sh "$$@"
+      - --
+
+    # `ssl=on` offers TLS; it does not require it. What requires it is the
+    # client saying `sslmode=verify-full`, which the server does below. Host
+    # tooling — psql, scripts/db-shell.sh — keeps connecting as it did.
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/postgresql/certs/server.crt
+      - -c
+      - ssl_key_file=/etc/postgresql/certs/server.key
+
     # What makes `depends_on` below mean anything. Without it the server starts
     # the moment the container exists rather than when Postgres is listening,
     # races it, and fails on a cold `up` — which is exactly the confidence this
@@ -70,7 +106,19 @@ services:
       # `db` rather than localhost: inside the network the database is a
       # service name. This is the one setting that has to differ between a
       # server in a container and one on the host.
-      DATABASE_URL: postgres://${POSTGRES_USER:-meridian}:${POSTGRES_PASSWORD:-meridian}@db:5432/${POSTGRES_DB:-meridian}
+      #
+      # `sslmode=verify-full` is stated rather than left to sqlx, whose default
+      # is `prefer` — try TLS, fall back to plain text, say nothing either way.
+      # That default is how this connection was in the clear without anything
+      # in the repo admitting it, and it is worse than it sounds: the day
+      # Postgres offers TLS, `prefer` takes it without checking the
+      # certificate, which looks secure and is not.
+      #
+      # `verify-full` and not `require`: `require` encrypts and accepts any
+      # certificate at all, so it stops a passive listener and not the one that
+      # answers. `verify-full` also checks the name, which is why the
+      # certificate carries `db` — see scripts/db-certs.sh.
+      DATABASE_URL: postgres://${POSTGRES_USER:-meridian}:${POSTGRES_PASSWORD:-meridian}@db:5432/${POSTGRES_DB:-meridian}?sslmode=verify-full&sslrootcert=/certs/ca.crt
 
       # Required wherever DATABASE_URL is: it opens the access token column,
       # and a server that cannot read its own credentials has nothing to serve.
@@ -109,6 +157,12 @@ services:
       # is a lot of new behaviour to buy one thing. `NO_COLOR` still wins, for
       # anyone who wants it off.
       CLICOLOR_FORCE: "1"
+
+    volumes:
+      # The CA the database's certificate is checked against, and nothing else
+      # — no key, because verifying a signature needs none. Named by
+      # `sslrootcert` in DATABASE_URL above.
+      - ./certs/ca.crt:/certs/ca.crt:ro
 
     ports:
       # Every interface on a laptop, because a real phone on the LAN is one of
