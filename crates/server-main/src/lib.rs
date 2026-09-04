@@ -86,6 +86,7 @@ pub use state_server::CALL_GOOD_FOR_SECS;
 pub use state_server::FRESH_FOR_SECS;
 pub use state_server::LINK_ANSWER_GOOD_FOR_SECS;
 pub use state_server::OUTCOME_GOOD_FOR_SECS;
+pub use state_server::SWEEP_SESSIONS_EVERY_SECS;
 pub use state_server::StateServer;
 pub use web_origins::WebOrigins;
 pub use webhook_facts::WebhookFacts;

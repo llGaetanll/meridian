@@ -752,6 +752,17 @@ impl RuntimeServer {
                 created.await?;
             }
 
+            ActionStore::SweepSessions { call_id: _, now } => {
+                let gone = src_postgres::sweep_sessions(db, *now).await?;
+
+                // Silent when there was nothing to drop, which is most hours.
+                // A line an hour saying so would be the log's most common
+                // entry and its least informative.
+                if gone > 0 {
+                    tracing::info!(sessions = gone, "swept expired sessions");
+                }
+            }
+
             ActionStore::SaveLink {
                 call_id: _,
                 link_token,
@@ -1097,6 +1108,7 @@ impl RuntimeServer {
             | ActionStore::RecordAttempt { .. }
             | ActionStore::DeleteCode { .. }
             | ActionStore::CreateSession { .. }
+            | ActionStore::SweepSessions { .. }
             | ActionStore::SaveLink { .. }
             | ActionStore::CollectLink { .. }
             | ActionStore::SaveItem { .. } => {}

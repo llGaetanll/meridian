@@ -66,8 +66,9 @@ pub async fn delete_session(db: &Db, token_sha256: &[u8]) -> Result<(), Postgres
 
 /// Drop every session that has already expired.
 ///
-/// Nothing calls this on a timer yet. It exists so that the table has a stated
-/// way to be swept, rather than the question being discovered later.
+/// Housekeeping rather than correctness: [`user_for_session`] already filters
+/// on expiry, so this is about the table not growing forever. The server's
+/// state machine asks for it about once an hour.
 pub async fn sweep_sessions(db: &Db, now: Timestamp) -> Result<u64, PostgresError> {
     let done = sqlx::query!(
         "DELETE FROM sessions WHERE expires_at IS NOT NULL AND expires_at <= $1",

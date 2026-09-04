@@ -426,6 +426,9 @@ means adding, changing or removing its example here.
 - `INFO server_main::runtime_server shutting down` / `INFO server_main::runtime_server server stopped`
   — SIGINT becomes a `FromTerminal` event, so shutdown is a decision the state
   machine makes rather than something a signal handler does behind its back.
+- `INFO server_main::runtime_server swept expired sessions sessions=3`
+  — the hourly sweep the machine asks for, logged only when it dropped
+  something. Most hours it drops nothing and says nothing.
 - `WARN server_main::runtime_server a connection needs the user to sign in again; syncs will fail until they do`
 - `ERROR server_main::runtime_plaid a compiled-in fixture failed to parse fixture=sync error="…"`
   — a build-time mistake, logged rather than panicked on.

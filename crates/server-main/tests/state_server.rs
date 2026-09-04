@@ -232,7 +232,44 @@ fn a_tick_on_a_quiet_server_does_nothing() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 3600) } },
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 1) } },
+    );
+}
+
+/// Once an hour a quiet server does decide one thing: the expired sessions go.
+/// Nobody is waiting on it — an expired session already signs nobody in — and
+/// it is the machine that asks, so the same log replays the same sweeps (#24).
+#[test]
+fn expired_sessions_are_swept_on_the_hour() {
+    let mut state = state();
+
+    eval!(&mut state,
+        // Not yet. The clock is what decides, and a second short is short.
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS - 1) } },
+
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS) } },
+        > Action::ToStore { action: ActionStore::SweepSessions { .. } },
+
+        // And not again on the tick after it.
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS + 1) } },
+
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 2 * SWEEP_SESSIONS_EVERY_SECS) } },
+        > Action::ToStore { action: ActionStore::SweepSessions { .. } },
+    );
+}
+
+/// A machine on its way out sweeps nothing. It writes what is outstanding and
+/// starts nothing new, and a table that grows for the seconds a process takes
+/// to stop grows by nothing.
+#[test]
+fn a_stopping_server_does_not_sweep() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromTerminal { event: EventTerminal::SigInt },
+        > Action::ToProcess { action: ActionProcess::Shutdown },
+
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS) } },
     );
 }
 

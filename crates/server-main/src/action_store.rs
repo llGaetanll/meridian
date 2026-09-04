@@ -44,6 +44,20 @@ pub enum ActionStore {
         expires_at: api_common::Timestamp,
     },
 
+    /// Drop every session that has already expired.
+    ///
+    /// Housekeeping rather than correctness: an expired session signs nobody
+    /// in either way, because the lookup filters on expiry. Without this the
+    /// table only ever grows (#24).
+    ///
+    /// Carries the clock, like everything else the machine decided from, so
+    /// the row a sweep drops is the one the machine reckoned was expired
+    /// rather than one a runtime read a moment later.
+    SweepSessions {
+        call_id: CallId,
+        now: api_common::Timestamp,
+    },
+
     /// Remember that this user opened this Link session.
     ///
     /// Written before the URL reaches them, so there is no window in which a
@@ -122,7 +136,8 @@ impl ActionStore {
             | Self::CollectLink { call_id, .. }
             | Self::SaveItem { call_id, .. }
             | Self::SaveFetched { call_id, .. }
-            | Self::SaveStatus { call_id, .. } => *call_id,
+            | Self::SaveStatus { call_id, .. }
+            | Self::SweepSessions { call_id, .. } => *call_id,
         }
     }
 }
