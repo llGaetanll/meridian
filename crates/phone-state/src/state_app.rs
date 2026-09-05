@@ -218,8 +218,11 @@ impl StateApp {
             }
 
             EventUi::RefreshRequested => {
+                // The same ask as any other. The gesture is worth keeping —
+                // it is how somebody says "look again now" — but what it
+                // reaches is the server's freshness window, not Plaid.
                 actions.push(Action::ToSource {
-                    action: ActionSource::LoadSnapshot { force: true },
+                    action: ActionSource::LoadSnapshot,
                 });
             }
 
@@ -346,7 +349,7 @@ impl StateApp {
                     });
 
                     actions.push(Action::ToSource {
-                        action: ActionSource::LoadSnapshot { force: false },
+                        action: ActionSource::LoadSnapshot,
                     });
                 }
             }
@@ -416,7 +419,7 @@ impl StateApp {
                     self.onboarding = None;
 
                     actions.push(Action::ToSource {
-                        action: ActionSource::LoadSnapshot { force: false },
+                        action: ActionSource::LoadSnapshot,
                     });
                 }
 

@@ -42,14 +42,14 @@ fn main() {
         "server_main::router_trace",
         "192.168.1.24:53112",
         "GET",
-        "/snapshot?refresh=true",
+        "/snapshot",
     )
     .answered(200, Some(91233));
 
     ApiCall::get(
         "phone_main::runtime_io",
         MERIDIAN,
-        "http://127.0.0.1:8082/snapshot?refresh=true",
+        "http://127.0.0.1:8082/snapshot",
     )
     .response(
         200,

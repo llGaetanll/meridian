@@ -3385,14 +3385,15 @@ public object FfiConverterTypeAction : FfiConverterRustBuffer<Action> {
 
 sealed class ActionSource {
     /**
-     * Go and get everything. `force` skips whatever cache sits in the way,
-     * which is what pull-to-refresh means.
+     * Go and get everything.
+     *
+     * It carries nothing. Pull-to-refresh used to send `?refresh=true`, which
+     * skipped the server's freshness window and went straight to Plaid — a
+     * gesture anybody can repeat, spending an account-wide budget. When to
+     * ask a bank again is the server's decision, so this asks for the ledger
+     * and the server decides where the ledger comes from.
      */
-    data class LoadSnapshot(
-        val `force`: kotlin.Boolean,
-    ) : ActionSource() {
-        companion object
-    }
+    object LoadSnapshot : ActionSource()
 
     /**
      * Read who the device says is signed in. The first thing the app asks
@@ -3477,9 +3478,7 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
     override fun read(buf: ByteBuffer): ActionSource =
         when (buf.getInt()) {
             1 -> {
-                ActionSource.LoadSnapshot(
-                    FfiConverterBoolean.read(buf),
-                )
+                ActionSource.LoadSnapshot
             }
 
             2 -> {
@@ -3525,8 +3524,7 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
             is ActionSource.LoadSnapshot -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
-                    4UL +
-                        FfiConverterBoolean.allocationSize(value.`force`)
+                    4UL
                 )
             }
 
@@ -3590,7 +3588,6 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
         when (value) {
             is ActionSource.LoadSnapshot -> {
                 buf.putInt(1)
-                FfiConverterBoolean.write(value.`force`, buf)
                 Unit
             }
 

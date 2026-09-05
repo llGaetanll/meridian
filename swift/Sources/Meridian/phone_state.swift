@@ -3404,11 +3404,15 @@ public func FfiConverterTypeAction_lower(_ value: Action) -> RustBuffer {
 public enum ActionSource: Equatable, Hashable {
     
     /**
-     * Go and get everything. `force` skips whatever cache sits in the way,
-     * which is what pull-to-refresh means.
+     * Go and get everything.
+     *
+     * It carries nothing. Pull-to-refresh used to send `?refresh=true`, which
+     * skipped the server's freshness window and went straight to Plaid — a
+     * gesture anybody can repeat, spending an account-wide budget. When to
+     * ask a bank again is the server's decision, so this asks for the ledger
+     * and the server decides where the ledger comes from.
      */
-    case loadSnapshot(force: Bool
-    )
+    case loadSnapshot
     /**
      * Read who the device says is signed in. The first thing the app asks
      * for, because the answer decides whether it opens on the Ledger or on
@@ -3489,8 +3493,7 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .loadSnapshot(force: try FfiConverterBool.read(from: &buf)
-        )
+        case 1: return .loadSnapshot
         
         case 2: return .loadSession
         
@@ -3516,10 +3519,9 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
         switch value {
         
         
-        case let .loadSnapshot(force):
+        case .loadSnapshot:
             writeInt(&buf, Int32(1))
-            FfiConverterBool.write(force, into: &buf)
-            
+        
         
         case .loadSession:
             writeInt(&buf, Int32(2))

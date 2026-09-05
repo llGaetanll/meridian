@@ -38,10 +38,13 @@ enum RuntimeIo {
     /// The token is required rather than optional. `/snapshot` is somebody's
     /// bank transactions and has no unauthenticated form, so a call without
     /// one is a bug here rather than a request the server might answer.
-    static func snapshot(force: Bool, token: String) async throws -> String {
-        let path = force ? "\(server)/snapshot?refresh=true" : "\(server)/snapshot"
-
-        guard let url = URL(string: path) else {
+    ///
+    /// It asks for nothing but the ledger. There is no way to demand a trip to
+    /// Plaid, and there used to be one: pull-to-refresh sent `?refresh=true`,
+    /// which skipped the server's freshness window. When to go back to a bank
+    /// is the server's decision, and a gesture anybody can repeat is not.
+    static func snapshot(token: String) async throws -> String {
+        guard let url = URL(string: "\(server)/snapshot") else {
             throw Failure.unreachable
         }
 

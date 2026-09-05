@@ -175,7 +175,7 @@ impl RuntimeApp {
 
     fn perform_action_source(&self, action: &ActionSource) {
         match action {
-            ActionSource::LoadSnapshot { force } => self.load_snapshot(*force),
+            ActionSource::LoadSnapshot => self.load_snapshot(),
 
             ActionSource::LoadSession => self.load_session(),
 
@@ -221,7 +221,7 @@ impl RuntimeApp {
     /// Whatever comes back re-enters the machine as an event, which is what
     /// closes the loop: nothing here inspects the answer or decides anything
     /// about it.
-    fn load_snapshot(&self, force: bool) {
+    fn load_snapshot(&self) {
         // Two refreshes at once would race to write the same state, and the
         // slower one would win. One at a time.
         if self.loading.get_untracked() {
@@ -233,7 +233,7 @@ impl RuntimeApp {
         let runtime = *self;
 
         spawn_local(async move {
-            let event = match runtime_io::fetch_snapshot(force).await {
+            let event = match runtime_io::fetch_snapshot().await {
                 Ok(json) => EventSource::SnapshotLoaded { json },
                 Err(message) => EventSource::LoadFailed { message },
             };
