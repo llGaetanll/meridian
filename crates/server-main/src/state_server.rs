@@ -54,6 +54,10 @@ use crate::rate_limit::Route;
 use crate::rate_limit::ServerRateCtx;
 use crate::rate_limit::ServerRateLimiter;
 use crate::session_token;
+use src_plaid::PlaidJwk;
+use src_plaid::PlaidWebhook;
+use src_plaid::PlaidWebhookJwt;
+use src_plaid::PlaidWebhookKind;
 use uuid::Uuid;
 
 /// How long a sync is good for before Plaid is asked again.
@@ -105,6 +109,34 @@ pub const SESSION_GOOD_FOR_SECS: u64 = 90 * 24 * 60 * 60;
 /// for the life of the deployment (#24). An hour against a session that lasts
 /// ninety days is as near to continuous as makes no difference.
 pub const SWEEP_SESSIONS_EVERY_SECS: u64 = 60 * 60;
+
+/// How long a `kid` Plaid would not answer for is remembered as a miss.
+///
+/// Short, because the two reasons for a miss want opposite things. A `kid`
+/// somebody invented should cost one call to Plaid however often they send it;
+/// a real key we failed to fetch — Plaid briefly down — must not be refused
+/// for the rest of this process's life. Five minutes serves both.
+pub const WEBHOOK_KEY_MISS_GOOD_FOR_SECS: u64 = 5 * 60;
+
+/// How many webhook signing keys are remembered at once.
+///
+/// Generous next to the handful Plaid rotates through, and finite because the
+/// ids come off tokens strangers send. Full means the misses are swept, and if
+/// it is still full a webhook naming an unknown key is refused rather than
+/// allowed to cause a call — which is the whole point of remembering them, so
+/// it is also what happens when there is no more room.
+pub const WEBHOOK_KEYS_AT_MOST: usize = 64;
+
+/// A webhook signing key, or the fact that there was not one.
+#[derive(Debug)]
+struct CachedKey {
+    /// `None` is a miss: Plaid did not answer for this id.
+    key: Option<PlaidJwk>,
+
+    /// When it was fetched. Only a miss expires; a key for a given `kid` is
+    /// the same key forever, because rotation gives the new one a new id.
+    at: Timestamp,
+}
 
 /// A call in flight, and the route that wants its answer.
 #[derive(Debug)]
@@ -170,6 +202,13 @@ enum Pending {
     /// halves of who they are are known, and the event carrying the address is
     /// long gone by then.
     Authenticating { ip: ClientIp, event: Authenticated },
+
+    /// A webhook waiting on the key it says it was signed with. Held whole,
+    /// because nothing about it can be believed until the key arrives.
+    WebhookKey { jwt: String, body: Vec<u8> },
+
+    /// A believed webhook waiting on the bank it names.
+    WebhookItem { item_id: String },
 
     /// A request whose caller is known, waiting on the rows it decides from.
     /// The second hop, and the last one before anything is decided.
@@ -354,6 +393,12 @@ pub struct StateServer {
 
     /// When the current batch is being handled.
     now: Timestamp,
+
+    /// What is known about each webhook signing key, by the `kid` a token
+    /// named. Swept on the tick, like the request limiter and for the same
+    /// reason: the keys are the only thing here whose names come from
+    /// strangers.
+    keys: HashMap<String, CachedKey>,
 
     /// When the store's expired sessions were last swept.
     ///
@@ -561,8 +606,8 @@ impl StateServer {
                 });
             }
 
-            EventRouter::WebhookReceived { webhook } => {
-                self.handle_webhook(request_id, webhook, actions)
+            EventRouter::WebhookReceived { jwt, body } => {
+                self.believe(request_id, jwt, body, actions)
             }
 
             // Decided once this user's banks have landed, two turns on.
@@ -962,6 +1007,215 @@ impl StateServer {
     /// believed by the time it is an event — see
     /// [`WebhookFacts`](crate::WebhookFacts) — the same way a `user_id` on any
     /// other router event is already a session that checked out.
+    /// Whether this really is Plaid, and if so what it said.
+    ///
+    /// Every check is here rather than at the edge, because every one of them
+    /// is a rule: which algorithm is acceptable, whether a key is worth
+    /// fetching, how long a `kid` nobody has ever heard of stays refused, and
+    /// whether the signature is inside its replay window. None of that needs a
+    /// socket, and all of it is now something an `eval!` test can reach.
+    fn believe(
+        &mut self,
+        request_id: RequestId,
+        jwt: &str,
+        body: &[u8],
+        actions: &mut Vec<Action>,
+    ) {
+        // Everything free happens before anything expensive: this refuses the
+        // wrong algorithm, which is what stops a made-up `kid` reaching a call
+        // to Plaid.
+        let parsed = match PlaidWebhookJwt::parse(jwt) {
+            Ok(parsed) => parsed,
+
+            Err(rejection) => {
+                tracing::warn!(%rejection, "a webhook was not believed");
+
+                self.answer(request_id, ActionRouter::Unauthorized, actions);
+
+                return;
+            }
+        };
+
+        match self.known(parsed.kid()) {
+            // A key we hold. Nothing to wait for.
+            Some(Some(key)) => self.verified(request_id, &parsed, &key, body, actions),
+
+            // A miss still standing. Refused without asking Plaid again, which
+            // is the whole reason a miss is remembered at all.
+            Some(None) => {
+                tracing::warn!(
+                    kid = parsed.kid(),
+                    "a webhook named a key plaid does not have"
+                );
+
+                self.answer(request_id, ActionRouter::Unauthorized, actions);
+            }
+
+            None => self.fetch_webhook_key(request_id, parsed.kid(), jwt, body, actions),
+        }
+    }
+
+    /// Go and ask Plaid for a key, if there is room to remember the answer.
+    ///
+    /// The one place an unauthenticated request can cause an outbound call, so
+    /// what bounds it is here rather than in whatever makes the call: no room
+    /// left means refused, not asked.
+    fn fetch_webhook_key(
+        &mut self,
+        request_id: RequestId,
+        kid: &str,
+        jwt: &str,
+        body: &[u8],
+        actions: &mut Vec<Action>,
+    ) {
+        if self.keys.len() >= WEBHOOK_KEYS_AT_MOST {
+            tracing::error!(
+                kid,
+                "refusing to fetch another webhook key: too many have been asked for",
+            );
+
+            self.answer(request_id, ActionRouter::Unauthorized, actions);
+
+            return;
+        }
+
+        let call_id = self.calling(request_id);
+
+        self.pending.insert(
+            call_id,
+            Pending::WebhookKey {
+                jwt: jwt.to_string(),
+                body: body.to_vec(),
+            },
+        );
+
+        actions.push(Action::ToSource {
+            action: ActionSource::FetchWebhookKey {
+                call_id,
+                kid: kid.to_string(),
+            },
+        });
+    }
+
+    /// The signature holds. What did it say?
+    ///
+    /// The body is read only now. One that was parsed before its hash was
+    /// checked is a body a stranger wrote.
+    fn verified(
+        &mut self,
+        request_id: RequestId,
+        jwt: &PlaidWebhookJwt,
+        key: &PlaidJwk,
+        body: &[u8],
+        actions: &mut Vec<Action>,
+    ) {
+        if let Err(rejection) = jwt.verify(key, body, self.now.as_secs() as i64) {
+            tracing::warn!(%rejection, "a webhook was not believed");
+
+            self.answer(request_id, ActionRouter::Unauthorized, actions);
+
+            return;
+        }
+
+        let webhook: PlaidWebhook = match serde_json::from_slice(body) {
+            Ok(webhook) => webhook,
+
+            Err(e) => {
+                tracing::error!(error = %e, "plaid signed a body that is not JSON");
+
+                self.answer(request_id, ActionRouter::Unauthorized, actions);
+
+                return;
+            }
+        };
+
+        tracing::info!(
+            webhook_type = webhook.webhook_type,
+            webhook_code = webhook.webhook_code,
+            "a webhook arrived from plaid",
+        );
+
+        let facts = match webhook.kind() {
+            PlaidWebhookKind::SessionFinished {
+                link_token,
+                public_tokens,
+            } => WebhookFacts::SessionFinished {
+                link_token,
+                public_tokens,
+            },
+
+            // The one kind that cannot be acted on without a read: a webhook
+            // names a bank rather than a person, so where its last sync
+            // reached is looked up before anything is decided.
+            PlaidWebhookKind::SyncUpdatesAvailable { item_id } => {
+                let call_id = self.calling(request_id);
+
+                self.pending.insert(
+                    call_id,
+                    Pending::WebhookItem {
+                        item_id: item_id.clone(),
+                    },
+                );
+
+                actions.push(Action::ToStore {
+                    action: ActionStore::LoadItem { call_id, item_id },
+                });
+
+                return;
+            }
+
+            PlaidWebhookKind::LoginRequired { item_id } => WebhookFacts::Login {
+                item_id,
+                required: true,
+            },
+
+            PlaidWebhookKind::LoginRepaired { item_id } => WebhookFacts::Login {
+                item_id,
+                required: false,
+            },
+
+            PlaidWebhookKind::Other => WebhookFacts::Ignored {
+                webhook_type: webhook.webhook_type,
+                webhook_code: webhook.webhook_code,
+            },
+        };
+
+        self.handle_webhook(request_id, &facts, actions);
+    }
+
+    /// What is already known about this `kid`.
+    ///
+    /// Three answers, not two: `Some(Some(key))` is a hit, `Some(None)` is a
+    /// miss still standing, and `None` is nothing known — which is the only
+    /// one that goes on to ask Plaid.
+    fn known(&self, kid: &str) -> Option<Option<PlaidJwk>> {
+        let cached = self.keys.get(kid)?;
+
+        // A key never expires: rotation gives the new one a new id. A miss
+        // does, or Plaid being down for a minute would refuse a real key for
+        // the life of the process.
+        if cached.key.is_none()
+            && self.now.since(cached.at).as_secs() >= WEBHOOK_KEY_MISS_GOOD_FOR_SECS
+        {
+            return None;
+        }
+
+        Some(cached.key.clone())
+    }
+
+    /// Drop the misses that have expired.
+    ///
+    /// Only the misses: a key is the same key forever. Swept on the tick
+    /// rather than when the next webhook arrives, so a burst of invented ids
+    /// cannot fill the map and keep it full.
+    fn sweep_webhook_keys(&mut self) {
+        let now = self.now;
+
+        self.keys.retain(|_, cached| {
+            cached.key.is_some() || now.since(cached.at).as_secs() < WEBHOOK_KEY_MISS_GOOD_FOR_SECS
+        });
+    }
+
     fn handle_webhook(
         &mut self,
         request_id: RequestId,
@@ -1069,6 +1323,45 @@ impl StateServer {
 
     fn handle_event_source(&mut self, event: &EventSource, actions: &mut Vec<Action>) {
         match event {
+            EventSource::WebhookKeyLoaded { call_id, kid, key } => {
+                // Remembered either way. A miss that is not written down is a
+                // call to Plaid for every POST naming an id nobody has.
+                self.keys.insert(
+                    kid.clone(),
+                    CachedKey {
+                        key: key.clone(),
+                        at: self.now,
+                    },
+                );
+
+                let Some(Pending::WebhookKey { jwt, body }) = self.pending.remove(call_id) else {
+                    tracing::error!(call_id, "a key answered a webhook nobody is waiting on");
+
+                    return;
+                };
+
+                let Some(request_id) = self.answered(*call_id) else {
+                    return;
+                };
+
+                let Some(key) = key else {
+                    tracing::warn!(kid, "a webhook named a key plaid does not have");
+
+                    self.answer(request_id, ActionRouter::Unauthorized, actions);
+
+                    return;
+                };
+
+                // Parsed again rather than kept: it is a few hundred bytes of
+                // base64 and doing it twice is cheaper than a variant that
+                // holds a borrow across turns.
+                let Ok(parsed) = PlaidWebhookJwt::parse(&jwt) else {
+                    unreachable!("this token parsed on the turn it arrived")
+                };
+
+                self.verified(request_id, &parsed, key, &body, actions);
+            }
+
             // The lists are a **diff** — what changed since the cursor — and
             // they are handed straight to the store, which applies them. The
             // machine no longer keeps a ledger to apply them to, which is what
@@ -1402,6 +1695,7 @@ impl StateServer {
                 // when there is nothing to drop, and this is the one turn that
                 // happens whether or not anything else did.
                 self.requests.sweep(self.now);
+                self.sweep_webhook_keys();
 
                 self.handle_timeouts(actions);
 
@@ -1427,6 +1721,27 @@ impl StateServer {
                 };
 
                 self.verify_code(request_id, &email, &code, stored.as_ref(), actions);
+            }
+
+            EventStore::ItemLoaded { call_id, item } => {
+                let Some(Pending::WebhookItem { item_id }) = self.pending.remove(call_id) else {
+                    tracing::error!(call_id, "the store answered a bank nobody asked about");
+
+                    return;
+                };
+
+                let Some(request_id) = self.answered(*call_id) else {
+                    return;
+                };
+
+                self.handle_webhook(
+                    request_id,
+                    &WebhookFacts::SyncUpdatesAvailable {
+                        item_id,
+                        item: item.clone(),
+                    },
+                    actions,
+                );
             }
 
             EventStore::ItemsLoaded { call_id, items } => {

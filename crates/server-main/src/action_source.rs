@@ -4,6 +4,14 @@ use crate::CallId;
 
 #[derive(Debug)]
 pub enum ActionSource {
+    /// Fetch the key a webhook says it was signed with.
+    ///
+    /// The one call an unauthenticated request can cause, which is why the
+    /// machine holds what it already knows about each `kid` and asks for one
+    /// at most once. The answer is
+    /// [`EventSource::WebhookKeyLoaded`](crate::EventSource).
+    FetchWebhookKey { call_id: CallId, kid: String },
+
     /// Go and ask Plaid about one Item.
     ///
     /// Names the Item rather than leaving the runtime to pick one. The access

@@ -353,20 +353,12 @@ async fn plaid_webhook(
     headers: axum::http::HeaderMap,
     body: Bytes,
 ) -> StatusCode {
-    let webhook = match runtime.believe_webhook(&headers, &body).await {
-        Ok(webhook) => webhook,
-
-        Err(rejection) => {
-            tracing::warn!(%rejection, "a webhook was not believed");
-
-            return StatusCode::UNAUTHORIZED;
-        }
+    let Some(jwt) = headers
+        .get(src_plaid::VERIFICATION_HEADER)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return StatusCode::UNAUTHORIZED;
     };
-
-    // Read before deciding, the same as every other route here: a webhook
-    // names a bank rather than a person, so what the store holds for it is
-    // looked up and handed in on the event.
-    let webhook = runtime.webhook_facts(webhook).await;
 
     match runtime
         .request(
@@ -374,14 +366,21 @@ async fn plaid_webhook(
             // bucket — `EventRouter::route` says why — so there is nothing to
             // name it by here either.
             Client::anonymous(ip),
-            EventRouter::WebhookReceived { webhook },
+            EventRouter::WebhookReceived {
+                jwt: jwt.to_string(),
+                body: body.to_vec(),
+            },
         )
         .await
     {
-        // `Linked` is the same acceptance one turn further on: a session
-        // whose token was exchanged answers with the count, and the webhook
-        // was still taken.
-        Some(ActionRouter::Accepted | ActionRouter::Linked { .. }) => StatusCode::NO_CONTENT,
+        // `Linked` is the same acceptance one turn further on: a session whose
+        // token was exchanged answers with the count, and the webhook was
+        // still taken.
+        Some(
+            ActionRouter::Accepted | ActionRouter::Linked { .. } | ActionRouter::LinkAbandoned,
+        ) => StatusCode::NO_CONTENT,
+
+        Some(ActionRouter::Unauthorized) => StatusCode::UNAUTHORIZED,
 
         // The machine said nothing, or said it could not. Not answered 2xx on
         // purpose: Plaid sending it again is exactly what we want.
