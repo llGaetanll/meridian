@@ -84,6 +84,14 @@ pub enum EventUi {
 
     /// Open Meridian, on the last screen of first run.
     OnboardingFinished,
+
+    /// Sign out, on the Account tab.
+    ///
+    /// Everything the app holds belongs to the account being signed out of, so
+    /// this is the one event that puts the machine back to where a fresh
+    /// install starts. There is no confirmation: nothing is destroyed, and
+    /// signing in again is the same six digits it was the first time.
+    SignOutRequested,
 }
 
 /// Which half of the filter panel.

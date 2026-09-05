@@ -20,6 +20,8 @@ use api_common::Timestamp;
 use crate::RangeSelection;
 use crate::Screen;
 use crate::StateApp;
+use crate::ViewAccount;
+use crate::ViewAccountBank;
 use crate::ViewAccountRow;
 use crate::ViewBalances;
 use crate::ViewBreakdownSlice;
@@ -77,6 +79,9 @@ pub fn screen(state: &StateApp) -> ViewScreen {
         Screen::Balances => ViewScreen::Balances {
             view: balances(state),
         },
+        Screen::Account => ViewScreen::Account {
+            view: account(state),
+        },
     }
 }
 
@@ -93,6 +98,7 @@ pub fn dock(current: Screen) -> ViewDock {
             item(Screen::Ledger, "Ledger", "ledger"),
             item(Screen::Recurring, "Recurring", "recurring"),
             item(Screen::Balances, "Balances", "balances"),
+            item(Screen::Account, "Account", "user"),
         ],
     }
 }
@@ -467,6 +473,59 @@ fn utilisation(account: &Account, masked: bool) -> Option<String> {
         fmt_money(account.balance),
         fmt_money(limit),
     ))
+}
+
+/// Which banks are attached, and the way out.
+///
+/// The banks are the same [`Connection`]s the Balances screen draws, read a
+/// second way rather than fetched a second time — one state in two places, not
+/// two.
+fn account(state: &StateApp) -> ViewAccount {
+    let banks: Vec<ViewAccountBank> = state
+        .connections()
+        .iter()
+        .map(|connection| ViewAccountBank {
+            id: connection.id.clone(),
+            name: connection.name.clone(),
+            initials: connection.initials.clone(),
+            detail: match &connection.status {
+                ConnectionStatus::Ok { synced_at } => format!(
+                    "{} · {}",
+                    fmt::plural(connection.accounts.len(), "account", "accounts"),
+                    fmt::relative_time(*synced_at, state.now()),
+                ),
+                ConnectionStatus::LoginRequired => "Sign-in expired · not syncing".to_string(),
+            },
+            needs_reconnect: connection.status == ConnectionStatus::LoginRequired,
+        })
+        .collect();
+
+    ViewAccount {
+        banks_label: "Banks".to_string(),
+        banks_empty: banks.is_empty().then(|| no_banks_message(state)),
+        banks,
+        session_label: "Session".to_string(),
+        sign_out_label: "Sign out".to_string(),
+        build: format!("Meridian {}", env!("CARGO_PKG_VERSION")),
+    }
+}
+
+/// What the bank list says when it is empty.
+///
+/// The failure comes first and without the `loaded` guard the ledger's empty
+/// state uses: this is the screen somebody opens *because* the app is not
+/// working, and "no banks connected" over a session the server is refusing
+/// would be the app lying about why it is empty.
+fn no_banks_message(state: &StateApp) -> String {
+    if let Some(error) = state.load_failed() {
+        return error.to_string();
+    }
+
+    if !state.loaded() {
+        return "Loading…".to_string();
+    }
+
+    "No banks connected.".to_string()
 }
 
 fn recurring(state: &StateApp) -> ViewRecurring {

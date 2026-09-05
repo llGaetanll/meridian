@@ -158,6 +158,15 @@ fn path(name: &str) -> AnyView {
         }
         .into_any(),
 
+        // The account tab's. A head and shoulders and nothing else: the app
+        // never asked for a name, so anything more would be a face invented
+        // for somebody who did not give us one.
+        "user" => view! {
+            <circle cx="12" cy="8.5" r="3.8" />
+            <path d="M4.5 20.5a7.5 7.5 0 0 1 15 0" />
+        }
+        .into_any(),
+
         "trash" => view! {
             <path d="M4.5 6.5h15" />
             <path d="M9 6.5V4.8h6v1.7" />

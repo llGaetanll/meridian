@@ -18,7 +18,10 @@ first thing in `main`, before anything worth logging happens.
 - **Every call crossing the network is logged**, both halves of it. The ones
   we make out to Plaid and the price feeds, and the ones a phone makes of us.
   A bug we cannot reproduce has to be fixed from the log alone.
-- **A POST body is logged exactly as it is sent** — see the warning below.
+- **A POST body is logged as it is sent, minus its credentials.** The field
+  names are all there; the value of a `secret` or an `access_token` is replaced
+  by its length. See [Rules a body passes
+  through](#rules-a-body-passes-through).
 - **Data served from the cache is logged too**, marked as cached. A log showing
   only the requests that went out would leave most of a session unaccounted
   for.
@@ -127,30 +130,44 @@ two machines, so each has to stand on its own — and only the web build keeps
 one at all. **The Swift and Kotlin clients do their HTTP in platform code and
 write nothing here**, which is most of why the server end of this matters.
 
-## A log file is currently a credential
+## A log file is not a credential, and is still personal data
 
-**Request bodies are logged verbatim, and a Plaid body carries `client_id` and
-`secret` in it.** That secret is account-wide rather than per-user: anyone
-holding it can read every Item on the Plaid account. So a log file written by
-this build must not be pasted into an issue, attached to a ticket, or sent
-anywhere it would not be reasonable to send the credentials themselves.
+**No Plaid credential reaches a line.** Request bodies are logged field for
+field, and `redact_credentials` replaces the value of every credential-shaped
+one with how many characters it took out:
 
-It is here on purpose. A response tells you what the far end thought you asked
-for; it never tells you what you actually sent, so a request carrying a field
-we did not intend is invisible from the response half of the pair. That is the
-failure mode that cannot be debugged after the fact, and while the Plaid
-integration is being built it is the one worth paying for.
+```
+body="{\"access_token\":\"[redacted 16]\",\"client_id\":\"[redacted 24]\",\"secret\":\"[redacted 30]\"}"
+```
 
-**What has to change before Production**, and neither has been done:
+The field name stays because that is what the request half of a pair is for. A
+response tells you what the far end thought you asked for; it never tells you
+what you actually sent, so a request carrying a field we did not intend is
+invisible from the response half. The *value* was never part of that question.
 
-- Redact `secret` — and anything else credential-shaped — on the way into the
-  line, rather than relying on nobody sharing the file.
-- Decide what an access token counts as. It is not in a request body today
-  because the server holds it, but `/item/public_token/exchange` answers with
-  one, and that is a *response* body, which is also logged.
+The length stays because it is not a secret and it is the one thing that tells
+a wrong secret apart from an empty one — a misconfiguration no other line in
+the log would show.
 
-Everything above is Sandbox-only for now, where the credentials guard nothing
-real. It stops being true the moment `PLAID_ENV` says otherwise.
+Six names are redacted, in requests and responses alike:
+
+| Field | What it opens |
+| --- | --- |
+| `secret` | Every Item on the Plaid account. Account-wide, not per-user. |
+| `client_id` | The other half of that pair. |
+| `access_token` | One bank, permanently. Never expires. |
+| `public_token` | Exchangeable for an access token, for thirty minutes. |
+| `link_token` | A Link session belonging to one of our users. |
+| `hosted_link_url` | The page carrying that token, so the URL is the token. |
+
+The list is `CREDENTIALS` in `api_trace::scrub`, and it is Plaid's vocabulary
+because Plaid is the only source that puts a credential in a body — a price
+feed authenticates with nothing, and Resend with a header. **A source added
+later brings its names to that list rather than writing its own rule.**
+
+What a log file still holds is somebody's ledger, their email address, and —
+under `EMAIL_SEND=log` — their sign-in code. It is personal data and should be
+handled as such; it is no longer a key to the Plaid account.
 
 ## Where lines go
 
@@ -174,7 +191,8 @@ through an ordered list of rules on the way — `api_trace::scrub` — and a sou
 picks the ones that apply to it:
 
 ```rust
-const SOURCE: Source = Source::new("plaid").through(&[scrub::compact_json]);
+const SOURCE: Source =
+    Source::new("plaid").through(&[scrub::redact_credentials, scrub::compact_json]);
 ```
 
 Each rule is a function of the body and a `Context` — the source, the endpoint,
@@ -182,9 +200,20 @@ and whether this is the request or the response — and returns the body the nex
 rule sees. Rules compose because they are ordered, and they live on the source
 so that adding one covers every call it makes.
 
-`compact_json` is the only rule so far. Plaid pretty-prints its responses, and a
-line is cut at 400 characters, so most of what we were keeping was indentation —
-a balance response got as far as the second account's name. It squeezes
+There are two rules, and Plaid runs both.
+
+`redact_credentials` is the one that matters, and it goes first so that no rule
+after it is handed a secret — see [A log file is not a
+credential](#a-log-file-is-not-a-credential-and-is-still-personal-data) for
+which fields it takes and why the length stays. It walks the text rather than
+parsing, for the reason below and one of its own: a body that does not parse is
+exactly when a rule that gave up would hand the log a secret. Anything it
+cannot read to the end of — a response cut mid-flight — it redacts to the end
+of the body rather than to where the reading stopped.
+
+`compact_json` runs after it. Plaid pretty-prints its responses, and a line is
+cut at 400 characters, so most of what we were keeping was indentation — a
+balance response got as far as the second account's name. It squeezes
 whitespace between tokens, leaves whitespace inside strings alone, and leaves a
 body that does not start with `{` or `[` entirely alone, because an HTML error
 page is at its most useful when it is least mangled.
@@ -192,8 +221,8 @@ page is at its most useful when it is least mangled.
 Rules run on the way to the log and nowhere else. The body that gets parsed is
 the one that came off the wire — a caller passes a body in by reference and
 never gets one back, and `Scrub` cannot be run from outside `api-trace` at all.
-That matters most for the rule we have not written yet: a redaction that leaked
-into the request path would put the word `REDACTED` where a secret belonged.
+That matters most for redaction: a rule that leaked into the request path would
+send Plaid `[redacted 30]` where the secret belonged.
 
 **A rule may not change what a body means.** Reformatting says the same thing in
 less space; redaction — the next rule, and why this seam exists at all — says
@@ -260,13 +289,14 @@ means adding, changing or removing its example here.
 - `INFO src_plaid::plaid_client plaid client env=sandbox base_url=https://sandbox.plaid.com/`
   — which environment a session ran against, logged once when the client is
   built. See [PLAID.md](PLAID.md).
-- `INFO src_plaid::plaid_client -> id=1 source=plaid method=POST url=https://sandbox.plaid.com/transactions/sync body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"cursor\":\"CAESJTM3…\",\"secret\":\"xxxx\"}"`
-  — the body as sent, credentials included. See the warning above.
+- `INFO src_plaid::plaid_client -> id=1 source=plaid method=POST url=https://sandbox.plaid.com/transactions/sync body="{\"access_token\":\"[redacted 16]\",\"client_id\":\"[redacted 24]\",\"cursor\":\"CAESJTM3…\",\"secret\":\"[redacted 30]\"}"`
+  — the body as sent, field for field, with the credentials replaced by their
+  length. See [Rules a body passes through](#rules-a-body-passes-through).
 - `INFO src_plaid::plaid_client <- id=1 source=plaid status=200 ms=284 body="{\"added\":[{\"account_id\":\"6Pd…"`
   — Plaid pretty-prints, and this is the same body with the whitespace taken
   back out. See [Rules a body passes through](#rules-a-body-passes-through).
-- `INFO src_plaid::plaid_client -> id=2 source=plaid method=POST url=https://sandbox.plaid.com/accounts/balance/get body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}"`
-- `INFO src_plaid::plaid_client -> id=3 source=plaid method=POST url=https://sandbox.plaid.com/transactions/recurring/get body="{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}"`
+- `INFO src_plaid::plaid_client -> id=2 source=plaid method=POST url=https://sandbox.plaid.com/accounts/balance/get body="{\"access_token\":\"[redacted 16]\",\"client_id\":\"[redacted 24]\",\"secret\":\"[redacted 30]\"}"`
+- `INFO src_plaid::plaid_client -> id=3 source=plaid method=POST url=https://sandbox.plaid.com/transactions/recurring/get body="{\"access_token\":\"[redacted 16]\",\"client_id\":\"[redacted 24]\",\"secret\":\"[redacted 30]\"}"`
   — a GET carries no `body` field at all, rather than an empty one. Yahoo and
   CoinGecko lines below are the same shape as before.
 - `INFO src_plaid transactions synced added=18 modified=0 removed=1`
@@ -393,7 +423,10 @@ means adding, changing or removing its example here.
 - `WARN phone_main::runtime_app first run is not drawn on the web action=StartBankLink`
   — first run is a phone flow for now, and the web answers `LoadSession` as
   already signed in so that it is never walked. A line here means that answer
-  changed and the web reached a road it cannot draw.
+  changed and the web reached a road it cannot draw. `action=ForgetSession` is
+  the same line from the other end: the Account tab's Sign out, which the
+  browser has no stored session to honour — reloading the page signs it back
+  in.
 - `INFO src_yahoo::yahoo_client quote{symbol=SPY range=1D} -> id=2 source=yahoo method=GET url="/v8/finance/chart/SPY?period1=1785542400&period2=1785628800&interval=1m"`
 - `INFO src_yahoo::yahoo_client quote{symbol=SPY range=1D} <- id=2 source=yahoo status=200 ms=412 body="{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"USD\",\"symbol\":\"SPY\"…"`
   — the body as it arrived, cut at 400 characters.
