@@ -342,6 +342,14 @@ means adding, changing or removing its example here.
 - `INFO src_resend email sent id=… to=alex@example.com`
   — what a restart came back with, before anything is fetched. Zeroes are a
   first run, not a failure.
+- `ERROR server_main::state_server could not read the store message=…`
+  — a read the machine asked for came back with nothing it can use. The route
+  is told it cannot be answered rather than refused: a sign-in turned down
+  because the store was down would look exactly like a wrong code.
+- `ERROR server_main::state_server the store answered a sign-in nobody submitted call_id=1`
+  — a read answering a call the machine has no submission for, which cannot
+  happen: every one is recorded when the read is asked for. Reported rather
+  than guessed at, because there is nothing to check the code against.
 - `ERROR server_main::state_server could not write the store message=…`
   — the route waiting on it is answered anyway and serves the rows we already
   had, because a request held for a write that failed is held forever. The

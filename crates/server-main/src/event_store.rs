@@ -1,19 +1,27 @@
 //! The store answered, or failed to.
 //!
-//! A successful *read* is not an event because nothing decides anything about
-//! it: the runtime reads a user's rows on the request path and serves them,
-//! and the only thing the machine wants from the store is the handful of facts
-//! on [`EventRouter::SnapshotRequested`](crate::EventRouter).
-//!
-//! A successful *write* is, because something does decide about it. A route is
-//! told to read the store only once what it is waiting on has landed, and
-//! "landed" is a fact the runtime reports rather than one the machine can
-//! assume.
+//! Both report back. A read carries what it found, because the machine asked
+//! for it and cannot decide without it. A write carries only that it landed,
+//! because that is the whole of what anything decides about one: a route is
+//! released once what it started has been written.
 
 use crate::CallId;
+use crate::StoredCode;
 
 #[derive(Debug)]
 pub enum EventStore {
+    /// What stands against the address a sign-in named. `None` is an address
+    /// with no code, which is a rejection like any other.
+    CodeLoaded {
+        call_id: CallId,
+        stored: Option<StoredCode>,
+    },
+
+    /// A read the store would not answer. Its own event rather than an empty
+    /// answer: "no code" and "we could not look" are different sentences, and
+    /// only one of them is the caller's fault.
+    ReadError { call_id: CallId, message: String },
+
     /// The write landed. The rows a route is about to read are the new ones.
     WriteSuccess { call_id: CallId },
 
