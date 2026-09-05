@@ -33,7 +33,7 @@ use serde::Serialize;
 /// is next due — and no clock. What time it is now is the device's to know:
 /// it has one, it is right, and a phone that had to be told would draw
 /// nothing until the first fetch answered.
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct WireSnapshot {
     /// Newest first.
     #[serde(default)]
@@ -59,7 +59,7 @@ impl WireSnapshot {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WireEntry {
     pub id: String,
     pub ts: Timestamp,
@@ -120,7 +120,7 @@ impl WireEntry {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WireConnection {
     pub id: String,
     pub name: String,
@@ -169,7 +169,7 @@ impl WireConnection {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WireAccount {
     pub id: String,
     pub name: String,
@@ -220,7 +220,7 @@ impl WireAccount {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WireStream {
     pub id: String,
     pub label: String,

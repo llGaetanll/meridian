@@ -142,6 +142,20 @@ impl LinkOutcome {
     }
 }
 
+/// What a request is owed, once everything it started has landed.
+///
+/// Two shapes, because a snapshot is not decided until it is read: the machine
+/// knows it will serve one long before it has one to serve, and the read for
+/// it must not go out until the writes it would race are done.
+#[derive(Debug)]
+enum Owed {
+    /// This action, as it stands.
+    Answer(ActionRouter),
+
+    /// A read first, and the answer is whatever it finds.
+    Snapshot { user_id: Uuid },
+}
+
 /// What a request was doing, while a read it needs is out.
 ///
 /// Only what the machine cannot get back: who is waiting is already in
@@ -156,14 +170,21 @@ enum Pending {
     /// halves of who they are are known, and the event carrying the address is
     /// long gone by then.
     Authenticating { ip: ClientIp, event: Authenticated },
+
+    /// A request whose caller is known, waiting on the rows it decides from.
+    /// The second hop, and the last one before anything is decided.
+    Loading { user_id: Uuid, event: Authenticated },
 }
 
 /// Which authenticated route is waiting, once there is somebody to answer it
 /// for. One per [`EventRouter`](crate::EventRouter) variant that carries a
 /// token.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum Authenticated {
     LinkRequested,
+    LinkClosed,
+    SyncStatusRequested,
+    SnapshotRequested,
 }
 
 impl Authenticated {
@@ -171,6 +192,9 @@ impl Authenticated {
     fn route(&self) -> Route {
         match self {
             Authenticated::LinkRequested => Route::LinkStart,
+            Authenticated::LinkClosed => Route::LinkFinish,
+            Authenticated::SyncStatusRequested => Route::SyncStatus,
+            Authenticated::SnapshotRequested => Route::Snapshot,
         }
     }
 }
@@ -204,6 +228,9 @@ struct Watching {
 fn authenticated(event: &EventRouter) -> Option<Authenticated> {
     match event {
         EventRouter::LinkRequested { .. } => Some(Authenticated::LinkRequested),
+        EventRouter::LinkClosed { .. } => Some(Authenticated::LinkClosed),
+        EventRouter::SyncStatusRequested { .. } => Some(Authenticated::SyncStatusRequested),
+        EventRouter::SnapshotRequested { .. } => Some(Authenticated::SnapshotRequested),
         _ => None,
     }
 }
@@ -277,7 +304,7 @@ pub struct StateServer {
     /// while a write is still in flight serves the rows that write was about to
     /// replace. Everything a request set going has to land first — which is
     /// one rule rather than a note on each route to remember to wait.
-    held: HashMap<RequestId, ActionRouter>,
+    held: HashMap<RequestId, Owed>,
 
     /// Requests waiting on a read, by the call that asked for it. What a
     /// request was has to outlive the turn it arrived in, because what it is
@@ -448,47 +475,10 @@ impl StateServer {
                 unreachable!("a request carrying a token is resolved before it is decided")
             }
 
-            EventRouter::SyncStatusRequested { items } => {
-                // The furthest-behind of this user's running fetches, because
-                // the screen draws one set of rows and the honest thing for it
-                // to show is the stage that has not finished yet. First run
-                // has exactly one bank, so this is a rule for later rather
-                // than one anybody meets today.
-                let status = items
-                    .iter()
-                    .filter_map(|item| self.syncing.get(&item.item_id))
-                    .min_by_key(|status| stage_index(status.stage()))
-                    .map_or_else(WireSyncStatus::idle, Clone::clone);
-
-                self.answer(request_id, ActionRouter::SyncStatus { status }, actions);
-            }
-
-            EventRouter::LinkClosed { pending } => {
-                // Collection already happens, unprompted, so this route sets
-                // nothing going: it stops being a trigger and becomes a
-                // question. Asking Plaid again would spend a call to be told
-                // about a token that has already been exchanged.
-                if self.collects_by_webhook() {
-                    self.handle_link_closed_by_webhook(request_id, pending, actions);
-
-                    return;
-                }
-
-                // Nothing open. Somebody closed a sheet we have no record of,
-                // or collected this one already — either way there is nothing
-                // to go and ask about.
-                if pending.is_empty() {
-                    self.answer(request_id, ActionRouter::LinkAbandoned, actions);
-
-                    return;
-                }
-
-                actions.push(Action::ToSource {
-                    action: ActionSource::PollLinks {
-                        call_id: self.calling(request_id),
-                        link_tokens: pending.clone(),
-                    },
-                });
+            // Both are decided once the rows they read from have landed, two
+            // turns on. Nothing reaches here.
+            EventRouter::SyncStatusRequested { .. } | EventRouter::LinkClosed { .. } => {
+                unreachable!("a request carrying a token is resolved before it is decided")
             }
 
             EventRouter::CodeRequested { email } => {
@@ -575,27 +565,9 @@ impl StateServer {
                 self.handle_webhook(request_id, webhook, actions)
             }
 
-            EventRouter::SnapshotRequested { items } => {
-                let asked: Vec<_> = items
-                    .iter()
-                    // Never forced. A request is an ask for the ledger, not
-                    // for a trip to the bank.
-                    .filter(|item| self.should_fetch(item, false))
-                    .map(|item| (item.item_id.clone(), item.cursor.clone()))
-                    .collect();
-
-                for (item_id, cursor) in asked {
-                    let call_id = self.calling(request_id);
-
-                    self.fetch(call_id, item_id, cursor, actions);
-                }
-
-                // Decided here and released when the last of those has landed
-                // and been written. A user with no banks asked for nothing, so
-                // it goes out on this turn — the empty ledger rather than an
-                // error, which is what "no bank linked yet" looks like and the
-                // state first run exists to leave.
-                self.answer(request_id, ActionRouter::Serve, actions);
+            // Decided once this user's banks have landed, two turns on.
+            EventRouter::SnapshotRequested { .. } => {
+                unreachable!("a request carrying a token is resolved before it is decided")
             }
         }
     }
@@ -637,9 +609,14 @@ impl StateServer {
             return;
         }
 
-        match event {
+        // The rows this route decides from, asked for now that there is
+        // somebody to scope them to. The machine holds no cursors and no
+        // sessions of its own — two users share a process and share neither —
+        // so the facts a decision needs are read per request.
+        let read = match event {
             // Free to ask for, and creates nothing at Plaid's end — a session
-            // nobody finishes costs nothing and expires on its own.
+            // nobody finishes costs nothing and expires on its own. Nothing to
+            // read either: the id is the whole of what it needed.
             Authenticated::LinkRequested => {
                 actions.push(Action::ToSource {
                     action: ActionSource::OpenLink {
@@ -647,8 +624,120 @@ impl StateServer {
                         user_id,
                     },
                 });
+
+                return;
             }
+
+            Authenticated::SyncStatusRequested | Authenticated::SnapshotRequested => {
+                let call_id = self.calling(request_id);
+
+                ActionStore::LoadItems { call_id, user_id }
+            }
+
+            Authenticated::LinkClosed => {
+                let call_id = self.calling(request_id);
+
+                ActionStore::LoadPendingLinks { call_id, user_id }
+            }
+        };
+
+        self.pending.insert(
+            read.call_id(),
+            Pending::Loading {
+                user_id,
+                event: *event,
+            },
+        );
+
+        actions.push(Action::ToStore { action: read });
+    }
+
+    /// Somebody asked for their ledger.
+    ///
+    /// Which banks are worth going back to is decided here; the ledger itself
+    /// is read once those calls have landed, so a snapshot never serves rows a
+    /// fetch of its own was about to replace.
+    fn handle_snapshot(
+        &mut self,
+        request_id: RequestId,
+        user_id: Uuid,
+        items: &[ItemFacts],
+        actions: &mut Vec<Action>,
+    ) {
+        let asked: Vec<_> = items
+            .iter()
+            // Never forced. A request is an ask for the ledger, not
+            // for a trip to the bank.
+            .filter(|item| self.should_fetch(item, false))
+            .map(|item| (item.item_id.clone(), item.cursor.clone()))
+            .collect();
+
+        for (item_id, cursor) in asked {
+            let call_id = self.calling(request_id);
+
+            self.fetch(call_id, item_id, cursor, actions);
         }
+
+        // Owed here and read once the last of those has landed and been
+        // written, so what is served is the rows they wrote. A user with no
+        // banks asked for nothing, so the read goes out on this turn — the
+        // empty ledger rather than an error, which is what "no bank linked
+        // yet" looks like and the state first run exists to leave.
+        self.owe(request_id, Owed::Snapshot { user_id }, actions);
+    }
+
+    /// How far the sync this user is watching has got.
+    fn handle_sync_status(
+        &mut self,
+        request_id: RequestId,
+        items: &[ItemFacts],
+        actions: &mut Vec<Action>,
+    ) {
+        // The furthest-behind of this user's running fetches, because the
+        // screen draws one set of rows and the honest thing for it to show is
+        // the stage that has not finished yet. First run has exactly one bank,
+        // so this is a rule for later rather than one anybody meets today.
+        let status = items
+            .iter()
+            .filter_map(|item| self.syncing.get(&item.item_id))
+            .min_by_key(|status| stage_index(status.stage()))
+            .map_or_else(WireSyncStatus::idle, Clone::clone);
+
+        self.answer(request_id, ActionRouter::SyncStatus { status }, actions);
+    }
+
+    /// A sheet closed. What that means depends on how results are collected.
+    fn handle_link_closed(
+        &mut self,
+        request_id: RequestId,
+        link_tokens: &[String],
+        actions: &mut Vec<Action>,
+    ) {
+        // Collection already happens, unprompted, so this route sets
+        // nothing going: it stops being a trigger and becomes a
+        // question. Asking Plaid again would spend a call to be told
+        // about a token that has already been exchanged.
+        if self.collects_by_webhook() {
+            self.handle_link_closed_by_webhook(request_id, link_tokens, actions);
+
+            return;
+        }
+
+        // Nothing open. Somebody closed a sheet we have no record of,
+        // or collected this one already — either way there is nothing
+        // to go and ask about.
+        if link_tokens.is_empty() {
+            self.answer(request_id, ActionRouter::LinkAbandoned, actions);
+
+            return;
+        }
+
+        actions.push(Action::ToSource {
+            action: ActionSource::PollLinks {
+                call_id: self.calling(request_id),
+                link_tokens: link_tokens.to_vec(),
+            },
+        });
     }
 
     /// Check a code against what the store held, and sign somebody in or not.
@@ -1340,6 +1429,61 @@ impl StateServer {
                 self.verify_code(request_id, &email, &code, stored.as_ref(), actions);
             }
 
+            EventStore::ItemsLoaded { call_id, items } => {
+                let Some(Pending::Loading { user_id, event }) = self.pending.remove(call_id) else {
+                    tracing::error!(call_id, "the store answered banks nobody asked about");
+
+                    return;
+                };
+
+                let Some(request_id) = self.answered(*call_id) else {
+                    return;
+                };
+
+                match event {
+                    Authenticated::SyncStatusRequested => {
+                        self.handle_sync_status(request_id, items, actions)
+                    }
+
+                    Authenticated::SnapshotRequested => {
+                        self.handle_snapshot(request_id, user_id, items, actions)
+                    }
+
+                    _ => unreachable!("only a snapshot and a status ask for banks"),
+                }
+            }
+
+            EventStore::PendingLinksLoaded {
+                call_id,
+                link_tokens,
+            } => {
+                let Some(Pending::Loading { .. }) = self.pending.remove(call_id) else {
+                    tracing::error!(call_id, "the store answered sessions nobody asked about");
+
+                    return;
+                };
+
+                let Some(request_id) = self.answered(*call_id) else {
+                    return;
+                };
+
+                self.handle_link_closed(request_id, link_tokens, actions);
+            }
+
+            EventStore::SnapshotLoaded { call_id, snapshot } => {
+                let Some(request_id) = self.answered(*call_id) else {
+                    return;
+                };
+
+                self.answer(
+                    request_id,
+                    ActionRouter::Serve {
+                        snapshot: snapshot.clone(),
+                    },
+                    actions,
+                );
+            }
+
             EventStore::SessionResolved { call_id, user_id } => {
                 let Some(Pending::Authenticating { ip, event }) = self.pending.remove(call_id)
                 else {
@@ -1410,13 +1554,37 @@ impl StateServer {
     /// Every answer goes through here rather than onto `actions` directly, so
     /// no route has to remember what it ought to wait for.
     fn answer(&mut self, request_id: RequestId, action: ActionRouter, actions: &mut Vec<Action>) {
+        self.owe(request_id, Owed::Answer(action), actions);
+    }
+
+    /// Hold what a request is owed until everything it started has landed.
+    fn owe(&mut self, request_id: RequestId, owed: Owed, actions: &mut Vec<Action>) {
         if self.outstanding(request_id) {
-            self.held.insert(request_id, action);
+            self.held.insert(request_id, owed);
 
             return;
         }
 
-        actions.push(Action::ToRouter { request_id, action });
+        self.release(request_id, owed, actions);
+    }
+
+    /// Nothing is outstanding, so this is what the request gets.
+    ///
+    /// A snapshot is one more call rather than an answer: the rows it reads
+    /// are the ones the calls that just landed wrote, which is the whole
+    /// reason it waited.
+    fn release(&mut self, request_id: RequestId, owed: Owed, actions: &mut Vec<Action>) {
+        match owed {
+            Owed::Answer(action) => actions.push(Action::ToRouter { request_id, action }),
+
+            Owed::Snapshot { user_id } => {
+                let call_id = self.calling(request_id);
+
+                actions.push(Action::ToStore {
+                    action: ActionStore::LoadSnapshot { call_id, user_id },
+                });
+            }
+        }
     }
 
     /// One call has landed. Release the answer it was the last thing holding.
@@ -1433,11 +1601,11 @@ impl StateServer {
             return;
         }
 
-        let Some(action) = self.held.remove(&request_id) else {
+        let Some(owed) = self.held.remove(&request_id) else {
             return;
         };
 
-        actions.push(Action::ToRouter { request_id, action });
+        self.release(request_id, owed, actions);
     }
 
     /// Go and read one Item, and remember that we are.
@@ -1485,7 +1653,7 @@ impl StateServer {
     /// beside it that could be left behind when the request goes.
     fn linked_one(&mut self, request_id: RequestId, actions: &mut Vec<Action>) {
         let count = match self.held.get(&request_id) {
-            Some(ActionRouter::Linked { count }) => *count,
+            Some(Owed::Answer(ActionRouter::Linked { count })) => *count,
             _ => 0,
         };
 
@@ -1626,12 +1794,15 @@ impl StateServer {
                 continue;
             }
 
-            let action = self
+            // A snapshot still reads and still serves: what a call that never
+            // answered costs is the fresher rows it would have written, not
+            // the ledger that is already there.
+            let owed = self
                 .held
                 .remove(&request_id)
-                .unwrap_or(ActionRouter::Unavailable);
+                .unwrap_or(Owed::Answer(ActionRouter::Unavailable));
 
-            actions.push(Action::ToRouter { request_id, action });
+            self.release(request_id, owed, actions);
         }
     }
 

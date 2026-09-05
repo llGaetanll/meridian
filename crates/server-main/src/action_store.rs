@@ -28,6 +28,37 @@ pub enum ActionStore {
         now: api_common::Timestamp,
     },
 
+    /// Which banks are this user's, and where each one's last sync reached.
+    ///
+    /// The facts a decision about going back to Plaid is made from. They used
+    /// to ride in on the request that needed them, read by the handler; now
+    /// the machine asks, and the answer is
+    /// [`EventStore::ItemsLoaded`](crate::EventStore).
+    LoadItems {
+        call_id: CallId,
+        user_id: uuid::Uuid,
+    },
+
+    /// The Link sessions this user has open and has not collected.
+    ///
+    /// A session is collected by whatever *reports* it, so an open one is one
+    /// nobody has been told about. The answer is
+    /// [`EventStore::PendingLinksLoaded`](crate::EventStore).
+    LoadPendingLinks {
+        call_id: CallId,
+        user_id: uuid::Uuid,
+    },
+
+    /// Everything this user's ledger holds, projected for the wire.
+    ///
+    /// Asked for only once everything the request set going has landed, so the
+    /// rows read are the ones those calls just wrote. The answer is
+    /// [`EventStore::SnapshotLoaded`](crate::EventStore).
+    LoadSnapshot {
+        call_id: CallId,
+        user_id: uuid::Uuid,
+    },
+
     /// What code stands against this address, if any.
     ///
     /// Asked for rather than read at the edge, which is what makes verifying
@@ -148,6 +179,9 @@ impl ActionStore {
     pub fn call_id(&self) -> CallId {
         match self {
             Self::LoadSession { call_id, .. }
+            | Self::LoadItems { call_id, .. }
+            | Self::LoadPendingLinks { call_id, .. }
+            | Self::LoadSnapshot { call_id, .. }
             | Self::LoadCode { call_id, .. }
             | Self::SaveCode { call_id, .. }
             | Self::RecordAttempt { call_id, .. }

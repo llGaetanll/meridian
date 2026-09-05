@@ -17,7 +17,6 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use api_common::Timestamp;
-use axum::http::StatusCode;
 use tokio::sync::Notify;
 
 use crate::Action;
@@ -44,7 +43,6 @@ use crate::project;
 use crate::router_exchange::RouterExchange;
 use crate::router_server;
 use crate::runtime_plaid;
-use crate::session_token;
 use crate::source_pool::SourcePool;
 use crate::webhook_verifier::WebhookVerifier;
 use server_wire::WireSnapshot;
@@ -706,6 +704,19 @@ impl RuntimeServer {
                 now,
             } => self.load_session(*call_id, token_sha256, *now).await,
 
+            ActionStore::LoadItems { call_id, user_id } => {
+                self.load_items(*call_id, *user_id).await
+            }
+
+            ActionStore::LoadPendingLinks { call_id, user_id } => {
+                self.load_pending_links(*call_id, *user_id).await
+            }
+
+            ActionStore::LoadSnapshot { call_id, user_id } => EventStore::SnapshotLoaded {
+                call_id: *call_id,
+                snapshot: self.project_snapshot(*user_id).await,
+            },
+
             ActionStore::LoadCode { call_id, email } => self.load_code(*call_id, email).await,
 
             _ => {
@@ -737,6 +748,33 @@ impl RuntimeServer {
     ) -> EventStore {
         match src_postgres::user_for_session(&self.db, token_sha256, now).await {
             Ok(user_id) => EventStore::SessionResolved { call_id, user_id },
+
+            Err(e) => EventStore::ReadError {
+                call_id,
+                message: e.to_string(),
+            },
+        }
+    }
+
+    /// Which banks are this user's, and where each one's last sync reached.
+    async fn load_items(&self, call_id: crate::CallId, user_id: Uuid) -> EventStore {
+        match self.facts_for(user_id).await {
+            Ok(items) => EventStore::ItemsLoaded { call_id, items },
+
+            Err(e) => EventStore::ReadError {
+                call_id,
+                message: e.to_string(),
+            },
+        }
+    }
+
+    /// The Link sessions this user has open and has not collected.
+    async fn load_pending_links(&self, call_id: crate::CallId, user_id: Uuid) -> EventStore {
+        match self.pending_links(user_id).await {
+            Ok(link_tokens) => EventStore::PendingLinksLoaded {
+                call_id,
+                link_tokens,
+            },
 
             Err(e) => EventStore::ReadError {
                 call_id,
@@ -850,7 +888,11 @@ impl RuntimeServer {
                 self.write(db, action).await?;
             }
 
-            ActionStore::LoadSession { .. } | ActionStore::LoadCode { .. } => {
+            ActionStore::LoadSession { .. }
+            | ActionStore::LoadItems { .. }
+            | ActionStore::LoadPendingLinks { .. }
+            | ActionStore::LoadSnapshot { .. }
+            | ActionStore::LoadCode { .. } => {
                 unreachable!("a read is answered by `perform_action_store`")
             }
         }
@@ -946,7 +988,7 @@ impl RuntimeServer {
     /// A session is collected by whatever *reports* it, so an open one is one
     /// nobody has been told about — which is exactly what a `SESSION_FINISHED`
     /// is matched against, and what a poll goes and asks about.
-    pub(crate) async fn pending_links(
+    async fn pending_links(
         &self,
         user_id: Uuid,
     ) -> Result<Vec<String>, src_postgres::PostgresError> {
@@ -1054,7 +1096,7 @@ impl RuntimeServer {
     }
 
     /// The facts the machine needs to decide whether to sync each of them.
-    pub(crate) async fn facts_for(
+    async fn facts_for(
         &self,
         user_id: Uuid,
     ) -> Result<Vec<crate::ItemFacts>, src_postgres::PostgresError> {
@@ -1151,6 +1193,9 @@ impl RuntimeServer {
             // Carried out where they are decided, above. `write` is the sync
             // path, whose ordering is load-bearing in a way these are not.
             ActionStore::LoadSession { .. }
+            | ActionStore::LoadItems { .. }
+            | ActionStore::LoadPendingLinks { .. }
+            | ActionStore::LoadSnapshot { .. }
             | ActionStore::LoadCode { .. }
             | ActionStore::SaveCode { .. }
             | ActionStore::RecordAttempt { .. }
@@ -1267,7 +1312,7 @@ impl RuntimeServer {
     /// Not from memory. The machine used to hold the ledger and this used to
     /// be a projection of it, which was only ever right because there was one
     /// user — and a second would have been served the first one's transactions.
-    pub(crate) async fn project_snapshot(&self, user_id: Uuid) -> WireSnapshot {
+    async fn project_snapshot(&self, user_id: Uuid) -> WireSnapshot {
         let entries = src_postgres::load_entries(&self.db, user_id).await;
         let streams = src_postgres::load_streams(&self.db, user_id).await;
         let connections = self.connections_for(user_id).await;
@@ -1301,32 +1346,6 @@ impl RuntimeServer {
         }
 
         tracing::info!("shutting down");
-    }
-
-    /// Who this request is, or 401.
-    ///
-    /// The only place a request turns into a user. Everything downstream takes
-    /// a `Uuid` rather than a header, so there is no path that reads somebody's
-    /// ledger without having come through here.
-    pub(crate) async fn authenticate(
-        &self,
-        headers: &axum::http::HeaderMap,
-    ) -> Result<Uuid, StatusCode> {
-        let header = headers
-            .get(axum::http::header::AUTHORIZATION)
-            .and_then(|value| value.to_str().ok());
-
-        let token = session_token::from_header(header).ok_or(StatusCode::UNAUTHORIZED)?;
-
-        let found =
-            src_postgres::user_for_session(&self.db, &session_token::hash(token), unix_now())
-                .await
-                .map_err(|e| {
-                    tracing::error!(error = %e, "could not read the session");
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
-
-        found.ok_or(StatusCode::UNAUTHORIZED)
     }
 
     /// One Item's access token, if we hold one.

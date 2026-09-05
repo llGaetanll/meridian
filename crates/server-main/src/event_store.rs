@@ -18,6 +18,30 @@ pub enum EventStore {
         user_id: Option<uuid::Uuid>,
     },
 
+    /// This user's banks, as the store holds them. Empty is somebody with
+    /// none, which is what a first run has and not a failure.
+    ItemsLoaded {
+        call_id: CallId,
+        items: Vec<crate::ItemFacts>,
+    },
+
+    /// The Link sessions this user has open. Empty is a sheet closed on a
+    /// session we have no record of, or one already collected.
+    PendingLinksLoaded {
+        call_id: CallId,
+        link_tokens: Vec<String>,
+    },
+
+    /// The ledger a snapshot is about to be answered with.
+    ///
+    /// It crosses as a value rather than being assembled by whatever renders
+    /// the answer, because nothing outside the machine reads the store any
+    /// more. Built only once a request is waiting for one.
+    SnapshotLoaded {
+        call_id: CallId,
+        snapshot: server_wire::WireSnapshot,
+    },
+
     /// What stands against the address a sign-in named. `None` is an address
     /// with no code, which is a rejection like any other.
     CodeLoaded {

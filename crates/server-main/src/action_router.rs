@@ -6,12 +6,13 @@
 
 #[derive(Debug)]
 pub enum ActionRouter {
-    /// Answer with what this user's store holds.
+    /// Answer with this user's ledger.
     ///
-    /// The snapshot is assembled by the runtime rather than carried here: it
-    /// is a read of somebody's ledger, and copying it into an action would
-    /// mean building it even when nobody is waiting for one.
-    Serve,
+    /// It is carried rather than assembled by whatever renders the answer,
+    /// because nothing outside the machine reads the store. Building one
+    /// nobody wants is not a risk: the read that produced it is asked for only
+    /// once a request is waiting and everything it started has landed.
+    Serve { snapshot: server_wire::WireSnapshot },
 
     /// The request was taken, and nothing more is owed about it.
     ///
