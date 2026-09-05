@@ -10,6 +10,14 @@ use crate::StoredCode;
 
 #[derive(Debug)]
 pub enum EventStore {
+    /// Who a session token signs in. `None` is a token that names nobody —
+    /// wrong, expired, or signed out — which is one answer and not three: the
+    /// difference is only useful to somebody working through tokens.
+    SessionResolved {
+        call_id: CallId,
+        user_id: Option<uuid::Uuid>,
+    },
+
     /// What stands against the address a sign-in named. `None` is an address
     /// with no code, which is a rejection like any other.
     CodeLoaded {

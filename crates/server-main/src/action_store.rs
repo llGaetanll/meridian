@@ -16,6 +16,18 @@ use api_ledger::Stream;
 
 #[derive(Debug)]
 pub enum ActionStore {
+    /// Who this session token signs in, if anybody.
+    ///
+    /// Carries the clock like every other action decided from it, so the row
+    /// this matches is the one the machine reckoned was still good rather than
+    /// one a runtime read a moment later. The answer is
+    /// [`EventStore::SessionResolved`](crate::EventStore).
+    LoadSession {
+        call_id: CallId,
+        token_sha256: Vec<u8>,
+        now: api_common::Timestamp,
+    },
+
     /// What code stands against this address, if any.
     ///
     /// Asked for rather than read at the edge, which is what makes verifying
@@ -135,7 +147,8 @@ impl ActionStore {
     /// lets there be one report rather than one per arm.
     pub fn call_id(&self) -> CallId {
         match self {
-            Self::LoadCode { call_id, .. }
+            Self::LoadSession { call_id, .. }
+            | Self::LoadCode { call_id, .. }
             | Self::SaveCode { call_id, .. }
             | Self::RecordAttempt { call_id, .. }
             | Self::DeleteCode { call_id, .. }

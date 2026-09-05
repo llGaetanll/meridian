@@ -346,6 +346,10 @@ means adding, changing or removing its example here.
   — a read the machine asked for came back with nothing it can use. The route
   is told it cannot be answered rather than refused: a sign-in turned down
   because the store was down would look exactly like a wrong code.
+- `ERROR server_main::state_server the store answered a session nobody asked about call_id=1`
+  — a session read answering a call the machine has no request for, which
+  cannot happen: every one is recorded when the read is asked for. Nothing is
+  answered, because there is no route to answer.
 - `ERROR server_main::state_server the store answered a sign-in nobody submitted call_id=1`
   — a read answering a call the machine has no submission for, which cannot
   happen: every one is recorded when the read is asked for. Reported rather

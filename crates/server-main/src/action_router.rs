@@ -23,6 +23,15 @@ pub enum ActionRouter {
     /// anything not answered 2xx.
     Accepted,
 
+    /// Nobody is signed in by the token this request carried.
+    ///
+    /// Decided here rather than at the edge, which is what makes "who is
+    /// asking" a fact the machine was told rather than one a handler looked
+    /// up. It says only that: which of wrong, expired or signed out is not
+    /// told apart, for the same reason [`Rejected`](ActionRouter::Rejected)
+    /// does not say which way a code was wrong.
+    Unauthorized,
+
     /// The machine cannot answer this yet. So far only one thing causes it:
     /// being asked for a credential before any entropy has arrived, which
     /// there is no safe fallback for.

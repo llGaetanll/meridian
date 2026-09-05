@@ -83,6 +83,9 @@ pub use rate_limit::Route;
 pub use request_id::RequestId;
 pub use runtime_server::RuntimeServer;
 pub use server_wire::WireSnapshot;
+/// Reachable so the machine's tests can build the token hash a request
+/// carries. Not part of the server's interface.
+pub use session_token::hash as hash_token;
 pub use state_server::CALL_GOOD_FOR_SECS;
 pub use state_server::FRESH_FOR_SECS;
 pub use state_server::LINK_ANSWER_GOOD_FOR_SECS;
