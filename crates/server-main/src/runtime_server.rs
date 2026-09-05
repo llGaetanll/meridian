@@ -38,18 +38,13 @@ use crate::PublicUrl;
 use crate::StateServer;
 use crate::StoredCode;
 use crate::WebOrigins;
-use crate::WebhookFacts;
 use crate::project;
 use crate::router_exchange::RouterExchange;
 use crate::router_server;
 use crate::runtime_plaid;
 use crate::source_pool::SourcePool;
-use crate::webhook_verifier::WebhookVerifier;
 use server_wire::WireSnapshot;
 use src_plaid::PlaidCredentials;
-use src_plaid::PlaidRejection;
-use src_plaid::PlaidWebhook;
-use src_plaid::PlaidWebhookKind;
 use src_postgres::Db;
 use src_postgres::DbKey;
 use src_resend::ResendClient;
@@ -157,16 +152,6 @@ pub struct RuntimeServer {
     /// itself does not start, rather than starting and telling Plaid nothing.
     webhook: Option<String>,
 
-    /// Whether a POST on the webhook route is really Plaid, and the signing
-    /// keys that answer it.
-    ///
-    /// Here rather than in the machine for the same reason the access tokens
-    /// are: it holds keys and it does IO, and the machine's job is to be
-    /// logged and replayed. What comes out of it is a fact — this webhook is
-    /// genuine and says the following — and every decision downstream of that
-    /// is the machine's.
-    webhooks: WebhookVerifier,
-
     /// Raised once the machine asks to shut down.
     shutdown: Notify,
 
@@ -266,7 +251,6 @@ impl RuntimeServer {
             email_send,
             resend,
             tokens: RwLock::new(HashMap::new()),
-            webhooks: WebhookVerifier::default(),
             webhook,
             db,
             db_key,
@@ -550,6 +534,10 @@ impl RuntimeServer {
                 cursor,
             } => self.fetch_plaid(*call_id, item_id, cursor.clone()).await,
 
+            ActionSource::FetchWebhookKey { call_id, kid } => {
+                self.fetch_webhook_key(*call_id, kid).await
+            }
+
             ActionSource::OpenLink { call_id, user_id } => self.open_link(*call_id, *user_id).await,
 
             ActionSource::PollLinks {
@@ -566,6 +554,32 @@ impl RuntimeServer {
                     .await
             }
         }
+    }
+
+    /// Ask Plaid for one webhook signing key, and report what came back.
+    ///
+    /// A key that will not fetch is reported as absent rather than as a
+    /// failure: from the machine's side "Plaid has no such key" and "we could
+    /// not ask" lead to the same refusal, and remembering both is what keeps
+    /// an invented `kid` from costing a call every time it is sent.
+    async fn fetch_webhook_key(&self, call_id: crate::CallId, kid: &str) -> Vec<Event> {
+        let key = match runtime_plaid::webhook_key(&self.credentials, kid).await {
+            Ok(key) => Some(key),
+
+            Err(e) => {
+                tracing::warn!(kid, error = %e, "could not fetch a webhook key");
+
+                None
+            }
+        };
+
+        vec![Event::FromSource {
+            event: EventSource::WebhookKeyLoaded {
+                call_id,
+                kid: kid.to_string(),
+                key,
+            },
+        }]
     }
 
     /// Open a Link session and report the page that hosts it.
@@ -703,6 +717,11 @@ impl RuntimeServer {
                 token_sha256,
                 now,
             } => self.load_session(*call_id, token_sha256, *now).await,
+
+            ActionStore::LoadItem { call_id, item_id } => EventStore::ItemLoaded {
+                call_id: *call_id,
+                item: self.item_facts(item_id).await,
+            },
 
             ActionStore::LoadItems { call_id, user_id } => {
                 self.load_items(*call_id, *user_id).await
@@ -889,6 +908,7 @@ impl RuntimeServer {
             }
 
             ActionStore::LoadSession { .. }
+            | ActionStore::LoadItem { .. }
             | ActionStore::LoadItems { .. }
             | ActionStore::LoadPendingLinks { .. }
             | ActionStore::LoadSnapshot { .. }
@@ -997,72 +1017,6 @@ impl RuntimeServer {
             .into_iter()
             .map(|link| link.link_token)
             .collect())
-    }
-
-    /// Whether a POST on the webhook route is really Plaid, and what it said.
-    ///
-    /// The twin of [`authenticate`](RuntimeServer::authenticate), and the only
-    /// place a webhook becomes something the machine will be told about. The
-    /// bytes are the ones that arrived, untouched — see
-    /// [`WebhookVerifier::believe`](crate::webhook_verifier::WebhookVerifier).
-    pub(crate) async fn believe_webhook(
-        &self,
-        headers: &axum::http::HeaderMap,
-        body: &[u8],
-    ) -> Result<PlaidWebhook, PlaidRejection> {
-        let webhook = self
-            .webhooks
-            .believe(&self.credentials, headers, body, unix_now())
-            .await?;
-
-        tracing::info!(
-            webhook_type = webhook.webhook_type,
-            webhook_code = webhook.webhook_code,
-            "a webhook arrived from plaid",
-        );
-
-        Ok(webhook)
-    }
-
-    /// What a webhook names, as the store holds it.
-    ///
-    /// The read that has to happen before the machine can decide anything: a
-    /// webhook arrives with no session and names a bank rather than a person,
-    /// so where its last sync reached is looked up here, exactly as
-    /// [`facts_for`](RuntimeServer::facts_for) does on the routes that have a
-    /// caller to scope on.
-    pub(crate) async fn webhook_facts(&self, webhook: PlaidWebhook) -> WebhookFacts {
-        match webhook.kind() {
-            PlaidWebhookKind::SessionFinished {
-                link_token,
-                public_tokens,
-            } => WebhookFacts::SessionFinished {
-                link_token,
-                public_tokens,
-            },
-
-            PlaidWebhookKind::SyncUpdatesAvailable { item_id } => {
-                WebhookFacts::SyncUpdatesAvailable {
-                    item: self.item_facts(&item_id).await,
-                    item_id,
-                }
-            }
-
-            PlaidWebhookKind::LoginRequired { item_id } => WebhookFacts::Login {
-                item_id,
-                required: true,
-            },
-
-            PlaidWebhookKind::LoginRepaired { item_id } => WebhookFacts::Login {
-                item_id,
-                required: false,
-            },
-
-            PlaidWebhookKind::Other => WebhookFacts::Ignored {
-                webhook_type: webhook.webhook_type,
-                webhook_code: webhook.webhook_code,
-            },
-        }
     }
 
     /// One bank, by the id Plaid names it with, and its token remembered.
@@ -1193,6 +1147,7 @@ impl RuntimeServer {
             // Carried out where they are decided, above. `write` is the sync
             // path, whose ordering is load-bearing in a way these are not.
             ActionStore::LoadSession { .. }
+            | ActionStore::LoadItem { .. }
             | ActionStore::LoadItems { .. }
             | ActionStore::LoadPendingLinks { .. }
             | ActionStore::LoadSnapshot { .. }

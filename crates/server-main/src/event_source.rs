@@ -9,6 +9,15 @@ use crate::LinkPoll;
 
 #[derive(Debug)]
 pub enum EventSource {
+    /// What Plaid says about one signing key. `None` is an id it would not
+    /// answer for — invented, or a real one we failed to fetch — and the
+    /// machine remembers both, briefly, so neither costs a second call.
+    WebhookKeyLoaded {
+        call_id: CallId,
+        kid: String,
+        key: Option<src_plaid::PlaidJwk>,
+    },
+
     /// Plaid answered, about one Item.
     ///
     /// The transaction lists are a **diff** — what changed since the cursor —

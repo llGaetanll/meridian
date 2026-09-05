@@ -28,6 +28,13 @@ pub enum ActionStore {
         now: api_common::Timestamp,
     },
 
+    /// One bank, by the id Plaid names it with.
+    ///
+    /// Unscoped, unlike [`LoadItems`](ActionStore::LoadItems): a webhook names
+    /// a bank and not a person, so who owns it is what the read finds out. The
+    /// answer is [`EventStore::ItemLoaded`](crate::EventStore).
+    LoadItem { call_id: CallId, item_id: String },
+
     /// Which banks are this user's, and where each one's last sync reached.
     ///
     /// The facts a decision about going back to Plaid is made from. They used
@@ -179,6 +186,7 @@ impl ActionStore {
     pub fn call_id(&self) -> CallId {
         match self {
             Self::LoadSession { call_id, .. }
+            | Self::LoadItem { call_id, .. }
             | Self::LoadItems { call_id, .. }
             | Self::LoadPendingLinks { call_id, .. }
             | Self::LoadSnapshot { call_id, .. }

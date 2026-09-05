@@ -160,6 +160,12 @@ Six names are redacted, in requests and responses alike:
 | `link_token` | A Link session belonging to one of our users. |
 | `hosted_link_url` | The page carrying that token, so the URL is the token. |
 
+**Still to do: a webhook body is now on an event.** `EventRouter::WebhookReceived`
+carries the bytes as they arrived, so a `?events` line prints them. Plaid's
+webhook bodies carry `item_id` and counts rather than credentials, so nothing on
+the list above is at risk today — but `scrub` should learn the field before a
+webhook type that carries more arrives.
+
 The list is `CREDENTIALS` in `api_trace::scrub`, and it is Plaid's vocabulary
 because Plaid is the only source that puts a credential in a body — a price
 feed authenticates with nothing, and Resend with a header. **A source added
@@ -380,29 +386,37 @@ means adding, changing or removing its example here.
   — **the line that says a Production Item slot was spent**, and there are ten.
   The access token is deliberately not on it: it is a credential to somebody's
   bank, and a log is a file that gets pasted into issues.
-- `INFO server_main::runtime_server a webhook arrived from plaid webhook_type=LINK webhook_code=SESSION_FINISHED`
+- `INFO server_main::state_server a webhook arrived from plaid webhook_type=LINK webhook_code=SESSION_FINISHED`
   — one per webhook that was *believed*. Written after the signature, the
   replay window and the body hash have all passed, so a line here is Plaid and
   the line below is not.
-- `WARN server_main::router_server a webhook was not believed rejection="the signature does not match"`
+- `WARN server_main::state_server a webhook was not believed rejection="the signature does not match"`
   — the other endings are `no Plaid-Verification header`, `algorithm is
   \`HS256\`, not ES256`, `issued 3600s away from now` and `the body does not
   match its hash`. All of them answer the caller the same 401: the reason is
   worth logging and is not worth telling somebody who is guessing. A `body does
   not match` is far more likely to be ours than theirs — Plaid hashes the bytes
   it sent, so anything that reparsed the body breaks it.
+- `WARN server_main::state_server a webhook named a key plaid does not have kid=6c5516e1…`
+  — refused without asking Plaid again. The miss stands for
+  `WEBHOOK_KEY_MISS_GOOD_FOR_SECS`, which is what stops an invented `kid` from
+  costing an outbound call per POST.
+- `ERROR server_main::state_server a key answered a webhook nobody is waiting on call_id=1`
+- `ERROR server_main::state_server the store answered a bank nobody asked about call_id=1`
+  — the same shape as the other four of these, and impossible for the same
+  reason: what a request was doing is written down when its read goes out.
 - `INFO src_plaid webhook key fetched key_id=6c5516e1…`
   — one per `kid`, ever, because the answer is cached. Several of these for one
   id means the cache is not doing its job, which matters: this call is caused by
   an anonymous POST.
-- `WARN server_main::webhook_verifier could not fetch a webhook key kid=6c5516e1… error="Plaid error INVALID_FIELD: …"`
+- `WARN server_main::runtime_server could not fetch a webhook key kid=6c5516e1… error="Plaid error INVALID_FIELD: …"`
   — remembered as a miss for five minutes, so a made-up `kid` costs one call
   rather than one per POST.
-- `ERROR server_main::webhook_verifier refusing to fetch another webhook key: too many have been asked for kid=6c5516e1…`
+- `ERROR server_main::state_server refusing to fetch another webhook key: too many have been asked for kid=6c5516e1…`
   — the cache is full of live keys, which cannot happen from Plaid's own
   rotation. Refused rather than fetched: the cache exists to bound this call,
   so it bounds it when full too.
-- `ERROR server_main::webhook_verifier plaid signed a body that is not JSON error=…`
+- `ERROR server_main::state_server plaid signed a body that is not JSON error=…`
   — the hash matched, so these really are Plaid's bytes, and they are still not
   something we can read.
 - `ERROR server_main::runtime_server could not read the bank a webhook names item_id=8Pd5Zx… error=…`

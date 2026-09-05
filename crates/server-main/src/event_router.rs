@@ -4,7 +4,6 @@
 //! what makes it. "Router" rather than "client": the phone is a client too,
 //! and so is the web app, but only a handler is waiting on the answer.
 
-use crate::WebhookFacts;
 use crate::rate_limit::Route;
 
 #[derive(Debug)]
@@ -62,14 +61,17 @@ pub enum EventRouter {
     /// goes and polls.
     LinkClosed { token_sha256: Vec<u8> },
 
-    /// Plaid called us, and the call was believed.
+    /// Plaid called us, or somebody says they are Plaid.
     ///
-    /// Every check is behind this event — the algorithm, the signature, the
-    /// replay window and the body hash — the same way `user_id` on
-    /// [`LinkRequested`](EventRouter::LinkRequested) is behind a session
-    /// lookup. The machine decides what a webhook *means*, never whether it
-    /// is really Plaid's.
-    WebhookReceived { webhook: WebhookFacts },
+    /// The raw material, not a conclusion: the signature off the header and
+    /// the bytes exactly as they arrived. Every check happens behind this —
+    /// the algorithm, the signing key, the replay window, the body hash — and
+    /// all of them are the machine's, because all of them are rules.
+    ///
+    /// The body is untouched on purpose. Plaid hashes what it put on the wire,
+    /// so a body that has been through a JSON extractor and printed again
+    /// hashes to something else and every webhook is refused.
+    WebhookReceived { jwt: String, body: Vec<u8> },
 }
 
 impl EventRouter {

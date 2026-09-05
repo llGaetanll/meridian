@@ -18,6 +18,14 @@ pub enum EventStore {
         user_id: Option<uuid::Uuid>,
     },
 
+    /// One bank a webhook named, as the store holds it. `None` is a bank we
+    /// have no row for — Plaid keeps sending after one is removed — which is
+    /// a fact and not an error.
+    ItemLoaded {
+        call_id: CallId,
+        item: Option<crate::ItemFacts>,
+    },
+
     /// This user's banks, as the store holds them. Empty is somebody with
     /// none, which is what a first run has and not a failure.
     ItemsLoaded {
