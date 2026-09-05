@@ -19,7 +19,8 @@ use api_trace::scrub;
 // The same sources the clients declare, so what prints here is what a real
 // session prints — Plaid's pretty-printed response included, which is the
 // thing `compact_json` exists to squeeze.
-const PLAID: Source = Source::new("plaid").through(&[scrub::compact_json]);
+const PLAID: Source =
+    Source::new("plaid").through(&[scrub::redact_credentials, scrub::compact_json]);
 const YAHOO: Source = Source::new("yahoo");
 const MERIDIAN: Source = Source::new("meridian");
 
@@ -64,8 +65,8 @@ fn main() {
         "/snapshot",
     );
 
-    // Plaid, which is POST and whose body *is* logged, secret included. A
-    // deliberate and temporary trade — docs/LOGGING.md says what it costs.
+    // Plaid, which is POST and whose body *is* logged — field names and all,
+    // with the credentials replaced by their length.
     tracing::info!(
         target: "src_plaid::plaid_client",
         env = "sandbox",
@@ -77,7 +78,7 @@ fn main() {
         "src_plaid::plaid_client",
         PLAID,
         "https://sandbox.plaid.com/transactions/sync",
-        "{\"access_token\":\"access-sandbox-1\",\"cursor\":\"CAESJTM3…\",\"client_id\":\"6xxx\",\"secret\":\"xxxx\"}",
+        "{\"access_token\":\"access-sandbox-1\",\"client_id\":\"6xxxxxxxxxxxxxxxxxxxxxxx\",\"cursor\":\"CAESJTM3…\",\"secret\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}",
     )
     .response(
         200,

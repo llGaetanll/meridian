@@ -68,18 +68,17 @@ impl ApiCall {
 
     /// The same, for an API that only answers POSTs, and the body it carries.
     ///
-    /// **The body is logged as it was sent, credentials and all**, minus
-    /// whatever the source's rules take out of it. A response tells
-    /// you what the far end thought you asked for; it never tells you what you
-    /// actually sent, so a request carrying a field we did not intend is
-    /// invisible from the other half of the pair. That is the failure that
-    /// cannot be debugged after the fact, and it is why this is worth what it
-    /// costs.
+    /// **The body is logged as it was sent**, minus whatever the source's
+    /// rules take out of it. A response tells you what the far end thought you
+    /// asked for; it never tells you what you actually sent, so a request
+    /// carrying a field we did not intend is invisible from the other half of
+    /// the pair. That is the failure that cannot be debugged after the fact,
+    /// and it is why this is worth what it costs.
     ///
-    /// What it costs is that a log file is now a credential: Plaid's secret
-    /// rides in every body, and it is account-wide rather than per-user.
-    /// `docs/LOGGING.md` says so, and says what has to change before anything
-    /// runs against Production.
+    /// A credential is not part of that question, and a source that sends one
+    /// says so with [`crate::scrub::redact_credentials`], which keeps the
+    /// field and drops the value. `docs/LOGGING.md` says what a log file still
+    /// holds afterwards.
     pub fn post(module: &'static str, source: Source, url: impl Display, body: &str) -> Self {
         Self::new(module, source, "POST", url, Some(body))
     }
