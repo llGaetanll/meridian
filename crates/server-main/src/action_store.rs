@@ -1,9 +1,8 @@
 //! Something for the store to do.
 //!
-//! Only writes. Reads are not actions: the runtime reads a user's rows on the
-//! request path and serves them, because the alternative — holding every
-//! user's ledger in memory — is what stopped this server being able to serve
-//! more than one person.
+//! Reads as well as writes. A route turns a request into an event and renders
+//! the answer; anything the machine needs from the store it asks for here, so
+//! nothing reads on the request path.
 //!
 //! Nothing here carries an access token. The machine has never seen one — it
 //! lives in the runtime, beside the credentials it belongs with — and an action
@@ -17,6 +16,14 @@ use api_ledger::Stream;
 
 #[derive(Debug)]
 pub enum ActionStore {
+    /// What code stands against this address, if any.
+    ///
+    /// Asked for rather than read at the edge, which is what makes verifying
+    /// one reachable from an `eval!` test: the answer arrives on
+    /// [`EventStore::CodeLoaded`](crate::EventStore) and the machine holds the
+    /// submission until it does.
+    LoadCode { call_id: CallId, email: String },
+
     /// Hold a sign-in code against an address, replacing any that stood.
     ///
     /// The hash, never the code. The plaintext goes only to
@@ -128,7 +135,8 @@ impl ActionStore {
     /// lets there be one report rather than one per arm.
     pub fn call_id(&self) -> CallId {
         match self {
-            Self::SaveCode { call_id, .. }
+            Self::LoadCode { call_id, .. }
+            | Self::SaveCode { call_id, .. }
             | Self::RecordAttempt { call_id, .. }
             | Self::DeleteCode { call_id, .. }
             | Self::CreateSession { call_id, .. }

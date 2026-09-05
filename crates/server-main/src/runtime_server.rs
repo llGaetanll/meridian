@@ -696,18 +696,46 @@ impl RuntimeServer {
     /// reported nothing would be a request that never returns — which is why
     /// the failure is an event too, rather than a line in a log.
     async fn perform_action_store(&self, action: &ActionStore) -> Vec<Event> {
-        let call_id = action.call_id();
+        // A read answers with what it found; a write answers that it landed.
+        // Two shapes, so they are told apart here rather than inside
+        // `write_store`, which has nothing to report but success.
+        let event = match action {
+            ActionStore::LoadCode { call_id, email } => self.load_code(*call_id, email).await,
 
-        let event = match self.write_store(action).await {
-            Ok(()) => EventStore::WriteSuccess { call_id },
+            _ => {
+                let call_id = action.call_id();
 
-            Err(e) => EventStore::WriteError {
-                call_id,
-                message: e.to_string(),
-            },
+                match self.write_store(action).await {
+                    Ok(()) => EventStore::WriteSuccess { call_id },
+
+                    Err(e) => EventStore::WriteError {
+                        call_id,
+                        message: e.to_string(),
+                    },
+                }
+            }
         };
 
         vec![Event::FromStore { event }]
+    }
+
+    /// What code stands against an address, as the store holds it.
+    async fn load_code(&self, call_id: crate::CallId, email: &str) -> EventStore {
+        match src_postgres::load_code(&self.db, email).await {
+            Ok(stored) => EventStore::CodeLoaded {
+                call_id,
+                stored: stored.map(|s| StoredCode {
+                    code_sha256: s.code_sha256,
+                    expires_at: s.expires_at,
+                    attempts: s.attempts,
+                }),
+            },
+
+            Err(e) => EventStore::ReadError {
+                call_id,
+                message: e.to_string(),
+            },
+        }
     }
 
     /// The write itself. Nothing here inspects an answer or decides anything
@@ -795,6 +823,10 @@ impl RuntimeServer {
             ActionStore::SaveFetched { .. } | ActionStore::SaveStatus { .. } => {
                 self.write(db, action).await?;
             }
+
+            ActionStore::LoadCode { .. } => {
+                unreachable!("a read is answered by `perform_action_store`")
+            }
         }
 
         Ok(())
@@ -881,24 +913,6 @@ impl RuntimeServer {
         }
 
         Ok(connections)
-    }
-
-    /// The sign-in code standing against an address, if there is one.
-    ///
-    /// Read on the request path and handed to the machine on the event, the
-    /// same as every other fact: the machine keeps no codes, so it cannot
-    /// decide about one it was not given.
-    pub(crate) async fn stored_code(
-        &self,
-        email: &str,
-    ) -> Result<Option<StoredCode>, src_postgres::PostgresError> {
-        Ok(src_postgres::load_code(&self.db, email)
-            .await?
-            .map(|s| StoredCode {
-                code_sha256: s.code_sha256,
-                expires_at: s.expires_at,
-                attempts: s.attempts,
-            }))
     }
 
     /// The Link sessions this user has open and has not collected.
@@ -1110,7 +1124,8 @@ impl RuntimeServer {
 
             // Carried out where they are decided, above. `write` is the sync
             // path, whose ordering is load-bearing in a way these are not.
-            ActionStore::SaveCode { .. }
+            ActionStore::LoadCode { .. }
+            | ActionStore::SaveCode { .. }
             | ActionStore::RecordAttempt { .. }
             | ActionStore::DeleteCode { .. }
             | ActionStore::CreateSession { .. }

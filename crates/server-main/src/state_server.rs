@@ -45,6 +45,7 @@ use crate::EventTerminal;
 use crate::ItemFacts;
 use crate::PlaidCollect;
 use crate::RequestId;
+use crate::StoredCode;
 use crate::WebhookFacts;
 use crate::email_address;
 use crate::login_code;
@@ -138,6 +139,16 @@ impl LinkOutcome {
     }
 }
 
+/// A sign-in waiting on the code the store holds against its address.
+///
+/// Only what the machine cannot get back: who is waiting is already in
+/// [`StateServer::waiting`], keyed by the same call.
+#[derive(Debug)]
+struct Submitted {
+    email: String,
+    code: String,
+}
+
 /// An outcome nobody has asked about yet.
 #[derive(Debug)]
 struct Settled {
@@ -228,6 +239,11 @@ pub struct StateServer {
     /// replace. Everything a request set going has to land first — which is
     /// one rule rather than a note on each route to remember to wait.
     held: HashMap<RequestId, ActionRouter>,
+
+    /// Sign-ins asked about but not yet answered by the store, by the call
+    /// that asked. What they typed has to outlive the turn it arrived in,
+    /// because the code it is checked against comes back a turn later.
+    submissions: HashMap<CallId, Submitted>,
 
     /// How far each running fetch has got, by item.
     ///
@@ -468,77 +484,23 @@ impl StateServer {
                 self.answer(request_id, ActionRouter::Accepted, actions);
             }
 
-            EventRouter::CodeSubmitted {
-                email,
-                code,
-                stored,
-            } => {
-                // No code standing against this address. A rejection like any
-                // other: telling them apart would say which addresses have a
-                // sign-in in flight.
-                let Some(stored) = stored else {
-                    self.answer(request_id, ActionRouter::Rejected, actions);
+            EventRouter::CodeSubmitted { email, code } => {
+                let call_id = self.calling(request_id);
 
-                    return;
-                };
-
-                let verdict = login_code::verify(stored, code, self.now);
-
-                if verdict != login_code::Verdict::Accepted {
-                    // Counted whatever the reason, including expired: an
-                    // attacker who could reset the cap by waiting would have
-                    // an unlimited number of guesses at the next code.
-                    actions.push(Action::ToStore {
-                        action: ActionStore::RecordAttempt {
-                            call_id: self.calling(request_id),
-                            email: email.clone(),
-                        },
-                    });
-
-                    tracing::warn!(email, ?verdict, "a sign-in code was rejected");
-
-                    self.answer(request_id, ActionRouter::Rejected, actions);
-
-                    return;
-                }
-
-                if self.state != State::Started {
-                    tracing::error!(
-                        state = ?self.state,
-                        "a code was accepted by a machine that is not started",
-                    );
-
-                    self.answer(request_id, ActionRouter::Rejected, actions);
-
-                    return;
-                }
-
-                let Some(rng) = self.rng.as_mut() else {
-                    unreachable!("a started machine has a generator")
-                };
-
-                let token = login_code::generate_token(rng);
-
-                actions.push(Action::ToStore {
-                    action: ActionStore::CreateSession {
-                        call_id: self.calling(request_id),
+                self.submissions.insert(
+                    call_id,
+                    Submitted {
                         email: email.clone(),
-                        token_sha256: session_token::hash(&token),
-                        expires_at: Timestamp::from_secs(
-                            self.now.as_secs() + SESSION_GOOD_FOR_SECS,
-                        ),
+                        code: code.clone(),
                     },
-                });
+                );
 
-                // Single use, and spent only once it has bought something.
                 actions.push(Action::ToStore {
-                    action: ActionStore::DeleteCode {
-                        call_id: self.calling(request_id),
+                    action: ActionStore::LoadCode {
+                        call_id,
                         email: email.clone(),
                     },
                 });
-
-                self.answer(request_id, ActionRouter::SignedIn { token }, actions);
             }
 
             EventRouter::WebhookReceived { webhook } => {
@@ -568,6 +530,88 @@ impl StateServer {
                 self.answer(request_id, ActionRouter::Serve, actions);
             }
         }
+    }
+
+    /// Check a code against what the store held, and sign somebody in or not.
+    ///
+    /// A turn later than the submission that asked for it, which is why the
+    /// machine kept what they typed: the verdict is decided here, and every
+    /// fact it is decided from arrived as an event.
+    fn verify_code(
+        &mut self,
+        request_id: RequestId,
+        submitted: &Submitted,
+        stored: Option<&StoredCode>,
+        actions: &mut Vec<Action>,
+    ) {
+        // No code standing against this address. A rejection like any other:
+        // telling them apart would say which addresses have a sign-in in
+        // flight.
+        let Some(stored) = stored else {
+            self.answer(request_id, ActionRouter::Rejected, actions);
+
+            return;
+        };
+
+        let verdict = login_code::verify(stored, &submitted.code, self.now);
+
+        if verdict != login_code::Verdict::Accepted {
+            // Counted whatever the reason, including expired: an
+            // attacker who could reset the cap by waiting would have
+            // an unlimited number of guesses at the next code.
+            actions.push(Action::ToStore {
+                action: ActionStore::RecordAttempt {
+                    call_id: self.calling(request_id),
+                    email: submitted.email.clone(),
+                },
+            });
+
+            tracing::warn!(
+                email = submitted.email,
+                ?verdict,
+                "a sign-in code was rejected"
+            );
+
+            self.answer(request_id, ActionRouter::Rejected, actions);
+
+            return;
+        }
+
+        if self.state != State::Started {
+            tracing::error!(
+                state = ?self.state,
+                "a code was accepted by a machine that is not started",
+            );
+
+            self.answer(request_id, ActionRouter::Rejected, actions);
+
+            return;
+        }
+
+        let Some(rng) = self.rng.as_mut() else {
+            unreachable!("a started machine has a generator")
+        };
+
+        let token = login_code::generate_token(rng);
+
+        actions.push(Action::ToStore {
+            action: ActionStore::CreateSession {
+                call_id: self.calling(request_id),
+                email: submitted.email.clone(),
+                token_sha256: session_token::hash(&token),
+                expires_at: Timestamp::from_secs(self.now.as_secs() + SESSION_GOOD_FOR_SECS),
+            },
+        });
+
+        // Single use, and spent only once it has bought something.
+        actions.push(Action::ToStore {
+            action: ActionStore::DeleteCode {
+                call_id: self.calling(request_id),
+                email: submitted.email.clone(),
+            },
+        });
+
+        self.answer(request_id, ActionRouter::SignedIn { token }, actions);
     }
 
     /// A sheet closed, on a server Plaid calls.
@@ -1166,6 +1210,36 @@ impl StateServer {
 
     fn handle_event_store(&mut self, event: &EventStore, actions: &mut Vec<Action>) {
         match event {
+            EventStore::CodeLoaded { call_id, stored } => {
+                let Some(submitted) = self.submissions.remove(call_id) else {
+                    tracing::error!(call_id, "the store answered a sign-in nobody submitted");
+
+                    return;
+                };
+
+                let Some(request_id) = self.answered(*call_id) else {
+                    return;
+                };
+
+                self.verify_code(request_id, &submitted, stored.as_ref(), actions);
+            }
+
+            // Nothing can be decided without what was asked for, and there is
+            // no answer to fall back on: a sign-in refused because the store
+            // was down would be indistinguishable from a wrong code, and a
+            // sign-in allowed would be worse.
+            EventStore::ReadError { call_id, message } => {
+                tracing::error!(message, "could not read the store");
+
+                self.submissions.remove(call_id);
+
+                let Some(request_id) = self.answered(*call_id) else {
+                    return;
+                };
+
+                self.answer(request_id, ActionRouter::Unavailable, actions);
+            }
+
             EventStore::WriteSuccess { call_id } => self.landed(*call_id, actions),
 
             // Reported rather than silent — the log is meant to be a recording

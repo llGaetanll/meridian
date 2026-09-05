@@ -197,41 +197,30 @@ async fn auth_verify(
     Extension(ip): Extension<ClientIp>,
     Json(body): Json<AuthVerifyBody>,
 ) -> Result<Json<AuthVerified>, StatusCode> {
-    let email = normalize(&body.email);
-
-    // What the store holds against this address, read before deciding — the
-    // same shape as the snapshot path, and for the same reason: the machine
-    // keeps nothing, so the facts arrive with the request.
-    let stored = match runtime.stored_code(&email).await {
-        Ok(stored) => stored,
-
-        Err(e) => {
-            tracing::error!(error = %e, "could not read the sign-in code");
-
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
-
-    // The outcome is read off what the machine decided, not worked out again
-    // here. There is exactly one answer that signs somebody in.
+    // Nothing is read here. What the store holds against this address is the
+    // machine's to ask for, and it arrives on its own event a turn later.
     let answer = runtime
         .request(
             Client::anonymous(ip),
             EventRouter::CodeSubmitted {
-                email,
+                email: normalize(&body.email),
                 code: body.code.trim().to_string(),
-                stored,
             },
         )
         .await;
 
     too_many(&answer)?;
 
-    let Some(ActionRouter::SignedIn { token }) = answer else {
-        return Err(StatusCode::UNAUTHORIZED);
-    };
+    match answer {
+        Some(ActionRouter::SignedIn { token }) => Ok(Json(AuthVerified { token })),
 
-    Ok(Json(AuthVerified { token }))
+        // A store that would not answer. Told apart from a code that was no
+        // good, because they are not the same thing and only one of them is
+        // the caller's to fix.
+        Some(ActionRouter::Unavailable) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+
+        _ => Err(StatusCode::UNAUTHORIZED),
+    }
 }
 
 /// What `POST /link/start` answers with: the page to open.

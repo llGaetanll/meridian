@@ -5,7 +5,6 @@
 //! and so is the web app, but only a handler is waiting on the answer.
 
 use crate::ItemFacts;
-use crate::StoredCode;
 use crate::WebhookFacts;
 use crate::rate_limit::Route;
 use uuid::Uuid;
@@ -32,15 +31,10 @@ pub enum EventRouter {
 
     /// Somebody typed a code.
     ///
-    /// `stored` is what the store holds against that address, read by the
-    /// runtime just before this event was made — the same shape as
-    /// [`ItemFacts`](crate::ItemFacts), and for the same reason. `None` is an
-    /// address with no code standing, which is a rejection like any other.
-    CodeSubmitted {
-        email: String,
-        code: String,
-        stored: Option<StoredCode>,
-    },
+    /// It carries only what they typed. What the store holds against that
+    /// address is asked for with [`ActionStore::LoadCode`](crate::ActionStore)
+    /// and arrives on its own event, because a route does not read.
+    CodeSubmitted { email: String, code: String },
 
     /// Somebody wants to connect a bank. The id is theirs, so the session
     /// can be written down against them before its URL is handed over.

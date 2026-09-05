@@ -533,15 +533,18 @@ fn the_right_code_signs_you_in_and_spends_itself() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
-        > Action::ToStore { action: ActionStore::CreateSession { call_id: 1, .. } },
-        > Action::ToStore { action: ActionStore::DeleteCode { call_id: 2, .. } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string() } },
+        > Action::ToStore { action: ActionStore::LoadCode { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
+        < Event::FromStore { event: EventStore::CodeLoaded { call_id: 1, stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
+        > Action::ToStore { action: ActionStore::CreateSession { call_id: 2, .. } },
+        > Action::ToStore { action: ActionStore::DeleteCode { call_id: 3, .. } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
 
         // Only now: a token that reaches the phone before its session row
         // exists is a sign-in that 401s on its own first request.
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
         > Action::ToRouter { action: ActionRouter::SignedIn { .. }, .. },
     );
 }
@@ -557,18 +560,24 @@ fn a_spent_code_signs_nobody_in_twice() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
-        > Action::ToStore { action: ActionStore::CreateSession { call_id: 1, .. } },
-        > Action::ToStore { action: ActionStore::DeleteCode { call_id: 2, .. } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string() } },
+        > Action::ToStore { action: ActionStore::LoadCode { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
+        < Event::FromStore { event: EventStore::CodeLoaded { call_id: 1, stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
+        > Action::ToStore { action: ActionStore::CreateSession { call_id: 2, .. } },
+        > Action::ToStore { action: ActionStore::DeleteCode { call_id: 3, .. } },
+
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
         > Action::ToRouter { action: ActionRouter::SignedIn { .. }, .. },
 
-        // The same six digits, replayed. The delete landed, so what the
-        // runtime reads for this one is nothing at all — and nothing is
-        // rejected like any other wrong answer.
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: None } },
+        // The same six digits, replayed. The delete landed, so the read this
+        // one asks for finds nothing at all — and nothing is rejected like any
+        // other wrong answer.
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string() } },
+        > Action::ToStore { action: ActionStore::LoadCode { call_id: 4, .. } },
+
+        < Event::FromStore { event: EventStore::CodeLoaded { call_id: 4, stored: None } },
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -582,10 +591,13 @@ fn a_wrong_code_only_counts_a_guess() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "654321".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
-        > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "654321".to_string() } },
+        > Action::ToStore { action: ActionStore::LoadCode { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
+        < Event::FromStore { event: EventStore::CodeLoaded { call_id: 1, stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
+        > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -599,10 +611,13 @@ fn an_expired_code_is_rejected_and_still_counts() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs()), attempts: 0 }) } },
-        > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string() } },
+        > Action::ToStore { action: ActionStore::LoadCode { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
+        < Event::FromStore { event: EventStore::CodeLoaded { call_id: 1, stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs()), attempts: 0 }) } },
+        > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -615,10 +630,13 @@ fn an_exhausted_code_rejects_the_right_answer() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 5 }) } },
-        > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 1, .. } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string() } },
+        > Action::ToStore { action: ActionStore::LoadCode { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
+        < Event::FromStore { event: EventStore::CodeLoaded { call_id: 1, stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 5 }) } },
+        > Action::ToStore { action: ActionStore::RecordAttempt { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -633,8 +651,35 @@ fn an_address_with_no_code_is_rejected_the_same_way() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: None } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string() } },
+        > Action::ToStore { action: ActionStore::LoadCode { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::CodeLoaded { call_id: 1, stored: None } },
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
+    );
+}
+
+/// A store that will not answer is not a wrong code.
+///
+/// The read the machine asked for is the only way it can know, so there is
+/// nothing to fall back on: refusing would be indistinguishable from a bad
+/// code, and accepting would be worse. The route is told it cannot be
+/// answered, which is the one thing that is true.
+///
+/// New with the read becoming an action. It used to be a 500 the handler
+/// returned before any event existed, so nothing about it was replayable.
+#[test]
+fn a_store_that_will_not_answer_is_not_a_rejection() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
+
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string() } },
+        > Action::ToStore { action: ActionStore::LoadCode { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::ReadError { call_id: 1, message: "connection refused".to_string() } },
+        > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
     );
 }
 
