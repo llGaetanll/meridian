@@ -461,6 +461,27 @@ fn asking_for_a_code_stores_a_hash_and_sends_the_code() {
     );
 }
 
+/// Something that is not an address is taken and nothing is sent.
+///
+/// Taken, because answering otherwise would tell whoever asked which strings
+/// this server will write to — the same reason the route answers the same way
+/// whether or not the address has an account. What the claim is about is the
+/// two actions that do *not* come out: no hash is stored and no mail is sent.
+///
+/// It is decided here rather than in the handler, which is what makes it a
+/// test at all: the check used to return 204 before any event existed.
+#[test]
+fn a_sign_in_asked_for_with_something_that_is_not_an_address_sends_nothing() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
+
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "alex".to_string() } },
+        > @r#"ToRouter { request_id: 1, action: Accepted }"#,
+    );
+}
+
 /// The whole reason the generator is in here: the same seed produces the same
 /// code, so an event log replays to the value it produced the first time. Two
 /// seeds, two codes, both written down — a test that only said "they differ"
@@ -695,7 +716,7 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 2, .. } },
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
-        > Action::ToRouter { action: ActionRouter::Linked { count: 0 }, .. },
+        > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
 
@@ -710,7 +731,7 @@ fn an_open_session_is_left_pending() {
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec![] }] } },
-        > Action::ToRouter { action: ActionRouter::Linked { count: 0 }, .. },
+        > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
 
@@ -850,7 +871,7 @@ fn closing_a_sheet_with_no_session_open_asks_nothing() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec![] } },
-        > Action::ToRouter { action: ActionRouter::Linked { count: 0 }, .. },
+        > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
 
@@ -887,7 +908,7 @@ fn many_sessions_still_produce_one_answer() {
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
-        > Action::ToRouter { action: ActionRouter::Linked { count: 0 }, .. },
+        > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
 
@@ -977,7 +998,7 @@ fn a_session_that_ends_with_nothing_is_said_rather_than_inferred() {
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 1, .. } },
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
-        > @r#"ToRouter { request_id: 1, action: Linked { count: 0 } }"#,
+        > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
     );
 }
 
@@ -998,7 +1019,7 @@ fn an_exchange_that_fails_settles_the_session_too() {
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 2, .. } },
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
-        > @r#"ToRouter { request_id: 1, action: Linked { count: 0 } }"#,
+        > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
     );
 }
 
@@ -1061,7 +1082,7 @@ fn a_close_with_no_session_open_is_answered_at_once() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec![] } },
-        > @r#"ToRouter { request_id: 1, action: Linked { count: 0 } }"#,
+        > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
     );
 }
 

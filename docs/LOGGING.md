@@ -335,7 +335,10 @@ means adding, changing or removing its example here.
   — `Wrong`, `Expired` or `Exhausted`. Which one is logged and deliberately not
   told to the caller: only somebody working through guesses benefits from
   knowing which.
-- `WARN server_main::runtime_server a sign-in was asked for with something that is not an address`
+- `WARN server_main::state_server a sign-in was asked for with something that is not an address`
+  — nothing was stored and nothing was sent, and the route still answered 204.
+  Saying otherwise would tell whoever asked which strings this server writes
+  to, which is the leak the route's one answer exists to prevent.
 - `INFO src_resend email sent id=… to=alex@example.com`
   — what a restart came back with, before anything is fetched. Zeroes are a
   first run, not a failure.
