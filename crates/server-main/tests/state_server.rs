@@ -525,6 +525,33 @@ fn the_right_code_signs_you_in_and_spends_itself() {
     );
 }
 
+/// The other side of spending it. `DeleteCode` is what the turn above emits;
+/// this is what that means to somebody sending the same digits again, and the
+/// two were only ever tested apart — one test asserting the delete, another
+/// asserting that nothing standing is a rejection.
+#[test]
+fn a_spent_code_signs_nobody_in_twice() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
+
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
+        > Action::ToStore { action: ActionStore::CreateSession { call_id: 1, .. } },
+        > Action::ToStore { action: ActionStore::DeleteCode { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
+        > Action::ToRouter { action: ActionRouter::SignedIn { .. }, .. },
+
+        // The same six digits, replayed. The delete landed, so what the
+        // runtime reads for this one is nothing at all — and nothing is
+        // rejected like any other wrong answer.
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "alex@example.com".to_string(), code: "123456".to_string(), stored: None } },
+        > Action::ToRouter { action: ActionRouter::Rejected, .. },
+    );
+}
+
 /// A wrong code costs a guess and nothing else — no session, and the code is
 /// still there to be got right.
 #[test]
