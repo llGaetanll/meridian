@@ -531,10 +531,12 @@ impl StateServer {
                 self.handle_webhook(request_id, webhook, actions)
             }
 
-            EventRouter::SnapshotRequested { force, items } => {
+            EventRouter::SnapshotRequested { items } => {
                 let asked: Vec<_> = items
                     .iter()
-                    .filter(|item| self.should_fetch(item, *force))
+                    // Never forced. A request is an ask for the ledger, not
+                    // for a trip to the bank.
+                    .filter(|item| self.should_fetch(item, false))
                     .map(|item| (item.item_id.clone(), item.cursor.clone()))
                     .collect();
 
@@ -1460,6 +1462,13 @@ impl StateServer {
     ///
     /// Pure, and reads the clock it was handed rather than one of its own —
     /// the whole reason this lives in a state machine.
+    ///
+    /// `force` is the machine overruling its own freshness window, and it is
+    /// the machine's alone. It used to be reachable from the wire, as
+    /// `/snapshot?refresh=true` behind pull-to-refresh, which made a gesture
+    /// anybody can repeat into a way to spend this account's Plaid budget.
+    /// The one thing that sets it now is a webhook: Plaid saying something
+    /// changed *is* the news the window was waiting for.
     fn should_fetch(&mut self, item: &ItemFacts, force: bool) -> bool {
         // Nothing new starts once we are on the way out.
         if self.state == State::Stopping {

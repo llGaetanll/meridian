@@ -30,12 +30,8 @@ const MERIDIAN: Source = Source::new("meridian");
 /// platforms get the same parse. Doing it in the runtime would mean Swift and
 /// Kotlin each writing their own, which is three chances to disagree about what
 /// a missing field means.
-pub async fn fetch_snapshot(force: bool) -> Result<String, String> {
-    let url = if force {
-        format!("{SERVER}/snapshot?refresh=true")
-    } else {
-        format!("{SERVER}/snapshot")
-    };
+pub async fn fetch_snapshot() -> Result<String, String> {
+    let url = format!("{SERVER}/snapshot");
 
     let opts = RequestInit::new();
     opts.set_method("GET");

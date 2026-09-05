@@ -175,7 +175,7 @@ final class RuntimeApp: ObservableObject {
 
     private func performActionSource(_ action: ActionSource) {
         switch action {
-        case .loadSnapshot(let force): loadSnapshot(force: force)
+        case .loadSnapshot: loadSnapshot()
         case .loadSession: loadSession()
         case .saveSession: saveSession()
         case .forgetSession: forgetSession()
@@ -379,7 +379,7 @@ final class RuntimeApp: ObservableObject {
     /// Whatever comes back re-enters the machine as an event, which is what
     /// closes the loop: nothing here inspects the answer or decides anything
     /// about it.
-    private func loadSnapshot(force: Bool) {
+    private func loadSnapshot() {
         // Two refreshes at once would race to write the same state, and the
         // slower one would win. One at a time.
         if loading { return }
@@ -402,7 +402,7 @@ final class RuntimeApp: ObservableObject {
                 }
 
                 event = .snapshotLoaded(
-                    json: try await RuntimeIo.snapshot(force: force, token: token)
+                    json: try await RuntimeIo.snapshot(token: token)
                 )
             } catch {
                 event = .loadFailed(

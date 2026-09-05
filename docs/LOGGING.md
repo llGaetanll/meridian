@@ -260,7 +260,7 @@ means adding, changing or removing its example here.
   [PLAID.md](PLAID.md). `webhook` is the address Plaid is told to call, and
   `none` is `PLAID_COLLECT=poll`, where there is nothing to tell it.
 - `INFO server_main::runtime_server server listening port=8082`
-- `INFO server_main::router_trace <- id=7 client=192.168.1.24 method=GET url="/snapshot?refresh=true"`
+- `INFO server_main::router_trace <- id=7 client=192.168.1.24 method=GET url="/snapshot"`
 - `INFO server_main::router_trace -> id=7 client=192.168.1.24 status=200 ms=41 bytes=91233`
   — a client's request and the answer it got, one pair per request the server
   is asked. `client` is whoever the socket says, which is what tells the web
@@ -412,7 +412,7 @@ means adding, changing or removing its example here.
   — one per turn of the loop, both vectors paired, the same shape the server
   logs. The exception is a tick that decided nothing: time arrives once a
   second whatever is on screen, and a line each would bury everything else.
-- `INFO phone_main::runtime_io -> id=2 source=meridian method=GET url="http://127.0.0.1:8082/snapshot?refresh=true"`
+- `INFO phone_main::runtime_io -> id=2 source=meridian method=GET url="http://127.0.0.1:8082/snapshot"`
 - `INFO phone_main::runtime_io <- id=2 source=meridian status=200 ms=44 body="{\"accounts\":[{\"id\":\"6Pd…"`
   — the phone asking the server for everything, and the body it is about to
   hand the machine to parse. `?refresh=true` is pull-to-refresh, which is why

@@ -8,7 +8,7 @@
 //! ```ignore
 //! eval!(&mut state,
 //!     < Event::FromUi { event: EventUi::Started },
-//!     > Action::ToSource { action: ActionSource::LoadSnapshot { force: false } },
+//!     > Action::ToSource { action: ActionSource::LoadSnapshot },
 //!     > Action::ToUi { action: ActionUi::Render { .. } },
 //!
 //!     < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Ledger } },

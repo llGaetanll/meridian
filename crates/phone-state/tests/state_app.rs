@@ -84,18 +84,22 @@ fn a_session_opens_the_app_on_its_data() {
         < Event::FromRuntime { event: EventRuntime::Tick { now: NOW } },
 
         < Event::FromSource { event: EventSource::SessionLoaded { signed_in: true } },
-        > @r#"ToSource { action: LoadSnapshot { force: false } }"#,
+        > @r#"ToSource { action: LoadSnapshot }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }
 
+/// Pull-to-refresh asks for the ledger, and asks for nothing else. It used to
+/// carry a flag that skipped the server's freshness window and went straight
+/// to Plaid, which made a gesture anybody can repeat into a way to spend an
+/// account-wide budget. When to ask a bank again is the server's decision.
 #[test]
-fn pull_to_refresh_forces_a_fetch() {
+fn pull_to_refresh_asks_for_a_snapshot_like_anything_else() {
     let mut state = app();
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::RefreshRequested },
-        > @r#"ToSource { action: LoadSnapshot { force: true } }"#,
+        > @r#"ToSource { action: LoadSnapshot }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
     );
 }
@@ -1190,7 +1194,7 @@ fn a_failed_load_tells_the_user_and_still_draws() {
 
     eval!(&mut state,
         < Event::FromUi { event: EventUi::RefreshRequested },
-        > Action::ToSource { action: ActionSource::LoadSnapshot { force: true } },
+        > Action::ToSource { action: ActionSource::LoadSnapshot },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromSource { event: EventSource::LoadFailed { message: "the server is not running".to_string() } },
@@ -1308,7 +1312,7 @@ fn the_app_draws_against_the_devices_clock() {
         // A device that thinks it is the day before.
         < Event::FromRuntime { event: EventRuntime::Tick { now: NOW - 86_400 } },
         < Event::FromSource { event: EventSource::SessionLoaded { signed_in: true } },
-        > Action::ToSource { action: ActionSource::LoadSnapshot { force: false } },
+        > Action::ToSource { action: ActionSource::LoadSnapshot },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"streams":[

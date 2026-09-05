@@ -19,8 +19,10 @@ pub enum EventRouter {
     /// two users share a process and do not share a cursor — so the facts a
     /// decision needs arrive with the request that needs one.
     ///
-    /// `force` is pull-to-refresh, which skips the freshness window.
-    SnapshotRequested { force: bool, items: Vec<ItemFacts> },
+    /// It carries no way to insist. Whether a bank is asked again is
+    /// `should_fetch`'s alone, so a client that wants fresher data can ask
+    /// more often and still not reach Plaid any sooner.
+    SnapshotRequested { items: Vec<ItemFacts> },
 
     /// Somebody wants a sign-in code for this address.
     ///

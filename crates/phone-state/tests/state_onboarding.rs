@@ -701,7 +701,7 @@ fn opening_meridian_ends_the_flow() {
     eval!(&mut state,
         < Event::FromUi { event: EventUi::OnboardingFinished },
         > Action::ToSource { action: ActionSource::SaveSession },
-        > @r#"ToSource { action: LoadSnapshot { force: false } }"#,
+        > @r#"ToSource { action: LoadSnapshot }"#,
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { .. }, dock: Some(_) } },
     );
 }

@@ -17,7 +17,6 @@ use axum::Json;
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::Extension;
-use axum::extract::Query;
 use axum::extract::State;
 use axum::http::Method;
 use axum::http::StatusCode;
@@ -89,24 +88,21 @@ fn cors(origins: &WebOrigins) -> CorsLayer {
         .max_age(Duration::from_secs(3600))
 }
 
-/// Everything a request can ask for.
-#[derive(Debug, Default, Deserialize)]
-struct SnapshotQuery {
-    /// Skip the freshness window and go straight to Plaid. Pull-to-refresh.
-    #[serde(default)]
-    refresh: bool,
-}
-
 /// `GET /snapshot`
 ///
 /// Answers with the ledger of whoever the bearer token signs in, and 401s
 /// without one. There is no unauthenticated form: this is somebody's bank
 /// transactions.
+///
+/// **It takes nothing.** A caller cannot ask for a trip to Plaid, and there
+/// used to be a `?refresh=true` that let one: pull-to-refresh sent it, and a
+/// gesture anybody can repeat became a way to spend this account's Plaid
+/// budget. When to go back to a bank is the server's decision and only the
+/// server's, and `should_fetch` is where it is made.
 async fn snapshot(
     State(runtime): State<Arc<RuntimeServer>>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
-    Query(query): Query<SnapshotQuery>,
 ) -> Result<Json<WireSnapshot>, StatusCode> {
     let user_id = runtime.authenticate(&headers).await?;
 
@@ -120,10 +116,7 @@ async fn snapshot(
     let answer = runtime
         .request(
             Client::new(ip, Some(user_id)),
-            EventRouter::SnapshotRequested {
-                force: query.refresh,
-                items,
-            },
+            EventRouter::SnapshotRequested { items },
         )
         .await;
 

@@ -6,11 +6,14 @@
 
 #[derive(Debug, uniffi::Enum)]
 pub enum ActionSource {
-    /// Go and get everything. `force` skips whatever cache sits in the way,
-    /// which is what pull-to-refresh means.
-    LoadSnapshot {
-        force: bool,
-    },
+    /// Go and get everything.
+    ///
+    /// It carries nothing. Pull-to-refresh used to send `?refresh=true`, which
+    /// skipped the server's freshness window and went straight to Plaid — a
+    /// gesture anybody can repeat, spending an account-wide budget. When to
+    /// ask a bank again is the server's decision, so this asks for the ledger
+    /// and the server decides where the ledger comes from.
+    LoadSnapshot,
 
     /// Read who the device says is signed in. The first thing the app asks
     /// for, because the answer decides whether it opens on the Ledger or on

@@ -152,7 +152,7 @@ private fun describe(action: Action): String = when (action) {
     }
 
     is Action.ToSource -> when (val a = action.action) {
-        is ActionSource.LoadSnapshot -> "load snapshot (force=${a.force})"
+        is ActionSource.LoadSnapshot -> "load snapshot"
     }
 }
 

@@ -71,7 +71,7 @@ fn a_bank_that_has_never_synced_is_fetched() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
 
     );
@@ -85,8 +85,7 @@ fn a_user_with_no_banks_is_just_served() {
     let mut state = state();
 
     eval!(&mut state,
-        // Forced, which normally outranks everything short of a dead login.
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -96,7 +95,7 @@ fn a_fresh_bank_is_served_without_asking_plaid_again() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -108,30 +107,36 @@ fn a_stale_bank_is_refetched_from_its_cursor() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
 
     );
 }
 
+/// The other half of the freshness window, and the reason a caller cannot
+/// reach past it: asking again changes nothing. `/snapshot` used to take
+/// `?refresh=true`, which made a pull-to-refresh a way to spend an
+/// account-wide Plaid budget.
 #[test]
-fn a_forced_request_refetches_however_fresh() {
+fn asking_twice_over_does_not_refetch_a_fresh_bank() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
 
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
 
 /// Retrying a login-required Item cannot help, and Plaid counts the call.
 #[test]
-fn a_login_required_bank_is_not_retried_even_when_forced() {
+fn a_login_required_bank_is_not_retried_however_stale() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: true }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: true }] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -143,7 +148,7 @@ fn each_bank_is_decided_about_on_its_own() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: true }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: true }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
 
     );
@@ -157,7 +162,7 @@ fn a_snapshot_is_answered_after_its_last_bank() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 2, .. } },
 
@@ -177,7 +182,7 @@ fn a_failed_write_still_answers_the_route() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
 
         < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
@@ -198,7 +203,7 @@ fn a_call_that_never_answers_is_given_up_on() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
 
         // Plaid says nothing. Time passes and nothing else arrives.
@@ -314,44 +319,44 @@ fn an_ordinary_failure_writes_nothing() {
 /// Plaid meters per endpoint; a burst has to be refused rather than sent and
 /// rejected, because a rejected call still counts against the budget.
 #[test]
-fn a_burst_of_forced_refreshes_is_rate_limited() {
+fn a_burst_of_refreshes_is_rate_limited() {
     let mut state = state();
 
     // BalanceGet allows ten a minute, and each refresh here is its own route,
     // so the budget runs out in front of you: ten fetches, and then the
     // eleventh is answered from the store instead of asking Plaid again.
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 4, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 4, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 5, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 5, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 6, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 6, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 8, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 8, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 9, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 9, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 10, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 10, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
@@ -363,7 +368,7 @@ fn the_rate_limit_is_per_bank() {
     let mut state = state();
 
     // The first bank's ten a minute, spent. Which turn spends which is
-    // `a_burst_of_forced_refreshes_is_rate_limited`'s claim, so the actions go
+    // `a_burst_of_refreshes_is_rate_limited`'s claim, so the actions go
     // nowhere here.
     for request_id in 1..=10 {
         state.handle_events(
@@ -374,11 +379,10 @@ fn the_rate_limit_is_per_bank() {
                     user: None,
                 },
                 event: EventRouter::SnapshotRequested {
-                    force: true,
                     items: vec![ItemFacts {
                         item_id: "item-1".to_string(),
                         cursor: Some("cursor-1".to_string()),
-                        synced_at: Some(T0),
+                        synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)),
                         login_required: false,
                     }],
                 },
@@ -388,7 +392,7 @@ fn the_rate_limit_is_per_bank() {
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
     );
 }
@@ -401,7 +405,7 @@ fn shutting_down_stops_new_work() {
         < Event::FromTerminal { event: EventTerminal::SigInt },
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 
@@ -595,8 +599,8 @@ fn two_routes_asking_at_once_get_their_own_answers() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![] } },
-        < Event::FromRouter { request_id: 9, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![] } },
+        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![] } },
+        < Event::FromRouter { request_id: 9, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![] } },
         > Action::ToRouter { action: ActionRouter::Serve, request_id: 7 },
         > Action::ToRouter { action: ActionRouter::Serve, request_id: 9 },
     );
@@ -1182,22 +1186,19 @@ fn a_caller_past_its_budget_is_refused() {
                     ip: ClientIp::new("203.0.113.7"),
                     user: None,
                 },
-                event: EventRouter::SnapshotRequested {
-                    force: false,
-                    items: vec![],
-                },
+                event: EventRouter::SnapshotRequested { items: vec![] },
             }],
             &mut Vec::new(),
         );
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: true, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > @r#"ToRouter { request_id: 21, action: TooMany }"#,
     );
 }
 
-/// The refusal is the *only* thing that comes out. A forced refresh of a bank
+/// The refusal is the *only* thing that comes out. A refresh of a bank
 /// with no cursor would otherwise fetch, so this says the limit is checked
 /// before the work rather than after it.
 #[test]
@@ -1363,23 +1364,20 @@ fn the_budget_returns_when_the_window_passes() {
                     ip: ClientIp::new("203.0.113.7"),
                     user: None,
                 },
-                event: EventRouter::SnapshotRequested {
-                    force: false,
-                    items: vec![],
-                },
+                event: EventRouter::SnapshotRequested { items: vec![] },
             }],
             &mut Vec::new(),
         );
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![] } },
+        < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![] } },
         > Action::ToRouter { action: ActionRouter::TooMany, .. },
 
         // A minute passes. Nothing else happens in it.
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 61) } },
 
-        < Event::FromRouter { request_id: 22, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { force: false, items: vec![] } },
+        < Event::FromRouter { request_id: 22, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![] } },
         > Action::ToRouter { action: ActionRouter::Serve, .. },
     );
 }
