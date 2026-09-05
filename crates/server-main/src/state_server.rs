@@ -36,6 +36,7 @@ use crate::ActionSource;
 use crate::ActionStore;
 use crate::CallId;
 use crate::Client;
+use crate::ClientIp;
 use crate::Event;
 use crate::EventProcess;
 use crate::EventRouter;
@@ -49,9 +50,11 @@ use crate::StoredCode;
 use crate::WebhookFacts;
 use crate::email_address;
 use crate::login_code;
+use crate::rate_limit::Route;
 use crate::rate_limit::ServerRateCtx;
 use crate::rate_limit::ServerRateLimiter;
 use crate::session_token;
+use uuid::Uuid;
 
 /// How long a sync is good for before Plaid is asked again.
 ///
@@ -139,14 +142,37 @@ impl LinkOutcome {
     }
 }
 
-/// A sign-in waiting on the code the store holds against its address.
+/// What a request was doing, while a read it needs is out.
 ///
 /// Only what the machine cannot get back: who is waiting is already in
 /// [`StateServer::waiting`], keyed by the same call.
 #[derive(Debug)]
-struct Submitted {
-    email: String,
-    code: String,
+enum Pending {
+    /// A sign-in, waiting on the code the store holds against its address.
+    Submitted { email: String, code: String },
+
+    /// A request waiting on the session that says who is asking. The address
+    /// rides along because the caller's rate limit is asked about once both
+    /// halves of who they are are known, and the event carrying the address is
+    /// long gone by then.
+    Authenticating { ip: ClientIp, event: Authenticated },
+}
+
+/// Which authenticated route is waiting, once there is somebody to answer it
+/// for. One per [`EventRouter`](crate::EventRouter) variant that carries a
+/// token.
+#[derive(Debug)]
+enum Authenticated {
+    LinkRequested,
+}
+
+impl Authenticated {
+    /// The bucket a request for this counts against, once it has a caller.
+    fn route(&self) -> Route {
+        match self {
+            Authenticated::LinkRequested => Route::LinkStart,
+        }
+    }
 }
 
 /// An outcome nobody has asked about yet.
@@ -167,6 +193,19 @@ struct Watching {
     /// When it parked, so it can be let go rather than held until the phone
     /// gives up on its own.
     since: Timestamp,
+}
+
+/// Which authenticated route this event is, for the machine to come back to
+/// once the session has resolved.
+///
+/// Separate from [`EventRouter::token`](crate::EventRouter) only because one
+/// answers with borrowed bytes and the other with something the machine keeps.
+/// Both matches are exhaustive, so neither can be forgotten.
+fn authenticated(event: &EventRouter) -> Option<Authenticated> {
+    match event {
+        EventRouter::LinkRequested { .. } => Some(Authenticated::LinkRequested),
+        _ => None,
+    }
 }
 
 /// Where the server is in its own life.
@@ -240,10 +279,10 @@ pub struct StateServer {
     /// one rule rather than a note on each route to remember to wait.
     held: HashMap<RequestId, ActionRouter>,
 
-    /// Sign-ins asked about but not yet answered by the store, by the call
-    /// that asked. What they typed has to outlive the turn it arrived in,
-    /// because the code it is checked against comes back a turn later.
-    submissions: HashMap<CallId, Submitted>,
+    /// Requests waiting on a read, by the call that asked for it. What a
+    /// request was has to outlive the turn it arrived in, because what it is
+    /// decided from comes back a turn later.
+    pending: HashMap<CallId, Pending>,
 
     /// How far each running fetch has got, by item.
     ///
@@ -337,6 +376,37 @@ impl StateServer {
         event: &EventRouter,
         actions: &mut Vec<Action>,
     ) {
+        // A route that has to know who is asking asks the store first, and is
+        // limited on the turn the answer arrives — see
+        // [`EventRouter::token`](crate::EventRouter). Nothing is decided here
+        // and nothing is spent; the read is the same one the handler used to
+        // do before any event existed, so a flood costs exactly what it did.
+        if let Some(token_sha256) = event.token() {
+            let Some(authenticated) = authenticated(event) else {
+                unreachable!("a variant carrying a token names what it is waiting for")
+            };
+
+            let call_id = self.calling(request_id);
+
+            self.pending.insert(
+                call_id,
+                Pending::Authenticating {
+                    ip: client.ip.clone(),
+                    event: authenticated,
+                },
+            );
+
+            actions.push(Action::ToStore {
+                action: ActionStore::LoadSession {
+                    call_id,
+                    token_sha256: token_sha256.to_vec(),
+                    now: self.now,
+                },
+            });
+
+            return;
+        }
+
         // Before anything is read, decided or sent. A route that is over its
         // limit costs one map lookup and a 429, which is the only way a limit
         // is worth having — checked after the work is a limit on how much we
@@ -371,13 +441,11 @@ impl StateServer {
             // nobody finishes costs nothing and expires on its own. So there
             // is nothing to rate limit here that is not already covered by
             // issue #23.
-            EventRouter::LinkRequested { user_id } => {
-                actions.push(Action::ToSource {
-                    action: ActionSource::OpenLink {
-                        call_id: self.calling(request_id),
-                        user_id: *user_id,
-                    },
-                });
+
+            // Carried out on the turn the session resolves, because until
+            // then there is nobody to open a session for.
+            EventRouter::LinkRequested { .. } => {
+                unreachable!("a request carrying a token is resolved before it is decided")
             }
 
             EventRouter::SyncStatusRequested { items } => {
@@ -487,9 +555,9 @@ impl StateServer {
             EventRouter::CodeSubmitted { email, code } => {
                 let call_id = self.calling(request_id);
 
-                self.submissions.insert(
+                self.pending.insert(
                     call_id,
-                    Submitted {
+                    Pending::Submitted {
                         email: email.clone(),
                         code: code.clone(),
                     },
@@ -532,6 +600,57 @@ impl StateServer {
         }
     }
 
+    /// Carry on with a request now that the store has said who is asking.
+    ///
+    /// The rate limit is asked here rather than when the request arrived,
+    /// because both halves of a caller — their address and their user — have
+    /// to be asked in one breath: charging the address first would spend a
+    /// slot on a request the user's own window might have refused.
+    fn handle_authenticated(
+        &mut self,
+        request_id: RequestId,
+        ip: ClientIp,
+        event: &Authenticated,
+        user_id: Option<Uuid>,
+        actions: &mut Vec<Action>,
+    ) {
+        // A token that names nobody. Nothing is limited and nothing is
+        // decided: there is no caller to charge and nothing they may ask for.
+        let Some(user_id) = user_id else {
+            self.answer(request_id, ActionRouter::Unauthorized, actions);
+
+            return;
+        };
+
+        let route = event.route();
+        let ctx = ServerRateCtx::new(route, Client::new(ip.clone(), Some(user_id)));
+
+        if !self.requests.can_send(self.now, &ctx) {
+            tracing::warn!(
+                client = %ip,
+                route = route.as_str(),
+                "a caller is over its rate limit",
+            );
+
+            self.answer(request_id, ActionRouter::TooMany, actions);
+
+            return;
+        }
+
+        match event {
+            // Free to ask for, and creates nothing at Plaid's end — a session
+            // nobody finishes costs nothing and expires on its own.
+            Authenticated::LinkRequested => {
+                actions.push(Action::ToSource {
+                    action: ActionSource::OpenLink {
+                        call_id: self.calling(request_id),
+                        user_id,
+                    },
+                });
+            }
+        }
+    }
+
     /// Check a code against what the store held, and sign somebody in or not.
     ///
     /// A turn later than the submission that asked for it, which is why the
@@ -540,7 +659,8 @@ impl StateServer {
     fn verify_code(
         &mut self,
         request_id: RequestId,
-        submitted: &Submitted,
+        email: &str,
+        code: &str,
         stored: Option<&StoredCode>,
         actions: &mut Vec<Action>,
     ) {
@@ -553,7 +673,7 @@ impl StateServer {
             return;
         };
 
-        let verdict = login_code::verify(stored, &submitted.code, self.now);
+        let verdict = login_code::verify(stored, code, self.now);
 
         if verdict != login_code::Verdict::Accepted {
             // Counted whatever the reason, including expired: an
@@ -562,15 +682,11 @@ impl StateServer {
             actions.push(Action::ToStore {
                 action: ActionStore::RecordAttempt {
                     call_id: self.calling(request_id),
-                    email: submitted.email.clone(),
+                    email: email.to_string(),
                 },
             });
 
-            tracing::warn!(
-                email = submitted.email,
-                ?verdict,
-                "a sign-in code was rejected"
-            );
+            tracing::warn!(email, ?verdict, "a sign-in code was rejected");
 
             self.answer(request_id, ActionRouter::Rejected, actions);
 
@@ -597,7 +713,7 @@ impl StateServer {
         actions.push(Action::ToStore {
             action: ActionStore::CreateSession {
                 call_id: self.calling(request_id),
-                email: submitted.email.clone(),
+                email: email.to_string(),
                 token_sha256: session_token::hash(&token),
                 expires_at: Timestamp::from_secs(self.now.as_secs() + SESSION_GOOD_FOR_SECS),
             },
@@ -607,7 +723,7 @@ impl StateServer {
         actions.push(Action::ToStore {
             action: ActionStore::DeleteCode {
                 call_id: self.calling(request_id),
-                email: submitted.email.clone(),
+                email: email.to_string(),
             },
         });
 
@@ -1211,7 +1327,7 @@ impl StateServer {
     fn handle_event_store(&mut self, event: &EventStore, actions: &mut Vec<Action>) {
         match event {
             EventStore::CodeLoaded { call_id, stored } => {
-                let Some(submitted) = self.submissions.remove(call_id) else {
+                let Some(Pending::Submitted { email, code }) = self.pending.remove(call_id) else {
                     tracing::error!(call_id, "the store answered a sign-in nobody submitted");
 
                     return;
@@ -1221,7 +1337,22 @@ impl StateServer {
                     return;
                 };
 
-                self.verify_code(request_id, &submitted, stored.as_ref(), actions);
+                self.verify_code(request_id, &email, &code, stored.as_ref(), actions);
+            }
+
+            EventStore::SessionResolved { call_id, user_id } => {
+                let Some(Pending::Authenticating { ip, event }) = self.pending.remove(call_id)
+                else {
+                    tracing::error!(call_id, "the store answered a session nobody asked about");
+
+                    return;
+                };
+
+                let Some(request_id) = self.answered(*call_id) else {
+                    return;
+                };
+
+                self.handle_authenticated(request_id, ip, &event, *user_id, actions);
             }
 
             // Nothing can be decided without what was asked for, and there is
@@ -1231,7 +1362,7 @@ impl StateServer {
             EventStore::ReadError { call_id, message } => {
                 tracing::error!(message, "could not read the store");
 
-                self.submissions.remove(call_id);
+                self.pending.remove(call_id);
 
                 let Some(request_id) = self.answered(*call_id) else {
                     return;

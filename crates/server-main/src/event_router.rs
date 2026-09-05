@@ -7,7 +7,6 @@
 use crate::ItemFacts;
 use crate::WebhookFacts;
 use crate::rate_limit::Route;
-use uuid::Uuid;
 
 #[derive(Debug)]
 pub enum EventRouter {
@@ -36,9 +35,13 @@ pub enum EventRouter {
     /// and arrives on its own event, because a route does not read.
     CodeSubmitted { email: String, code: String },
 
-    /// Somebody wants to connect a bank. The id is theirs, so the session
-    /// can be written down against them before its URL is handed over.
-    LinkRequested { user_id: Uuid },
+    /// Somebody wants to connect a bank.
+    ///
+    /// The **hash** of their bearer token, never the token: an event is
+    /// written to the log, and a session token in one is a way into somebody's
+    /// bank. It is what the store is asked to resolve, the same digest it
+    /// holds, so nothing downstream needs the plaintext either.
+    LinkRequested { token_sha256: Vec<u8> },
 
     /// Somebody is watching a sync and wants to know how far it has got.
     ///
@@ -71,6 +74,32 @@ pub enum EventRouter {
 }
 
 impl EventRouter {
+    /// The session this request has to be resolved against before anything is
+    /// decided, if it carries one.
+    ///
+    /// Derived from the variant rather than named by the handler, the same as
+    /// [`route`](Self::route) and for the same reason: a route added later
+    /// cannot forget to be authenticated, because this match will not compile
+    /// until it says whether it is.
+    ///
+    /// `Some` means two things together — who is asking is not known yet, and
+    /// the request is not rate limited until it is. The two go together on
+    /// purpose: a caller's own window can only be asked about once there is a
+    /// caller, and asking the address's window first would spend a slot on a
+    /// request the user's window might have refused.
+    pub fn token(&self) -> Option<&[u8]> {
+        match self {
+            EventRouter::LinkRequested { token_sha256 } => Some(token_sha256),
+
+            EventRouter::SnapshotRequested { .. }
+            | EventRouter::CodeRequested { .. }
+            | EventRouter::CodeSubmitted { .. }
+            | EventRouter::LinkClosed { .. }
+            | EventRouter::SyncStatusRequested { .. }
+            | EventRouter::WebhookReceived { .. } => None,
+        }
+    }
+
     /// Which bucket a request for this counts against.
     ///
     /// Derived from the variant rather than named by the handler, so a route

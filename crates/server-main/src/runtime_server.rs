@@ -700,6 +700,12 @@ impl RuntimeServer {
         // Two shapes, so they are told apart here rather than inside
         // `write_store`, which has nothing to report but success.
         let event = match action {
+            ActionStore::LoadSession {
+                call_id,
+                token_sha256,
+                now,
+            } => self.load_session(*call_id, token_sha256, *now).await,
+
             ActionStore::LoadCode { call_id, email } => self.load_code(*call_id, email).await,
 
             _ => {
@@ -717,6 +723,26 @@ impl RuntimeServer {
         };
 
         vec![Event::FromStore { event }]
+    }
+
+    /// Who a session token signs in, as the store holds it.
+    ///
+    /// The clock comes from the action rather than from here: the row this
+    /// matches is the one the machine reckoned was still good.
+    async fn load_session(
+        &self,
+        call_id: crate::CallId,
+        token_sha256: &[u8],
+        now: Timestamp,
+    ) -> EventStore {
+        match src_postgres::user_for_session(&self.db, token_sha256, now).await {
+            Ok(user_id) => EventStore::SessionResolved { call_id, user_id },
+
+            Err(e) => EventStore::ReadError {
+                call_id,
+                message: e.to_string(),
+            },
+        }
     }
 
     /// What code stands against an address, as the store holds it.
@@ -824,7 +850,7 @@ impl RuntimeServer {
                 self.write(db, action).await?;
             }
 
-            ActionStore::LoadCode { .. } => {
+            ActionStore::LoadSession { .. } | ActionStore::LoadCode { .. } => {
                 unreachable!("a read is answered by `perform_action_store`")
             }
         }
@@ -1124,7 +1150,8 @@ impl RuntimeServer {
 
             // Carried out where they are decided, above. `write` is the sync
             // path, whose ordering is load-bearing in a way these are not.
-            ActionStore::LoadCode { .. }
+            ActionStore::LoadSession { .. }
+            | ActionStore::LoadCode { .. }
             | ActionStore::SaveCode { .. }
             | ActionStore::RecordAttempt { .. }
             | ActionStore::DeleteCode { .. }

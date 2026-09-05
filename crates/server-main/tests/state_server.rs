@@ -222,8 +222,11 @@ fn a_route_with_nothing_decided_is_told_it_cannot_be_answered() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { user_id: uuid::Uuid::nil() } },
-        > Action::ToSource { action: ActionSource::OpenLink { call_id: 1, .. } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToSource { action: ActionSource::OpenLink { call_id: 2, .. } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
         > Action::ToRouter { action: ActionRouter::Unavailable, .. },
@@ -706,8 +709,30 @@ fn connecting_a_bank_opens_a_link_session() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { user_id: uuid::Uuid::nil() } },
-        > Action::ToSource { action: ActionSource::OpenLink { call_id: 1, .. } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToSource { action: ActionSource::OpenLink { call_id: 2, .. } },
+    );
+}
+
+/// A token that signs nobody in gets nowhere near Plaid.
+///
+/// Decided here rather than at the edge, which is what makes it a test at all:
+/// `authenticate` used to 401 before any event existed. What the claim is
+/// about is the action that does *not* come out — no Link session is opened
+/// for a caller the store does not recognise.
+#[test]
+fn a_token_that_names_nobody_opens_no_session() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("stale") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: None } },
+        > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
     );
 }
 
@@ -720,13 +745,16 @@ fn a_session_is_written_down_before_its_url_is_handed_over() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { user_id: uuid::Uuid::nil() } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToSource { action: ActionSource::OpenLink { .. } },
 
-        < Event::FromSource { event: EventSource::LinkOpened { call_id: 1, user_id: uuid::Uuid::nil(), link_token: "link-1".to_string(), hosted_link_url: "https://secure.plaid.com/x".to_string() } },
-        > Action::ToStore { action: ActionStore::SaveLink { call_id: 2, .. } },
+        < Event::FromSource { event: EventSource::LinkOpened { call_id: 2, user_id: uuid::Uuid::nil(), link_token: "link-1".to_string(), hosted_link_url: "https://secure.plaid.com/x".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveLink { call_id: 3, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
         > Action::ToRouter { action: ActionRouter::LinkOpened { .. }, .. },
     );
 }

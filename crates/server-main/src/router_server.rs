@@ -35,6 +35,7 @@ use crate::RuntimeServer;
 use crate::WEBHOOK_PATH;
 use crate::WebOrigins;
 use crate::router_trace;
+use crate::session_token;
 use server_wire::WireSnapshot;
 use server_wire::WireSyncStatus;
 
@@ -238,22 +239,29 @@ async fn link_start(
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<LinkStarted>, StatusCode> {
-    let user_id = runtime.authenticate(&headers).await?;
+    // Hashed here and never carried further. The plaintext is a live
+    // credential and an event is written to the log; the digest is what the
+    // store holds anyway, so nothing downstream is the poorer for it.
+    let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
+    // Anonymous, because who is asking is not known yet — the machine resolves
+    // the session and buckets the request once it has. That is also when the
+    // rate limit is asked: a caller's own window cannot be charged before
+    // there is a caller.
     let answer = runtime
         .request(
-            Client::new(ip, Some(user_id)),
-            EventRouter::LinkRequested { user_id },
+            Client::anonymous(ip),
+            EventRouter::LinkRequested { token_sha256 },
         )
         .await;
 
     too_many(&answer)?;
 
-    let Some(ActionRouter::LinkOpened { url }) = answer else {
-        return Err(StatusCode::BAD_GATEWAY);
-    };
-
-    Ok(Json(LinkStarted { url }))
+    match answer {
+        Some(ActionRouter::LinkOpened { url }) => Ok(Json(LinkStarted { url })),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
+        _ => Err(StatusCode::BAD_GATEWAY),
+    }
 }
 
 /// What `POST /link/finish` answers with.
@@ -433,6 +441,20 @@ async fn sync_status(
     };
 
     Ok(Json(status))
+}
+
+/// The hash of the bearer token this request carries, if it carries one.
+///
+/// A request with no token at all is refused here rather than sent on: there
+/// is no session to resolve and so nothing for the machine to decide. Whether
+/// a token that *is* here names anybody is the machine's, and arrives as a
+/// fact from the store.
+fn bearer(headers: &axum::http::HeaderMap) -> Option<Vec<u8>> {
+    let header = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok());
+
+    session_token::from_header(header).map(session_token::hash)
 }
 
 /// The address as the store and the machine both spell it.
