@@ -4,8 +4,8 @@
 //! being enough the moment two sources wanted different treatment: Plaid's
 //! responses are pretty-printed and its requests carry an account-wide secret,
 //! and neither is true of a price feed. Rules that belong to a source travel
-//! with it rather than being repeated at each call, so adding one — the next
-//! is redaction — is a line in one place and every call it makes is covered.
+//! with it rather than being repeated at each call, so adding one is a line in
+//! one place and every call it makes is covered.
 
 use crate::scrub::Rule;
 use crate::scrub::Scrub;

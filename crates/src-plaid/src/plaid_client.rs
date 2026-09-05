@@ -10,13 +10,17 @@ use crate::PlaidRequest;
 
 /// What this client is called in the logs, and how its bodies get there.
 ///
-/// Plaid pretty-prints, so a response arrives as four-space-indented JSON and
-/// spends most of the 400 characters a line is cut to on indentation — a
-/// `/accounts/balance/get` body got as far as the second account's name. The
-/// rules are also where redaction goes when the secret in every request body
-/// stops being acceptable; it is the same seam, applied to fields instead of
-/// spaces.
-const SOURCE: Source = Source::new("plaid").through(&[scrub::compact_json]);
+/// Redaction first: every request carries the account-wide `secret`, and an
+/// exchange answers with a bank's access token, so a log file was a credential
+/// until this line. It runs before the reformatting so that no rule after it
+/// is handed one.
+///
+/// Then compaction, because Plaid pretty-prints: a response arrives as
+/// four-space-indented JSON and spends most of the 400 characters a line is
+/// cut to on indentation — a `/accounts/balance/get` body got as far as the
+/// second account's name.
+const SOURCE: Source =
+    Source::new("plaid").through(&[scrub::redact_credentials, scrub::compact_json]);
 
 /// Plaid's credentials, and the environment they belong to.
 ///
@@ -132,10 +136,9 @@ impl PlaidClient {
     ) -> Result<Response, PlaidError> {
         let PlaidHttpRequest { url, body } = request;
 
-        // The body is logged as it is sent, secret and all — `SOURCE`'s rules
-        // reformat it and nothing more, so far. See `ApiCall::post` for why
-        // that is worth what it costs, and `docs/LOGGING.md` for what has to
-        // change before Production.
+        // The body is logged as it is sent, field for field, with the
+        // credentials in it replaced by their length — `SOURCE`'s rules. See
+        // `ApiCall::post` for why the rest of it is worth logging.
         let call = ApiCall::post(module_path!(), SOURCE, &url, &body.to_string());
 
         let response = match self.client.post(url).json(&body).send().await {
@@ -186,7 +189,8 @@ impl PlaidClient {
     /// cloned and asserted on with no secret anywhere near them.
     ///
     /// They do reach [`PlaidHttpRequest`], which is both what gets sent and
-    /// what gets logged. That is the deliberate part — `docs/LOGGING.md`.
+    /// what gets logged — the log keeps the field names and drops the values,
+    /// which is `SOURCE` above and `docs/LOGGING.md`.
     fn authenticated_body(&self, req: &dyn PlaidRequest) -> Result<Value, PlaidError> {
         let mut body = req.body();
 

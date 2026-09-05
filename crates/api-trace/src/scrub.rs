@@ -15,9 +15,9 @@
 //!
 //! A rule may not change what a body *means*. Reformatting and redaction both
 //! keep that promise: the first says the same thing in less space, the second
-//! says plainly that something was removed. A rule that quietly rewrote a
-//! value would leave a log that is worse than no log, because it would still
-//! be believed.
+//! leaves the field where it was and says plainly that its value was removed.
+//! A rule that quietly rewrote a value would leave a log that is worse than no
+//! log, because it would still be believed.
 //!
 //! # None of this reaches the code that reads the body
 //!
@@ -27,9 +27,9 @@
 //! string that gets parsed is the one that came off the wire, untouched. That
 //! is not a convention to be careful about: [`Scrub`] cannot be run from
 //! outside this crate, so there is no way to route a real body through a rule
-//! by accident. It matters more with every rule we add. Reformatting only
-//! costs us a confusing diff if it leaks; redaction, which is next, would cost
-//! us a request sent with the word `REDACTED` where a secret belonged.
+//! by accident. Reformatting would only cost us a confusing diff if it leaked;
+//! [`redact_credentials`] would cost us a request sent to Plaid with
+//! `[redacted 4]` where the secret belonged.
 
 use std::borrow::Cow;
 
@@ -148,6 +148,186 @@ fn looks_like_json(body: &str) -> bool {
     matches!(body.trim_start().as_bytes().first(), Some(b'{' | b'['))
 }
 
+/// Field names whose value is a credential and never reaches a line.
+///
+/// Plaid's vocabulary, because Plaid is the only source that puts a credential
+/// in a body at all — a price feed authenticates with nothing, and Resend with
+/// a header. A source added later brings its names here rather than its own
+/// rule: one list is the only version of this anybody has to keep true.
+const CREDENTIALS: &[&str] = &[
+    // On every request. `secret` is account-wide: it reads every Item on the
+    // account, not one user's.
+    "client_id",
+    "secret",
+    // A bank, permanently. Never expires and is never handed to a client.
+    "access_token",
+    // Thirty minutes, and exchangeable for the one above.
+    "public_token",
+    // Opens a Link session belonging to one of our users. `hosted_link_url` is
+    // the page that carries it, so the URL is the token.
+    "link_token",
+    "hosted_link_url",
+];
+
+/// Replace the value of every credential-shaped field with its length.
+///
+/// The field names stay, and that is the point: logging a request body is for
+/// answering "what did we actually send", and a field we did not intend to
+/// send is visible from its name alone. What the value *was* has never been
+/// part of that question.
+///
+/// Not a parse and re-serialise, for [`compact_json`]'s reason and one of its
+/// own: a body that does not parse is exactly when a rule that gives up would
+/// hand the log a secret. This walks the text, and anything it cannot read to
+/// the end of — a response cut mid-flight — it redacts to the end of the body.
+pub fn redact_credentials<'a>(_ctx: &Context<'_>, body: Cow<'a, str>) -> Cow<'a, str> {
+    let bytes = body.as_bytes();
+    let mut out: Option<String> = None;
+    let mut kept = 0;
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] != b'"' {
+            i += 1;
+            continue;
+        }
+
+        // Consuming whole strings is what keeps a merchant called `secret`
+        // from being read as a field name.
+        let Some(close) = string_end(bytes, i) else {
+            break;
+        };
+
+        let name = &bytes[i + 1..close];
+        let colon = skip_whitespace(bytes, close + 1);
+
+        // A `:` after it is what makes a string a key. Nothing else in JSON is
+        // followed by one, so this needs no notion of where we are.
+        if bytes.get(colon) != Some(&b':') || !CREDENTIALS.iter().any(|c| c.as_bytes() == name) {
+            i = close + 1;
+            continue;
+        }
+
+        let start = skip_whitespace(bytes, colon + 1);
+        let end = value_end(bytes, start);
+
+        let out = out.get_or_insert_with(|| String::with_capacity(body.len()));
+        out.push_str(&body[kept..start]);
+        out.push_str(&redaction(&body[start..end]));
+
+        kept = end;
+        i = end;
+    }
+
+    match out {
+        None => body,
+        Some(mut out) => {
+            out.push_str(&body[kept..]);
+            Cow::Owned(out)
+        }
+    }
+}
+
+/// What a credential leaves behind.
+///
+/// The length stays because it is not a secret and it is the one thing that
+/// tells "we sent the wrong secret" apart from "we sent an empty one" — a
+/// misconfiguration no other line in the log would show. Quoted, so the body
+/// is still JSON and still says plainly that something was taken out.
+fn redaction(value: &str) -> String {
+    // The quotes belong to the JSON, not to the credential. Stripped in two
+    // steps so a value cut mid-string still counts what it actually holds.
+    let value = value.strip_prefix('"').unwrap_or(value);
+    let value = value.strip_suffix('"').unwrap_or(value);
+
+    format!("\"[redacted {}]\"", value.chars().count())
+}
+
+/// The index of the closing quote of the string opening at `open`.
+///
+/// `None` when the body ends inside it.
+fn string_end(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut i = open + 1;
+
+    while i < bytes.len() {
+        match bytes[i] {
+            // A `\"` is two characters and neither of them ends the string.
+            b'\\' => i += 2,
+            b'"' => return Some(i),
+            _ => i += 1,
+        }
+    }
+
+    None
+}
+
+fn skip_whitespace(bytes: &[u8], mut i: usize) -> usize {
+    while matches!(bytes.get(i), Some(b) if b.is_ascii_whitespace()) {
+        i += 1;
+    }
+
+    i
+}
+
+/// One past the end of the JSON value starting at `start`.
+///
+/// The end of the body when the value has no end, which is what makes a
+/// truncated response fail closed: everything from the credential onwards goes
+/// rather than everything up to where the reading stopped.
+fn value_end(bytes: &[u8], start: usize) -> usize {
+    match bytes.get(start) {
+        None => bytes.len(),
+        Some(b'"') => match string_end(bytes, start) {
+            Some(close) => close + 1,
+            None => bytes.len(),
+        },
+        Some(b'{' | b'[') => nested_end(bytes, start),
+        // `null`, a number, `true`. Not a credential in any body we send or
+        // receive, and redacted all the same: a rule that decided what to hide
+        // by reading the value would leak the day it read one wrong.
+        Some(_) => {
+            let mut i = start;
+
+            while !matches!(bytes.get(i), None | Some(b',' | b'}' | b']')) {
+                i += 1;
+            }
+
+            // Whitespace before the comma is the body's formatting, not part
+            // of the value, and putting it inside the marker reads as if it
+            // were.
+            while i > start && matches!(bytes.get(i - 1), Some(b) if b.is_ascii_whitespace()) {
+                i -= 1;
+            }
+
+            i
+        }
+    }
+}
+
+/// One past the `}` or `]` closing the object or array opening at `start`.
+fn nested_end(bytes: &[u8], start: usize) -> usize {
+    let mut depth = 0;
+    let mut i = start;
+
+    while i < bytes.len() {
+        match bytes[i] {
+            // Skipped whole, so a brace inside a string does not count.
+            b'"' => match string_end(bytes, i) {
+                Some(close) => i = close,
+                None => return bytes.len(),
+            },
+            b'{' | b'[' => depth += 1,
+            b'}' | b']' if depth <= 1 => return i + 1,
+            b'}' | b']' => depth -= 1,
+            _ => {}
+        }
+
+        i += 1;
+    }
+
+    bytes.len()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,6 +404,97 @@ mod tests {
         let scrub = Scrub::new(&[first, second]);
 
         assert_eq!(scrub.apply(&ctx(), Cow::Borrowed("x")), "xab");
+    }
+
+    fn redact(body: &str) -> String {
+        redact_credentials(&ctx(), Cow::Borrowed(body)).into_owned()
+    }
+
+    #[test]
+    fn takes_the_secret_out_of_a_plaid_request() {
+        let sent = r#"{"access_token":"access-sandbox-1","client_id":"6xxxxxxxxx","cursor":"CAESJTM3","secret":"xxxx"}"#;
+
+        assert_eq!(
+            redact(sent),
+            r#"{"access_token":"[redacted 16]","client_id":"[redacted 10]","cursor":"CAESJTM3","secret":"[redacted 4]"}"#
+        );
+    }
+
+    #[test]
+    fn takes_the_access_token_out_of_an_exchange_response() {
+        assert_eq!(
+            redact(r#"{"access_token":"access-sandbox-1","item_id":"8Pd5Zx"}"#),
+            r#"{"access_token":"[redacted 16]","item_id":"8Pd5Zx"}"#
+        );
+    }
+
+    #[test]
+    fn reaches_a_token_nested_in_a_link_session() {
+        let answered = r#"{"link_sessions":[{"results":{"item_add_results":[{"public_token":"public-sandbox-1"}]}}]}"#;
+
+        assert_eq!(
+            redact(answered),
+            r#"{"link_sessions":[{"results":{"item_add_results":[{"public_token":"[redacted 16]"}]}}]}"#
+        );
+    }
+
+    #[test]
+    fn reads_a_key_through_the_whitespace_plaid_sends() {
+        assert_eq!(
+            redact("{\n    \"secret\" : \"xxxx\"\n}"),
+            "{\n    \"secret\" : \"[redacted 4]\"\n}"
+        );
+    }
+
+    #[test]
+    fn a_value_that_reads_like_a_key_is_still_a_value() {
+        assert_eq!(
+            redact(r#"{"name":"secret","secret":"xxxx"}"#),
+            r#"{"name":"secret","secret":"[redacted 4]"}"#
+        );
+    }
+
+    #[test]
+    fn a_secret_the_body_stops_in_the_middle_of_goes_whole() {
+        // A response cut mid-flight. There is no closing quote to stop at, so
+        // the rule takes everything rather than what it managed to read.
+        assert_eq!(redact(r#"{"secret":"xxxx"#), r#"{"secret":"[redacted 4]""#);
+    }
+
+    #[test]
+    fn a_credential_that_is_not_a_string_goes_too() {
+        assert_eq!(
+            redact(r#"{"access_token":null,"item_id":"8Pd5Zx"}"#),
+            r#"{"access_token":"[redacted 4]","item_id":"8Pd5Zx"}"#
+        );
+    }
+
+    #[test]
+    fn an_escaped_quote_does_not_end_the_secret_early() {
+        assert_eq!(
+            redact(r#"{"secret":"a\"b","n":1}"#),
+            r#"{"secret":"[redacted 4]","n":1}"#
+        );
+    }
+
+    #[test]
+    fn leaves_a_body_with_nothing_to_hide_where_it_is() {
+        let clean = r#"{"added":[],"cursor":"CAESJTM3"}"#;
+
+        let out = redact_credentials(&ctx(), Cow::Borrowed(clean));
+
+        assert!(matches!(out, Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn plaids_rules_redact_before_they_reformat() {
+        let scrub = Scrub::new(&[redact_credentials, compact_json]);
+        let pretty = "{\n    \"secret\": \"xxxx\"\n}";
+
+        assert_eq!(
+            scrub.apply(&ctx(), Cow::Borrowed(pretty)),
+            r#"{"secret":"[redacted 4]"}"#
+        );
     }
 
     #[test]
