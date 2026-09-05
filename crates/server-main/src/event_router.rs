@@ -4,7 +4,6 @@
 //! what makes it. "Router" rather than "client": the phone is a client too,
 //! and so is the web app, but only a handler is waiting on the answer.
 
-use crate::ItemFacts;
 use crate::WebhookFacts;
 use crate::rate_limit::Route;
 
@@ -20,7 +19,7 @@ pub enum EventRouter {
     /// It carries no way to insist. Whether a bank is asked again is
     /// `should_fetch`'s alone, so a client that wants fresher data can ask
     /// more often and still not reach Plaid any sooner.
-    SnapshotRequested { items: Vec<ItemFacts> },
+    SnapshotRequested { token_sha256: Vec<u8> },
 
     /// Somebody wants a sign-in code for this address.
     ///
@@ -47,7 +46,7 @@ pub enum EventRouter {
     ///
     /// Carries their banks for the same reason `SnapshotRequested` does: the
     /// machine holds progress by item and has no idea whose item is whose.
-    SyncStatusRequested { items: Vec<ItemFacts> },
+    SyncStatusRequested { token_sha256: Vec<u8> },
 
     /// The bank sign-in page closed, so whatever happened there has happened.
     ///
@@ -61,7 +60,7 @@ pub enum EventRouter {
     /// question: collection happens unprompted, so the sessions are what the
     /// machine matches Plaid's `SESSION_FINISHED` against rather than what it
     /// goes and polls.
-    LinkClosed { pending: Vec<String> },
+    LinkClosed { token_sha256: Vec<u8> },
 
     /// Plaid called us, and the call was believed.
     ///
@@ -89,13 +88,13 @@ impl EventRouter {
     /// request the user's window might have refused.
     pub fn token(&self) -> Option<&[u8]> {
         match self {
-            EventRouter::LinkRequested { token_sha256 } => Some(token_sha256),
+            EventRouter::LinkRequested { token_sha256 }
+            | EventRouter::LinkClosed { token_sha256 }
+            | EventRouter::SyncStatusRequested { token_sha256 }
+            | EventRouter::SnapshotRequested { token_sha256 } => Some(token_sha256),
 
-            EventRouter::SnapshotRequested { .. }
-            | EventRouter::CodeRequested { .. }
+            EventRouter::CodeRequested { .. }
             | EventRouter::CodeSubmitted { .. }
-            | EventRouter::LinkClosed { .. }
-            | EventRouter::SyncStatusRequested { .. }
             | EventRouter::WebhookReceived { .. } => None,
         }
     }

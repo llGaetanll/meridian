@@ -105,35 +105,26 @@ async fn snapshot(
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<WireSnapshot>, StatusCode> {
-    let user_id = runtime.authenticate(&headers).await?;
+    let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
-    // Read before deciding. These are the facts the machine needs and does not
-    // keep — where each bank's last sync reached, and whether it still works.
-    let items = runtime.facts_for(user_id).await.unwrap_or_else(|e| {
-        tracing::error!(error = %e, "could not read this user's banks");
-        Vec::new()
-    });
-
+    // Nothing is read here, and the ledger comes back on the answer. The
+    // machine asks for it only once every fetch this request set going has
+    // landed, which is what stops a snapshot serving rows its own sync was
+    // about to replace.
     let answer = runtime
         .request(
-            Client::new(ip, Some(user_id)),
-            EventRouter::SnapshotRequested { items },
+            Client::anonymous(ip),
+            EventRouter::SnapshotRequested { token_sha256 },
         )
         .await;
 
-    // Read before the store is. A snapshot is the expensive answer this server
-    // gives — a whole ledger out of Postgres and projected — so a refused
-    // request must not pay for it on the way to a 429.
     too_many(&answer)?;
 
-    // Matched rather than assumed, like every other route here. This one used
-    // to serve whatever the machine said, so a machine that had answered
-    // `Unavailable` still had a ledger read and returned over the top of it.
-    let Some(ActionRouter::Serve) = answer else {
-        return Err(StatusCode::SERVICE_UNAVAILABLE);
-    };
-
-    Ok(Json(runtime.project_snapshot(user_id).await))
+    match answer {
+        Some(ActionRouter::Serve { snapshot }) => Ok(Json(snapshot)),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE),
+    }
 }
 
 /// What `POST /auth/request` takes.
@@ -312,25 +303,20 @@ async fn link_finish(
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<LinkFinished>, StatusCode> {
-    let user_id = runtime.authenticate(&headers).await?;
-
-    // The sessions this user has open, read before deciding — the same shape
-    // as everywhere else: the machine keeps nothing, so the facts arrive with
-    // the request. They are what a webhook's `link_token` is matched against,
-    // and what a poll goes and asks about.
-    let pending = runtime.pending_links(user_id).await.map_err(|e| {
-        tracing::error!(error = %e, "could not read this user's link sessions");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
     let answer = runtime
         .request(
-            Client::new(ip, Some(user_id)),
-            EventRouter::LinkClosed { pending },
+            Client::anonymous(ip),
+            EventRouter::LinkClosed { token_sha256 },
         )
         .await;
 
     too_many(&answer)?;
+
+    if let Some(ActionRouter::Unauthorized) = answer {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
 
     Ok(Json(match answer {
         Some(ActionRouter::Linked { count }) => LinkFinished::Linked { count },
@@ -417,30 +403,22 @@ async fn sync_status(
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<WireSyncStatus>, StatusCode> {
-    let user_id = runtime.authenticate(&headers).await?;
-
-    // Which banks are theirs, read before deciding — the same shape as every
-    // other route here. The machine holds progress by item and has no idea
-    // whose item is whose.
-    let items = runtime.facts_for(user_id).await.unwrap_or_else(|e| {
-        tracing::error!(error = %e, "could not read this user's banks");
-        Vec::new()
-    });
+    let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
     let answer = runtime
         .request(
-            Client::new(ip, Some(user_id)),
-            EventRouter::SyncStatusRequested { items },
+            Client::anonymous(ip),
+            EventRouter::SyncStatusRequested { token_sha256 },
         )
         .await;
 
     too_many(&answer)?;
 
-    let Some(ActionRouter::SyncStatus { status }) = answer else {
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    };
-
-    Ok(Json(status))
+    match answer {
+        Some(ActionRouter::SyncStatus { status }) => Ok(Json(status)),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
+        _ => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
 /// The hash of the bearer token this request carries, if it carries one.

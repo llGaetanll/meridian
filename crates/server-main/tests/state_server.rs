@@ -25,6 +25,72 @@ use api_ledger::Tx;
 
 use server_main::*;
 
+/// Drive one whole `/snapshot` request to its answer, answering the reads it
+/// asks for along the way.
+///
+/// A helper *around* a test, never inside one: the only callers fill a
+/// rate-limit window, and which turn spends which is the claim of the test
+/// that is about it.
+fn spend(state: &mut StateServer, request_id: u64, items: &[ItemFacts]) {
+    let mut actions = Vec::new();
+
+    state.handle_events(
+        &[Event::FromRouter {
+            request_id,
+            client: Client {
+                ip: ClientIp::new("203.0.113.7"),
+                user: None,
+            },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        }],
+        &mut actions,
+    );
+
+    loop {
+        let answers: Vec<Event> = actions
+            .iter()
+            .filter_map(|action| read_back(action, items))
+            .collect();
+
+        if answers.is_empty() {
+            return;
+        }
+
+        actions.clear();
+        state.handle_events(&answers, &mut actions);
+    }
+}
+
+/// The event that answers one store read, if that is what this action is.
+fn read_back(action: &Action, items: &[ItemFacts]) -> Option<Event> {
+    let Action::ToStore { action } = action else {
+        return None;
+    };
+
+    let event = match action {
+        ActionStore::LoadSession { call_id, .. } => EventStore::SessionResolved {
+            call_id: *call_id,
+            user_id: Some(uuid::Uuid::nil()),
+        },
+
+        ActionStore::LoadItems { call_id, .. } => EventStore::ItemsLoaded {
+            call_id: *call_id,
+            items: items.to_vec(),
+        },
+
+        ActionStore::LoadSnapshot { call_id, .. } => EventStore::SnapshotLoaded {
+            call_id: *call_id,
+            snapshot: WireSnapshot::default(),
+        },
+
+        _ => return None,
+    };
+
+    Some(Event::FromStore { event })
+}
+
 const T0: Timestamp = Timestamp::from_secs(1_787_097_600);
 
 /// A machine that has been told what time it is and that its process is up —
@@ -71,7 +137,13 @@ fn a_bank_that_has_never_synced_is_fetched() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
 
     );
@@ -85,8 +157,17 @@ fn a_user_with_no_banks_is_just_served() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![] } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![] } },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 3, .. } },
+
+        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 3, snapshot: WireSnapshot::default() } },
+        > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
 
@@ -95,8 +176,17 @@ fn a_fresh_bank_is_served_without_asking_plaid_again() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 3, .. } },
+
+        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 3, snapshot: WireSnapshot::default() } },
+        > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
 
@@ -107,7 +197,13 @@ fn a_stale_bank_is_refetched_from_its_cursor() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
 
     );
@@ -122,11 +218,29 @@ fn asking_twice_over_does_not_refetch_a_fresh_bank() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 3, .. } },
+
+        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 3, snapshot: WireSnapshot::default() } },
+        > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
+
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 4, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 4, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 5, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 5, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 6, .. } },
+
+        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 6, snapshot: WireSnapshot::default() } },
+        > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
 
@@ -136,8 +250,17 @@ fn a_login_required_bank_is_not_retried_however_stale() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: true }] } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: true }] } },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 3, .. } },
+
+        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 3, snapshot: WireSnapshot::default() } },
+        > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
 
@@ -148,7 +271,13 @@ fn each_bank_is_decided_about_on_its_own() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: true }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: true }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
 
     );
@@ -162,15 +291,24 @@ fn a_snapshot_is_answered_after_its_last_bank() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 2, .. } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 3, .. } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 4, .. } },
 
         // One bank in. Still nothing to say: the other is outstanding.
-        < Event::FromSource { event: EventSource::PlaidFailed { call_id: 1, item_id: "item-1".to_string(), code: "REQUEST_FAILED".to_string() } },
+        < Event::FromSource { event: EventSource::PlaidFailed { call_id: 3, item_id: "item-1".to_string(), code: "REQUEST_FAILED".to_string() } },
 
-        < Event::FromSource { event: EventSource::PlaidFailed { call_id: 2, item_id: "item-2".to_string(), code: "REQUEST_FAILED".to_string() } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
+        < Event::FromSource { event: EventSource::PlaidFailed { call_id: 4, item_id: "item-2".to_string(), code: "REQUEST_FAILED".to_string() } },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 5, .. } },
+
+        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 5, snapshot: WireSnapshot::default() } },
+        > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
 
@@ -182,14 +320,23 @@ fn a_failed_write_still_answers_the_route() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
-        > Action::ToStore { action: ActionStore::SaveFetched { call_id: 2, .. } },
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::WriteError { call_id: 2, message: "connection refused".to_string() } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 3, .. } },
+
+        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 3, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
+        > Action::ToStore { action: ActionStore::SaveFetched { call_id: 4, .. } },
+
+        < Event::FromStore { event: EventStore::WriteError { call_id: 4, message: "connection refused".to_string() } },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 5, .. } },
+
+        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 5, snapshot: WireSnapshot::default() } },
+        > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
 
@@ -203,14 +350,23 @@ fn a_call_that_never_answers_is_given_up_on() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 3, .. } },
 
         // Plaid says nothing. Time passes and nothing else arrives.
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 1) } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 4, .. } },
+
+        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 4, snapshot: WireSnapshot::default() } },
+        > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
 
@@ -329,38 +485,107 @@ fn a_burst_of_refreshes_is_rate_limited() {
     // so the budget runs out in front of you: ten fetches, and then the
     // eleventh is answered from the store instead of asking Plaid again.
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 4, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 4, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 5, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 5, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 7, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 7, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 8, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 8, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 4, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromRouter { request_id: 4, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 10, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 10, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 11, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 11, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 5, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromRouter { request_id: 5, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 13, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 13, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 14, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 14, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 6, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromRouter { request_id: 6, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 16, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 16, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 17, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 17, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 19, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 19, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 20, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 20, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 8, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromRouter { request_id: 8, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 22, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 22, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 23, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 23, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 9, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromRouter { request_id: 9, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 25, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 25, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 26, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 26, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 10, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromRouter { request_id: 10, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 28, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 28, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 29, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 29, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
 
-        < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
+        < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 31, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 31, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 32, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 32, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 33, .. } },
+
+        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 33, snapshot: WireSnapshot::default() } },
+        > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
 
@@ -373,29 +598,25 @@ fn the_rate_limit_is_per_bank() {
     // The first bank's ten a minute, spent. Which turn spends which is
     // `a_burst_of_refreshes_is_rate_limited`'s claim, so the actions go
     // nowhere here.
+    let stale = [ItemFacts {
+        item_id: "item-1".to_string(),
+        cursor: Some("cursor-1".to_string()),
+        synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)),
+        login_required: false,
+    }];
+
     for request_id in 1..=10 {
-        state.handle_events(
-            &[Event::FromRouter {
-                request_id,
-                client: Client {
-                    ip: ClientIp::new("203.0.113.7"),
-                    user: None,
-                },
-                event: EventRouter::SnapshotRequested {
-                    items: vec![ItemFacts {
-                        item_id: "item-1".to_string(),
-                        cursor: Some("cursor-1".to_string()),
-                        synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)),
-                        login_required: false,
-                    }],
-                },
-            }],
-            &mut Vec::new(),
-        );
+        spend(&mut state, request_id, &stale);
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 31, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 31, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 32, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 32, items: vec![ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
     );
 }
@@ -408,8 +629,17 @@ fn shutting_down_stops_new_work() {
         < Event::FromTerminal { event: EventTerminal::SigInt },
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 3, .. } },
+
+        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 3, snapshot: WireSnapshot::default() } },
+        > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 
     assert!(state.shutting_down());
@@ -695,10 +925,27 @@ fn two_routes_asking_at_once_get_their_own_answers() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![] } },
-        < Event::FromRouter { request_id: 9, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![] } },
-        > Action::ToRouter { action: ActionRouter::Serve, request_id: 7 },
-        > Action::ToRouter { action: ActionRouter::Serve, request_id: 9 },
+        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-7") } },
+        < Event::FromRouter { request_id: 9, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-9") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 2, user_id: Some(uuid::Uuid::from_u128(9)) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 3, .. } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 4, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 3, items: vec![] } },
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 4, items: vec![] } },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 5, .. } },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 6, .. } },
+
+        // Four hops each, interleaved the whole way, and each id comes back
+        // to the route that drew it.
+        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 5, snapshot: WireSnapshot::default() } },
+        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 6, snapshot: WireSnapshot::default() } },
+        > Action::ToRouter { action: ActionRouter::Serve { .. }, request_id: 7 },
+        > Action::ToRouter { action: ActionRouter::Serve { .. }, request_id: 9 },
     );
 }
 
@@ -767,10 +1014,16 @@ fn a_public_token_is_exchanged_even_before_the_session_finishes() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
         > Action::ToSource { action: ActionSource::ExchangePublicToken { .. } },
     );
 }
@@ -782,13 +1035,19 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }] } },
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 2, .. } },
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }] } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
         > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
@@ -800,10 +1059,16 @@ fn an_open_session_is_left_pending() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec![] }] } },
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec![] }] } },
         > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
@@ -814,20 +1079,26 @@ fn a_linked_bank_is_stored_and_its_session_closed() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
-        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 2, .. } },
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 4, .. } },
 
-        < Event::FromSource { event: EventSource::ItemLinked { call_id: 2, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
-        > Action::ToStore { action: ActionStore::SaveItem { call_id: 3, .. } },
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
-        > @r#"ToSource { action: FetchPlaid { call_id: 5, item_id: "item-9", cursor: None } }"#,
+        < Event::FromSource { event: EventSource::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 5, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
+        > @r#"ToSource { action: FetchPlaid { call_id: 7, item_id: "item-9", cursor: None } }"#,
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 5 } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 6 } },
         > Action::ToRouter { action: ActionRouter::Linked { count: 1 }, .. },
     );
 }
@@ -843,19 +1114,25 @@ fn a_new_bank_starts_syncing_without_holding_the_route() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
-        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 2, .. } },
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 4, .. } },
 
-        < Event::FromSource { event: EventSource::ItemLinked { call_id: 2, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
-        > Action::ToStore { action: ActionStore::SaveItem { call_id: 3, .. } },
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 5, .. } },
+        < Event::FromSource { event: EventSource::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 5, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 7, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 5 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 6 } },
         > Action::ToRouter { action: ActionRouter::Linked { count: 1 }, .. },
     );
 }
@@ -872,21 +1149,33 @@ fn a_bank_is_syncing_the_moment_the_fetch_is_asked_for() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
-        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 2, .. } },
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 4, .. } },
 
-        < Event::FromSource { event: EventSource::ItemLinked { call_id: 2, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
-        > Action::ToStore { action: ActionStore::SaveItem { call_id: 3, .. } },
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 5, .. } },
+        < Event::FromSource { event: EventSource::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 5, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 7, .. } },
 
         // Asked in the turn above and not yet begun — and already something to
         // watch. No progress has been reported, so the counts are zero, but
         // `finished` is what the screen reads and it says no.
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 8, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 8, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 9, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 9, items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > @r#"ToRouter { request_id: 2, action: SyncStatus { status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: false } } }"#,
     );
 }
@@ -898,7 +1187,13 @@ fn a_user_with_nothing_syncing_is_told_so() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { items: vec![] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![] } },
         > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
     );
 }
@@ -914,7 +1209,13 @@ fn a_running_sync_reports_the_stage_it_is_on() {
     eval!(&mut state,
         < Event::FromSource { event: EventSource::PlaidProgressed { item_id: "item-9".to_string(), stage: server_wire::SyncStage::Transactions, institution: Some("First Platypus Bank".to_string()), accounts: 8, transactions: 19, streams: 0 } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "transactions", institution: Some("First Platypus Bank"), accounts: 8, transactions: 19, streams: 0, finished: false } } }"#,
     );
 }
@@ -931,7 +1232,13 @@ fn a_failed_sync_stops_being_something_to_watch() {
 
         < Event::FromSource { event: EventSource::PlaidFailed { call_id: 1, item_id: "item-9".to_string(), code: "REQUEST_FAILED".to_string() } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
     );
 }
@@ -943,7 +1250,13 @@ fn closing_a_sheet_with_no_session_open_asks_nothing() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec![] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec![] } },
         > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
@@ -955,7 +1268,13 @@ fn every_open_session_is_polled() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string(), "link-2".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
     );
 }
@@ -968,19 +1287,25 @@ fn many_sessions_still_produce_one_answer() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string(), "link-3".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string(), "link-2".to_string(), "link-3".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 1, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-2".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-3".to_string(), finished: true, public_tokens: vec![] }] } },
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 2, .. } },
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 3, .. } },
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-2".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-3".to_string(), finished: true, public_tokens: vec![] }] } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
-
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
-
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 5, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
 
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 5 } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 6 } },
         > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
@@ -1021,10 +1346,16 @@ fn an_outcome_that_arrives_first_is_waiting_when_the_phone_asks() {
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
 
         // The phone catches up, and is told what it came to.
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 4, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 4, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 5, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 5, link_tokens: vec!["link-1".to_string()] } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 6 } },
         > @r#"ToRouter { request_id: 2, action: Linked { count: 1 } }"#,
     );
 }
@@ -1037,22 +1368,28 @@ fn a_close_that_arrives_first_waits_for_the_outcome() {
 
     eval!(&mut state,
         // Nothing at all comes back. Not an empty answer — no answer yet.
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
 
         < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string()] } } },
-        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 1, .. } },
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 3, .. } },
 
-        < Event::FromSource { event: EventSource::ItemLinked { call_id: 1, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
-        > Action::ToStore { action: ActionStore::SaveItem { call_id: 2, .. } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 3, .. } },
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
+        < Event::FromSource { event: EventSource::ItemLinked { call_id: 3, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 4, .. } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 5, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
 
         // The route that was waiting, answered once the session it is being
         // told about has actually been closed.
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 6 } },
         > @r#"ToRouter { request_id: 1, action: Linked { count: 1 } }"#,
     );
 }
@@ -1064,13 +1401,19 @@ fn a_session_that_ends_with_nothing_is_said_rather_than_inferred() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
 
         < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec![] } } },
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 1, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 3, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
         > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
     );
 }
@@ -1082,16 +1425,22 @@ fn an_exchange_that_fails_settles_the_session_too() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
 
         < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { webhook: WebhookFacts::SessionFinished { link_token: "link-1".to_string(), public_tokens: vec!["public-1".to_string()] } } },
-        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 1, .. } },
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 3, .. } },
 
-        < Event::FromSource { event: EventSource::LinkAbandoned { call_id: 1, link_token: "link-1".to_string() } },
+        < Event::FromSource { event: EventSource::LinkAbandoned { call_id: 3, link_token: "link-1".to_string() } },
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 2, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
         > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
     );
 }
@@ -1104,7 +1453,13 @@ fn a_session_nobody_reports_on_is_answered_pending() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS) } },
         > @r#"ToRouter { request_id: 1, action: LinkPending }"#,
@@ -1118,7 +1473,13 @@ fn two_sessions_timing_out_together_still_answer_once() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string(), "link-2".to_string()] } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS) } },
         > Action::ToRouter { action: ActionRouter::LinkPending, .. },
@@ -1140,7 +1501,13 @@ fn an_outcome_nobody_comes_back_for_expires() {
 
         // Nothing recorded any more, so this parks rather than being answered
         // from a record about a sheet closed ten minutes ago.
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + OUTCOME_GOOD_FOR_SECS + LINK_ANSWER_GOOD_FOR_SECS) } },
         > Action::ToRouter { action: ActionRouter::LinkPending, .. },
@@ -1154,7 +1521,13 @@ fn a_close_with_no_session_open_is_answered_at_once() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec![] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec![] } },
         > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
     );
 }
@@ -1179,10 +1552,16 @@ fn the_session_that_attached_a_bank_is_the_one_reported() {
         < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
 
-        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string(), "link-2".to_string()] } },
-        > @r#"ToStore { action: CollectLink { call_id: 4, link_token: "link-2" } }"#,
+        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 4, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 4, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 5, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 5, link_tokens: vec!["link-1".to_string(), "link-2".to_string()] } },
+        > @r#"ToStore { action: CollectLink { call_id: 6, link_token: "link-2" } }"#,
+
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 6 } },
         > @r#"ToRouter { request_id: 3, action: Linked { count: 1 } }"#,
     );
 }
@@ -1286,7 +1665,13 @@ fn a_closed_sheet_still_polls_when_we_collect_by_polling() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { pending: vec!["link-1".to_string()] } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
     );
 }
@@ -1300,21 +1685,16 @@ fn a_caller_past_its_budget_is_refused() {
     // Twenty a minute on `/snapshot`, spent. What each turn does with them is
     // the tests above; here they only fill the window.
     for request_id in 1..=20 {
-        state.handle_events(
-            &[Event::FromRouter {
-                request_id,
-                client: Client {
-                    ip: ClientIp::new("203.0.113.7"),
-                    user: None,
-                },
-                event: EventRouter::SnapshotRequested { items: vec![] },
-            }],
-            &mut Vec::new(),
-        );
+        spend(&mut state, request_id, &[]);
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 61, .. } },
+
+        // Refused on the turn the session names them, and nothing is read for
+        // it: a request that is not being served costs one lookup and a 429.
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 61, user_id: Some(uuid::Uuid::nil()) } },
         > @r#"ToRouter { request_id: 21, action: TooMany }"#,
     );
 }
@@ -1478,27 +1858,29 @@ fn the_budget_returns_when_the_window_passes() {
     let mut state = state();
 
     for request_id in 1..=20 {
-        state.handle_events(
-            &[Event::FromRouter {
-                request_id,
-                client: Client {
-                    ip: ClientIp::new("203.0.113.7"),
-                    user: None,
-                },
-                event: EventRouter::SnapshotRequested { items: vec![] },
-            }],
-            &mut Vec::new(),
-        );
+        spend(&mut state, request_id, &[]);
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![] } },
+        < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 61, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 61, user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToRouter { action: ActionRouter::TooMany, .. },
 
         // A minute passes. Nothing else happens in it.
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 61) } },
 
-        < Event::FromRouter { request_id: 22, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { items: vec![] } },
-        > Action::ToRouter { action: ActionRouter::Serve, .. },
+        < Event::FromRouter { request_id: 22, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 62, .. } },
+
+        < Event::FromStore { event: EventStore::SessionResolved { call_id: 62, user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 63, .. } },
+
+        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 63, items: vec![] } },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 64, .. } },
+
+        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 64, snapshot: WireSnapshot::default() } },
+        > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
