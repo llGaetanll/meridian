@@ -21,7 +21,6 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
 use crate::Event;
-use crate::router_exchange::RouterExchange;
 
 /// A call waiting to be made, and its answer as events.
 type Call = std::pin::Pin<Box<dyn std::future::Future<Output = Vec<Event>> + Send>>;
@@ -47,7 +46,11 @@ impl SourcePool {
     /// a `try_lock` that let one fetch through and silently dropped the rest —
     /// which, now that a route parks until its answer arrives, would be a
     /// request that never returns.
-    pub(crate) fn new(name: &'static str, at_once: usize, exchange: Arc<RouterExchange>) -> Self {
+    pub(crate) fn new(
+        name: &'static str,
+        at_once: usize,
+        landed: mpsc::UnboundedSender<Event>,
+    ) -> Self {
         let (calls, mut waiting) = mpsc::unbounded_channel::<Call>();
 
         tokio::spawn(async move {
@@ -74,11 +77,17 @@ impl SourcePool {
                         });
                     }
 
-                    // One landed. Whatever it produced goes back on the queue
+                    // One landed. Whatever it produced goes back to the loop
                     // and the machine decides what it meant.
                     Some(done) = running.join_next(), if !running.is_empty() => {
                         match done {
-                            Ok(events) => exchange.push_all(events),
+                            Ok(events) => {
+                                for event in events {
+                                    if landed.send(event).is_err() {
+                                        return;
+                                    }
+                                }
+                            }
 
                             // The call panicked. Reported rather than ignored:
                             // whatever was waiting on its answer is still
