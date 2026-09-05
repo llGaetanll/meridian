@@ -25,6 +25,7 @@ mod action_source;
 mod action_store;
 mod call_id;
 mod client;
+mod email_address;
 mod email_send;
 mod event;
 mod event_process;

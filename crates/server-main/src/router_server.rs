@@ -125,6 +125,13 @@ async fn snapshot(
     // request must not pay for it on the way to a 429.
     too_many(&answer)?;
 
+    // Matched rather than assumed, like every other route here. This one used
+    // to serve whatever the machine said, so a machine that had answered
+    // `Unavailable` still had a ledger read and returned over the top of it.
+    let Some(ActionRouter::Serve) = answer else {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    };
+
     Ok(Json(runtime.project_snapshot(user_id).await))
 }
 
@@ -145,14 +152,7 @@ async fn auth_request(
     Extension(ip): Extension<ClientIp>,
     Json(body): Json<AuthRequestBody>,
 ) -> StatusCode {
-    let email = body.email.trim().to_lowercase();
-
-    // Not an address, so nothing to send to. Still 204: see above.
-    if !email.contains('@') || email.len() < 3 {
-        tracing::warn!("a sign-in was asked for with something that is not an address");
-
-        return StatusCode::NO_CONTENT;
-    }
+    let email = normalize(&body.email);
 
     // Read off what the machine decided rather than assumed. `Unavailable` is
     // the machine refusing to mint a code it has no entropy for, and answering
@@ -197,7 +197,7 @@ async fn auth_verify(
     Extension(ip): Extension<ClientIp>,
     Json(body): Json<AuthVerifyBody>,
 ) -> Result<Json<AuthVerified>, StatusCode> {
-    let email = body.email.trim().to_lowercase();
+    let email = normalize(&body.email);
 
     // What the store holds against this address, read before deciding — the
     // same shape as the snapshot path, and for the same reason: the machine
@@ -336,12 +336,14 @@ async fn link_finish(
     too_many(&answer)?;
 
     Ok(Json(match answer {
-        Some(ActionRouter::Linked { count }) if count > 0 => LinkFinished::Linked { count },
+        Some(ActionRouter::Linked { count }) => LinkFinished::Linked { count },
         Some(ActionRouter::LinkPending) => LinkFinished::Pending,
+        Some(ActionRouter::LinkAbandoned) => LinkFinished::Abandoned,
 
-        // Everything else is a session that came to nothing, including the
-        // machine giving up on a poll that never answered: from here those are
-        // the same sentence, and the phone has the same road out of both.
+        // The machine giving up on a poll that never answered. From here that
+        // is the same sentence as a session that came to nothing, and the
+        // phone has the same road out of both — but it is the machine's
+        // answer being rendered, not a count being reinterpreted.
         _ => LinkFinished::Abandoned,
     }))
 }
@@ -442,6 +444,16 @@ async fn sync_status(
     };
 
     Ok(Json(status))
+}
+
+/// The address as the store and the machine both spell it.
+///
+/// Here rather than in the machine only because the store is read on this side
+/// of the door: `/auth/verify` looks a code up by address *before* the event
+/// exists, so a machine that normalized would be matching against a row found
+/// under a different key. It moves in the moment that read becomes an action.
+fn normalize(email: &str) -> String {
+    email.trim().to_lowercase()
 }
 
 /// Stop here if the machine refused this request for being one too many.

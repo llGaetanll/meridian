@@ -38,12 +38,14 @@ pub enum ActionRouter {
     /// Send them to Plaid's page to sign into their bank.
     LinkOpened { url: String },
 
-    /// How many banks the Link flow attached.
+    /// How many banks the Link flow attached, and never zero.
     ///
     /// A count and not a yes: one `/link/finish` collects *every* session the
     /// caller has open, so it can attach two, and a bool would be a lossy
-    /// summary of what the route actually did. Zero is the ordinary outcome
-    /// of somebody closing the sheet — an answer, not a failure.
+    /// summary of what the route actually did. None attached is
+    /// [`LinkAbandoned`](ActionRouter::LinkAbandoned) rather than a zero here,
+    /// so the route reads one variant per outcome instead of re-deciding what
+    /// a count means.
     ///
     /// It does not name them. At this point nobody knows what the bank is
     /// called: the name arrives with the balances call inside the first sync,
@@ -51,6 +53,14 @@ pub enum ActionRouter {
     /// [`SyncStatus`](ActionRouter::SyncStatus). Waiting for it here would
     /// hold the sheet open for a string.
     Linked { count: u32 },
+
+    /// The Link session came to no bank.
+    ///
+    /// The ordinary ending — somebody closed the sheet — and not a failure.
+    /// Its own variant because it used to be `Linked { count: 0 }`, which left
+    /// the route deciding that a count of none meant abandoned: the same
+    /// sentence written in two places, and one of them outside the machine.
+    LinkAbandoned,
 
     /// Plaid has not said what the Link session came to.
     ///

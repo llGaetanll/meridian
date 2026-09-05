@@ -46,6 +46,7 @@ use crate::ItemFacts;
 use crate::PlaidCollect;
 use crate::RequestId;
 use crate::WebhookFacts;
+use crate::email_address;
 use crate::login_code;
 use crate::rate_limit::ServerRateCtx;
 use crate::rate_limit::ServerRateLimiter;
@@ -132,7 +133,7 @@ impl LinkOutcome {
     fn answer(self) -> ActionRouter {
         match self {
             LinkOutcome::Linked => ActionRouter::Linked { count: 1 },
-            LinkOutcome::Nothing => ActionRouter::Linked { count: 0 },
+            LinkOutcome::Nothing => ActionRouter::LinkAbandoned,
         }
     }
 }
@@ -393,7 +394,7 @@ impl StateServer {
                 // or collected this one already — either way there is nothing
                 // to go and ask about.
                 if pending.is_empty() {
-                    self.answer(request_id, ActionRouter::Linked { count: 0 }, actions);
+                    self.answer(request_id, ActionRouter::LinkAbandoned, actions);
 
                     return;
                 }
@@ -407,6 +408,19 @@ impl StateServer {
             }
 
             EventRouter::CodeRequested { email } => {
+                // Nothing that could be delivered to, so nothing is stored and
+                // nothing is sent. Answered as though it had been taken: the
+                // route says the same thing whether or not an address has an
+                // account here, and saying otherwise about the shape of the
+                // string would be the same leak by a different door.
+                if !email_address::plausible(email) {
+                    tracing::warn!("a sign-in was asked for with something that is not an address",);
+
+                    self.answer(request_id, ActionRouter::Accepted, actions);
+
+                    return;
+                }
+
                 // No entropy, no credentials. Refused rather than filled in
                 // with anything derivable — a predictable sign-in code is a
                 // way into somebody's bank, and there is no fallback that is
@@ -583,7 +597,7 @@ impl StateServer {
         // Nothing open and nothing recorded. There is no session to hear
         // about, so `Pending` would be a promise nothing can keep.
         if pending.is_empty() {
-            self.answer(request_id, ActionRouter::Linked { count: 0 }, actions);
+            self.answer(request_id, ActionRouter::LinkAbandoned, actions);
 
             return;
         }
@@ -939,7 +953,7 @@ impl StateServer {
                     });
                 }
 
-                self.answer(request_id, ActionRouter::Linked { count: 0 }, actions);
+                self.answer(request_id, ActionRouter::LinkAbandoned, actions);
             }
 
             EventSource::ItemLinked {
@@ -1032,7 +1046,7 @@ impl StateServer {
                     },
                 });
 
-                self.answer(request_id, ActionRouter::Linked { count: 0 }, actions);
+                self.answer(request_id, ActionRouter::LinkAbandoned, actions);
             }
 
             EventSource::PlaidProgressed {
