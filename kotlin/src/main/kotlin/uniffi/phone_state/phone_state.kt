@@ -1670,6 +1670,136 @@ public object FfiConverterTypeCore : FfiConverter<Core, Long> {
     }
 }
 
+/**
+ * Everything the Account tab shows.
+ */
+data class ViewAccount(
+    /**
+     * `"Banks"`.
+     */
+    var `banksLabel`: kotlin.String,
+    /**
+     * The same connections the Balances screen draws, one row each.
+     */
+    var `banks`: List<ViewAccountBank>,
+    /**
+     * What the list says when there are none — which is three different
+     * nothings, and they need different words.
+     */
+    var `banksEmpty`: kotlin.String?,
+    /**
+     * `"Session"`.
+     */
+    var `sessionLabel`: kotlin.String,
+    /**
+     * `"Sign out"`.
+     */
+    var `signOutLabel`: kotlin.String,
+    /**
+     * `"Meridian 0.1.0"`. Nobody reads it until something is wrong, and then
+     * it is the first thing we ask them for.
+     */
+    var `build`: kotlin.String,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewAccount : FfiConverterRustBuffer<ViewAccount> {
+    override fun read(buf: ByteBuffer): ViewAccount =
+        ViewAccount(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeViewAccountBank.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+
+    override fun allocationSize(value: ViewAccount) =
+        (
+            FfiConverterString.allocationSize(value.`banksLabel`) +
+                FfiConverterSequenceTypeViewAccountBank.allocationSize(value.`banks`) +
+                FfiConverterOptionalString.allocationSize(value.`banksEmpty`) +
+                FfiConverterString.allocationSize(value.`sessionLabel`) +
+                FfiConverterString.allocationSize(value.`signOutLabel`) +
+                FfiConverterString.allocationSize(value.`build`)
+        )
+
+    override fun write(
+        value: ViewAccount,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`banksLabel`, buf)
+        FfiConverterSequenceTypeViewAccountBank.write(value.`banks`, buf)
+        FfiConverterOptionalString.write(value.`banksEmpty`, buf)
+        FfiConverterString.write(value.`sessionLabel`, buf)
+        FfiConverterString.write(value.`signOutLabel`, buf)
+        FfiConverterString.write(value.`build`, buf)
+    }
+}
+
+/**
+ * One bank, as this screen lists it.
+ *
+ * Not [`ViewConnection`](crate::ViewConnection): that one carries the account
+ * rows and their balances, which is the Balances screen's business. Here a
+ * bank is a name and whether it is still working.
+ */
+data class ViewAccountBank(
+    var `id`: kotlin.String,
+    var `name`: kotlin.String,
+    var `initials`: kotlin.String,
+    /**
+     * `"8 accounts · synced 2m ago"`, or what is wrong with it.
+     */
+    var `detail`: kotlin.String,
+    /**
+     * Whether the bank has stopped syncing and wants a fresh sign-in. The one
+     * thing in the app that stops the numbers being true, so the row says so
+     * rather than hiding it.
+     */
+    var `needsReconnect`: kotlin.Boolean,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewAccountBank : FfiConverterRustBuffer<ViewAccountBank> {
+    override fun read(buf: ByteBuffer): ViewAccountBank =
+        ViewAccountBank(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+
+    override fun allocationSize(value: ViewAccountBank) =
+        (
+            FfiConverterString.allocationSize(value.`id`) +
+                FfiConverterString.allocationSize(value.`name`) +
+                FfiConverterString.allocationSize(value.`initials`) +
+                FfiConverterString.allocationSize(value.`detail`) +
+                FfiConverterBoolean.allocationSize(value.`needsReconnect`)
+        )
+
+    override fun write(
+        value: ViewAccountBank,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`id`, buf)
+        FfiConverterString.write(value.`name`, buf)
+        FfiConverterString.write(value.`initials`, buf)
+        FfiConverterString.write(value.`detail`, buf)
+        FfiConverterBoolean.write(value.`needsReconnect`, buf)
+    }
+}
+
 data class ViewAccountRow(
     var `id`: kotlin.String,
     var `name`: kotlin.String,
@@ -3283,6 +3413,16 @@ sealed class ActionSource {
     object SaveSession : ActionSource()
 
     /**
+     * Throw the session away, so that the next launch opens on first run.
+     *
+     * The counterpart to [`SaveSession`](ActionSource::SaveSession), and the
+     * only way out of a session the server no longer honours — a token good
+     * for ninety days that the server has stopped accepting answers 401 to
+     * everything, and there is nothing the app can do about it but forget it.
+     */
+    object ForgetSession : ActionSource()
+
+    /**
      * Send a six-digit code to this address.
      */
     data class SendCode(
@@ -3351,23 +3491,27 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
             }
 
             4 -> {
+                ActionSource.ForgetSession
+            }
+
+            5 -> {
                 ActionSource.SendCode(
                     FfiConverterString.read(buf),
                 )
             }
 
-            5 -> {
+            6 -> {
                 ActionSource.VerifyCode(
                     FfiConverterString.read(buf),
                     FfiConverterString.read(buf),
                 )
             }
 
-            6 -> {
+            7 -> {
                 ActionSource.StartBankLink
             }
 
-            7 -> {
+            8 -> {
                 ActionSource.PollSync
             }
 
@@ -3394,6 +3538,13 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
             }
 
             is ActionSource.SaveSession -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is ActionSource.ForgetSession -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
                     4UL
@@ -3453,26 +3604,31 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
                 Unit
             }
 
-            is ActionSource.SendCode -> {
+            is ActionSource.ForgetSession -> {
                 buf.putInt(4)
+                Unit
+            }
+
+            is ActionSource.SendCode -> {
+                buf.putInt(5)
                 FfiConverterString.write(value.`email`, buf)
                 Unit
             }
 
             is ActionSource.VerifyCode -> {
-                buf.putInt(5)
+                buf.putInt(6)
                 FfiConverterString.write(value.`email`, buf)
                 FfiConverterString.write(value.`code`, buf)
                 Unit
             }
 
             is ActionSource.StartBankLink -> {
-                buf.putInt(6)
+                buf.putInt(7)
                 Unit
             }
 
             is ActionSource.PollSync -> {
-                buf.putInt(7)
+                buf.putInt(8)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -4233,6 +4389,16 @@ sealed class EventUi {
      */
     object OnboardingFinished : EventUi()
 
+    /**
+     * Sign out, on the Account tab.
+     *
+     * Everything the app holds belongs to the account being signed out of, so
+     * this is the one event that puts the machine back to where a fresh
+     * install starts. There is no confirmation: nothing is destroyed, and
+     * signing in again is the same six digits it was the first time.
+     */
+    object SignOutRequested : EventUi()
+
     companion object
 }
 
@@ -4338,6 +4504,10 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
 
             20 -> {
                 EventUi.OnboardingFinished
+            }
+
+            21 -> {
+                EventUi.SignOutRequested
             }
 
             else -> {
@@ -4495,6 +4665,13 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
                     4UL
                 )
             }
+
+            is EventUi.SignOutRequested -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
         }
 
     override fun write(
@@ -4608,6 +4785,11 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
 
             is EventUi.OnboardingFinished -> {
                 buf.putInt(20)
+                Unit
+            }
+
+            is EventUi.SignOutRequested -> {
+                buf.putInt(21)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -4834,7 +5016,7 @@ public object FfiConverterTypeRangeUnit : FfiConverterRustBuffer<RangeUnit> {
 /**
  * Which screen the app is on.
  *
- * The dock's three tabs. Search is deliberately absent — the sketch draws the
+ * The dock's four tabs. Search is deliberately absent — the sketch draws the
  * button but never the screen, so there is nothing to be faithful to yet.
  */
 
@@ -4842,6 +5024,7 @@ enum class Screen {
     LEDGER,
     RECURRING,
     BALANCES,
+    ACCOUNT,
     ;
 
     companion object
@@ -5498,6 +5681,12 @@ sealed class ViewScreen {
         companion object
     }
 
+    data class Account(
+        val `view`: uniffi.phone_state.ViewAccount,
+    ) : ViewScreen() {
+        companion object
+    }
+
     data class Onboarding(
         val `view`: uniffi.phone_state.ViewOnboarding,
     ) : ViewScreen() {
@@ -5532,6 +5721,12 @@ public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen> {
             }
 
             4 -> {
+                ViewScreen.Account(
+                    FfiConverterTypeViewAccount.read(buf),
+                )
+            }
+
+            5 -> {
                 ViewScreen.Onboarding(
                     FfiConverterTypeViewOnboarding.read(buf),
                 )
@@ -5568,6 +5763,14 @@ public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen> {
                 )
             }
 
+            is ViewScreen.Account -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypeViewAccount.allocationSize(value.`view`)
+                )
+            }
+
             is ViewScreen.Onboarding -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
@@ -5600,8 +5803,14 @@ public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen> {
                 Unit
             }
 
-            is ViewScreen.Onboarding -> {
+            is ViewScreen.Account -> {
                 buf.putInt(4)
+                FfiConverterTypeViewAccount.write(value.`view`, buf)
+                Unit
+            }
+
+            is ViewScreen.Onboarding -> {
+                buf.putInt(5)
                 FfiConverterTypeViewOnboarding.write(value.`view`, buf)
                 Unit
             }
@@ -5729,6 +5938,34 @@ public object FfiConverterSequenceString : FfiConverterRustBuffer<List<kotlin.St
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterString.write(it, buf)
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeViewAccountBank : FfiConverterRustBuffer<List<ViewAccountBank>> {
+    override fun read(buf: ByteBuffer): List<ViewAccountBank> {
+        val len = buf.getInt()
+        return List<ViewAccountBank>(len) {
+            FfiConverterTypeViewAccountBank.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ViewAccountBank>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeViewAccountBank.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(
+        value: List<ViewAccountBank>,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeViewAccountBank.write(it, buf)
         }
     }
 }

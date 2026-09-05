@@ -26,6 +26,14 @@ pub enum ActionSource {
     /// memory is worth keeping.
     SaveSession,
 
+    /// Throw the session away, so that the next launch opens on first run.
+    ///
+    /// The counterpart to [`SaveSession`](ActionSource::SaveSession), and the
+    /// only way out of a session the server no longer honours — a token good
+    /// for ninety days that the server has stopped accepting answers 401 to
+    /// everything, and there is nothing the app can do about it but forget it.
+    ForgetSession,
+
     /// Send a six-digit code to this address.
     SendCode {
         email: String,

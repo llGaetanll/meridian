@@ -56,7 +56,7 @@ struct AppView: View {
             OnboardingScreen(view: view)
                 .transition(.opacity)
 
-        case .ledger, .recurring, .balances:
+        case .ledger, .recurring, .balances, .account:
             PhoneShell(
                 title: Self.title(of: screen),
                 screen: Self.title(of: screen),
@@ -74,6 +74,7 @@ struct AppView: View {
         case .ledger: "Ledger"
         case .recurring: "Recurring"
         case .balances: "Balances"
+        case .account: "Account"
         case .onboarding: ""
         }
     }
@@ -87,6 +88,9 @@ struct AppView: View {
         case .ledger(let view): LedgerBand(filter: view.filter, scroller: scroller)
         case .recurring(let view): RecurringBand(view: view)
         case .balances(let view): BalancesBand(view: view)
+        // No headline to stand in for, so nothing on this screen wears
+        // `bandAnchor()` and the band is never asked for.
+        case .account: EmptyView()
         case .onboarding: EmptyView()
         }
     }
@@ -97,6 +101,7 @@ struct AppView: View {
         case .ledger(let view): LedgerScreen(view: view)
         case .recurring(let view): RecurringScreen(view: view)
         case .balances(let view): BalancesScreen(view: view)
+        case .account(let view): AccountScreen(view: view)
         case .onboarding: EmptyView()
         }
     }

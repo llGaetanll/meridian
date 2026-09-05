@@ -8,6 +8,7 @@ use leptos::prelude::*;
 use phone_state::ViewScreen;
 
 use crate::runtime_app::RuntimeApp;
+use crate::screens::AccountScreen;
 use crate::screens::BalancesScreen;
 use crate::screens::LedgerScreen;
 use crate::screens::RecurringScreen;
@@ -28,10 +29,13 @@ pub fn App() -> impl IntoView {
             Some(ViewScreen::Balances { view }) => {
                 view! { <BalancesScreen view=view /> }.into_any()
             }
-            // Unreachable while the web answers `LoadSession` as already
-            // signed in — see `RuntimeApp::load_session`. It is here so that
-            // the day the web draws first run, this is the one place that has
-            // to change, and so that adding a screen in Rust keeps failing to
+            Some(ViewScreen::Account { view }) => {
+                view! { <AccountScreen view=view /> }.into_any()
+            }
+            // Reached only by signing out, which is what the Account tab's
+            // one button does — the web has no session to forget, so the
+            // machine's way back to first run is a road that stops here. It
+            // is also what makes adding a screen in Rust keep failing to
             // compile until every front end has drawn it.
             Some(ViewScreen::Onboarding { .. }) => {
                 view! { <div class="boot">"First run is on the phone."</div> }.into_any()

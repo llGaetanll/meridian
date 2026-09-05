@@ -157,6 +157,79 @@ fn every_screen_renders() {
 
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { .. }, .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Account } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Account { .. }, .. } },
+    );
+}
+
+/// The Account tab lists the same banks Balances draws, read a second way
+/// rather than fetched a second time.
+#[test]
+fn the_account_tab_lists_the_banks() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","synced_at":1787097480,"accounts":[
+                {"id":"acc","name":"Plaid Checking","balance":100.0,"group":"depository"},
+                {"id":"sav","name":"Plaid Saving","balance":200.0,"group":"depository"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Account } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Account { view: account }, .. } } => {
+            assert_eq!(account.banks_empty, None);
+            assert_eq!(account.banks[0].name, "First Platypus Bank");
+            assert_eq!(account.banks[0].detail, "2 accounts · synced 2m ago");
+        },
+    );
+}
+
+/// A session the server has stopped honouring is the reason this screen has a
+/// way out: the failure is what the empty bank list says, rather than a claim
+/// that no bank was ever attached.
+#[test]
+fn a_failed_load_is_what_the_bank_list_says() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::LoadFailed { message: "the server answered 401".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::ShowError { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Account } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Account { view: account }, .. } } => {
+            assert_eq!(account.banks_empty.as_deref(), Some("the server answered 401"));
+        },
+    );
+}
+
+/// Signing out throws the session away and puts the app back where a fresh
+/// install starts — nothing of the account signed out of is left behind.
+#[test]
+fn signing_out_starts_over() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "entries":[{"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::SignOutRequested },
+        > @r#"ToSource { action: ForgetSession }"#,
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { .. }, dock: None } },
+    );
+
+    assert_eq!(
+        state.entry_count(),
+        0,
+        "the ledger belonged to the account signed out of"
+    );
+
+    // The clock came with it, so the next tick is not time going backwards.
+    // Welcome does not draw for one, which is why nothing comes back.
+    eval!(&mut state,
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 1 } },
     );
 }
 

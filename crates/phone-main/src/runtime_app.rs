@@ -182,8 +182,11 @@ impl RuntimeApp {
             // First run is drawn on the phone and not here yet, and
             // `load_session` is what makes sure it is never reached — so an
             // action from it arriving on the web is worth a line rather than a
-            // silent no-op.
+            // silent no-op. `ForgetSession` is the same story from the other
+            // end: the browser holds no token, so there is nothing to throw
+            // away and reloading the page signs back in.
             ActionSource::SaveSession
+            | ActionSource::ForgetSession
             | ActionSource::SendCode { .. }
             | ActionSource::VerifyCode { .. }
             | ActionSource::StartBankLink

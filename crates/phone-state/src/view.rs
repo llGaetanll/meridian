@@ -17,6 +17,7 @@
 /// and Compose will each hold their own copy too. Events and actions are
 /// messages that are passed by reference all the way down, so they need
 /// nothing but `Debug`.
+use crate::ViewAccount;
 use crate::ViewBalances;
 use crate::ViewLedger;
 use crate::ViewOnboarding;
@@ -24,7 +25,7 @@ use crate::ViewRecurring;
 
 /// Which screen the app is on.
 ///
-/// The dock's three tabs. Search is deliberately absent — the sketch draws the
+/// The dock's four tabs. Search is deliberately absent — the sketch draws the
 /// button but never the screen, so there is nothing to be faithful to yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Enum)]
 pub enum Screen {
@@ -32,6 +33,7 @@ pub enum Screen {
     Ledger,
     Recurring,
     Balances,
+    Account,
 }
 
 /// Everything on screen, in one value.
@@ -54,5 +56,6 @@ pub enum ViewScreen {
     Ledger { view: ViewLedger },
     Recurring { view: ViewRecurring },
     Balances { view: ViewBalances },
+    Account { view: ViewAccount },
     Onboarding { view: ViewOnboarding },
 }

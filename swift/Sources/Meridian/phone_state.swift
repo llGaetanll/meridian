@@ -761,6 +761,208 @@ public func FfiConverterTypeCore_lower(_ value: Core) -> UInt64 {
 
 
 
+/**
+ * Everything the Account tab shows.
+ */
+public struct ViewAccount: Equatable, Hashable {
+    /**
+     * `"Banks"`.
+     */
+    public var banksLabel: String
+    /**
+     * The same connections the Balances screen draws, one row each.
+     */
+    public var banks: [ViewAccountBank]
+    /**
+     * What the list says when there are none — which is three different
+     * nothings, and they need different words.
+     */
+    public var banksEmpty: String?
+    /**
+     * `"Session"`.
+     */
+    public var sessionLabel: String
+    /**
+     * `"Sign out"`.
+     */
+    public var signOutLabel: String
+    /**
+     * `"Meridian 0.1.0"`. Nobody reads it until something is wrong, and then
+     * it is the first thing we ask them for.
+     */
+    public var build: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"Banks"`.
+         */banksLabel: String, 
+        /**
+         * The same connections the Balances screen draws, one row each.
+         */banks: [ViewAccountBank], 
+        /**
+         * What the list says when there are none — which is three different
+         * nothings, and they need different words.
+         */banksEmpty: String?, 
+        /**
+         * `"Session"`.
+         */sessionLabel: String, 
+        /**
+         * `"Sign out"`.
+         */signOutLabel: String, 
+        /**
+         * `"Meridian 0.1.0"`. Nobody reads it until something is wrong, and then
+         * it is the first thing we ask them for.
+         */build: String) {
+        self.banksLabel = banksLabel
+        self.banks = banks
+        self.banksEmpty = banksEmpty
+        self.sessionLabel = sessionLabel
+        self.signOutLabel = signOutLabel
+        self.build = build
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewAccount: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewAccount: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewAccount {
+        return
+            try ViewAccount(
+                banksLabel: FfiConverterString.read(from: &buf), 
+                banks: FfiConverterSequenceTypeViewAccountBank.read(from: &buf), 
+                banksEmpty: FfiConverterOptionString.read(from: &buf), 
+                sessionLabel: FfiConverterString.read(from: &buf), 
+                signOutLabel: FfiConverterString.read(from: &buf), 
+                build: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewAccount, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.banksLabel, into: &buf)
+        FfiConverterSequenceTypeViewAccountBank.write(value.banks, into: &buf)
+        FfiConverterOptionString.write(value.banksEmpty, into: &buf)
+        FfiConverterString.write(value.sessionLabel, into: &buf)
+        FfiConverterString.write(value.signOutLabel, into: &buf)
+        FfiConverterString.write(value.build, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewAccount_lift(_ buf: RustBuffer) throws -> ViewAccount {
+    return try FfiConverterTypeViewAccount.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewAccount_lower(_ value: ViewAccount) -> RustBuffer {
+    return FfiConverterTypeViewAccount.lower(value)
+}
+
+
+/**
+ * One bank, as this screen lists it.
+ *
+ * Not [`ViewConnection`](crate::ViewConnection): that one carries the account
+ * rows and their balances, which is the Balances screen's business. Here a
+ * bank is a name and whether it is still working.
+ */
+public struct ViewAccountBank: Equatable, Hashable {
+    public var id: String
+    public var name: String
+    public var initials: String
+    /**
+     * `"8 accounts · synced 2m ago"`, or what is wrong with it.
+     */
+    public var detail: String
+    /**
+     * Whether the bank has stopped syncing and wants a fresh sign-in. The one
+     * thing in the app that stops the numbers being true, so the row says so
+     * rather than hiding it.
+     */
+    public var needsReconnect: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, name: String, initials: String, 
+        /**
+         * `"8 accounts · synced 2m ago"`, or what is wrong with it.
+         */detail: String, 
+        /**
+         * Whether the bank has stopped syncing and wants a fresh sign-in. The one
+         * thing in the app that stops the numbers being true, so the row says so
+         * rather than hiding it.
+         */needsReconnect: Bool) {
+        self.id = id
+        self.name = name
+        self.initials = initials
+        self.detail = detail
+        self.needsReconnect = needsReconnect
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewAccountBank: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewAccountBank: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewAccountBank {
+        return
+            try ViewAccountBank(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                initials: FfiConverterString.read(from: &buf), 
+                detail: FfiConverterString.read(from: &buf), 
+                needsReconnect: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewAccountBank, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.initials, into: &buf)
+        FfiConverterString.write(value.detail, into: &buf)
+        FfiConverterBool.write(value.needsReconnect, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewAccountBank_lift(_ buf: RustBuffer) throws -> ViewAccountBank {
+    return try FfiConverterTypeViewAccountBank.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewAccountBank_lower(_ value: ViewAccountBank) -> RustBuffer {
+    return FfiConverterTypeViewAccountBank.lower(value)
+}
+
+
 public struct ViewAccountRow: Equatable, Hashable {
     public var id: String
     public var name: String
@@ -3224,6 +3426,15 @@ public enum ActionSource: Equatable, Hashable {
      */
     case saveSession
     /**
+     * Throw the session away, so that the next launch opens on first run.
+     *
+     * The counterpart to [`SaveSession`](ActionSource::SaveSession), and the
+     * only way out of a session the server no longer honours — a token good
+     * for ninety days that the server has stopped accepting answers 401 to
+     * everything, and there is nothing the app can do about it but forget it.
+     */
+    case forgetSession
+    /**
      * Send a six-digit code to this address.
      */
     case sendCode(email: String
@@ -3285,15 +3496,17 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
         
         case 3: return .saveSession
         
-        case 4: return .sendCode(email: try FfiConverterString.read(from: &buf)
+        case 4: return .forgetSession
+        
+        case 5: return .sendCode(email: try FfiConverterString.read(from: &buf)
         )
         
-        case 5: return .verifyCode(email: try FfiConverterString.read(from: &buf), code: try FfiConverterString.read(from: &buf)
+        case 6: return .verifyCode(email: try FfiConverterString.read(from: &buf), code: try FfiConverterString.read(from: &buf)
         )
         
-        case 6: return .startBankLink
+        case 7: return .startBankLink
         
-        case 7: return .pollSync
+        case 8: return .pollSync
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3316,23 +3529,27 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(3))
         
         
-        case let .sendCode(email):
+        case .forgetSession:
             writeInt(&buf, Int32(4))
+        
+        
+        case let .sendCode(email):
+            writeInt(&buf, Int32(5))
             FfiConverterString.write(email, into: &buf)
             
         
         case let .verifyCode(email,code):
-            writeInt(&buf, Int32(5))
+            writeInt(&buf, Int32(6))
             FfiConverterString.write(email, into: &buf)
             FfiConverterString.write(code, into: &buf)
             
         
         case .startBankLink:
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(7))
         
         
         case .pollSync:
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(8))
         
         }
     }
@@ -3939,6 +4156,15 @@ public enum EventUi: Equatable, Hashable {
      * Open Meridian, on the last screen of first run.
      */
     case onboardingFinished
+    /**
+     * Sign out, on the Account tab.
+     *
+     * Everything the app holds belongs to the account being signed out of, so
+     * this is the one event that puts the machine back to where a fresh
+     * install starts. There is no confirmation: nothing is destroyed, and
+     * signing in again is the same six digits it was the first time.
+     */
+    case signOutRequested
 
 
 
@@ -4008,6 +4234,8 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
         case 19: return .bankConnectRequested
         
         case 20: return .onboardingFinished
+        
+        case 21: return .signOutRequested
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4104,6 +4332,10 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
         
         case .onboardingFinished:
             writeInt(&buf, Int32(20))
+        
+        
+        case .signOutRequested:
+            writeInt(&buf, Int32(21))
         
         }
     }
@@ -4386,7 +4618,7 @@ public func FfiConverterTypeRangeUnit_lower(_ value: RangeUnit) -> RustBuffer {
 /**
  * Which screen the app is on.
  *
- * The dock's three tabs. Search is deliberately absent — the sketch draws the
+ * The dock's four tabs. Search is deliberately absent — the sketch draws the
  * button but never the screen, so there is nothing to be faithful to yet.
  */
 
@@ -4395,6 +4627,7 @@ public enum Screen: Equatable, Hashable {
     case ledger
     case recurring
     case balances
+    case account
 
 
 
@@ -4422,6 +4655,8 @@ public struct FfiConverterTypeScreen: FfiConverterRustBuffer {
         
         case 3: return .balances
         
+        case 4: return .account
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -4440,6 +4675,10 @@ public struct FfiConverterTypeScreen: FfiConverterRustBuffer {
         
         case .balances:
             writeInt(&buf, Int32(3))
+        
+        
+        case .account:
+            writeInt(&buf, Int32(4))
         
         }
     }
@@ -4982,6 +5221,8 @@ public enum ViewScreen: Equatable, Hashable {
     )
     case balances(view: ViewBalances
     )
+    case account(view: ViewAccount
+    )
     case onboarding(view: ViewOnboarding
     )
 
@@ -5014,7 +5255,10 @@ public struct FfiConverterTypeViewScreen: FfiConverterRustBuffer {
         case 3: return .balances(view: try FfiConverterTypeViewBalances.read(from: &buf)
         )
         
-        case 4: return .onboarding(view: try FfiConverterTypeViewOnboarding.read(from: &buf)
+        case 4: return .account(view: try FfiConverterTypeViewAccount.read(from: &buf)
+        )
+        
+        case 5: return .onboarding(view: try FfiConverterTypeViewOnboarding.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -5040,8 +5284,13 @@ public struct FfiConverterTypeViewScreen: FfiConverterRustBuffer {
             FfiConverterTypeViewBalances.write(view, into: &buf)
             
         
-        case let .onboarding(view):
+        case let .account(view):
             writeInt(&buf, Int32(4))
+            FfiConverterTypeViewAccount.write(view, into: &buf)
+            
+        
+        case let .onboarding(view):
+            writeInt(&buf, Int32(5))
             FfiConverterTypeViewOnboarding.write(view, into: &buf)
             
         }
@@ -5156,6 +5405,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeViewAccountBank: FfiConverterRustBuffer {
+    typealias SwiftType = [ViewAccountBank]
+
+    public static func write(_ value: [ViewAccountBank], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeViewAccountBank.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ViewAccountBank] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ViewAccountBank]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeViewAccountBank.read(from: &buf))
         }
         return seq
     }

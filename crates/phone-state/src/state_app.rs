@@ -350,6 +350,27 @@ impl StateApp {
                     });
                 }
             }
+
+            EventUi::SignOutRequested => {
+                // Every field here belongs to the account being signed out of
+                // — the entries, the banks, the filter, which tab was open —
+                // so the way back is a machine as new as a fresh install's
+                // rather than a list of things to clear one at a time, which
+                // is a list somebody adds a field to and forgets.
+                //
+                // The clock is the exception, and it is carried over rather
+                // than reset: it belongs to the device and not to the account.
+                // A machine put back to the epoch would draw the screen under
+                // this tap against 1970 until the next tick corrected it.
+                let now = self.device_now;
+
+                *self = Self::new();
+                self.device_now = now;
+
+                actions.push(Action::ToSource {
+                    action: ActionSource::ForgetSession,
+                });
+            }
         }
 
         self.render(actions);

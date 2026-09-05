@@ -157,6 +157,13 @@ struct Glyph: Shape {
             Svg.line(12, 12, 12, 17, to: &path)
             Svg.line(17.5, 12, 17.5, 17, to: &path)
 
+        // The account tab's. A head and shoulders and nothing else: the app
+        // never asked for a name, so anything more would be a face invented
+        // for somebody who did not give us one.
+        case "user":
+            Svg.circle(12, 8.5, 3.8, to: &path)
+            Svg.append("M4.5 20.5a7.5 7.5 0 0 1 15 0", to: &path)
+
         case "trash":
             Svg.append("M4.5 6.5h15", to: &path)
             Svg.append("M9 6.5V4.8h6v1.7", to: &path)

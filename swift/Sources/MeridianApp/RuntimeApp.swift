@@ -109,6 +109,7 @@ final class RuntimeApp: ObservableObject {
         case .ledger: "ledger"
         case .recurring: "recurring"
         case .balances: "balances"
+        case .account: "account"
         case .onboarding: "first-run"
         case nil: "none"
         }
@@ -136,6 +137,7 @@ final class RuntimeApp: ObservableObject {
         case .backPressed: "back"
         case .bankConnectRequested: "bankConnect"
         case .onboardingFinished: "onboardingFinished"
+        case .signOutRequested: "signOut"
         }
     }
 
@@ -176,6 +178,7 @@ final class RuntimeApp: ObservableObject {
         case .loadSnapshot(let force): loadSnapshot(force: force)
         case .loadSession: loadSession()
         case .saveSession: saveSession()
+        case .forgetSession: forgetSession()
         case .sendCode(let email): sendCode(to: email)
         case .verifyCode(let email, let code): verifyCode(email: email, code: code)
 
@@ -219,6 +222,24 @@ final class RuntimeApp: ObservableObject {
         }
 
         Session.save(token)
+    }
+
+    /// Throw the session away.
+    ///
+    /// Both copies: the keychain's, so the next launch opens on first run, and
+    /// the one held here, so nothing in flight can carry on using a token the
+    /// user has just signed out of. The machine has already put itself back to
+    /// where a fresh install starts.
+    private func forgetSession() {
+        token = nil
+
+        Session.forget()
+
+        // And the banner with it. It is the runtime's own bookkeeping, like
+        // `loading`, and a "the server answered 401" left over the first
+        // screen after signing back in would be reporting a session that no
+        // longer exists.
+        error = nil
     }
 
     /// Ask for a code. The server answers alike whether or not it knows the
