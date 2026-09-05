@@ -17,19 +17,16 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use api_common::Timestamp;
-use tokio::sync::Notify;
+use tokio::sync::mpsc;
 
 use crate::Action;
 use crate::ActionEmail;
 use crate::ActionProcess;
-use crate::ActionRouter;
 use crate::ActionSource;
 use crate::ActionStore;
-use crate::Client;
 use crate::EmailSend;
 use crate::Event;
 use crate::EventProcess;
-use crate::EventRouter;
 use crate::EventSource;
 use crate::EventStore;
 use crate::EventTerminal;
@@ -39,9 +36,12 @@ use crate::StateServer;
 use crate::StoredCode;
 use crate::WebOrigins;
 use crate::project;
-use crate::router_exchange::RouterExchange;
-use crate::router_server;
 use crate::runtime_plaid;
+use crate::runtime_router::ActionRx;
+use crate::runtime_router::ActionTx;
+use crate::runtime_router::EventRx;
+use crate::runtime_router::EventTx;
+use crate::runtime_router::RuntimeRouter;
 use crate::source_pool::SourcePool;
 use server_wire::WireSnapshot;
 use src_plaid::PlaidCredentials;
@@ -51,23 +51,12 @@ use src_resend::ResendClient;
 use src_resend::ResendCredentials;
 use uuid::Uuid;
 
-/// A different port from either front-end, so all three can run at once.
-const PORT: u16 = 8082;
-
 /// How often the machine is handed fresh entropy.
 ///
 /// Every seed is 32 bytes of ChaCha20 state, so one covers far more codes than
 /// a minute will ever produce. The interval is not about running out — it is
 /// about how much a single leaked seed is worth.
 const RESEED_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
-
-/// How often the machine is handed everything that has arrived since.
-///
-/// The sleep is what decides how much a batch collects, and it costs one of
-/// itself per turn — a link takes three, so this multiplies. Small enough that
-/// three of them are lost in the noise of one Plaid round trip, which is what
-/// a turn is really waiting on.
-const TURN_EVERY: std::time::Duration = std::time::Duration::from_millis(2);
 
 /// How many calls to Plaid may be in flight at once.
 ///
@@ -107,21 +96,14 @@ pub struct RuntimeServer {
     /// length is a server that does not start.
     db_key: DbKey,
 
-    /// The machine.
-    ///
-    /// An `RwLock` rather than a `Mutex`: reads are the common case — every
-    /// request that finds fresh data only projects a snapshot — and they can
-    /// happen concurrently. Writes are the fetch path, which is rare.
-    ///
-    /// `handle_events` needs `&mut`, so a write is still exclusive. What this
-    /// buys over a `Mutex` is that the many requests served from fresh state no
-    /// longer queue behind each other.
-    ///
-    /// Only the loop takes it now, once per turn, for the length of a pure
-    /// synchronous call. Nothing else touches the machine, and no guard ever
-    /// spans an `.await` — the calls to Plaid happen in a pool that has no
-    /// reference to it at all.
-    state: RwLock<StateServer>,
+    /// Where an answer goes. The router is on another task and this is the
+    /// only way to reach it.
+    answers: ActionTx,
+
+    /// Where a fact that nobody asked for goes: the stages a fetch reports as
+    /// it runs. The pools have their own clone of this for what a call
+    /// returns; this one is for what it says on the way.
+    landed: mpsc::UnboundedSender<Event>,
 
     /// The Plaid account these calls are made on behalf of. One per process;
     /// it says which environment, and it signs every request.
@@ -151,13 +133,6 @@ pub struct RuntimeServer {
     /// required, read and validated on the way up. A server that cannot name
     /// itself does not start, rather than starting and telling Plaid nothing.
     webhook: Option<String>,
-
-    /// Raised once the machine asks to shut down.
-    shutdown: Notify,
-
-    /// Where a route's question is paired with its answer. Shared, because
-    /// the pools push what a call produced straight onto it.
-    exchange: Arc<RouterExchange>,
 
     /// Every call to Plaid. Two at once: a snapshot of somebody with several
     /// banks should overlap, and Plaid's own limits are the machine's problem
@@ -239,14 +214,29 @@ impl RuntimeServer {
             "serving live plaid data",
         );
 
-        let exchange = Arc::new(RouterExchange::default());
+        // Everything a call produces comes back here. Unbounded, deliberately:
+        // a pool that had to wait to report would be a pool holding the answer
+        // to something the loop is about to be asked about. What bounds the
+        // work is each pool's own room, and what bounds the queue is the
+        // machine, which will not ask for a call it has no budget for.
+        let (landed, mut landing) = mpsc::unbounded_channel::<Event>();
+
+        // The router, on its own task, reachable only through these two.
+        let (answers, action_rx): (ActionTx, ActionRx) = mpsc::unbounded_channel();
+        let (event_tx, mut asked): (EventTx, EventRx) = mpsc::unbounded_channel();
+
+        tokio::spawn(async move {
+            if let Err(e) = RuntimeRouter::run(action_rx, event_tx, origins).await {
+                tracing::error!(error = %e, "the router stopped");
+            }
+        });
 
         let runtime = Arc::new(Self {
-            plaid: SourcePool::new("plaid", PLAID_AT_ONCE, Arc::clone(&exchange)),
-            email: SourcePool::new("email", EMAIL_AT_ONCE, Arc::clone(&exchange)),
-            store: SourcePool::new("store", STORE_AT_ONCE, Arc::clone(&exchange)),
-            exchange,
-            state: RwLock::new(StateServer::new()),
+            plaid: SourcePool::new("plaid", PLAID_AT_ONCE, landed.clone()),
+            email: SourcePool::new("email", EMAIL_AT_ONCE, landed.clone()),
+            store: SourcePool::new("store", STORE_AT_ONCE, landed.clone()),
+            answers,
+            landed,
             credentials,
             email_send,
             resend,
@@ -254,183 +244,117 @@ impl RuntimeServer {
             webhook,
             db,
             db_key,
-            shutdown: Notify::new(),
         });
 
-        // The first event, and the reason the boot sequence is replayable: the
-        // machine asks to be filled from the store rather than the runtime
-        // deciding to do it on its own initiative.
+        // The machine, owned outright by the loop below. Nothing else has a
+        // reference to it, which is what makes `handle_events` an ordinary
+        // `&mut` call rather than something taken under a guard.
+        let mut state = StateServer::new();
+
+        let mut clock = tokio::time::interval(TICK_EVERY);
+        let mut reseed = tokio::time::interval(RESEED_EVERY);
+
+        // Reused every turn. One allocation for the life of the process.
+        let mut events: Vec<Event> = Vec::new();
+        let mut actions: Vec<Action> = Vec::new();
+
         // The clock first. The machine starts at the epoch, and a code minted
-        // before the first tick would expire in 1970.
-        runtime.exchange.push(Event::FromProcess {
+        // before the first tick would expire in 1970. Then the process saying
+        // it is up, which is what makes the boot sequence replayable: the
+        // machine is asked rather than the runtime deciding on its own.
+        events.push(Event::FromProcess {
             event: EventProcess::Tick { now: unix_now() },
         });
 
-        runtime.exchange.push(Event::FromProcess {
+        events.push(Event::FromProcess {
             event: EventProcess::Started { collect },
         });
 
-        runtime.exchange.push(Event::FromProcess {
+        events.push(Event::FromProcess {
             event: EventProcess::Seeded { seed: fresh_seed() },
         });
 
-        // The clock, from the edge, on its own timer. Nothing inside the
-        // machine reads one — this is the only place it enters — and it is
-        // also the only event that arrives when nothing has happened, which
-        // is what lets a call that went quiet be given up on.
-        let ticking = Arc::downgrade(&runtime);
+        // Both intervals fire immediately, and the two events above are what
+        // that first tick would have been.
+        clock.tick().await;
+        reseed.tick().await;
 
-        tokio::spawn(async move {
-            let mut ticks = tokio::time::interval(TICK_EVERY);
+        loop {
+            // Whatever arrived while the last turn ran, handed over together —
+            // which is what makes a batch worth batching: three banks
+            // reporting are one turn rather than three.
+            if !events.is_empty() {
+                state.handle_events(&events, &mut actions);
 
-            loop {
-                ticks.tick().await;
+                tracing::debug!(?events, ?actions, "turn");
 
-                let Some(runtime) = ticking.upgrade() else {
-                    return;
-                };
+                runtime.perform_actions(&mut actions);
 
-                runtime.exchange.push(Event::FromProcess {
+                events.clear();
+
+                if state.shutting_down() {
+                    break;
+                }
+            }
+
+            tokio::select! {
+                _ = clock.tick() => events.push(Event::FromProcess {
                     event: EventProcess::Tick { now: unix_now() },
-                });
-            }
-        });
+                }),
 
-        // Reseeded on a timer, which is what bounds the damage of a leaked
-        // log: a seed tells you the codes drawn before the next one and no
-        // more. The task holds a weak reference so it cannot keep the server
-        // alive past its own shutdown.
-        let reseed = Arc::downgrade(&runtime);
-
-        tokio::spawn(async move {
-            let mut ticks = tokio::time::interval(RESEED_EVERY);
-
-            // The first tick is immediate and we have just seeded.
-            ticks.tick().await;
-
-            loop {
-                ticks.tick().await;
-
-                let Some(runtime) = reseed.upgrade() else {
-                    return;
-                };
-
-                runtime.exchange.push(Event::FromProcess {
+                // Reseeded on a timer, which is what bounds the damage of a
+                // leaked log: a seed tells you the codes drawn before the next
+                // one and no more.
+                _ = reseed.tick() => events.push(Event::FromProcess {
                     event: EventProcess::Seeded { seed: fresh_seed() },
-                });
+                }),
+
+                Some((request_id, client, event)) = asked.recv() => {
+                    events.push(Event::FromRouter { request_id, client, event });
+                }
+
+                Some(event) = landing.recv() => events.push(event),
+
+                // The signal is not the decision. The machine gets to say what
+                // happens next, which is what makes shutdown replayable.
+                event = signal_received() => events.push(Event::FromTerminal { event }),
             }
-        });
-
-        // The loop, and the only caller of `handle_events`. Polling rather
-        // than waking on a push: this is the whole implementation, and a few
-        // milliseconds is invisible next to the Plaid call a turn is usually
-        // waiting on. A longer sleep only means more events land in one batch.
-        //
-        // Weak, like the reseed task, so it cannot keep the server alive past
-        // its own shutdown.
-        let turning = Arc::downgrade(&runtime);
-
-        tokio::spawn(async move {
-            let mut ticks = tokio::time::interval(TURN_EVERY);
-
-            loop {
-                ticks.tick().await;
-
-                let Some(runtime) = turning.upgrade() else {
-                    return;
-                };
-
-                runtime.turn();
-            }
-        });
-
-        let router = router_server::router(Arc::clone(&runtime), &origins);
-
-        // Every interface rather than loopback, because a phone on the LAN is
-        // one of the clients. The simulator shares the Mac's loopback and would
-        // be happy either way; a real device has to reach the Mac by its
-        // address on the network, and nothing answers there if we bind
-        // loopback. This is a development server on a home network.
-        let listener = tokio::net::TcpListener::bind(("0.0.0.0", PORT)).await?;
-
-        tracing::info!(port = PORT, "server listening");
-
-        let signals = Arc::clone(&runtime);
-
-        // With connection info, so every line about a request can say which
-        // client made it. A dev server is talked to by the web front-end on
-        // loopback and a phone on the LAN at the same time, and untangling
-        // their requests is most of what the log is for.
-        let service = router.into_make_service_with_connect_info::<std::net::SocketAddr>();
-
-        axum::serve(listener, service)
-            .with_graceful_shutdown(async move { signals.await_shutdown().await })
-            .await?;
+        }
 
         tracing::info!("server stopped");
 
         Ok(())
     }
 
-    /// Ask the machine something on a route's behalf, and wait for its answer.
+    /// Carry out everything the machine decided this turn.
     ///
-    /// The one way a handler reaches the machine.
-    pub(crate) async fn request(&self, client: Client, event: EventRouter) -> Option<ActionRouter> {
-        self.exchange.request(client, event).await
-    }
-
-    /// One turn: everything queued since the last one, handed to the machine
-    /// together, and the actions it decided on carried out.
-    ///
-    /// This is the loop `docs/ARCHITECTURE.md` describes, and it is the only
-    /// caller of `handle_events`. A batch is whatever arrived while the last
-    /// turn was running, so the machine sees three banks reporting as one
-    /// batch rather than three — which is what makes it worth batching at all.
-    fn turn(self: &Arc<Self>) {
-        let events = self.exchange.drain();
-
-        if events.is_empty() {
-            return;
-        }
-
-        let mut actions = Vec::new();
-
-        // The guard is held across `handle_events` and nothing else. It is
-        // pure and synchronous, so this is microseconds and never spans an
-        // `.await` — the IO below happens with the lock long since dropped.
-        {
-            let mut state = self.write_state();
-            state.handle_events(&events, &mut actions);
-        }
-
-        tracing::debug!(?events, ?actions, "turn");
-
-        for action in actions {
-            self.begin(action);
-        }
-    }
-
-    /// Hand one action to a pool, to be carried out whenever there is room.
-    fn calling(self: &Arc<Self>, pool: &SourcePool, action: Action) {
-        let runtime = Arc::clone(self);
-
-        pool.call(async move { runtime.perform_action(&action).await });
-    }
-
-    /// Set one action going.
+    /// Drained rather than borrowed, and that is not a copy: every action here
+    /// crosses a task boundary — into a pool, or down the channel the router
+    /// is on — so it has to be owned either way. Draining moves it; borrowing
+    /// would mean cloning it first. The buffer keeps its capacity and is
+    /// filled again next turn.
     ///
     /// **Nothing here waits.** Every call goes to the pool for its source and
     /// comes back as an event whenever it lands, which is what keeps one slow
-    /// bank out of every other route's turns. Which pool is the only thing
-    /// decided: a bank, an email and the store are three sources, so a slow
-    /// one cannot crowd out the others.
-    fn begin(self: &Arc<Self>, action: Action) {
+    /// bank out of every other route's turns.
+    fn perform_actions(self: &Arc<Self>, actions: &mut Vec<Action>) {
+        for action in actions.drain(..) {
+            self.perform_action(action);
+        }
+    }
+
+    /// Set one action going. Which pool is the only thing decided here: a
+    /// bank, an email and the store are three sources, so a slow one cannot
+    /// crowd out the others.
+    fn perform_action(self: &Arc<Self>, action: Action) {
         match action {
             // The answer somebody is parked on. There is no IO in handing it
             // over, and by now everything it was waiting on has landed — the
             // machine held it until the last write reported.
             Action::ToRouter { request_id, action } => {
-                self.exchange.deliver(request_id, action);
+                if self.answers.send((request_id, action)).is_err() {
+                    tracing::error!(request_id, "the router is gone; its answer was dropped");
+                }
             }
 
             Action::ToSource { .. } => self.calling(&self.plaid, action),
@@ -439,9 +363,16 @@ impl RuntimeServer {
 
             Action::ToStore { .. } => self.calling(&self.store, action),
 
-            // No IO and nothing to wait for: a notify and a log line.
-            Action::ToProcess { action } => self.perform_action_process(&action),
+            // No IO and nothing to wait for: a log line.
+            Action::ToProcess { ref action } => self.perform_action_process(action),
         }
+    }
+
+    /// Hand one action to a pool, to be carried out whenever there is room.
+    fn calling(self: &Arc<Self>, pool: &SourcePool, action: Action) {
+        let runtime = Arc::clone(self);
+
+        pool.call(async move { runtime.carry_out(&action).await });
     }
 
     /// Connect to Postgres and bring the schema up to date, if there is one to
@@ -475,7 +406,7 @@ impl RuntimeServer {
     /// to do about an answer is the machine's job, and returning actions from
     /// here would be this function deciding instead. That is also what
     /// flattened the loop — there is no recursion left to bound.
-    async fn perform_action(&self, action: &Action) -> Vec<Event> {
+    async fn carry_out(&self, action: &Action) -> Vec<Event> {
         match action {
             Action::ToSource { action } => return self.perform_action_source(action).await,
             Action::ToStore { action } => return self.perform_action_store(action).await,
@@ -1167,7 +1098,10 @@ impl RuntimeServer {
 
     fn perform_action_process(&self, action: &ActionProcess) {
         match action {
-            ActionProcess::Shutdown => self.shutdown.notify_waiters(),
+            // Nothing to do: the loop reads `shutting_down` on the turn this
+            // came out of and lets go of the router, which is what stops the
+            // server. The action exists so the decision is in the log.
+            ActionProcess::Shutdown => tracing::info!("shutting down"),
 
             ActionProcess::ReportLoginRequired => tracing::warn!(
                 "a connection needs the user to sign in again; syncs will fail until they do",
@@ -1206,7 +1140,7 @@ impl RuntimeServer {
         // release no route — so they are facts arriving mid-call, and the
         // machine is what decides they are worth keeping.
         let report = |stage, institution: Option<&str>, accounts, transactions, streams| {
-            self.exchange.push(Event::FromSource {
+            let _ = self.landed.send(Event::FromSource {
                 event: EventSource::PlaidProgressed {
                     item_id: item_id.to_string(),
                     stage,
@@ -1286,23 +1220,6 @@ impl RuntimeServer {
         )
     }
 
-    /// Wait for the machine to ask for a shutdown, having first turned the
-    /// signal into an event.
-    async fn await_shutdown(&self) {
-        let notified = self.shutdown.notified();
-
-        tokio::select! {
-            event = signal_received() => {
-                // The signal is not the decision. The machine gets to say what
-                // happens next, which is what makes shutdown replayable.
-                self.exchange.push(Event::FromTerminal { event });
-            }
-            _ = notified => {}
-        }
-
-        tracing::info!("shutting down");
-    }
-
     /// One Item's access token, if we hold one.
     fn token_for(&self, item_id: &str) -> Option<String> {
         match self.tokens.read() {
@@ -1324,20 +1241,6 @@ impl RuntimeServer {
             Err(poisoned) => {
                 tracing::error!(
                     "the token map lock is poisoned — a thread panicked while holding it; \
-                     carrying on with the held data",
-                );
-
-                poisoned.into_inner()
-            }
-        }
-    }
-
-    fn write_state(&self) -> std::sync::RwLockWriteGuard<'_, StateServer> {
-        match self.state.write() {
-            Ok(state) => state,
-            Err(poisoned) => {
-                tracing::error!(
-                    "server state lock is poisoned — a thread panicked while holding it; \
                      carrying on with the held data",
                 );
 

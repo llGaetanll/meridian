@@ -9,8 +9,11 @@
 //! Split out of `runtime_server.rs` because carrying an action out and
 //! answering a request are two jobs. The runtime performs actions; this turns
 //! requests into events and events' answers into JSON.
+//!
+//! **The state is a channel and nothing else.** A handler cannot reach the
+//! store, the machine or the runtime — it can turn a request into an event and
+//! wait for the answer, and there is nothing else it *can* do.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Json;
@@ -31,16 +34,17 @@ use crate::ActionRouter;
 use crate::Client;
 use crate::ClientIp;
 use crate::EventRouter;
-use crate::RuntimeServer;
 use crate::WEBHOOK_PATH;
 use crate::WebOrigins;
 use crate::router_trace;
+use crate::runtime_router;
+use crate::runtime_router::RequestTx;
 use crate::session_token;
 use server_wire::WireSnapshot;
 use server_wire::WireSyncStatus;
 
-/// Every route, over one runtime.
-pub(crate) fn router(runtime: Arc<RuntimeServer>, origins: &WebOrigins) -> Router {
+/// Every route, over one channel.
+pub(crate) fn router(requests: RequestTx, origins: &WebOrigins) -> Router {
     Router::new()
         .route("/snapshot", get(snapshot))
         .route("/auth/request", post(auth_request))
@@ -55,7 +59,7 @@ pub(crate) fn router(runtime: Arc<RuntimeServer>, origins: &WebOrigins) -> Route
         // traffic in the log without saying anything about it.
         .layer(axum::middleware::from_fn(router_trace::trace))
         .layer(cors(origins))
-        .with_state(runtime)
+        .with_state(requests)
 }
 
 /// What a browser may do here, and from where.
@@ -101,7 +105,7 @@ fn cors(origins: &WebOrigins) -> CorsLayer {
 /// budget. When to go back to a bank is the server's decision and only the
 /// server's, and `should_fetch` is where it is made.
 async fn snapshot(
-    State(runtime): State<Arc<RuntimeServer>>,
+    State(requests): State<RequestTx>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<WireSnapshot>, StatusCode> {
@@ -111,12 +115,12 @@ async fn snapshot(
     // machine asks for it only once every fetch this request set going has
     // landed, which is what stops a snapshot serving rows its own sync was
     // about to replace.
-    let answer = runtime
-        .request(
-            Client::anonymous(ip),
-            EventRouter::SnapshotRequested { token_sha256 },
-        )
-        .await;
+    let answer = runtime_router::dispatch(
+        &requests,
+        Client::anonymous(ip),
+        EventRouter::SnapshotRequested { token_sha256 },
+    )
+    .await;
 
     too_many(&answer)?;
 
@@ -140,7 +144,7 @@ struct AuthRequestBody {
 /// which for a banking app is worth more than the convenience of a clearer
 /// error.
 async fn auth_request(
-    State(runtime): State<Arc<RuntimeServer>>,
+    State(requests): State<RequestTx>,
     Extension(ip): Extension<ClientIp>,
     Json(body): Json<AuthRequestBody>,
 ) -> StatusCode {
@@ -149,9 +153,12 @@ async fn auth_request(
     // Read off what the machine decided rather than assumed. `Unavailable` is
     // the machine refusing to mint a code it has no entropy for, and answering
     // 204 to that would leave somebody waiting for an email that is not coming.
-    let answer = runtime
-        .request(Client::anonymous(ip), EventRouter::CodeRequested { email })
-        .await;
+    let answer = runtime_router::dispatch(
+        &requests,
+        Client::anonymous(ip),
+        EventRouter::CodeRequested { email },
+    )
+    .await;
 
     match answer {
         Some(ActionRouter::Accepted) => StatusCode::NO_CONTENT,
@@ -185,21 +192,21 @@ struct AuthVerified {
 /// somebody working through guesses. The app already knows what to say from
 /// the screen it is on.
 async fn auth_verify(
-    State(runtime): State<Arc<RuntimeServer>>,
+    State(requests): State<RequestTx>,
     Extension(ip): Extension<ClientIp>,
     Json(body): Json<AuthVerifyBody>,
 ) -> Result<Json<AuthVerified>, StatusCode> {
     // Nothing is read here. What the store holds against this address is the
     // machine's to ask for, and it arrives on its own event a turn later.
-    let answer = runtime
-        .request(
-            Client::anonymous(ip),
-            EventRouter::CodeSubmitted {
-                email: normalize(&body.email),
-                code: body.code.trim().to_string(),
-            },
-        )
-        .await;
+    let answer = runtime_router::dispatch(
+        &requests,
+        Client::anonymous(ip),
+        EventRouter::CodeSubmitted {
+            email: normalize(&body.email),
+            code: body.code.trim().to_string(),
+        },
+    )
+    .await;
 
     too_many(&answer)?;
 
@@ -226,7 +233,7 @@ struct LinkStarted {
 /// Answers with Plaid's own hosted page. Nothing is created at Plaid's end by
 /// this, so it is safe to call again if somebody backs out.
 async fn link_start(
-    State(runtime): State<Arc<RuntimeServer>>,
+    State(requests): State<RequestTx>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<LinkStarted>, StatusCode> {
@@ -239,12 +246,12 @@ async fn link_start(
     // the session and buckets the request once it has. That is also when the
     // rate limit is asked: a caller's own window cannot be charged before
     // there is a caller.
-    let answer = runtime
-        .request(
-            Client::anonymous(ip),
-            EventRouter::LinkRequested { token_sha256 },
-        )
-        .await;
+    let answer = runtime_router::dispatch(
+        &requests,
+        Client::anonymous(ip),
+        EventRouter::LinkRequested { token_sha256 },
+    )
+    .await;
 
     too_many(&answer)?;
 
@@ -299,18 +306,18 @@ enum LinkFinished {
 /// The name is left alone. It is still what finishes a link in the mode a
 /// laptop runs, and renaming it would make it wrong there instead.
 async fn link_finish(
-    State(runtime): State<Arc<RuntimeServer>>,
+    State(requests): State<RequestTx>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<LinkFinished>, StatusCode> {
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let answer = runtime
-        .request(
-            Client::anonymous(ip),
-            EventRouter::LinkClosed { token_sha256 },
-        )
-        .await;
+    let answer = runtime_router::dispatch(
+        &requests,
+        Client::anonymous(ip),
+        EventRouter::LinkClosed { token_sha256 },
+    )
+    .await;
 
     too_many(&answer)?;
 
@@ -348,7 +355,7 @@ async fn link_finish(
 /// Plaid retries anything else, so an error on a type we do not act on is that
 /// webhook arriving again in a minute, and again after that.
 async fn plaid_webhook(
-    State(runtime): State<Arc<RuntimeServer>>,
+    State(requests): State<RequestTx>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
     body: Bytes,
@@ -360,18 +367,18 @@ async fn plaid_webhook(
         return StatusCode::UNAUTHORIZED;
     };
 
-    match runtime
-        .request(
-            // Plaid, from addresses we do not choose. The one route with no
-            // bucket — `EventRouter::route` says why — so there is nothing to
-            // name it by here either.
-            Client::anonymous(ip),
-            EventRouter::WebhookReceived {
-                jwt: jwt.to_string(),
-                body: body.to_vec(),
-            },
-        )
-        .await
+    match runtime_router::dispatch(
+        &requests,
+        // Plaid, from addresses we do not choose. The one route with no
+        // bucket — `EventRouter::route` says why — so there is nothing to
+        // name it by here either.
+        Client::anonymous(ip),
+        EventRouter::WebhookReceived {
+            jwt: jwt.to_string(),
+            body: body.to_vec(),
+        },
+    )
+    .await
     {
         // `Linked` is the same acceptance one turn further on: a session whose
         // token was exchanged answers with the count, and the webhook was
@@ -398,18 +405,18 @@ async fn plaid_webhook(
 /// A user with nothing syncing gets `finished` and zeroes rather than a 404 —
 /// "no sync is running" is an answer, not a missing resource.
 async fn sync_status(
-    State(runtime): State<Arc<RuntimeServer>>,
+    State(requests): State<RequestTx>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<WireSyncStatus>, StatusCode> {
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let answer = runtime
-        .request(
-            Client::anonymous(ip),
-            EventRouter::SyncStatusRequested { token_sha256 },
-        )
-        .await;
+    let answer = runtime_router::dispatch(
+        &requests,
+        Client::anonymous(ip),
+        EventRouter::SyncStatusRequested { token_sha256 },
+    )
+    .await;
 
     too_many(&answer)?;
 
