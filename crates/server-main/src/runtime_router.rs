@@ -138,7 +138,14 @@ impl RuntimeRouter {
             }
         }
 
-        // Whatever is still in flight finishes; nothing new is accepted.
+        // Let go of the door and of everything parked on us *before* waiting
+        // for axum to drain. A handler that arrives now is refused, and one
+        // already parked is released with nothing — either is an answer. Held
+        // open, they would be requests nobody will ever answer, and a graceful
+        // shutdown that waits for them never finishes.
+        drop(request_rx);
+        drop(router);
+
         let _ = stop_tx.send(());
 
         let _ = serving.await;

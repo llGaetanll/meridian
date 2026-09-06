@@ -275,11 +275,14 @@ fn authenticated(event: &EventRouter) -> Option<Authenticated> {
 }
 
 /// Where the server is in its own life.
+///
+/// One way through, and both ends are still. The two in the middle are the
+/// ones a request can be answered in.
 #[derive(Debug, Default, PartialEq, Eq)]
 enum State {
     /// Nothing has happened yet: the process has not said it is up.
     #[default]
-    Stopped,
+    Unstarted,
 
     /// Up, and without entropy. Nothing that needs a credential can be
     /// answered.
@@ -289,8 +292,14 @@ enum State {
     Started,
 
     /// A signal has arrived. What is outstanding finishes; nothing new starts
-    /// and nothing new is minted.
+    /// and nothing new is minted. Transient: it lasts until the last call
+    /// comes back or is given up on.
     Stopping,
+
+    /// Nothing is outstanding and nothing more will be. The runtime's loop
+    /// ends here, which is why the machine says when rather than the runtime
+    /// guessing: only the machine knows what it is still owed.
+    Stopped,
 }
 
 #[derive(Debug, Default)]
@@ -425,6 +434,10 @@ impl StateServer {
         for event in events {
             self.handle_event(event, actions);
         }
+
+        // After the batch rather than inside it: what is outstanding is only
+        // settled once every event in it has been handled.
+        self.settle();
     }
 
     fn handle_event(&mut self, event: &Event, actions: &mut Vec<Action>) {
@@ -1655,7 +1668,7 @@ impl StateServer {
             EventProcess::Started { collect } => {
                 self.collect = Some(*collect);
 
-                if self.state == State::Stopped {
+                if self.state == State::Unstarted {
                     self.state = State::Starting;
                 }
             }
@@ -1664,7 +1677,7 @@ impl StateServer {
                 // A seed on the way out is dropped: nothing will be drawn from
                 // it, and taking it would put a stopping machine back in
                 // service.
-                if self.state == State::Stopping {
+                if self.shutting_down() {
                     return;
                 }
 
@@ -1851,9 +1864,11 @@ impl StateServer {
             EventTerminal::SigInt | EventTerminal::SigTerm => {
                 // Idempotent: a second ^C while the first is still draining
                 // should not queue a second shutdown.
-                if self.state == State::Stopping {
+                if self.shutting_down() {
                     return;
                 }
+
+                tracing::info!("shutting down");
 
                 self.state = State::Stopping;
 
@@ -2044,7 +2059,7 @@ impl StateServer {
     fn sweep_sessions(&mut self, actions: &mut Vec<Action>) {
         // Nothing new starts once we are on the way out, and a table that
         // grows while a process shuts down grows by nothing.
-        if self.state == State::Stopping {
+        if self.shutting_down() {
             return;
         }
 
@@ -2176,7 +2191,7 @@ impl StateServer {
     /// changed *is* the news the window was waiting for.
     fn should_fetch(&mut self, item: &ItemFacts, force: bool) -> bool {
         // Nothing new starts once we are on the way out.
-        if self.state == State::Stopping {
+        if self.shutting_down() {
             return false;
         }
 
@@ -2212,8 +2227,39 @@ impl StateServer {
         })
     }
 
+    /// Whether the machine is on its way out, drained or not.
     pub fn shutting_down(&self) -> bool {
-        self.state == State::Stopping
+        matches!(self.state, State::Stopping | State::Stopped)
+    }
+
+    /// Whether there is nothing left to do. The runtime's loop runs until this.
+    pub fn stopped(&self) -> bool {
+        self.state == State::Stopped
+    }
+
+    /// Come to a stop, once there is nothing left that could still answer.
+    ///
+    /// Checked at the end of every batch rather than on the tick alone, so a
+    /// signal on an idle server stops it in the turn it arrives in rather than
+    /// a second later. What bounds the wait when the server is *not* idle is
+    /// `handle_timeouts`: a call that never comes back is given up on.
+    fn settle(&mut self) {
+        if self.state != State::Stopping {
+            return;
+        }
+
+        let outstanding = !self.waiting.is_empty()
+            || !self.pending.is_empty()
+            || !self.held.is_empty()
+            || !self.watching.is_empty();
+
+        if outstanding {
+            return;
+        }
+
+        tracing::info!("stopped");
+
+        self.state = State::Stopped;
     }
 }
 
