@@ -9,7 +9,7 @@
 /// token like `"c-food"` rather than a colour, precisely so that each platform
 /// resolves it in its own palette. `Theme.category(_:)` is that lookup, and it
 /// is the only place a token becomes a colour — the same table
-/// `crates/phone-main/css/app.css` holds for the web.
+/// `sketches/mobile/phone.css` holds for the sketches.
 
 import SwiftUI
 

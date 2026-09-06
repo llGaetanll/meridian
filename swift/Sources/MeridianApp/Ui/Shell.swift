@@ -1,9 +1,8 @@
 /// The phone's frame: a header, a scrolling body, and the dock floating over
 /// it.
 ///
-/// A transcription of `crates/phone-main/src/ui/shell.rs`, minus the status
-/// bar it draws — that one is scenery so a browser reads as a phone, and this
-/// is a phone.
+/// Built once here rather than by each screen, so a change of tab moves a
+/// title and a body and leaves the frame where it is.
 
 import SwiftUI
 

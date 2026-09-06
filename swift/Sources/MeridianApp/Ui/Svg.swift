@@ -1,10 +1,9 @@
 /// Just enough SVG to draw the icon set.
 ///
-/// SwiftUI has no SVG, and the icons are defined as SVG in
-/// `crates/phone-main/src/ui/icon.rs`. Retracing them by hand in `Path` calls
-/// would have meant two drawings of every glyph that only look alike until
-/// someone edits one, so this evaluates the path data itself and the two apps
-/// stay literally the same shapes.
+/// SwiftUI has no SVG, and the icon set is SVG path data (`Icon.swift`).
+/// Retracing it by hand in `Path` calls would have meant two drawings of every
+/// glyph that only look alike until someone edits one, so this evaluates the
+/// path data itself and every platform stays literally the same shapes.
 ///
 /// What it covers is what those icons use: `M L H V C S Q A Z`, upper and
 /// lower case, plus the `line`, `circle`, `rect`, `polyline` and `polygon`
