@@ -1,17 +1,9 @@
-//! What this server will answer, and how often.
+//! What this server will answer, and how often. See `api_common::ratelimit`.
 //!
-//! The other half of `src_plaid::PlaidRateLimiter`: that one is what *we* may
-//! send, this is what we will be asked. Same shape and the same reason for it
-//! — deciding is arithmetic over what has already happened, with no clock and
-//! no IO, so it lives in the machine where an `eval!` test can reach it. See
-//! `api_common::ratelimit`.
-//!
-//! A request is counted against every window it falls in, and has to be under
-//! all of them. Two come from the halves of [`Client`](crate::Client):
-//! counting only the address hands a botnet the whole server, and counting
-//! only the session hands it to anyone willing to sign up twice. The third is
-//! the inbox a sign-in code would go to, which is not a fact about the caller
-//! at all — see [`ServerRateCtx::mailing`].
+//! A request is counted against every window it falls in and has to be under
+//! all of them. Counting only the address hands a botnet the whole server;
+//! counting only the session hands it to anyone willing to sign up twice; the
+//! third window is the inbox — see [`ServerRateCtx::mailing`].
 
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -26,50 +18,31 @@ use crate::ClientIp;
 
 /// Calls a minute on the route the phone polls.
 ///
-/// An order of magnitude above everything else, because the phone asks
-/// `/sync/status` once a second while a first run is going (#41) — so sixty a
-/// minute is the *normal* rate and a limit anywhere near it would break the
-/// one flow that has to work. Double that leaves room for a retry and a second
+/// The phone asks `/sync/status` once a second during a first run, so sixty a
+/// minute is the *normal* rate; double leaves room for a retry and a second
 /// device.
-///
-/// It can afford to be this loose: the answer is a read of one map inside the
-/// machine, with no store and no bank behind it. The polling is the thing
-/// worth fixing, and #41 is where.
 const POLLED_PER_MINUTE: u32 = 120;
 
 /// Calls a minute on every other route.
 ///
-/// Twenty is far above what the app does and far below what a loop does.
-/// `/snapshot` is the expensive one — it reads a whole ledger out of Postgres
-/// and projects it — but it is already damped by `FRESH_FOR_SECS`, so this
-/// number is about the read rather than about Plaid.
+/// `/snapshot` is the expensive one but is already damped by `FRESH_FOR_SECS`,
+/// so this number is about the read rather than about Plaid.
 const CALLS_PER_MINUTE: u32 = 20;
 
 /// Sign-in emails per caller per quarter hour.
 ///
-/// The only route that spends money and puts something in a stranger's inbox,
-/// and the only one with no damping of its own — `/snapshot` at least serves a
-/// cache. Issue #23 opens on it for a reason: unlimited, it is a mailbomb
-/// aimed at any address the caller likes, from us.
-///
-/// The window matters more than the count here. Five a minute would still be
-/// three hundred an hour at one address; five a quarter hour is twenty, which
-/// is more than anyone signing in legitimately will ever need.
+/// The window matters more than the count: five a minute would still be three
+/// hundred an hour at one address.
 const EMAILS_PER_QUARTER_HOUR: u32 = 5;
 
-/// A minute, in seconds.
 const MINUTE: u64 = 60;
 
-/// A quarter of an hour, in seconds.
 const QUARTER_HOUR: u64 = 15 * 60;
 
 /// What a caller is metered on.
 ///
-/// One variant per route that dispatches, so the bucket is derived from the
-/// event rather than named by the handler — see
-/// [`EventRouter::route`](crate::EventRouter::route). A route that grows a new
-/// variant cannot forget to be limited, because it will not compile until it
-/// says which of these it is.
+/// One variant per route that dispatches, so a new route cannot forget to be
+/// limited — see [`EventRouter::route`](crate::EventRouter::route).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Route {
     /// `GET /snapshot`
@@ -92,11 +65,8 @@ pub enum Route {
 }
 
 impl Route {
-    /// What the logs call it, which is the path a caller asked for.
-    ///
-    /// The path rather than the variant name, because the line is read next to
-    /// the `url=` on the request it refused and the two should say the same
-    /// thing.
+    /// What the logs call it: the path, so it matches the `url=` on the
+    /// request it refused.
     pub fn as_str(self) -> &'static str {
         match self {
             Route::Snapshot => "/snapshot",
@@ -121,16 +91,15 @@ impl Route {
     }
 }
 
-/// What the limiter needs in order to answer: which route, who is asking, and
-/// who would be written to.
+/// What the limiter needs to answer: the route, the caller, and who would be
+/// written to.
 #[derive(Debug, Clone)]
 pub struct ServerRateCtx {
     pub route: Route,
     pub client: Client,
 
-    /// The inbox a sign-in code would land in, on the one route that sends
-    /// one. Already reduced to the inbox rather than the address written —
-    /// see [`mailing`](Self::mailing).
+    /// The inbox a sign-in code would land in, reduced by
+    /// [`mailing`](Self::mailing) rather than the address as written.
     inbox: Option<String>,
 }
 
@@ -145,13 +114,9 @@ impl ServerRateCtx {
 
     /// Also count this against the inbox a code would be sent to.
     ///
-    /// The one axis here that is not a fact about the caller, and #23 wants it
-    /// for a reason the other two cannot cover: a botnet is a thousand
-    /// addresses and one victim, so every address window has room while the
-    /// same inbox takes every message. What is metered is the mail we send,
-    /// and mail is addressed to a person.
-    ///
-    /// `None` on every route that sends nothing, which is all of them but one.
+    /// A botnet is a thousand addresses and one victim, so every address window
+    /// has room while the same inbox takes every message. `None` on every route
+    /// that sends nothing, which is all of them but one.
     pub fn mailing(mut self, email: Option<&str>) -> Self {
         self.inbox = email.map(inbox_of);
         self
@@ -160,16 +125,10 @@ impl ServerRateCtx {
 
 /// Which inbox an address delivers to, as far as can be told from outside.
 ///
-/// Lowercased, and a `+tag` dropped from the local part. Both are free for a
-/// caller to vary and neither changes where the mail lands, so counting them
-/// apart is the same bug as counting a v6 caller by their address: one
-/// recipient, unlimited mail, a different hat each time.
-///
-/// It is a guess, and deliberately the cheap direction of one. A provider that
-/// treats `+` as an ordinary character has two real addresses sharing one
-/// budget of five per quarter hour; the other way round is a mailbomb. Only
-/// the bucket is reduced — what gets stored and written to is the address as
-/// the caller typed it.
+/// Case and a `+tag` are free for a caller to vary and neither changes where
+/// the mail lands. A guess, deliberately in the cheap direction: a provider
+/// that treats `+` as ordinary has two addresses sharing one budget, the other
+/// way round is a mailbomb. Only the bucket is reduced.
 fn inbox_of(email: &str) -> String {
     let email = email.trim().to_lowercase();
 
@@ -184,10 +143,8 @@ fn inbox_of(email: &str) -> String {
 
 /// One sliding window per route per caller, and a caller is two things.
 ///
-/// Keyed separately rather than by a pair, because a request from an
-/// authenticated caller has to be counted against their address *and* their
-/// account, and the two windows have different lifetimes: an address stops
-/// calling, an account signs in from somewhere else.
+/// Keyed separately rather than by a pair: an authenticated request counts
+/// against the address *and* the account, and the two age out independently.
 #[derive(Debug, Default)]
 pub struct ServerRateLimiter {
     by_ip: HashMap<(Route, ClientIp), Window>,
@@ -199,9 +156,8 @@ impl ServerRateLimiter {
     /// Drop windows with nothing left in them.
     ///
     /// The keys come from whoever calls us, so without this the maps grow for
-    /// the life of the process and the rate limiter is itself the thing that
-    /// exhausts the server. Called on the tick, which is the only turn that
-    /// happens because nothing happened. See #40.
+    /// the life of the process and the rate limiter is itself what exhausts the
+    /// server.
     pub fn sweep(&mut self, now: Timestamp) {
         self.by_ip.retain(|_, window| !window.is_idle(now));
         self.by_user.retain(|_, window| !window.is_idle(now));
@@ -218,12 +174,9 @@ impl ServerRateLimiter {
 impl RateLimiter for ServerRateLimiter {
     type Ctx = ServerRateCtx;
 
-    /// **Every window is asked before any of them is told.**
-    ///
-    /// The two-step is the point: recording as we go would spend a slot in the
-    /// address window on a request the session window then refuses, so a
-    /// caller who tripped one limit would slowly use up the others. Asking
-    /// first means a refusal costs nothing.
+    /// **Every window is asked before any of them is told**, so a refusal costs
+    /// nothing: recording as we go would spend a slot in the address window on
+    /// a request the session window then refuses.
     fn can_send(&mut self, now: Timestamp, ctx: &ServerRateCtx) -> bool {
         let (limit, window_secs) = ctx.route.limit();
 
@@ -247,10 +200,8 @@ impl RateLimiter for ServerRateLimiter {
             return false;
         }
 
-        // All of them said yes, so all of them are told. Reached through the
-        // maps again rather than held across the checks above, because two
-        // `&mut` into one map is not a thing, and the alternative is a lookup
-        // that has already happened this turn.
+        // Reached through the maps again rather than held across the checks
+        // above, because two `&mut` into one map is not a thing.
         if let Some(window) = self.by_ip.get_mut(&key_ip) {
             window.record(now);
         }
@@ -266,12 +217,8 @@ impl RateLimiter for ServerRateLimiter {
         true
     }
 
-    /// The soonest of the windows' answers.
-    ///
-    /// Implemented because the trait asks for it, and nothing here puts it on
-    /// the wire: a 429 from this server says only that there were too many,
-    /// because when the next one is allowed is a fact about our state that a
-    /// caller behaving well does not need and one behaving badly should not be
+    /// The soonest of the windows' answers. Nothing puts it on the wire: when
+    /// the next call is allowed is a fact a caller behaving badly should not be
     /// handed.
     fn next_allowed(&self, now: Timestamp, ctx: &ServerRateCtx) -> Option<Timestamp> {
         let by_ip = self
@@ -606,7 +553,7 @@ mod tests {
     }
 
     /// The phone's own polling rate must be comfortably inside the limit, or
-    /// first run breaks. See #41.
+    /// first run breaks.
     #[test]
     fn a_minute_of_the_phone_polling_is_under_the_limit() {
         let mut limiter = ServerRateLimiter::default();
@@ -638,7 +585,7 @@ mod tests {
     }
 
     /// Without this the maps grow for the life of the process, keyed by
-    /// whatever addresses call us. See #40.
+    /// whatever addresses call us.
     #[test]
     fn the_sweep_drops_windows_nothing_is_left_in() {
         let mut limiter = ServerRateLimiter::default();

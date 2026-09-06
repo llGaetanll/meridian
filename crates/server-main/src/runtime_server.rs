@@ -1,14 +1,7 @@
 //! The IO half of the server: everything effectful, and nothing that decides.
 //!
-//! The pairing `docs/ARCHITECTURE.md` describes — a state machine that decides
-//! and a runtime that acts. The function structure mirrors the machine's:
-//! `perform_actions` fans out to `perform_action`, which fans out to one
-//! function per action group. Reading the two side by side, an action and the
-//! thing that carries it out sit at the same depth.
-//!
-//! Only [`RuntimeServer::run`] is public. Everything else is reachable solely
-//! by carrying out an action, which is what stops a caller from doing IO
-//! without an action asking for it.
+//! Only [`RuntimeServer::run`] is public, so nothing can do IO without an
+//! action asking for it.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -51,119 +44,86 @@ use src_resend::ResendClient;
 use src_resend::ResendCredentials;
 use uuid::Uuid;
 
-/// How often the machine is handed fresh entropy.
-///
-/// Every seed is 32 bytes of ChaCha20 state, so one covers far more codes than
-/// a minute will ever produce. The interval is not about running out — it is
-/// about how much a single leaked seed is worth.
+/// How often the machine is handed fresh entropy. Not about running out — it
+/// bounds how much a single leaked seed is worth.
 const RESEED_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// How many calls to Plaid may be in flight at once.
-///
-/// More than one, because somebody with three banks should not sync them one
-/// after another. Not many more: Plaid rate-limits per Item and the machine is
-/// what respects that, so this only bounds how much work is outstanding.
+/// How many calls to Plaid may be in flight at once. Plaid's per-Item rate
+/// limit is the machine's problem; this only bounds outstanding work.
 const PLAID_AT_ONCE: usize = 4;
 
-/// How many sign-in emails may be in flight at once. Small: it is one request
-/// per person signing in, and they are not waiting on it.
+/// How many sign-in emails may be in flight at once.
 const EMAIL_AT_ONCE: usize = 2;
 
-/// How often the machine is told what time it is.
-///
-/// A second, which is far finer than anything the machine measures — the
-/// shortest window in it is thirty seconds — and fine enough that giving up on
-/// a call is not noticeably late.
+/// How often the machine is told what time it is. A second, far finer than the
+/// shortest window the machine measures.
 const TICK_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
 
-/// How many writes may be in flight at once. Bounded by what the Postgres
-/// pool will hand out either way; this is what stops a burst queueing there
-/// instead, where it is invisible.
+/// How many writes may be in flight at once. Stops a burst queueing inside the
+/// Postgres pool instead, where it is invisible.
 const STORE_AT_ONCE: usize = 8;
 
 pub struct RuntimeServer {
-    /// The store. Required, and not optional in any sense: the access tokens
-    /// live in it, so a server without one has no way to reach any bank and
-    /// nothing to serve. It used to be optional and hold state in memory,
-    /// which was the last variable in the server with a fallback behind it.
+    /// The store. The access tokens live in it, so a server without one has no
+    /// way to reach any bank and nothing to serve.
     db: Db,
 
-    /// What the access token column is sealed with.
-    ///
-    /// Beside the pool because it is the same kind of fact — how to reach the
-    /// store, and how to read the one column in it that is not plain. Read on
-    /// the way up with everything else, so a key that is missing or the wrong
-    /// length is a server that does not start.
+    /// What the access token column is sealed with. Read on the way up, so a
+    /// key that is missing or the wrong length is a server that does not start.
     db_key: DbKey,
 
-    /// Where an answer goes. The router is on another task and this is the
-    /// only way to reach it.
+    /// Where an answer goes; the router is on another task.
     answers: ActionTx,
 
-    /// Where a fact that nobody asked for goes: the stages a fetch reports as
-    /// it runs. The pools have their own clone of this for what a call
-    /// returns; this one is for what it says on the way.
+    /// Where a fact nobody asked for goes: the stages a fetch reports as it
+    /// runs. The pools have their own clone for what a call returns.
     landed: mpsc::UnboundedSender<Event>,
 
-    /// The Plaid account these calls are made on behalf of. One per process;
-    /// it says which environment, and it signs every request.
+    /// The Plaid account these calls are made on behalf of. One per process.
     credentials: PlaidCredentials,
 
     /// How a sign-in code reaches the person asking for it.
     email_send: EmailSend,
 
     /// Resend, when [`RuntimeServer::email_send`] says to use it. `None` when
-    /// it says `log`, and nothing consults it in that case.
+    /// it says `log`.
     resend: Option<ResendClient>,
 
     /// Every Item's access token, by `item_id`, read from the store at boot
     /// and added to as banks are linked.
     ///
-    /// Here rather than in the machine, and deliberately: a token is a live
-    /// credential to somebody's bank account, and the machine's whole job is
-    /// to be logged and replayed. It never sees one. Actions name an Item and
-    /// the runtime looks the token up, which is why `ActionSource::FetchPlaid`
-    /// carries an `item_id`.
+    /// Here rather than in the machine: a token is a live bank credential and
+    /// the machine is logged and replayed, so it never sees one. Actions name
+    /// an Item and the runtime looks the token up.
     tokens: RwLock<HashMap<String, String>>,
 
     /// Where Plaid should call, or `None` when nothing should.
     ///
-    /// `Some` exactly when `PLAID_COLLECT=webhook`, because that is the only
-    /// mode in which an address means anything — and in that mode it is
-    /// required, read and validated on the way up. A server that cannot name
-    /// itself does not start, rather than starting and telling Plaid nothing.
+    /// `Some` exactly when `PLAID_COLLECT=webhook`, where it is required and
+    /// validated on the way up, so a server that cannot name itself will not
+    /// start.
     webhook: Option<String>,
 
-    /// Every call to Plaid. Two at once: a snapshot of somebody with several
-    /// banks should overlap, and Plaid's own limits are the machine's problem
-    /// rather than this number's.
+    /// Every call to Plaid.
     plaid: SourcePool,
 
     /// Every sign-in email. Its own pool so a slow bank cannot use up the room
-    /// a sign-in needs — the whole reason there is one per source.
+    /// a sign-in needs.
     email: SourcePool,
 
-    /// Every write. The store is a source like any other now: it is asked to
-    /// do something and reports back that it did, and the machine holds the
-    /// route's answer until it has.
+    /// Every write. The machine holds a route's answer until the store reports.
     store: SourcePool,
 }
 
 impl RuntimeServer {
     /// Build the server, wire the signal handler, and serve until told to stop.
-    ///
-    /// The only public entry point.
     pub async fn run() -> anyhow::Result<()> {
-        // All of these are required, and each fails the process rather than
-        // degrading. Read before anything is served, so a server that cannot
-        // work says so in its first second rather than on its first request.
+        // Read before anything is served, not on the first request.
         let credentials = PlaidCredentials::from_env()?;
         let collect = PlaidCollect::from_env()?;
 
-        // Required in one mode and meaningless in the other, the same shape as
-        // `RESEND_*` under `EMAIL_SEND`. Read here rather than when a link is
-        // opened, so a server that cannot name its own address says so in its
-        // first second instead of on the day somebody connects a bank.
+        // Required in webhook mode and meaningless in poll mode. Read here so
+        // a server that cannot name its own address says so at startup.
         let public_url = match collect {
             PlaidCollect::Webhook => Some(PublicUrl::from_env()?),
             PlaidCollect::Poll => None,
@@ -171,23 +131,16 @@ impl RuntimeServer {
 
         let db = Self::open_store().await?;
 
-        // Before the first query rather than at the first bank connection: a
-        // server that cannot open the column it keeps credentials in has
-        // nothing to serve, and the honest moment to say so is now.
         let db_key = DbKey::from_env()?;
 
         let email_send = EmailSend::from_env()?;
 
-        // Read on the way up with the rest, though nothing serves a browser
-        // until the first request. A bad value here is the one misconfiguration
-        // this process can never notice on its own: a browser refused by CORS
-        // never sends the request, so the failure looks like silence from the
-        // server and like a broken web app from the outside.
+        // The one misconfiguration this process can never notice on its own: a
+        // browser refused by CORS never sends the request at all.
         let origins = WebOrigins::from_env()?;
 
-        // Built at startup rather than per send, so a missing key is a server
-        // that does not start rather than one that fails the first time
-        // somebody tries to sign in.
+        // A missing key is a server that does not start, not a sign-in that
+        // fails.
         let resend = match email_send {
             EmailSend::Resend => Some(ResendClient::new(&ResendCredentials::from_env()?)?),
             EmailSend::Log => None,
@@ -199,10 +152,6 @@ impl RuntimeServer {
             );
         }
 
-        // The address Plaid is told to call, worked out once and used for both
-        // the log and the client. `PUBLIC_URL` is the base; this is the route
-        // on the end of it, and it is what the log has to name — the base
-        // alone is neither the address we advertise nor the one we answer on.
         let webhook = public_url.as_ref().map(PublicUrl::webhook);
 
         tracing::info!(
@@ -214,17 +163,13 @@ impl RuntimeServer {
             "serving live plaid data",
         );
 
-        // Everything a call produces comes back here. Unbounded, deliberately:
-        // a pool that had to wait to report would be a pool holding the answer
-        // to something the loop is about to be asked about. What bounds the
-        // work is each pool's own room, and what bounds the queue is the
-        // machine, which will not ask for a call it has no budget for.
+        // Unbounded deliberately: a pool that had to wait to report would be
+        // holding an answer the loop is about to be asked for. Each pool's own
+        // room is what bounds the work.
         let (landed, mut landing) = mpsc::unbounded_channel::<Event>();
 
-        // The same channel, for the three events that start the machine off.
         let boot = landed.clone();
 
-        // The router, on its own task, reachable only through these two.
         let (answers, action_rx): (ActionTx, ActionRx) = mpsc::unbounded_channel();
         let (event_tx, mut asked): (EventTx, EventRx) = mpsc::unbounded_channel();
 
@@ -249,9 +194,8 @@ impl RuntimeServer {
             db_key,
         });
 
-        // The machine, owned outright by the loop below. Nothing else has a
-        // reference to it, which is what makes `handle_events` an ordinary
-        // `&mut` call rather than something taken under a guard.
+        // Owned outright by the loop below, which is what makes `handle_events`
+        // an ordinary `&mut` call rather than one taken under a guard.
         let mut state = StateServer::new();
 
         let mut clock = tokio::time::interval(TICK_EVERY);
@@ -261,11 +205,8 @@ impl RuntimeServer {
         let mut events: Vec<Event> = Vec::new();
         let mut actions: Vec<Action> = Vec::new();
 
-        // The boot sequence, sent the way everything else arrives rather than
-        // pushed in behind the loop's back. The clock is first: the machine
-        // starts at the epoch, and a code minted before the first tick would
-        // expire in 1970. Then the process saying it is up, and the entropy it
-        // needs before it will mint anything.
+        // The clock is first: the machine starts at the epoch, and a code
+        // minted before the first tick would expire in 1970.
         for event in [
             EventProcess::Tick { now: unix_now() },
             EventProcess::Started { collect },
@@ -280,9 +221,8 @@ impl RuntimeServer {
                     event: EventProcess::Tick { now: unix_now() },
                 }),
 
-                // Reseeded on a timer, which is what bounds the damage of
-                // a leaked log: a seed tells you the codes drawn before
-                // the next one and no more.
+                // What bounds the damage of a leaked log: a seed tells you the
+                // codes drawn before the next one and no more.
                 _ = reseed.tick() => events.push(Event::FromProcess {
                     event: EventProcess::Seeded { seed: fresh_seed() },
                 }),
@@ -293,9 +233,8 @@ impl RuntimeServer {
 
                 Some(event) = landing.recv() => events.push(event),
 
-                // The signal is not the decision. The machine gets to say
-                // what happens next, which is what makes shutdown
-                // replayable.
+                // The signal is not the decision: the machine says what
+                // happens next, which is what makes shutdown replayable.
                 event = signal_received() => events.push(Event::FromTerminal { event }),
             }
 
@@ -313,10 +252,8 @@ impl RuntimeServer {
 
             events.clear();
 
-            // Not `Stopping`: that one is transient, and what is outstanding
-            // when a signal arrives still has to come back or be given up on.
-            // The machine is what says when there is nothing left, because it
-            // is the only thing that knows what it is still owed.
+            // Not `Stopping`: what is outstanding when a signal arrives still
+            // has to come back or be given up on.
             if state.stopped() {
                 break;
             }
@@ -329,28 +266,19 @@ impl RuntimeServer {
 
     /// Carry out everything the machine decided this turn.
     ///
-    /// Drained rather than borrowed, and that is not a copy: every action here
-    /// crosses a task boundary — into a pool, or down the channel the router
-    /// is on — so it has to be owned either way. Draining moves it; borrowing
-    /// would mean cloning it first. The buffer keeps its capacity and is
-    /// filled again next turn.
-    ///
     /// **Nothing here waits.** Every call goes to the pool for its source and
-    /// comes back as an event whenever it lands, which is what keeps one slow
-    /// bank out of every other route's turns.
+    /// comes back as an event, which keeps one slow bank out of other turns.
     fn perform_actions(self: &Arc<Self>, actions: &mut Vec<Action>) {
         for action in actions.drain(..) {
             self.perform_action(action);
         }
     }
 
-    /// Set one action going. Which pool is the only thing decided here: a
-    /// bank, an email and the store are three sources, so a slow one cannot
-    /// crowd out the others.
+    /// Set one action going. Which pool is the only thing decided here, so a
+    /// slow source cannot crowd out the others.
     fn perform_action(self: &Arc<Self>, action: Action) {
         match action {
-            // The answer somebody is parked on. There is no IO in handing it
-            // over, and by now everything it was waiting on has landed — the
+            // By now everything the answer was waiting on has landed: the
             // machine held it until the last write reported.
             Action::ToRouter { request_id, action } => {
                 if self.answers.send((request_id, action)).is_err() {
@@ -364,7 +292,6 @@ impl RuntimeServer {
 
             Action::ToStore { .. } => self.calling(&self.store, action),
 
-            // No IO and nothing to wait for: a log line.
             Action::ToProcess { ref action } => self.perform_action_process(action),
         }
     }
@@ -376,18 +303,11 @@ impl RuntimeServer {
         pool.call(async move { runtime.carry_out(&action).await });
     }
 
-    /// Connect to Postgres and bring the schema up to date, if there is one to
-    /// connect to.
+    /// Connect to Postgres and bring the schema up to date.
     ///
-    /// Migrations run here, on boot, rather than as a step in `docker compose`
-    /// or a script somebody has to remember. That is what makes bringing the
-    /// whole thing up one command: the binary knows which schema it needs and
-    /// says so to whatever database it is handed.
-    ///
-    /// A `DATABASE_URL` that is missing or wrong is fatal, deliberately. This
-    /// is where the access tokens live, so a server without a store cannot
-    /// reach a bank at all — and one that started anyway would look healthy
-    /// while quietly keeping nothing.
+    /// Migrations run on boot rather than as a script somebody has to
+    /// remember. A missing or wrong `DATABASE_URL` is fatal: the access tokens
+    /// live here, so a server without a store cannot reach a bank at all.
     async fn open_store() -> anyhow::Result<Db> {
         let url = std::env::var("DATABASE_URL")
             .map_err(|_| anyhow::anyhow!("DATABASE_URL is not set"))?;
@@ -404,16 +324,12 @@ impl RuntimeServer {
     /// Carry one action out, and report what came of it.
     ///
     /// Whatever it produces is an *event*, never another action: deciding what
-    /// to do about an answer is the machine's job, and returning actions from
-    /// here would be this function deciding instead. That is also what
-    /// flattened the loop — there is no recursion left to bound.
+    /// to do about an answer is the machine's job.
     async fn carry_out(&self, action: &Action) -> Vec<Event> {
         match action {
             Action::ToSource { action } => return self.perform_action_source(action).await,
             Action::ToStore { action } => return self.perform_action_store(action).await,
             Action::ToEmail { action } => self.perform_action_email(action).await,
-            // Both are handled where the action is set going: an answer goes
-            // to the route parked on it, and a process action is a notify.
             Action::ToRouter { .. } | Action::ToProcess { .. } => {
                 unreachable!("delivered rather than performed")
             }
@@ -444,7 +360,6 @@ impl RuntimeServer {
                 }
             }
 
-            // The code goes in the log, at WARN, saying no email was sent.
             // Loud on purpose: a server accidentally running this way says so
             // on every single sign-in rather than looking healthy.
             _ => tracing::warn!(
@@ -455,9 +370,7 @@ impl RuntimeServer {
         }
     }
 
-    /// Each of these ends by feeding what came back in as the next event, so
-    /// they answer with the actions that produced — which is how a handler
-    /// several dispatches away learns what happened.
+    /// Everything Plaid is asked for.
     async fn perform_action_source(&self, action: &ActionSource) -> Vec<Event> {
         match action {
             ActionSource::FetchPlaid {
@@ -490,9 +403,7 @@ impl RuntimeServer {
 
     /// Ask Plaid for one webhook signing key, and report what came back.
     ///
-    /// A key that will not fetch is reported as absent rather than as a
-    /// failure: from the machine's side "Plaid has no such key" and "we could
-    /// not ask" lead to the same refusal, and remembering both is what keeps
+    /// A key that will not fetch is reported as absent: remembering that keeps
     /// an invented `kid` from costing a call every time it is sent.
     async fn fetch_webhook_key(&self, call_id: crate::CallId, kid: &str) -> Vec<Event> {
         let key = match runtime_plaid::webhook_key(&self.credentials, kid).await {
@@ -530,9 +441,8 @@ impl RuntimeServer {
                 hosted_link_url,
             },
 
-            // A link token with no hosted URL means the request did not ask
-            // for Hosted Link, which it always does. Reported rather than
-            // guessed at: there is no URL to send anybody to.
+            // A link token with no hosted URL means the request did not ask for
+            // Hosted Link, which it always does.
             Ok((link_token, None)) => {
                 tracing::error!("plaid answered a link token with no hosted url");
 
@@ -555,10 +465,8 @@ impl RuntimeServer {
         vec![Event::FromSource { event }]
     }
 
-    /// Ask what became of every Link session the machine named.
-    ///
-    /// One call each, and one event for all of them. Which sessions to ask
-    /// about is the machine's decision; how many requests that takes is not.
+    /// Ask what became of every Link session the machine named: one call each,
+    /// and one event for all of them.
     async fn poll_links(&self, call_id: crate::CallId, link_tokens: &[String]) -> Vec<Event> {
         let mut polls = Vec::with_capacity(link_tokens.len());
 
@@ -574,8 +482,7 @@ impl RuntimeServer {
                     tracing::warn!(error = %e, "could not poll a link session");
 
                     // Not abandoned: a failed poll says nothing about the
-                    // session, and giving up here would lose a bank somebody
-                    // did connect.
+                    // session, and giving up would lose a real connection.
                     crate::LinkPoll {
                         link_token: link_token.clone(),
                         finished: false,
@@ -595,12 +502,11 @@ impl RuntimeServer {
     /// Trade a `public_token` for the permanent one.
     ///
     /// **The one call in this server whose effect cannot be undone.** In
-    /// Production it spends an Item slot and `/item/remove` does not give it
-    /// back; `fetch_all`'s Sandbox guard is what keeps that unreachable today.
+    /// Production it spends an Item slot that `/item/remove` does not give
+    /// back; `fetch_all`'s Sandbox guard is what keeps that unreachable.
     ///
-    /// The access token goes into the runtime's map and no further. It never
-    /// becomes an event, because an event carrying one would put a bank
-    /// credential in the log.
+    /// The access token goes into the runtime's map and no further: an event
+    /// carrying one would put a bank credential in the log.
     async fn exchange_public_token(
         &self,
         call_id: crate::CallId,
@@ -631,18 +537,13 @@ impl RuntimeServer {
         vec![Event::FromSource { event }]
     }
 
-    /// Everything the store is asked for.
+    /// Everything the store is asked for, as the event that says what came of it.
     ///
-    /// Whether it landed, as the event that says so.
-    ///
-    /// One report for every write, against the call that asked for it. The
-    /// machine holds a route's answer until this arrives, so a write that
-    /// reported nothing would be a request that never returns — which is why
-    /// the failure is an event too, rather than a line in a log.
+    /// The machine holds a route's answer until this arrives, so a write that
+    /// reported nothing would be a request that never returns — which is why a
+    /// failure is an event too.
     async fn perform_action_store(&self, action: &ActionStore) -> Vec<Event> {
         // A read answers with what it found; a write answers that it landed.
-        // Two shapes, so they are told apart here rather than inside
-        // `write_store`, which has nothing to report but success.
         let event = match action {
             ActionStore::LoadSession {
                 call_id,
@@ -689,8 +590,8 @@ impl RuntimeServer {
 
     /// Who a session token signs in, as the store holds it.
     ///
-    /// The clock comes from the action rather than from here: the row this
-    /// matches is the one the machine reckoned was still good.
+    /// The clock comes from the action: the row this matches is the one the
+    /// machine reckoned was still good.
     async fn load_session(
         &self,
         call_id: crate::CallId,
@@ -719,7 +620,6 @@ impl RuntimeServer {
         }
     }
 
-    /// The Link sessions this user has open and has not collected.
     async fn load_pending_links(&self, call_id: crate::CallId, user_id: Uuid) -> EventStore {
         match self.pending_links(user_id).await {
             Ok(link_tokens) => EventStore::PendingLinksLoaded {
@@ -753,8 +653,7 @@ impl RuntimeServer {
         }
     }
 
-    /// The write itself. Nothing here inspects an answer or decides anything
-    /// about it; `perform_action_store` turns the outcome into the event.
+    /// The write itself; `perform_action_store` turns it into an event.
     async fn write_store(&self, action: &ActionStore) -> Result<(), src_postgres::PostgresError> {
         let db = &self.db;
 
@@ -783,10 +682,7 @@ impl RuntimeServer {
                 expires_at,
             } => {
                 // An address becomes a user here, which is what makes there be
-                // no separate sign-up: one that exists signs in, one that does
-                // not signs up, so there is nothing to choose and no way to
-                // choose wrong. A lookup, not a decision — the machine has no
-                // use for a uuid.
+                // no separate sign-up and no way to choose wrong.
                 let created = async {
                     let user_id = src_postgres::upsert_user(db, email).await?;
 
@@ -805,8 +701,6 @@ impl RuntimeServer {
                 let gone = src_postgres::sweep_sessions(db, *now).await?;
 
                 // Silent when there was nothing to drop, which is most hours.
-                // A line an hour saying so would be the log's most common
-                // entry and its least informative.
                 if gone > 0 {
                     tracing::info!(sessions = gone, "swept expired sessions");
                 }
@@ -854,10 +748,8 @@ impl RuntimeServer {
 
     /// Write a newly linked bank.
     ///
-    /// The owner comes from the Link session rather than from the action: the
-    /// session was written down against whoever asked for it, before its URL
-    /// was ever handed over, which is what stops one account collecting a bank
-    /// another account connected.
+    /// The owner comes from the Link session rather than from the action,
+    /// which is what stops one account collecting a bank another connected.
     async fn save_linked_item(
         &self,
         db: &Db,
@@ -899,10 +791,6 @@ impl RuntimeServer {
 
     /// One user's banks, as the store holds them.
     ///
-    /// Read on the request path, for the person who asked. That is the change
-    /// that let this server serve more than one of them: the alternative was
-    /// every user's ledger resident in one process, read wholesale at boot.
-    ///
     /// The connections are assembled here rather than in the store, because a
     /// connection is a *projection* — initials, a worded status — and
     /// `src-postgres` returns records.
@@ -938,8 +826,7 @@ impl RuntimeServer {
     /// The Link sessions this user has open and has not collected.
     ///
     /// A session is collected by whatever *reports* it, so an open one is one
-    /// nobody has been told about — which is exactly what a `SESSION_FINISHED`
-    /// is matched against, and what a poll goes and asks about.
+    /// nobody has been told about.
     async fn pending_links(
         &self,
         user_id: Uuid,
@@ -954,9 +841,7 @@ impl RuntimeServer {
     /// One bank, by the id Plaid names it with, and its token remembered.
     ///
     /// `None` covers both a bank the store has no row for and a store that
-    /// would not answer. The machine is told the same thing either way,
-    /// because there is nothing it could do differently: it has no cursor to
-    /// sync from.
+    /// would not answer: the machine has no cursor to sync from either way.
     async fn item_facts(&self, item_id: &str) -> Option<crate::ItemFacts> {
         let item = match src_postgres::load_item(&self.db, &self.db_key, item_id).await {
             Ok(item) => item?,
@@ -968,8 +853,7 @@ impl RuntimeServer {
             }
         };
 
-        // The same as `facts_for`: the token goes into the runtime's map so a
-        // fetch the machine asks for can find one without going back.
+        // Into the runtime's map, so a fetch can find it without going back.
         self.write_tokens()
             .insert(item.item_id.clone(), item.access_token.clone());
 
@@ -988,8 +872,7 @@ impl RuntimeServer {
     ) -> Result<Vec<crate::ItemFacts>, src_postgres::PostgresError> {
         let items = src_postgres::load_items(&self.db, &self.db_key, user_id).await?;
 
-        // Every token this user's banks need, so the fetch below can find one
-        // without going back to the database for it.
+        // Into the runtime's map, so a fetch need not go back to the database.
         {
             let mut tokens = self.write_tokens();
 
@@ -1011,10 +894,9 @@ impl RuntimeServer {
 
     /// The writes, in the order a failure can be recovered from.
     ///
-    /// The cursor goes **last**, on purpose. If anything before it fails, the
-    /// cursor stays where it was and the next sync re-reads the same range —
-    /// which is safe, because applying a diff twice is a no-op. Writing it
-    /// first and then failing would skip that range forever.
+    /// The cursor goes **last**. If anything before it fails the cursor stays
+    /// put and the next sync re-reads the same range, which is safe because
+    /// applying a diff twice is a no-op.
     async fn write(
         &self,
         db: &Db,
@@ -1032,24 +914,17 @@ impl RuntimeServer {
                 streams,
                 cursor,
             } => {
-                // The access token is the runtime's, not the machine's: it
-                // never enters an action or the event log. Looked up rather
-                // than carried, for the same reason.
-                //
-                // Absent means a sync landed for an Item nothing linked, which
-                // cannot happen — the fetch that produced it needed the same
-                // token. Reported rather than defaulted: an empty string here
-                // would write a row claiming to be a bank connection with no
-                // credential behind it, which is worse than no row at all.
+                // Looked up rather than carried: the token never enters an
+                // action or the event log. A row written without one would
+                // claim a bank connection with no credential behind it.
                 let Some(access_token) = self.token_for(item_id) else {
                     tracing::error!(item_id, "a sync landed for an item with no token");
 
                     return Ok(());
                 };
 
-                // The Item row already exists — a sync can only happen for a
-                // bank that was linked — so this is the institution name
-                // catching up, and `user_id` is deliberately not touched.
+                // The Item row already exists, so this is the institution name
+                // catching up; `user_id` is deliberately not touched.
                 src_postgres::name_item(db, item_id, institution_name.as_deref()).await?;
 
                 let _ = access_token;
@@ -1076,8 +951,8 @@ impl RuntimeServer {
                 src_postgres::save_error(db, item_id, error_code.as_deref()).await?;
             }
 
-            // Carried out where they are decided, above. `write` is the sync
-            // path, whose ordering is load-bearing in a way these are not.
+            // Carried out where they are decided. `write` is the sync path,
+            // whose ordering is load-bearing in a way these are not.
             ActionStore::LoadSession { .. }
             | ActionStore::LoadItem { .. }
             | ActionStore::LoadItems { .. }
@@ -1099,9 +974,7 @@ impl RuntimeServer {
 
     fn perform_action_process(&self, action: &ActionProcess) {
         match action {
-            // Nothing to carry out. What stops this server is the loop
-            // reading `stopped` once the machine has drained, and the machine
-            // says so itself. The action is here because a runtime that had
+            // Nothing to carry out. The action exists because a runtime with
             // something to wind down would wind it down on this.
             ActionProcess::Shutdown => {}
 
@@ -1113,18 +986,15 @@ impl RuntimeServer {
 
     /// Go to Plaid, and feed whatever comes back in as the next event.
     ///
-    /// Nothing here inspects the answer or decides anything about it; that is
-    /// what makes the loop closed.
+    /// Nothing here inspects the answer; that is what makes the loop closed.
     async fn fetch_plaid(
         &self,
         call_id: crate::CallId,
         item_id: &str,
         cursor: Option<String>,
     ) -> Vec<Event> {
-        // The machine named an Item it read off its own connection list, and
-        // every connection there was built from a stored Item. Absent means
-        // those two have drifted, which is worth saying rather than guessing
-        // at.
+        // The machine names an Item read off its own connection list, each
+        // built from a stored Item. Absent means those two have drifted.
         let Some(access_token) = self.token_for(item_id) else {
             tracing::error!(item_id, "asked to fetch an item with no token");
 
@@ -1137,10 +1007,8 @@ impl RuntimeServer {
             }];
         };
 
-        // Each stage reports as it lands, straight onto the queue rather than
-        // waiting for the return below. Nothing is parked on these — they
-        // release no route — so they are facts arriving mid-call, and the
-        // machine is what decides they are worth keeping.
+        // Each stage reports as it lands rather than waiting for the return
+        // below. Nothing is parked on these: they release no route.
         let report = |stage, institution: Option<&str>, accounts, transactions, streams| {
             let _ = self.landed.send(Event::FromSource {
                 event: EventSource::PlaidProgressed {
@@ -1193,24 +1061,14 @@ impl RuntimeServer {
         vec![Event::FromSource { event }]
     }
 
-    /// Everything the app knows, as of now.
-    ///
-    /// The guard is taken and dropped inside this function rather than held by
-    /// the caller: an `RwLockReadGuard` alive across an `.await` makes the
-    /// handler's future `!Send`, which axum will not accept.
     /// Everything one user knows, as of now, read from the store.
-    ///
-    /// Not from memory. The machine used to hold the ledger and this used to
-    /// be a projection of it, which was only ever right because there was one
-    /// user — and a second would have been served the first one's transactions.
     async fn project_snapshot(&self, user_id: Uuid) -> WireSnapshot {
         let entries = src_postgres::load_entries(&self.db, user_id).await;
         let streams = src_postgres::load_streams(&self.db, user_id).await;
         let connections = self.connections_for(user_id).await;
 
-        // A store that will not answer is reported and served around: an empty
-        // ledger is what a first run has, and it is a better answer than a
-        // failure the phone would have to have a screen for.
+        // A store that will not answer is served around: an empty ledger is
+        // what a first run has, and a better answer than one needing a screen.
         if let Err(e) = entries.as_ref().err().map_or(Ok(()), Err) {
             tracing::error!(error = %e, "could not read the ledger");
         }
@@ -1252,12 +1110,8 @@ impl RuntimeServer {
     }
 }
 
-/// 32 bytes from the operating system.
-///
-/// The one place entropy enters, and it is at the edge — the machine has no
-/// source of its own, the same way it has no clock. `rand::rng()` is the OS
-/// CSPRNG, which is the only acceptable origin for a seed that credentials are
-/// drawn from.
+/// 32 bytes from the operating system: the one place entropy enters, and it is
+/// at the edge — the machine has no source of its own, as it has no clock.
 fn fresh_seed() -> [u8; 32] {
     rand::random()
 }

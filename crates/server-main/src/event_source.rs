@@ -10,8 +10,7 @@ use crate::LinkPoll;
 #[derive(Debug)]
 pub enum EventSource {
     /// What Plaid says about one signing key. `None` is an id it would not
-    /// answer for — invented, or a real one we failed to fetch — and the
-    /// machine remembers both, briefly, so neither costs a second call.
+    /// answer for — invented, or a real one we failed to fetch.
     WebhookKeyLoaded {
         call_id: CallId,
         kid: String,
@@ -22,9 +21,7 @@ pub enum EventSource {
     ///
     /// The transaction lists are a **diff** — what changed since the cursor —
     /// so a second sync a minute later legitimately answers with three empty
-    /// lists. They go to the store, which applies them to what it holds; there
-    /// is nothing in the machine to assign them over, which is what retired
-    /// the trap in `docs/PLAID.md` rather than guarding against it.
+    /// lists.
     PlaidLoaded {
         call_id: CallId,
         item_id: String,
@@ -42,20 +39,14 @@ pub enum EventSource {
 
     /// One stage of a fetch has landed, and this is what is known so far.
     ///
-    /// A fact, not an answer: it carries no `call_id` and releases no route,
-    /// because nothing is waiting on it. The whole fetch still answers once,
-    /// with [`PlaidLoaded`](EventSource::PlaidLoaded).
-    ///
-    /// Kept because it cannot be worked out afterwards. The sync is over by
-    /// the time anything else could look, so a first-run screen watching it
-    /// has this or it has nothing (#25).
+    /// A fact, not an answer: it carries no `call_id` because nothing is
+    /// waiting on it. The whole fetch still answers once, with
+    /// [`PlaidLoaded`](EventSource::PlaidLoaded).
     PlaidProgressed {
         item_id: String,
         stage: server_wire::SyncStage,
 
         /// What the bank is called, absent until the balances call has said.
-        /// It is in neither the Link session nor the token exchange, so this
-        /// is the first place it can be known at all.
         institution: Option<String>,
 
         accounts: u32,

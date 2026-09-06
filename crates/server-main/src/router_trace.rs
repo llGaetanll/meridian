@@ -1,21 +1,12 @@
 //! Every request a client makes of us, logged as a pair.
 //!
-//! The other half of `docs/LOGGING.md`'s rule that everything crossing the
-//! network is logged. Calls we make out to Plaid, Yahoo and the rest have been
-//! logged since the beginning; calls the phone makes *in* were not, which left
-//! the log with no record of the traffic the app is actually built on. "The
-//! screen was empty" could not be read back to whether the phone asked, what
-//! it asked for, or what it was told.
+//! A layer rather than a line in each handler, because half these answers — a
+//! 401 from the extractor, a 404, a body that would not deserialize — are
+//! given before any handler runs.
 //!
-//! A layer rather than a line in each handler, because a handler that forgets
-//! is exactly the gap this closes, and because half these answers — a 401 from
-//! the extractor, a 404, a body that would not deserialize — are given before
-//! any handler runs.
-//!
-//! Deployed, the socket is no longer the client. Caddy terminates TLS and the
-//! server sees only the proxy, so every line said `client=172.18.0.4` and one
-//! caller could not be told from another — which a log is half for, and a rate
-//! limit (#23) is entirely for. [`client_of`] is where that is worked out.
+//! Deployed, Caddy terminates TLS and the socket is always the proxy, so the
+//! caller has to be worked out from what the proxy says. [`client_of`] is
+//! where that happens.
 
 use std::net::IpAddr;
 use std::net::SocketAddr;
@@ -34,13 +25,11 @@ pub(crate) async fn trace(mut request: Request, next: Next) -> Response {
     let client = client_of(&request);
 
     // Worked out once and handed on, so the handler that rate limits a request
-    // and the line that logs it divide callers the same way. Two answers to
-    // "who is this" is two rules that can disagree.
+    // and the line that logs it divide callers the same way.
     request.extensions_mut().insert(client.clone());
 
     let method = request.method().clone();
 
-    // Path and query, which is what was asked for. The host is this process.
     let url = request
         .uri()
         .path_and_query()
@@ -51,10 +40,9 @@ pub(crate) async fn trace(mut request: Request, next: Next) -> Response {
 
     let response = next.run(request).await;
 
-    // Known without touching the body: everything this server answers with is
-    // already a buffer by the time it gets here, so the hint is exact and
-    // reading it costs nothing. Streaming one would say `None` rather than
-    // lie, which is why this is not an `unwrap_or(0)`.
+    // Everything this server answers with is already a buffer, so the hint is
+    // exact. A streaming body says `None` rather than lying, which is why this
+    // is not an `unwrap_or(0)`.
     let bytes = response.body().size_hint().exact();
 
     served.answered(response.status().as_u16(), bytes);
@@ -65,17 +53,10 @@ pub(crate) async fn trace(mut request: Request, next: Next) -> Response {
 /// Who asked, as well as it can be known.
 ///
 /// The socket peer, unless that peer is a proxy of ours, in which case what the
-/// proxy says. Behind Caddy the socket is always Caddy; in development it is
-/// the phone or the web front-end and there is no header to read.
+/// proxy says.
 ///
-/// `pub(crate)` because the per-caller rate limit (#23) divides callers by
-/// exactly this. Two answers to "who is this" is two rules that can disagree.
-///
-/// **The address only, never the port.** A log line used to carry the socket's
-/// port and a rate limit cannot: a caller gets a fresh one on every
-/// connection, so a budget counted by address and port is a budget per
-/// request. Losing it from the log is the price of the two agreeing, and it
-/// was never the field anybody read.
+/// **The address only, never the port.** A caller gets a fresh port on every
+/// connection, so a budget counted by address and port is a budget per request.
 pub(crate) fn client_of(request: &Request) -> ClientIp {
     let peer = request
         .extensions()
@@ -100,14 +81,11 @@ pub(crate) fn client_of(request: &Request) -> ClientIp {
 /// What the proxy says the caller's address is, if it says anything usable.
 ///
 /// The **last** entry, not the first. Caddy appends the address it actually saw
-/// to whatever the caller had already put in the header, so the rightmost is
-/// the one our own proxy wrote and everything left of it is a claim the caller
-/// made about itself. Reading the leftmost would let anyone name their own
-/// address — which is exactly what a rate limit must not let them do.
+/// to whatever the caller had already put in the header, so everything left of
+/// the rightmost is a claim the caller made about itself.
 ///
-/// Parsed rather than passed through, because this is attacker-controlled text
-/// on its way into a log line: unparsed, a caller could put spaces and `=` into
-/// `client=` and forge fields on the line that carries it.
+/// Parsed rather than passed through: unparsed, a caller could put spaces and
+/// `=` into `client=` and forge fields on the log line that carries it.
 fn forwarded_for(request: &Request) -> Option<String> {
     let header = request.headers().get("x-forwarded-for")?.to_str().ok()?;
 
@@ -118,13 +96,7 @@ fn forwarded_for(request: &Request) -> Option<String> {
 
 /// Whether an address is on the near side of the proxy.
 ///
-/// Loopback and the private ranges. Deployed, the server publishes on loopback
-/// only and Caddy reaches it over the container network, so anything that can
-/// open this socket at all is already inside; a caller on the internet cannot.
-/// In development it is a home LAN, which is the same claim about a smaller
-/// network.
-///
-/// The point of asking is that it fails safe. A request arriving from a public
+/// Loopback and the private ranges. It fails safe: a request from a public
 /// address has its `X-Forwarded-For` ignored, so exposing the server directly
 /// one day does not silently turn a spoofable header into the thing rate limits
 /// are counted by.
@@ -133,8 +105,7 @@ fn is_local(ip: IpAddr) -> bool {
         IpAddr::V4(v4) => v4.is_loopback() || v4.is_private() || v4.is_link_local(),
 
         IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
-            // A v4 peer arriving on a dual-stack socket. Judged as what it is
-            // rather than as the v6 range that carries it.
+            // A v4 peer on a dual-stack socket, judged as what it is.
             Some(v4) => is_local(IpAddr::V4(v4)),
 
             // fc00::/7 unique local and fe80::/10 link local, spelled out

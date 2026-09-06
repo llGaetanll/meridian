@@ -1,16 +1,6 @@
 //! The one place a call to a source is actually made.
 //!
-//! Every request to Plaid, to Resend, or to whatever comes next goes through
-//! one of these. A call is handed over and the caller carries on; the pool
-//! keeps every one it has been given in a single set and pushes each answer
-//! back onto the exchange as an ordinary event the moment it lands.
-//!
-//! **Nothing here decides anything.** It does not know what it is calling, what
-//! an answer means, or whether the call was a good idea — the machine settled
-//! that before the action was ever produced, and rate limits live there for
-//! the same reason (`docs/ARCHITECTURE.md`, rule 7). What the pool owns is
-//! *how many at once*, which is mechanics.
-//!
+//! **Nothing here decides anything** — the pool owns only *how many at once*.
 //! One per source, so a slow bank cannot use up the room a sign-in email
 //! needs.
 
@@ -31,21 +21,18 @@ pub(crate) struct SourcePool {
 
     /// Calls go in here; the pool's own task takes them out.
     ///
-    /// Unbounded, deliberately. A bounded channel would make handing over a
-    /// call something that can block, which would put the wait back in the
-    /// loop this exists to keep clear. What bounds the work is the semaphore
-    /// below; what bounds the *queue* is the machine, which will not ask for a
-    /// call it has no rate budget for.
+    /// Unbounded, deliberately: a bounded channel would make handing over a
+    /// call something that can block, putting the wait back in the loop this
+    /// exists to keep clear. The semaphore bounds the work instead.
     calls: mpsc::UnboundedSender<Call>,
 }
 
 impl SourcePool {
     /// Start a pool and the task that runs it.
     ///
-    /// `at_once` is how many calls may be in flight to this source. It replaced
-    /// a `try_lock` that let one fetch through and silently dropped the rest —
-    /// which, now that a route parks until its answer arrives, would be a
-    /// request that never returns.
+    /// `at_once` is how many calls may be in flight to this source. Every call
+    /// handed over must eventually run: a route parks until its answer
+    /// arrives, so one dropped is a request that never returns.
     pub(crate) fn new(
         name: &'static str,
         at_once: usize,
@@ -59,8 +46,8 @@ impl SourcePool {
 
             loop {
                 tokio::select! {
-                    // A new call. Spawned rather than awaited: the point of
-                    // this task is that it is never inside any one of them.
+                    // Spawned rather than awaited: the point of this task is
+                    // that it is never inside any one call.
                     call = waiting.recv() => {
                         let Some(call) = call else {
                             return;
@@ -69,16 +56,15 @@ impl SourcePool {
                         let room = Arc::clone(&room);
 
                         running.spawn(async move {
-                            // Held for the call and dropped with the task, so
-                            // the next one starts the instant this finishes.
+                            // Dropped with the task, so the next call starts
+                            // the instant this one finishes.
                             let _room = room.acquire_owned().await;
 
                             call.await
                         });
                     }
 
-                    // One landed. Whatever it produced goes back to the loop
-                    // and the machine decides what it meant.
+                    // One landed. Whatever it produced goes back to the loop.
                     Some(done) = running.join_next(), if !running.is_empty() => {
                         match done {
                             Ok(events) => {
@@ -89,9 +75,8 @@ impl SourcePool {
                                 }
                             }
 
-                            // The call panicked. Reported rather than ignored:
-                            // whatever was waiting on its answer is still
-                            // waiting, and this is the only trace of why.
+                            // The call panicked. Whatever was waiting on its
+                            // answer still is, and this is the only trace why.
                             Err(e) => tracing::error!(
                                 source = name,
                                 error = %e,

@@ -1,14 +1,8 @@
 //! Plaid's shapes, projected onto the ledger's.
 //!
-//! This is the one place the two conventions meet, and `docs/PLAID.md` names
-//! both ways it can be quietly wrong. Neither looks like a bug from outside —
-//! the numbers stay plausible — so both are pinned by tests against the real
-//! captured Sandbox responses in `fixtures/`.
-//!
-//! It lives in the server rather than in `src-plaid` because `src-plaid` holds
-//! Plaid's types as Plaid reports them, deliberately: a source crate that
-//! quietly renamed and re-signed everything would make the raw response
-//! impossible to check a log against.
+//! The one place the two conventions meet. `docs/PLAID.md` names both ways it
+//! can be quietly wrong, and the tests pin both against the captured Sandbox
+//! responses in `fixtures/`.
 
 use api_ledger::Account;
 use api_ledger::AccountGroup;
@@ -31,11 +25,9 @@ const DEFAULT_CURRENCY: &str = "USD";
 
 /// One Plaid transaction as a ledger entry.
 ///
-/// **The sign flips here, once.** Plaid reports a card purchase as a *positive*
-/// `amount` — positive means money left the account. The ledger's convention is
-/// the opposite, so a purchase is negative. Doing this in one place is the
-/// whole point: a second negation somewhere downstream would cancel this one
-/// and turn every expense into income.
+/// **The sign flips here, once.** Plaid reports money leaving as a positive
+/// `amount`; the ledger says negative. A second negation downstream turns
+/// every expense into income.
 pub fn entry(tx: &PlaidTransaction) -> Entry {
     let currency = tx
         .iso_currency_code
@@ -49,9 +41,7 @@ pub fn entry(tx: &PlaidTransaction) -> Entry {
 
     Entry {
         id: tx.transaction_id.clone(),
-        // A bank feed reports money moving in or out of an account, not an
-        // exchange of two assets, so every entry from Plaid is a Transfer. A
-        // Trade needs both sides, which only a brokerage feed carries.
+        // A bank feed moves money in or out rather than exchanging two assets.
         tx: Tx::Transfer {
             ts: tx.date,
             pos: position,
@@ -98,14 +88,9 @@ pub fn connection(balances: &BalancesResponse, synced_at: api_common::Timestamp)
 
 /// Whether a connection is working, from the source's error code.
 ///
-/// Any error at all means it is not syncing, but only `ITEM_LOGIN_REQUIRED` is
-/// fixable by the user signing in again. Treating every error as
-/// login-required would send them round a loop that cannot help; treating none
-/// as it would hide the one action that works.
-///
-/// Shared by the two ways a connection is built — from a fresh balances
-/// response, and from a row read back at startup — so the rule is stated once
-/// and cannot come out differently depending on where the data came from.
+/// Only `ITEM_LOGIN_REQUIRED` is fixable by signing in again: widening it
+/// sends the user round a loop that cannot help, narrowing it hides the one
+/// action that works.
 pub fn connection_status(
     error_code: Option<&str>,
     synced_at: api_common::Timestamp,
@@ -118,12 +103,9 @@ pub fn connection_status(
 
 /// One Plaid account.
 ///
-/// The balance keeps Plaid's sign — positive — for both what is held and what
-/// is owed, because it is the account's `type` that says which, not the sign.
-/// See [`Account::is_debt`].
-///
-/// The subtype is carried across raw. Wording `"401k"` as `"401(k)"` is a
-/// decision about what a screen says, and `phone-state` makes those.
+/// The balance keeps Plaid's positive sign for both what is held and what is
+/// owed: the account's `type` says which, not the sign. See
+/// [`Account::is_debt`].
 pub fn account(a: &PlaidAccount) -> Account {
     let group = AccountGroup::from_plaid(&a.kind);
 
@@ -133,9 +115,8 @@ pub fn account(a: &PlaidAccount) -> Account {
         subtype: a.subtype.clone(),
         mask: a.mask.clone(),
         balance: a.balances.current.unwrap_or(0.0),
-        // Only worth showing where it differs from the balance; on most
-        // accounts Plaid repeats the same figure and a second identical
-        // number on the row says nothing.
+        // Plaid repeats the balance here on most accounts, and a second
+        // identical number on the row says nothing.
         available: a
             .balances
             .available
@@ -147,11 +128,9 @@ pub fn account(a: &PlaidAccount) -> Account {
     }
 }
 
-/// The recurring streams, both directions, in one list.
-///
-/// Inactive streams are dropped: Plaid keeps returning a cancelled
-/// subscription, and counting it would overstate the monthly commitment the
-/// screen leads with.
+/// The recurring streams, both directions, in one list. Inactive ones are
+/// dropped: Plaid keeps returning a cancelled subscription, which would
+/// overstate the monthly commitment.
 pub fn streams(recurring: &RecurringResponse) -> Vec<Stream> {
     recurring
         .outflow_streams
@@ -163,12 +142,11 @@ pub fn streams(recurring: &RecurringResponse) -> Vec<Stream> {
 }
 
 fn stream(s: &PlaidStream) -> Stream {
-    // Plaid's sign again, and the same flip: on an outflow stream the average
-    // is positive, and money leaving is negative in the ledger.
+    // Plaid's sign again, and the same flip.
     let amount = -s.average_amount.amount.unwrap_or(0.0);
 
     // `merchant_name` comes back as "" rather than null when Plaid matched
-    // nothing, so an emptiness check is what is needed, not `unwrap_or`.
+    // nothing, so `unwrap_or` is not enough.
     let label = s
         .merchant_name
         .as_deref()

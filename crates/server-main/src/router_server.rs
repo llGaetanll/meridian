@@ -1,18 +1,9 @@
 //! The HTTP surface: what each route takes, and what it answers with.
 //!
-//! Every handler here has the same three steps and nothing else — read the
-//! facts the machine does not keep, dispatch one event, answer from what came
-//! back. Nothing decides anything, and nothing reaches past
-//! [`RuntimeServer`]'s own methods, so a route cannot grow a rule that no
-//! `eval!` test can reach.
-//!
-//! Split out of `runtime_server.rs` because carrying an action out and
-//! answering a request are two jobs. The runtime performs actions; this turns
-//! requests into events and events' answers into JSON.
-//!
-//! **The state is a channel and nothing else.** A handler cannot reach the
-//! store, the machine or the runtime — it can turn a request into an event and
-//! wait for the answer, and there is nothing else it *can* do.
+//! Every handler has the same shape and nothing else — dispatch one event,
+//! answer from what came back. **The state is a channel**: a handler cannot
+//! reach the store, the machine or the runtime, so a route cannot grow a rule
+//! that no `eval!` test can reach.
 
 use std::time::Duration;
 
@@ -53,57 +44,37 @@ pub(crate) fn router(requests: RequestTx, origins: &WebOrigins) -> Router {
         .route("/link/finish", post(link_finish))
         .route("/sync/status", get(sync_status))
         .route(WEBHOOK_PATH, post(plaid_webhook))
-        // Inside the CORS layer, so the preflight `OPTIONS` a browser sends
-        // ahead of an authenticated request is answered above this and never
-        // logged. It is transport, and a line for each would double the
-        // traffic in the log without saying anything about it.
+        // Inside the CORS layer, so a browser's preflight `OPTIONS` is answered
+        // above this and never logged.
         .layer(axum::middleware::from_fn(router_trace::trace))
         .layer(cors(origins))
         .with_state(requests)
 }
 
-/// What a browser may do here, and from where.
+/// What a browser may do here, and from where. The webhook route is untouched:
+/// Plaid sends no `Origin`, and a request without one is passed through.
 ///
-/// Only a browser is affected by any of this. The webhook route is under the
-/// layer with everything else and is untouched by it: Plaid sends no `Origin`,
-/// and a request without one is passed through whatever this says.
-///
-/// `allow_headers` is the line that makes the web app work at all, and it is
-/// easy to leave out. Every route here takes either an `Authorization` header
-/// or a JSON `Content-Type`, and neither is on the browsers' safelist — so
-/// every one of them is preflighted, and a preflight that does not name the
-/// header back is a request the browser never sends. That failure arrives as
-/// nothing at all on this side, which is why it is worth writing down.
-///
-/// The headers are listed rather than `Any`, because the wildcard in
-/// `Access-Control-Allow-Headers` deliberately does not cover `Authorization`
-/// — the one header this server most needs to be sent.
-///
-/// Nothing allows credentials, and nothing should: the session is a bearer
-/// token in a header, so there is no cookie for a browser to attach on its own
-/// initiative and no request that carries authority the caller did not put in
-/// it deliberately.
+/// `allow_headers` is easy to leave out and makes the web app work at all: a
+/// preflight that does not name the header back is a request the browser never
+/// sends, arriving as nothing at all on this side. Listed rather than `Any`,
+/// whose wildcard does not cover `Authorization`.
 fn cors(origins: &WebOrigins) -> CorsLayer {
     CorsLayer::new()
         .allow_origin(origins.values())
         .allow_methods([Method::GET, Method::POST])
         .allow_headers([AUTHORIZATION, CONTENT_TYPE])
-        // How long a browser may reuse one preflight. Without it every call
-        // the web app makes is two round trips to the box rather than one.
+        // Without it every call the web app makes is two round trips.
         .max_age(Duration::from_secs(3600))
 }
 
 /// `GET /snapshot`
 ///
 /// Answers with the ledger of whoever the bearer token signs in, and 401s
-/// without one. There is no unauthenticated form: this is somebody's bank
-/// transactions.
+/// without one.
 ///
-/// **It takes nothing.** A caller cannot ask for a trip to Plaid, and there
-/// used to be a `?refresh=true` that let one: pull-to-refresh sent it, and a
-/// gesture anybody can repeat became a way to spend this account's Plaid
-/// budget. When to go back to a bank is the server's decision and only the
-/// server's, and `should_fetch` is where it is made.
+/// **It takes nothing.** A parameter that forces a trip to Plaid hands a
+/// gesture anybody can repeat the power to spend this account's Plaid budget;
+/// `should_fetch` is where that decision belongs.
 async fn snapshot(
     State(requests): State<RequestTx>,
     Extension(ip): Extension<ClientIp>,
@@ -111,10 +82,8 @@ async fn snapshot(
 ) -> Result<Json<WireSnapshot>, StatusCode> {
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
-    // Nothing is read here, and the ledger comes back on the answer. The
-    // machine asks for it only once every fetch this request set going has
-    // landed, which is what stops a snapshot serving rows its own sync was
-    // about to replace.
+    // The machine answers only once every fetch this request set going has
+    // landed, so a snapshot cannot serve rows its own sync would replace.
     let answer = runtime_router::dispatch(
         &requests,
         Client::anonymous(ip),
@@ -140,9 +109,7 @@ struct AuthRequestBody {
 /// `POST /auth/request` — send a sign-in code to this address.
 ///
 /// Always answers 204, whether or not the address is one we know. The
-/// alternative tells anybody who asks which addresses have accounts here,
-/// which for a banking app is worth more than the convenience of a clearer
-/// error.
+/// alternative tells anybody who asks which addresses have accounts here.
 async fn auth_request(
     State(requests): State<RequestTx>,
     Extension(ip): Extension<ClientIp>,
@@ -150,9 +117,8 @@ async fn auth_request(
 ) -> StatusCode {
     let email = normalize(&body.email);
 
-    // Read off what the machine decided rather than assumed. `Unavailable` is
-    // the machine refusing to mint a code it has no entropy for, and answering
-    // 204 to that would leave somebody waiting for an email that is not coming.
+    // `Unavailable` is the machine refusing to mint a code it has no entropy
+    // for; 204 there leaves somebody waiting for an email that is not coming.
     let answer = runtime_router::dispatch(
         &requests,
         Client::anonymous(ip),
@@ -163,9 +129,8 @@ async fn auth_request(
     match answer {
         Some(ActionRouter::Accepted) => StatusCode::NO_CONTENT,
 
-        // The one place the 204 rule bends, and it does not leak what the rule
-        // protects: 429 is a fact about the caller, not about whether the
-        // address they typed has an account here.
+        // The one place the 204 rule bends, and it leaks nothing: 429 is a fact
+        // about the caller, not about the address.
         Some(ActionRouter::TooMany) => StatusCode::TOO_MANY_REQUESTS,
 
         _ => StatusCode::SERVICE_UNAVAILABLE,
@@ -189,15 +154,12 @@ struct AuthVerified {
 ///
 /// One failure shape for every way of being wrong — wrong code, expired code,
 /// too many guesses, no code at all — because the difference is only useful to
-/// somebody working through guesses. The app already knows what to say from
-/// the screen it is on.
+/// somebody working through guesses.
 async fn auth_verify(
     State(requests): State<RequestTx>,
     Extension(ip): Extension<ClientIp>,
     Json(body): Json<AuthVerifyBody>,
 ) -> Result<Json<AuthVerified>, StatusCode> {
-    // Nothing is read here. What the store holds against this address is the
-    // machine's to ask for, and it arrives on its own event a turn later.
     let answer = runtime_router::dispatch(
         &requests,
         Client::anonymous(ip),
@@ -213,9 +175,8 @@ async fn auth_verify(
     match answer {
         Some(ActionRouter::SignedIn { token }) => Ok(Json(AuthVerified { token })),
 
-        // A store that would not answer. Told apart from a code that was no
-        // good, because they are not the same thing and only one of them is
-        // the caller's to fix.
+        // A store that would not answer, told apart from a code that was no
+        // good because only one of the two is the caller's to fix.
         Some(ActionRouter::Unavailable) => Err(StatusCode::INTERNAL_SERVER_ERROR),
 
         _ => Err(StatusCode::UNAUTHORIZED),
@@ -237,15 +198,12 @@ async fn link_start(
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<LinkStarted>, StatusCode> {
-    // Hashed here and never carried further. The plaintext is a live
-    // credential and an event is written to the log; the digest is what the
-    // store holds anyway, so nothing downstream is the poorer for it.
+    // Hashed here: the plaintext is a live credential and the event goes in the
+    // log.
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
     // Anonymous, because who is asking is not known yet — the machine resolves
-    // the session and buckets the request once it has. That is also when the
-    // rate limit is asked: a caller's own window cannot be charged before
-    // there is a caller.
+    // the session and buckets the request once it has.
     let answer = runtime_router::dispatch(
         &requests,
         Client::anonymous(ip),
@@ -264,47 +222,35 @@ async fn link_start(
 
 /// What `POST /link/finish` answers with.
 ///
-/// Three answers rather than a count, because with webhooks there are three
-/// things that can be true. The redirect that closes the sheet says nothing —
-/// Plaid is explicit that reaching it is not a successful connection — so
-/// "Plaid has not said yet" is a real state and used to be reported as zero,
-/// which is a different sentence and sometimes a false one.
-///
-/// Tagged rather than a count and a flag: `pending` with three banks attached
-/// is not a thing that can happen, and a shape that can express it is a shape
-/// somebody has to check.
+/// Three answers rather than a count. Plaid is explicit that the redirect
+/// closing the sheet is not a successful connection, so "Plaid has not said
+/// yet" is a real state and reporting it as zero is sometimes a false one.
+/// Tagged rather than a count and a flag, because `pending` with three banks
+/// attached is a state somebody would have to check for.
 #[derive(Debug, serde::Serialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 enum LinkFinished {
-    /// Banks were attached, and this is how many.
-    ///
-    /// A count, because one call collects every session the caller has open
-    /// and so can attach more than one. It does not name them: nothing knows
-    /// what a bank is called until the balances call inside its first sync
-    /// answers, and `/sync/status` carries the name once it does.
+    /// Banks were attached, and this is how many — one call collects every
+    /// session the caller has open. It does not name them: nothing knows what a
+    /// bank is called until the balances call inside its first sync answers.
     Linked { count: u32 },
 
     /// The session ended without a bank. The ordinary outcome of somebody
     /// closing the sheet, not an error.
     Abandoned,
 
-    /// Plaid has not said what the session came to. Neither of the above is
-    /// known yet, and the bank may still be landing.
+    /// Plaid has not said what the session came to, and the bank may still be
+    /// landing.
     Pending,
 }
 
 /// `POST /link/finish` — what did the Link session come to?
 ///
-/// Called when the web sheet closes, and it does two different jobs depending
-/// on how results are collected. With `PLAID_COLLECT=poll` it is a *trigger*:
-/// nothing else ever collects, so this is what goes and asks Plaid. With
-/// `PLAID_COLLECT=webhook` collection happens unprompted, and this degrades to
-/// a *question* — one that can be asked a fraction of a second before the
-/// answer exists, which is why the machine waits and why `Pending` is one of
-/// the three things it can answer.
-///
-/// The name is left alone. It is still what finishes a link in the mode a
-/// laptop runs, and renaming it would make it wrong there instead.
+/// Two jobs, depending on how results are collected. With
+/// `PLAID_COLLECT=poll` it is the *trigger*: nothing else ever collects. With
+/// `PLAID_COLLECT=webhook` it is a *question*, and one that can be asked a
+/// fraction of a second before the answer exists — which is why the machine
+/// waits and why `Pending` exists.
 async fn link_finish(
     State(requests): State<RequestTx>,
     Extension(ip): Extension<ClientIp>,
@@ -330,30 +276,23 @@ async fn link_finish(
         Some(ActionRouter::LinkPending) => LinkFinished::Pending,
         Some(ActionRouter::LinkAbandoned) => LinkFinished::Abandoned,
 
-        // The machine giving up on a poll that never answered. From here that
-        // is the same sentence as a session that came to nothing, and the
-        // phone has the same road out of both — but it is the machine's
-        // answer being rendered, not a count being reinterpreted.
+        // The machine giving up on a poll that never answered, which from here
+        // is the same sentence as a session that came to nothing.
         _ => LinkFinished::Abandoned,
     }))
 }
 
 /// `POST /plaid/webhook` — Plaid telling us something happened.
 ///
-/// **The one route here with no session behind it.** Anybody can POST to it,
-/// so the first thing that happens is proving the POST is Plaid's — and the
-/// proof is over the *raw bytes*, which is why this takes [`Bytes`] and not
-/// `Json`. Plaid's hash is of what it put on the wire, pretty-printed with two
-/// spaces, so a body an extractor had already parsed would hash to something
-/// else and every genuine webhook would be refused.
+/// **The one route here with no session behind it**, so the first thing that
+/// happens is proving the POST is Plaid's. The proof is over the *raw bytes*,
+/// which is why this takes [`Bytes`] and not `Json`: a body an extractor had
+/// already parsed hashes to something else, and every genuine webhook is
+/// refused.
 ///
-/// One status for every way of being wrong, like `/auth/verify`: the reason is
-/// logged and not returned, because the difference is only useful to whoever
-/// is guessing.
-///
-/// A believed webhook is answered 2xx even when nothing is done about it.
-/// Plaid retries anything else, so an error on a type we do not act on is that
-/// webhook arriving again in a minute, and again after that.
+/// A believed webhook is answered 2xx even when nothing is done about it, since
+/// Plaid retries anything else. One status for every way of being wrong; the
+/// reason is logged and not returned.
 async fn plaid_webhook(
     State(requests): State<RequestTx>,
     Extension(ip): Extension<ClientIp>,
@@ -370,8 +309,7 @@ async fn plaid_webhook(
     match runtime_router::dispatch(
         &requests,
         // Plaid, from addresses we do not choose. The one route with no
-        // bucket — `EventRouter::route` says why — so there is nothing to
-        // name it by here either.
+        // bucket — `EventRouter::route` says why.
         Client::anonymous(ip),
         EventRouter::WebhookReceived {
             jwt: jwt.to_string(),
@@ -380,8 +318,7 @@ async fn plaid_webhook(
     )
     .await
     {
-        // `Linked` is the same acceptance one turn further on: a session whose
-        // token was exchanged answers with the count, and the webhook was
+        // `Linked` is the same acceptance one turn further on: the webhook was
         // still taken.
         Some(
             ActionRouter::Accepted | ActionRouter::Linked { .. } | ActionRouter::LinkAbandoned,
@@ -389,8 +326,7 @@ async fn plaid_webhook(
 
         Some(ActionRouter::Unauthorized) => StatusCode::UNAUTHORIZED,
 
-        // The machine said nothing, or said it could not. Not answered 2xx on
-        // purpose: Plaid sending it again is exactly what we want.
+        // Not answered 2xx on purpose: Plaid sending it again is what we want.
         _ => StatusCode::SERVICE_UNAVAILABLE,
     }
 }
@@ -398,12 +334,10 @@ async fn plaid_webhook(
 /// `GET /sync/status` — how far the caller's first sync has got.
 ///
 /// Its own route rather than a field on the snapshot, because `/snapshot`
-/// blocks until the fetch it triggered has landed: it could only ever report
-/// a sync that was already over. This answers immediately, whatever is
-/// happening, which is what makes it pollable while one runs.
-///
-/// A user with nothing syncing gets `finished` and zeroes rather than a 404 —
-/// "no sync is running" is an answer, not a missing resource.
+/// blocks until the fetch it triggered has landed and could only ever report a
+/// sync that was already over. This answers immediately, so it is pollable
+/// while one runs, and a user with nothing syncing gets `finished` and zeroes
+/// rather than a 404.
 async fn sync_status(
     State(requests): State<RequestTx>,
     Extension(ip): Extension<ClientIp>,
@@ -429,10 +363,9 @@ async fn sync_status(
 
 /// The hash of the bearer token this request carries, if it carries one.
 ///
-/// A request with no token at all is refused here rather than sent on: there
-/// is no session to resolve and so nothing for the machine to decide. Whether
-/// a token that *is* here names anybody is the machine's, and arrives as a
-/// fact from the store.
+/// Whether a token that is here names anybody is the machine's to decide; a
+/// request with none at all has no session to resolve and is refused by the
+/// caller of this.
 fn bearer(headers: &axum::http::HeaderMap) -> Option<Vec<u8>> {
     let header = headers
         .get(AUTHORIZATION)
@@ -442,20 +375,13 @@ fn bearer(headers: &axum::http::HeaderMap) -> Option<Vec<u8>> {
 }
 
 /// The address as the store and the machine both spell it.
-///
-/// Here rather than in the machine only because the store is read on this side
-/// of the door: `/auth/verify` looks a code up by address *before* the event
-/// exists, so a machine that normalized would be matching against a row found
-/// under a different key. It moves in the moment that read becomes an action.
 fn normalize(email: &str) -> String {
     email.trim().to_lowercase()
 }
 
 /// Stop here if the machine refused this request for being one too many.
 ///
-/// A helper rather than an arm in each handler's match, because the answer is
-/// the same everywhere and a route that forgot it would serve a request the
-/// machine had already declined. It carries no `Retry-After`: see
+/// It carries no `Retry-After` — see
 /// [`ActionRouter::TooMany`](crate::ActionRouter::TooMany).
 fn too_many(answer: &Option<ActionRouter>) -> Result<(), StatusCode> {
     match answer {

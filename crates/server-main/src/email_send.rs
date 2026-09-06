@@ -4,10 +4,9 @@ use src_resend::ResendError;
 
 /// How the server delivers an email.
 ///
-/// Its own required variable rather than something inferred from whether
-/// `RESEND_API_KEY` happens to be set. A key that is missing by accident and a
-/// developer who meant to read codes off the log look identical from inside
-/// the process, and only one of them should ever happen in front of a user.
+/// Its own required variable rather than inferred from whether
+/// `RESEND_API_KEY` happens to be set: a key missing by accident and a
+/// developer reading codes off the log look identical from inside the process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmailSend {
     /// Send it, through Resend.
@@ -15,9 +14,8 @@ pub enum EmailSend {
 
     /// Write it to the log and send nothing.
     ///
-    /// For development, and it is a real choice rather than a fallback: the
-    /// code appears at `WARN` with a line saying no email was sent, so a
-    /// server accidentally running this way says so on every sign-in.
+    /// For development. The code appears at `WARN`, so a server accidentally
+    /// running this way says so on every sign-in.
     Log,
 }
 
