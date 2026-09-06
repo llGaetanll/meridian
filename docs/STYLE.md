@@ -300,8 +300,30 @@ anything, which left one caller of `Ledger::apply` to look at.
 **`eval!` tests live in the crate's `tests/` directory**, not in a
 `#[cfg(test)] mod tests` at the foot of the file they test. A machine's tests
 grow with every event it learns to handle, and a state machine is a file people
-have to read end to end — the two do not belong in one file. One file per
-machine, named after it: `crates/phone-state/tests/state_app.rs`.
+have to read end to end — the two do not belong in one file.
+
+**A machine's tests are split by the flow they are about, not by the file they
+came from.** One file per machine works until the machine answers six routes,
+and then it is two thousand lines nobody reads in order. The split that works
+is the one a document already made: `docs/API_FLOW.md` letters the server's
+flows A to F, so `crates/server-main/tests/` has `flow_a_signing_in.rs`,
+`flow_b_opening_a_bank_sign_in.rs` and the rest, each opening with the flow's
+happy path written out end to end and following it with that flow's lettered
+alternatives. `crates/phone-state/tests/state_onboarding.rs` is the same rule
+one file earlier: first run is a flow, so it is a file.
+
+What is left over is what belongs to no flow, named `state_*` after the thing
+it is about rather than a letter — the machine's own life (`state_lifecycle`),
+and the rules that guard every flow at once (`state_limits`,
+`state_webhook_trust`). A test goes in the flow file when a reader looking up
+that flow would want it there, and in a `state_*` file when they would not.
+
+**Fixtures shared across those files live in `tests/fixtures/mod.rs`.** A
+directory module, so Cargo does not compile it as a test binary of its own, and
+it holds only what this document already calls a helper *around* a test: the
+machine a test starts from, the clock it is set to, a signature the machine will
+believe. Nothing in it builds an event — those are still written out where they
+are sent.
 
 Unit tests on a value stay where they are, in a module beside the thing they
 test. The rule is about machines, whose tests are conversations rather than
