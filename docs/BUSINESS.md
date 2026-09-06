@@ -1,0 +1,120 @@
+# Business
+
+One product, sold direct to individuals, monthly subscription. No ads, no
+funding, no sales team. Growth is word of mouth, so the only lever is quality.
+
+Every number marked **(?)** is a guess until confirmed. The list of what to
+confirm is at the bottom.
+
+## Fixed costs — do not move with subscribers
+
+| Line | $/mo | Note |
+| --- | --- | --- |
+| DigitalOcean droplet `s-1vcpu-1gb` | 6.00 | 25 GB. Server 11 MiB, Postgres 98 MiB — it is not close to full |
+| Droplet backups (20%, weekly) | 1.20 | Cheapest backup DO sells |
+| Resend | 0.00 | Free to 3,000 emails/mo, capped 100/day |
+| `meridiancash.io` renewal | 3.33 (?) | `.io` is ~$40/yr; amortised |
+| Apple Developer Program | 8.25 | $99/yr, unavoidable to ship on iOS |
+| Google Play | 0.17 | $25 once |
+| **Total** | **18.95** | Of which **7.20** is the server |
+
+Next step up is $12/mo (2 GB) — only when Postgres or the image build on the
+box says so, which is not soon.
+
+## Plaid
+
+Plaid is the only cost that grows with use, and it is billed per **Item** — one
+Item is one bank login, and a person has as many as they have banks. It is not
+billed per user, so a user's cost is whatever their Items cost.
+
+Three billing shapes, and which one a product uses is the whole of its cost:
+
+| Shape | Charged | What Meridian uses |
+| --- | --- | --- |
+| Subscription | Monthly, per Item, for as long as the Item exists | `/transactions/sync`, `/transactions/recurring/get` |
+| Per request | Per successful call | `/accounts/balance/get` |
+| One-time | Once per Item, at link | none |
+
+**Plaid publishes no rates.** The pricing page is a contact-sales page; the
+real numbers appear during the Production access request and then in the
+billing dashboard. Secondhand reports put per-Item subscriptions in the
+$0.30–$3.00/mo range, which is a factor of ten and therefore not a number to
+plan on.
+
+Three things follow regardless of the rate:
+
+- **A subscription bills until the Item is removed**, not until the user stops
+  using it. A cancelled account means `/item/remove` the same day.
+- **Balance is the only cost a user can run up by using the app.** Uncached,
+  one call per app open makes a daily user cost several times a light user.
+  `api-cache` exists for this; the cache TTL is a pricing decision, not a
+  performance one.
+- **The Trial plan allows 10 Production Items and `/item/remove` does not free
+  the slot.** That is a hard ceiling of a handful of users. Moving off Trial
+  comes before the first paying customer, not after.
+
+Resend is the other per-use cost and it is free at this size: roughly two
+sign-in emails per user per month against a 3,000/mo allowance.
+
+## Payments
+
+Stripe takes **2.9% + $0.30** per charge. At $5/mo that is $0.445 — 8.9%, and
+almost all of it the flat 30¢.
+
+| Billing | Fee per user/yr | Effective take |
+| --- | --- | --- |
+| Monthly at $5 | $5.34 | 8.9% |
+| Annual at $50 | $1.75 | 2.9% |
+
+Annual billing is worth roughly one free month per user. Offer it.
+
+## Per-user economics
+
+```
+  contribution = price − (2.9% × price + $0.30) − (Plaid per Item × their Items)
+```
+
+At $5/mo billed monthly, Stripe leaves $4.55. What Plaid then takes depends
+entirely on the per-Item rate:
+
+| Plaid $/Item/mo | 1 Item | 2 Items | 3 Items |
+| --- | --- | --- | --- |
+| 0.30 | 4.25 | 3.95 | 3.65 |
+| 1.00 | 3.55 | 2.55 | 1.55 |
+| 2.00 | 2.55 | 0.55 | −1.45 |
+| 3.00 | 1.55 | −1.45 | −4.45 |
+
+Fixed costs are $18.95/mo, so break-even is a single-digit number of
+subscribers at any rate in the top half of that table. **The price is set by
+what the product is worth, not by what it costs to run** — the risk is not the
+server, it is the bottom-right of that table.
+
+## What breaks the model
+
+- **A high per-Item rate.** Everything above depends on one number nobody has
+  yet. Get it before setting a price.
+- **A user with six banks.** Cost is per Item, revenue is not. Either cap
+  Items on the cheap tier, or price by Item.
+- **Balance uncached.** See above.
+- **The Trial plan's 10 Items.** See above.
+
+## Confirm these
+
+- [ ] Plaid: the actual per-Item Transactions rate on the account's plan, from
+      the billing dashboard, not from a blog post. **Everything else is
+      guesswork until this one is known.**
+- [ ] Plaid: is Recurring Transactions a separate subscription or bundled?
+- [ ] Plaid: the per-request Balance rate, and whether a failed call bills.
+- [ ] Plaid: what plan replaces Trial, its Item ceiling, and its monthly
+      minimum — Growth has one.
+- [ ] `.io` renewal price at Namecheap.
+- [ ] Stripe: whether Link/wallet or non-US cards change the 2.9% + 30¢.
+
+## Monthly actuals
+
+Fill this in on the 1st. Estimates above are worth nothing next to two real
+months.
+
+| Month | Subs | MRR | Plaid | DO | Stripe | Other | Net |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| | | | | | | | |
