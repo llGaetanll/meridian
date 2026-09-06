@@ -1,10 +1,8 @@
 //! Plaid, as the server's actions reach it.
 //!
 //! Plain async functions over plain data, called by the runtime and by nothing
-//! that decides anything. Everything here needs the Plaid secret, which is the
-//! reason this crate exists at all: `docs/PLAID.md` is explicit that the
-//! secret grants access to every Item on the account and so cannot ship inside
-//! an app anyone can unzip.
+//! that decides anything. Everything here needs the Plaid secret, which grants
+//! access to every Item on the account and so cannot ship inside an app.
 
 use api_ledger::Connection;
 use api_ledger::Entry;
@@ -19,10 +17,8 @@ use crate::project;
 
 /// What one trip to Plaid turned up.
 ///
-/// A **diff**, not a snapshot. `/transactions/sync` answers with what has
-/// changed since the cursor, so a second call usually returns three empty
-/// lists — and treating that as "the ledger is now empty" is the whole trap.
-/// The caller applies this to what it already holds.
+/// A **diff**, not a snapshot: a second call usually returns three empty
+/// lists, and reading that as "the ledger is empty" is the trap.
 pub struct Fetched {
     pub added: Vec<Entry>,
     pub modified: Vec<Entry>,
@@ -37,19 +33,10 @@ pub struct Fetched {
 
 /// Everything the app needs, in as few calls as Plaid allows.
 ///
-/// The three endpoints are independent, so a failure in the optional two does
-/// not sink the whole fetch: transactions are what the app is for, and a
-/// missing recurring list costs one screen rather than all of them.
-///
-/// **Sequential, and deliberately so.** Being independent, the three could run
-/// at once and halve a first sync — measured at 694ms, 1944ms and 1021ms
-/// against a Sandbox item. What that would cost is the first-run screen, which
-/// is three rows filling in one at a time; there is nothing to draw if
-/// everything lands together. See issue #25.
-///
-/// `report` is called as each stage completes, with what is known so far. It
-/// decides nothing — the caller turns each into an event — and a caller with
-/// nothing to report passes a closure that does nothing.
+/// **Sequential, and deliberately so.** The three endpoints could run at once
+/// and halve a first sync, but the first-run screen is three rows filling in
+/// one at a time and has nothing to draw if they land together. `report` is
+/// called as each stage completes, with what is known so far.
 pub async fn fetch_all(
     credentials: &PlaidCredentials,
     access_token: &str,
@@ -57,20 +44,12 @@ pub async fn fetch_all(
     now: api_common::Timestamp,
     report: impl Fn(SyncStage, Option<&str>, u32, u32, u32),
 ) -> Result<Fetched, PlaidError> {
-    // Guard rail, not decoration: nothing should be able to reach Production
-    // by accident. `client` refuses anything but Sandbox — an error rather
-    // than a panic, per `docs/STYLE.md`, but the effect is the same because
-    // the caller has no way to proceed past it.
     let client = client(credentials)?;
 
     let token = access_token;
 
-    // Accounts first, which is both the order the screen draws and the one
-    // that reads best: balances is the slowest of the three, so leading with
-    // it gives the screen an early row rather than a stall on an empty one.
-    // Nothing is known yet, the bank's own name included: it is in neither
-    // the Link session nor the exchange, and the call below is where it
-    // first appears.
+    // Not even the bank's name is known yet: it is in neither the Link session
+    // nor the exchange, and the balances call below is where it appears.
     report(SyncStage::Accounts, None, 0, 0, 0);
 
     let balances = src_plaid::fetch_balances(&client, token).await?;
@@ -103,12 +82,8 @@ pub async fn fetch_all(
         }
     };
 
-    // No fourth report. One naming the finished stream count would be
-    // pushed and then, in the same turn, overtaken by the fetch answering —
-    // which is what stops a sync being something to watch. Nothing can
-    // observe it, so it is not written. The stream count reaches the screen
-    // with the snapshot it draws next, which is where the other final
-    // figures come from too.
+    // No fourth report: nothing could observe it, because the fetch answers in
+    // the same turn. The stream count arrives with the snapshot instead.
 
     Ok(Fetched {
         added: sync.added.iter().map(project::entry).collect(),
@@ -122,14 +97,11 @@ pub async fn fetch_all(
 
 /// Open a Link session, and answer with the token and the page that hosts it.
 ///
-/// `client_user_id` is our own id for the person linking, which Plaid echoes
-/// back in webhooks. A uuid rather than an address: it ends up in Plaid's logs.
+/// `client_user_id` is our own id for the person linking. A uuid rather than
+/// an address: it ends up in Plaid's logs.
 ///
-/// `webhook` is where Plaid should call when the session ends, and `None` is
-/// how a server with no address of its own asks for nothing to be called. The
-/// two channels are independent — see `docs/PLAID.md` — so a token with no
-/// webhook on it is collected by polling and a token with one is collected by
-/// both, whichever arrives first.
+/// `webhook` is where Plaid should call when the session ends; `None` leaves
+/// polling to collect the result.
 pub async fn open_link(
     credentials: &PlaidCredentials,
     client_user_id: &str,
@@ -137,15 +109,10 @@ pub async fn open_link(
 ) -> Result<(String, Option<String>), PlaidError> {
     let client = client(credentials)?;
 
-    // The redirect closes the sheet and carries no token — the result is
-    // collected afterwards, by webhook or by polling. See `docs/PLAID.md`.
-    //
-    // `is_mobile_app` is false, and that is a constraint rather than a choice:
-    // Plaid rejects the request unless a top-level `redirect_uri` is set too,
-    // and that one has to be an https address registered in the dashboard.
-    // False costs nothing here — it changes how OAuth banks hand control back,
-    // and Sandbox has none. It has to be revisited before a real bank is
-    // linked from a real phone.
+    // `is_mobile_app` is false because true needs a top-level `redirect_uri`
+    // that is an https address registered in the dashboard. It costs nothing
+    // in Sandbox, which has no OAuth banks, and has to be revisited before a
+    // real bank is linked from a real phone.
     let request = src_plaid::LinkTokenRequest::hosted(client_user_id)
         .redirecting_to(COMPLETION_REDIRECT, false);
 
@@ -159,11 +126,8 @@ pub async fn open_link(
     Ok((res.link_token, res.hosted_link_url))
 }
 
-/// Where Plaid sends the browser when the flow ends.
-///
-/// A custom scheme whose only job is to close the web session. It carries no
-/// token; the `public_token` arrives by webhook or by polling, which are
-/// separate channels from this one and from each other.
+/// Where Plaid sends the browser when the flow ends. It carries no token; the
+/// `public_token` arrives by webhook or by polling.
 const COMPLETION_REDIRECT: &str = "meridian://linked";
 
 /// What became of a Link session: whether it has ended, and what it produced.
@@ -183,11 +147,9 @@ pub async fn poll_link(
 
 /// The public key one webhook was signed with.
 ///
-/// Its own function beside the rest, and the only one here whose caller is an
-/// unauthenticated route. What keeps that from being a way to make this server
-/// call Plaid at will is entirely on the caller: the algorithm is checked
-/// before this is reached, and the answer — including a miss — is cached by
-/// `kid`.
+/// The only function here whose caller is an unauthenticated route. Keeping
+/// that from becoming a way to make this server call Plaid at will is on the
+/// caller, which checks the algorithm first and caches the answer by `kid`.
 pub async fn webhook_key(
     credentials: &PlaidCredentials,
     key_id: &str,
@@ -211,7 +173,8 @@ pub async fn exchange(
 
 /// A client for these credentials, refusing anything but Sandbox.
 ///
-/// The guard `fetch_all` carries, in the one place every call now goes through.
+/// Every call to Plaid goes through here, so nothing can reach Production by
+/// accident.
 fn client(credentials: &PlaidCredentials) -> Result<PlaidClient, PlaidError> {
     if credentials.env != PlaidEnv::Sandbox {
         tracing::error!(
@@ -233,16 +196,9 @@ fn client(credentials: &PlaidCredentials) -> Result<PlaidClient, PlaidError> {
 
 /// The same thing, from the captured Sandbox responses.
 ///
-/// **Nothing the server serves comes through here any more.** The only caller
-/// is `examples/snapshot.rs`, which generates the corpus `phone-state`'s tests
-/// read — a real job, and one that wants a fixed answer rather than a live
-/// one. The server itself has no fallback: it starts with credentials or it
-/// does not start.
-///
-/// The fixtures are compiled in, so a parse failure is a build-time mistake
-/// rather than anything a user can cause. It still does not panic: an empty
-/// answer and a loud log beat taking the server down, and a test covers the
-/// happy path so a broken fixture cannot reach a release unnoticed.
+/// For `examples/snapshot.rs`, which generates the corpus `phone-state`'s
+/// tests read and wants a fixed answer. Nothing the server serves comes
+/// through here: it starts with credentials or it does not start.
 pub fn fetch_fixtures(now: api_common::Timestamp) -> Fetched {
     fn parse<T: serde::de::DeserializeOwned + Default>(name: &str, json: &str) -> T {
         match serde_json::from_str(json) {

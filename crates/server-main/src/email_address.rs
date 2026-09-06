@@ -1,19 +1,12 @@
 //! What this server will accept as somewhere to send a sign-in code.
 //!
-//! Deliberately shallow. An address that works is one that accepts mail, and
-//! the only way to learn that is to send to it — so anything cleverer here
-//! would be a second and wronger definition of a fact the send already
-//! settles. What this rules out is the string that could never be one.
-//!
-//! It lives behind the machine because it is a *rule*: it decides whether mail
-//! is sent. It used to sit in the handler and answer 204 before any event
-//! existed, which made it unreachable from `eval!` and invisible in a log.
+//! Deliberately shallow: the only way to learn that an address accepts mail is
+//! to send to it, so all this rules out is the string that could never be one.
+//! It lives behind the machine because it decides whether mail is sent.
 
 /// Whether this could be an address at all.
 ///
-/// Exactly one `@`, with something on each side of it. Slightly tighter than
-/// the check it replaces, which took `"ab@"` — but the same rule, not a new
-/// policy: what is refused is still only what could never be delivered to.
+/// Exactly one `@`, with something on each side of it.
 pub(crate) fn plausible(email: &str) -> bool {
     let mut parts = email.split('@');
 

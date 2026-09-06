@@ -1,21 +1,11 @@
 //! The server, which exists because the phone cannot hold the Plaid secret.
 //!
-//! `docs/PLAID.md`: the secret grants full access to every Item on the account,
-//! so it cannot ship inside an app anyone can unzip. Every call that carries it
-//! happens here, and the only thing the phone ever sees is the transactions
-//! that come back.
+//! Every variable this server reads is required and matched exactly: a server
+//! that starts without credentials and serves something plausible instead is a
+//! server whose empty screen has two explanations.
 //!
-//! **Sandbox only.** `PLAID_ENV` is required and matched exactly — there is no
-//! default and nothing is inferred — and [`runtime_plaid::fetch_all`] checks
-//! the environment again before it calls out.
-//!
-//! Every variable this server reads is required. A server that starts without
-//! credentials and serves something plausible instead is a server whose empty
-//! screen has two explanations, and the log says the same thing for both.
-//!
-//! The crate is split the way every program in this workspace is: a state
-//! machine that decides ([`StateServer`]) and a runtime that acts
-//! ([`RuntimeServer`]). `main.rs` does nothing but start the latter.
+//! Split the way every program in this workspace is: a state machine that
+//! decides ([`StateServer`]) and a runtime that acts ([`RuntimeServer`]).
 
 mod action;
 mod action_email;
@@ -72,8 +62,7 @@ pub use item_facts::ItemFacts;
 pub use link_poll::LinkPoll;
 pub use login_code::StoredCode;
 pub use login_code::Verdict;
-/// Reachable so the machine's tests can build a stored code to submit
-/// against. Not part of the server's interface.
+/// Reachable so the machine's tests can build a stored code to submit against.
 pub use login_code::hash as hash_code;
 pub use plaid_collect::PlaidCollect;
 pub use public_url::PublicUrl;
@@ -82,8 +71,7 @@ pub use rate_limit::Route;
 pub use request_id::RequestId;
 pub use runtime_server::RuntimeServer;
 pub use server_wire::WireSnapshot;
-/// Reachable so the machine's tests can build the token hash a request
-/// carries. Not part of the server's interface.
+/// Reachable so the machine's tests can build the token hash a request carries.
 pub use session_token::hash as hash_token;
 pub use state_server::CALL_GOOD_FOR_SECS;
 pub use state_server::FRESH_FOR_SECS;
@@ -97,6 +85,6 @@ pub use web_origins::WebOrigins;
 pub use webhook_facts::WebhookFacts;
 
 /// Reachable so that `examples/snapshot.rs` can generate the fixture the app's
-/// tests read. Not part of the server's interface.
+/// tests read.
 pub use runtime_plaid::Fetched;
 pub use runtime_plaid::fetch_fixtures;

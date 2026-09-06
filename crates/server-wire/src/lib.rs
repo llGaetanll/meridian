@@ -1,14 +1,9 @@
 //! The JSON `server-main` sends and the phone reads.
 //!
-//! One definition rather than two, which is the whole reason this is its own
-//! crate. The obvious home would be `server-main`, but `phone-state` is a
-//! `cdylib` linked into iOS and Android and cannot depend on anything that
-//! drags in axum and tokio — so the shared half sits here, with nothing in its
-//! dependency list but the value types the protocol carries.
-//!
-//! Every type is both `Serialize` and `Deserialize`: the server writes, the app
-//! reads, and a field renamed on one side stops compiling on the other rather
-//! than silently arriving as `None`.
+//! Its own crate because `phone-state` is a `cdylib` linked into iOS and
+//! Android and cannot depend on anything that drags in axum and tokio. Every
+//! type is both `Serialize` and `Deserialize`, so a renamed field stops
+//! compiling on the other side rather than arriving as `None`.
 
 use api_common::Timestamp;
 use api_ledger::Account;
@@ -25,14 +20,8 @@ use serde::Serialize;
 
 /// Everything the app knows, as of one moment.
 ///
-/// One document rather than an endpoint per screen: the alternative puts
-/// "which of my four fetches has landed?" state into the client, which is the
-/// state `docs/ARCHITECTURE.md` asks us to remove.
-///
-/// It carries the timestamps *of* things — when a sync landed, when a stream
-/// is next due — and no clock. What time it is now is the device's to know:
-/// it has one, it is right, and a phone that had to be told would draw
-/// nothing until the first fetch answered.
+/// Carries the timestamps *of* things and no clock: what time it is now is the
+/// device's to know.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct WireSnapshot {
     /// Newest first.
@@ -71,7 +60,7 @@ pub struct WireEntry {
     #[serde(default)]
     pub logo_url: Option<String>,
     /// The category's Rust name, e.g. `"FoodAndDrink"`. A name rather than an
-    /// index, so inserting a category cannot silently re-file old data.
+    /// index, so inserting a category cannot re-file old data.
     pub category: String,
     #[serde(default)]
     pub pending: bool,
@@ -128,8 +117,7 @@ pub struct WireConnection {
     /// `"ok"` or `"login_required"`.
     pub status: String,
     /// When this connection last synced. A timestamp rather than "synced 2m
-    /// ago": the phrase goes stale the moment it is sent, and only the app's
-    /// machine knows what "now" is by the time it renders.
+    /// ago", which goes stale the moment it is sent.
     #[serde(default)]
     pub synced_at: Timestamp,
     #[serde(default)]
@@ -173,8 +161,7 @@ impl WireConnection {
 pub struct WireAccount {
     pub id: String,
     pub name: String,
-    /// The source's raw subtype, e.g. `"401k"`. Not worded — the phone words
-    /// it, the same as it words everything else it prints.
+    /// The source's raw subtype, e.g. `"401k"`. Wording it is the phone's job.
     #[serde(default)]
     pub subtype: Option<String>,
     #[serde(default)]
@@ -265,28 +252,16 @@ impl WireStream {
 
 /// How far the first sync has got.
 ///
-/// Its own document rather than a field on [`WireSnapshot`], because
-/// `/snapshot` blocks until the fetch it triggered has landed and been
-/// written — so a snapshot could only ever report a sync that was already
-/// over. This is read while one is running.
-///
-/// The counts and the stage are separate facts. The transactions row reads
-/// `48 so far` while that stage is still going, so a count is not a claim
-/// that its stage has finished.
+/// Its own document rather than a field on [`WireSnapshot`], which cannot
+/// answer until the fetch it triggered is over; this is read while one runs.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct WireSyncStatus {
     /// The stage's name, e.g. `"transactions"`. A name rather than an index,
-    /// for the same reason a category is one: inserting a stage must not
-    /// silently rename the others.
+    /// so inserting a stage cannot rename the others.
     pub stage: String,
 
-    /// What the bank is called, once anyone knows.
-    ///
-    /// Absent until the balances call inside the first sync answers, which is
-    /// the first moment the name exists anywhere — it is not in the Link
-    /// session and not in the exchange. A screen watching a sync therefore
-    /// opens without it and fills it in a second or two later, which is
-    /// better than holding the sheet open for a string.
+    /// What the bank is called, once anyone knows. Absent until the balances
+    /// call inside the first sync answers, which is the first moment it exists.
     #[serde(default)]
     pub institution: Option<String>,
 
@@ -299,17 +274,14 @@ pub struct WireSyncStatus {
     #[serde(default)]
     pub streams: u32,
 
-    /// Whether there is anything still running.
-    ///
-    /// Its own field rather than something read off the stage, because the
-    /// last stage looks identical whether it is running or done. It is also
-    /// what a client with nothing syncing gets: `finished`, all zero.
+    /// Whether there is anything still running. Its own field because the last
+    /// stage looks identical whether it is running or done.
     #[serde(default)]
     pub finished: bool,
 }
 
 impl WireSyncStatus {
-    /// Nothing is running. What a user with no sync in flight is told.
+    /// What a user with no sync in flight is told.
     pub fn idle() -> Self {
         Self {
             stage: stage_name(SyncStage::Accounts).to_string(),
@@ -335,13 +307,8 @@ impl WireSyncStatus {
         }
     }
 
-    /// A sync that is over, and what it brought.
-    ///
-    /// The counts stay rather than being cleared with the sync, because they
-    /// are not recoverable from anywhere else: `transactions` is what *this*
-    /// sync added, which on a later one is "12 new" and not the total the
-    /// store holds. The screen that reports a first run is asking about the
-    /// sync, not about the ledger.
+    /// A sync that is over, and what it brought. The counts are what *this*
+    /// sync added, not the totals the store holds.
     pub fn done(
         institution: Option<String>,
         accounts: u32,
@@ -363,11 +330,8 @@ impl WireSyncStatus {
     }
 }
 
-/// Which part of the first sync is running.
-///
-/// In the order they happen, which is the order `fetch_all` makes the calls
-/// in and the order the screen draws the rows in. All three are meant to stay
-/// in step; this is the one that decides.
+/// Which part of the first sync is running, in the order they happen —
+/// `fetch_all`'s calls and the screen's rows both follow it.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum SyncStage {
     #[default]
@@ -404,11 +368,8 @@ pub fn stage_from_name(name: &str) -> SyncStage {
         .unwrap_or(SyncStage::Accounts)
 }
 
-/// The wire name of a category.
-///
-/// Written out rather than derived from the `Debug` name, so that renaming a
-/// Rust variant is a deliberate wire change and not an accidental one. The app
-/// has the matching half in `phone-state`.
+/// The wire name of a category. Written out rather than derived from `Debug`,
+/// so renaming a Rust variant is a deliberate wire change.
 fn category_name(c: Category) -> &'static str {
     match c {
         Category::Income => "Income",
@@ -431,10 +392,8 @@ fn category_name(c: Category) -> &'static str {
     }
 }
 
-/// A category's wire name back into the enum.
-///
-/// Unknown names degrade rather than failing: a server that learns a
-/// seventeenth category should cost one uncategorised row, not a whole sync.
+/// A category's wire name back into the enum. An unknown name costs one
+/// uncategorised row rather than a whole sync.
 fn category_from_name(name: &str) -> Category {
     Category::ALL
         .iter()

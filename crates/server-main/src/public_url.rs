@@ -1,8 +1,7 @@
 //! Where this server can be reached from outside.
 //!
-//! The one thing a process cannot work out about itself. It knows the port it
-//! bound and nothing about the name, the scheme or the proxy in front of it,
-//! so an address it is meant to hand to somebody else has to be told to it.
+//! The one thing a process cannot work out about itself: it knows the port it
+//! bound and nothing about the name, the scheme or the proxy in front of it.
 
 use src_plaid::PlaidError;
 
@@ -10,18 +9,14 @@ use src_plaid::PlaidError;
 /// [`router_server`](crate::router_server).
 ///
 /// Here rather than beside the route so that the address we advertise and the
-/// address we answer on cannot drift apart — they are the same constant, used
-/// twice.
+/// address we answer on cannot drift apart.
 pub const WEBHOOK_PATH: &str = "/plaid/webhook";
 
 /// This server's address on the internet, without a trailing slash.
 ///
-/// Required only when `PLAID_COLLECT=webhook`, the same way `RESEND_API_KEY`
-/// is required only when `EMAIL_SEND=resend`: a variable that has no meaning
-/// in the mode being run is not one to insist on. In the mode where it *does*
-/// have meaning it is required absolutely, because the alternative — guessing
-/// at localhost, or sending Plaid no webhook and running on quietly — is a
-/// server that looks configured for webhooks and collects nothing.
+/// Required only when `PLAID_COLLECT=webhook`, and then absolutely: guessing
+/// at localhost gives a server that looks configured for webhooks and collects
+/// nothing.
 #[derive(Debug, Clone)]
 pub struct PublicUrl(String);
 
@@ -41,14 +36,9 @@ impl PublicUrl {
     ///
     /// Separate from [`from_env`](PublicUrl::from_env) so the parse is
     /// testable without the process environment, which every test in the
-    /// binary shares.
-    ///
-    /// Checked by hand rather than by a URL parser, and only for the four
-    /// things that make an address unusable *here*: Plaid refuses to call
-    /// anything but https, a host is what the address is for, and a query or
-    /// a fragment would be silently dropped by the path this is joined with.
-    /// A parser would accept all four and leave the mistake to be found on the
-    /// day somebody links a bank.
+    /// binary shares. Checked by hand rather than by a URL parser, which would
+    /// accept every one of the shapes refused below and leave the mistake to
+    /// be found on the day somebody links a bank.
     pub fn parse(value: &str) -> Result<Self, PlaidError> {
         let value = value.trim().trim_end_matches('/');
 

@@ -1,12 +1,10 @@
 //! Something for the store to do.
 //!
-//! Reads as well as writes. A route turns a request into an event and renders
-//! the answer; anything the machine needs from the store it asks for here, so
-//! nothing reads on the request path.
+//! Reads as well as writes: anything the machine needs from the store it asks
+//! for here, so nothing reads on the request path.
 //!
-//! Nothing here carries an access token. The machine has never seen one — it
-//! lives in the runtime, beside the credentials it belongs with — and an action
-//! that carried it would put a bank credential into the event log.
+//! Nothing here carries an access token — one lives in the runtime, and an
+//! action carrying it would put a bank credential into the event log.
 
 use crate::CallId;
 
@@ -18,10 +16,8 @@ use api_ledger::Stream;
 pub enum ActionStore {
     /// Who this session token signs in, if anybody.
     ///
-    /// Carries the clock like every other action decided from it, so the row
-    /// this matches is the one the machine reckoned was still good rather than
-    /// one a runtime read a moment later. The answer is
-    /// [`EventStore::SessionResolved`](crate::EventStore).
+    /// Carries the clock, so the row this matches is the one the machine
+    /// reckoned was still good.
     LoadSession {
         call_id: CallId,
         token_sha256: Vec<u8>,
@@ -31,16 +27,12 @@ pub enum ActionStore {
     /// One bank, by the id Plaid names it with.
     ///
     /// Unscoped, unlike [`LoadItems`](ActionStore::LoadItems): a webhook names
-    /// a bank and not a person, so who owns it is what the read finds out. The
-    /// answer is [`EventStore::ItemLoaded`](crate::EventStore).
+    /// a bank and not a person, so who owns it is what the read finds out.
     LoadItem { call_id: CallId, item_id: String },
 
     /// Which banks are this user's, and where each one's last sync reached.
     ///
-    /// The facts a decision about going back to Plaid is made from. They used
-    /// to ride in on the request that needed them, read by the handler; now
-    /// the machine asks, and the answer is
-    /// [`EventStore::ItemsLoaded`](crate::EventStore).
+    /// The facts a decision about going back to Plaid is made from.
     LoadItems {
         call_id: CallId,
         user_id: uuid::Uuid,
@@ -49,8 +41,7 @@ pub enum ActionStore {
     /// The Link sessions this user has open and has not collected.
     ///
     /// A session is collected by whatever *reports* it, so an open one is one
-    /// nobody has been told about. The answer is
-    /// [`EventStore::PendingLinksLoaded`](crate::EventStore).
+    /// nobody has been told about.
     LoadPendingLinks {
         call_id: CallId,
         user_id: uuid::Uuid,
@@ -59,8 +50,7 @@ pub enum ActionStore {
     /// Everything this user's ledger holds, projected for the wire.
     ///
     /// Asked for only once everything the request set going has landed, so the
-    /// rows read are the ones those calls just wrote. The answer is
-    /// [`EventStore::SnapshotLoaded`](crate::EventStore).
+    /// rows read are the ones those calls just wrote.
     LoadSnapshot {
         call_id: CallId,
         user_id: uuid::Uuid,
@@ -69,16 +59,13 @@ pub enum ActionStore {
     /// What code stands against this address, if any.
     ///
     /// Asked for rather than read at the edge, which is what makes verifying
-    /// one reachable from an `eval!` test: the answer arrives on
-    /// [`EventStore::CodeLoaded`](crate::EventStore) and the machine holds the
-    /// submission until it does.
+    /// one reachable from an `eval!` test.
     LoadCode { call_id: CallId, email: String },
 
     /// Hold a sign-in code against an address, replacing any that stood.
     ///
     /// The hash, never the code. The plaintext goes only to
-    /// [`ActionEmail::SendCode`](crate::ActionEmail), which is the one place
-    /// that needs it.
+    /// [`ActionEmail::SendCode`](crate::ActionEmail).
     SaveCode {
         call_id: CallId,
         email: String,
@@ -103,13 +90,9 @@ pub enum ActionStore {
 
     /// Drop every session that has already expired.
     ///
-    /// Housekeeping rather than correctness: an expired session signs nobody
-    /// in either way, because the lookup filters on expiry. Without this the
-    /// table only ever grows (#24).
-    ///
-    /// Carries the clock, like everything else the machine decided from, so
-    /// the row a sweep drops is the one the machine reckoned was expired
-    /// rather than one a runtime read a moment later.
+    /// Housekeeping rather than correctness — the lookup filters on expiry
+    /// either way — but without it the table only ever grows. Carries the
+    /// clock, so a sweep drops the rows the machine reckoned were expired.
     SweepSessions {
         call_id: CallId,
         now: api_common::Timestamp,
@@ -117,9 +100,9 @@ pub enum ActionStore {
 
     /// Remember that this user opened this Link session.
     ///
-    /// Written before the URL reaches them, so there is no window in which a
-    /// session could be finished that we have no record of asking for — which
-    /// is what stops one account collecting another's bank.
+    /// Written before the URL reaches them, so no session can be finished that
+    /// we have no record of asking for — which is what stops one account
+    /// collecting another's bank.
     SaveLink {
         call_id: CallId,
         link_token: String,
@@ -130,8 +113,7 @@ pub enum ActionStore {
     /// a session that stays open forever is one we would poll forever.
     CollectLink { call_id: CallId, link_token: String },
 
-    /// Store a newly linked bank. The access token is the runtime's and is not
-    /// carried here.
+    /// Store a newly linked bank.
     SaveItem {
         call_id: CallId,
         item_id: String,
@@ -141,9 +123,8 @@ pub enum ActionStore {
     /// Write what a sync just produced.
     ///
     /// Carries the diff rather than asking the runtime to read it off state,
-    /// because by the time this is performed the diff is gone — state holds the
-    /// result of applying it. The clone is one per sync, next to a network
-    /// call that cost far more.
+    /// because by the time this is performed the diff is gone — state holds
+    /// the result of applying it.
     SaveFetched {
         call_id: CallId,
         item_id: String,
@@ -160,16 +141,16 @@ pub enum ActionStore {
         streams: Vec<Stream>,
 
         /// Written last and separately, so a failure earlier in the batch
-        /// leaves the cursor where it was and the next sync re-reads rather
-        /// than skipping.
+        /// leaves it where it was and the next sync re-reads rather than
+        /// skipping.
         cursor: String,
     },
 
-    /// Remember that a connection needs a person, or that it no longer does.
+    /// Remember whether a connection needs a person.
     ///
     /// Its own action because it outlives the process: a server that restarts
-    /// into an `ITEM_LOGIN_REQUIRED` it has forgotten will cheerfully ask Plaid
-    /// again, and be told the same thing.
+    /// into an `ITEM_LOGIN_REQUIRED` it has forgotten asks Plaid again and is
+    /// told the same thing.
     SaveStatus {
         call_id: CallId,
         item_id: String,
@@ -181,8 +162,7 @@ impl ActionStore {
     /// Which call this write is.
     ///
     /// Every variant carries one, so the runtime can report the outcome
-    /// against it without knowing which write it just did — which is what
-    /// lets there be one report rather than one per arm.
+    /// against it without knowing which write it just did.
     pub fn call_id(&self) -> CallId {
         match self {
             Self::LoadSession { call_id, .. }

@@ -1,16 +1,11 @@
 //! Who is asking.
 //!
-//! Two things, because a request has two identities and a rate limit needs
-//! both. The address is who opened the socket, and it is all we know about an
-//! unauthenticated caller. The user is who the bearer token signs in, and it
-//! is the one a caller cannot get more of by finding another machine to call
-//! from — which is what makes a botnet a different problem from a loop.
+//! Two things, because a rate limit needs both. The address is all we know
+//! about an unauthenticated caller; the user is the one a caller cannot get
+//! more of by finding another machine to call from.
 //!
 //! Both are minted at the edge and carried in on
-//! [`Event::FromRouter`](crate::Event), the same way
-//! [`RequestId`](crate::RequestId) is. The machine only ever buckets by them:
-//! it never parses one, never compares two for ordering, and never decides
-//! anything differently because of which address a request came from.
+//! [`Event::FromRouter`](crate::Event). The machine only ever buckets by them.
 
 use std::fmt;
 use std::net::IpAddr;
@@ -22,22 +17,14 @@ use uuid::Uuid;
 ///
 /// A string rather than an `IpAddr` because it is a bucket key and nothing
 /// else — the machine hashes it and never looks inside. Whether an address is
-/// to be *believed* is still settled at the edge, in `router_trace`, which
-/// parses a forwarded one before trusting it, so an attacker cannot name their
-/// own bucket any more than they can forge a field in the log line.
+/// to be *believed* is settled at the edge, in `router_trace`.
 ///
-/// It carries no port. The port is a different number on every connection, so
-/// a limit counted by address and port is not a limit at all.
+/// It carries no port, which is a different number on every connection.
 ///
-/// **An IPv6 caller is held as their /64, not their address.** v6 is not
-/// handed out an address at a time: an ISP delegates a /64 to a customer, and
-/// the eighteen quintillion addresses inside it are free to move between — the
-/// operating system already rotates through them on a timer, with no help from
-/// anyone. Counted whole, a v6 caller has a fresh budget per request and the
-/// limit is decoration; counted as the /64, they have one budget, which is
-/// what a v4 caller gets for their one address. Anything wider — the /56 or
-/// /48 an ISP may delegate to a site — would start charging one customer for
-/// what their neighbour did.
+/// **An IPv6 caller is held as their /64, not their address.** The operating
+/// system rotates through the addresses inside a delegated /64 on a timer, so
+/// counted whole a v6 caller has a fresh budget per request; anything wider
+/// would charge one customer for what their neighbour did.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ClientIp(String);
 
@@ -45,8 +32,7 @@ impl ClientIp {
     /// The bucket the address a request came from belongs to.
     ///
     /// Anything that is not an address is kept as it stands, which is
-    /// [`unknown`](Self::unknown) and nothing else: the edge parses before it
-    /// builds one of these.
+    /// [`unknown`](Self::unknown) and nothing else.
     pub fn new(address: impl Into<String>) -> Self {
         let address = address.into();
 
@@ -58,9 +44,8 @@ impl ClientIp {
 
     /// A caller whose address we do not know.
     ///
-    /// Only reachable if the server were built without connection info, which
-    /// it is not. They share one bucket rather than getting none, which is the
-    /// safe direction to be wrong in: a nameless flood is still counted.
+    /// They share one bucket rather than getting none, which is the safe
+    /// direction to be wrong in: a nameless flood is still counted.
     pub fn unknown() -> Self {
         Self(String::from("unknown"))
     }
@@ -68,18 +53,16 @@ impl ClientIp {
 
 /// The smallest block of addresses a caller cannot get more of for nothing.
 ///
-/// One address over v4, where a second one has to be bought. The /64 over v6,
-/// where the rest of the address is the caller's to choose.
+/// One address over v4, where a second has to be bought; the /64 over v6,
+/// where the rest is the caller's to choose.
 fn bucket_of(ip: IpAddr) -> String {
     let v6 = match ip {
         IpAddr::V4(v4) => return v4.to_string(),
         IpAddr::V6(v6) => v6,
     };
 
-    // A v4 peer arriving on a dual-stack socket, judged as what it is. Masking
-    // it instead would be a disaster in the other direction: every v4 address
-    // in existence maps into `::ffff:0:0/96`, so a /64 of that is one bucket
-    // holding the whole v4 internet.
+    // Every v4 address maps into `::ffff:0:0/96`, so masking these to a /64
+    // would put the whole v4 internet in one bucket.
     if let Some(v4) = v6.to_ipv4_mapped() {
         return v4.to_string();
     }
@@ -97,9 +80,8 @@ impl fmt::Display for ClientIp {
 
 /// Everything a rate limit divides callers by.
 ///
-/// Both halves are counted, and a request has to be under both to be served.
-/// One without the other leaves a hole: an address alone is spread across a
-/// botnet, and a session alone is spread across sign-ups.
+/// A request has to be under both: an address alone is spread across a botnet,
+/// and a session alone across sign-ups.
 #[derive(Debug, Clone)]
 pub struct Client {
     /// Where the request came from.

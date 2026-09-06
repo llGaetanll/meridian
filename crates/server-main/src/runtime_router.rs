@@ -1,13 +1,10 @@
 //! The HTTP half, behind two channels.
 //!
-//! It takes actions in and emits events out, and those channels are the only
-//! way anything talks to it. What it owns is the pairing between a request and
-//! its answer — the socket is axum's, and the `oneshot` a handler parks on is
-//! what stands in for it here.
+//! What it owns is the pairing between a request and its answer — the socket
+//! is axum's, and the `oneshot` a handler parks on stands in for it here.
 //!
-//! The id names a *request* and not a connection. HTTP/1.1 keep-alive puts
-//! several down one socket and HTTP/2 interleaves them, so a connection is not
-//! the thing being answered.
+//! The id names a *request* and not a connection: keep-alive puts several down
+//! one socket and HTTP/2 interleaves them.
 
 use std::collections::HashMap;
 
@@ -30,8 +27,7 @@ const PORT: u16 = 8082;
 /// How many requests may be waiting to enter the loop.
 ///
 /// Bounded, so a flood makes the handlers wait rather than the queue grow
-/// without limit. This is the one place in the server where back pressure
-/// belongs: at the door.
+/// without limit. Back pressure belongs at the door.
 const REQUESTS_WAITING: usize = 256;
 
 /// What the loop sends back: one answer, on the id that asked.
@@ -59,24 +55,19 @@ pub(crate) struct Request {
 
 pub(crate) struct RuntimeRouter {
     /// Where [`RequestId`]s come from. At the edge, like the clock and the
-    /// seed — the machine only relays them, so no decision depends on which
-    /// number a request happened to draw.
+    /// seed, so no decision depends on which number a request happened to draw.
     next_request: RequestId,
 
-    /// Where each request's answer goes, by the id naming it.
-    ///
-    /// A plain map behind `&mut self`, because one task owns it. It is the
-    /// whole of the request-to-answer pairing.
+    /// Where each request's answer goes, by the id naming it. A plain map
+    /// behind `&mut self`, because one task owns it.
     parked: HashMap<RequestId, oneshot::Sender<ActionRouter>>,
 }
 
 impl RuntimeRouter {
     /// Serve until the loop lets go of its end.
     ///
-    /// Two tasks: axum on one, and this one pairing requests with the answers
-    /// that come back. They are separate because axum owns each socket for the
-    /// life of its connection and must be polled independently of anything the
-    /// machine is deciding.
+    /// Two tasks, because axum owns each socket for the life of its connection
+    /// and must be polled independently of anything the machine is deciding.
     pub(crate) async fn run(
         mut action_rx: ActionRx,
         event_tx: EventTx,
@@ -84,19 +75,13 @@ impl RuntimeRouter {
     ) -> std::io::Result<()> {
         let (request_tx, mut request_rx): (RequestTx, RequestRx) = mpsc::channel(REQUESTS_WAITING);
 
-        // Every interface rather than loopback, because a phone on the LAN is
-        // one of the clients. The simulator shares the Mac's loopback and would
-        // be happy either way; a real device has to reach the Mac by its
-        // address on the network, and nothing answers there if we bind
-        // loopback. This is a development server on a home network.
+        // Every interface rather than loopback: a real phone reaches the Mac
+        // by its address on the network.
         let listener = TcpListener::bind(("0.0.0.0", PORT)).await?;
 
         tracing::info!(port = PORT, "server listening");
 
-        // With connection info, so every line about a request can say which
-        // client made it. A dev server is talked to by the web front-end on
-        // loopback and a phone on the LAN at the same time, and untangling
-        // their requests is most of what the log is for.
+        // With connection info, so a line about a request can say who made it.
         let service = router_server::router(request_tx, &origins)
             .into_make_service_with_connect_info::<std::net::SocketAddr>();
 
@@ -139,10 +124,8 @@ impl RuntimeRouter {
         }
 
         // Let go of the door and of everything parked on us *before* waiting
-        // for axum to drain. A handler that arrives now is refused, and one
-        // already parked is released with nothing — either is an answer. Held
-        // open, they would be requests nobody will ever answer, and a graceful
-        // shutdown that waits for them never finishes.
+        // for axum to drain, or a graceful shutdown waits forever on requests
+        // nobody will ever answer.
         drop(request_rx);
         drop(router);
 
@@ -180,12 +163,8 @@ impl RuntimeRouter {
 
 /// Ask the machine something on a handler's behalf, and wait for its answer.
 ///
-/// The one thing a handler can do. It parks rather than spins: `.await` yields
-/// the task, so a request in flight costs a map entry and nothing else.
-///
-/// `None` is an answer that never came. That is a bug rather than an outcome —
-/// every router event owes exactly one action back — except during shutdown,
-/// when the loop has let go and there is nobody left to ask.
+/// `None` is an answer that never came — a bug rather than an outcome, since
+/// every router event owes exactly one action back, except during shutdown.
 pub(crate) async fn dispatch(
     requests: &RequestTx,
     client: Client,
