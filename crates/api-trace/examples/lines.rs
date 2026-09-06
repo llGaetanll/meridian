@@ -22,7 +22,6 @@ use api_trace::scrub;
 const PLAID: Source =
     Source::new("plaid").through(&[scrub::redact_credentials, scrub::compact_json]);
 const YAHOO: Source = Source::new("yahoo");
-const MERIDIAN: Source = Source::new("meridian");
 
 fn main() {
     api_trace::init(Config {
@@ -34,10 +33,8 @@ fn main() {
 
     tracing::info!(target: "web_main", version = "0.1.0", "meridian starting");
 
-    // One conversation with a client, from both ends. The server writes the
-    // `client=` pair (`server_main::router_trace`) and the phone writes the
-    // `source=meridian` pair (`phone_main::runtime_io`); they are two logs on
-    // two machines, which is why each is worth having on its own.
+    // A phone asking for everything, from the server's end. The other end is
+    // the phone's own log, on the phone, in Swift or Kotlin.
     Served::received(
         "server_main::router_trace",
         "192.168.1.24:53112",
@@ -45,16 +42,6 @@ fn main() {
         "/snapshot",
     )
     .answered(200, Some(91233));
-
-    ApiCall::get(
-        "phone_main::runtime_io",
-        MERIDIAN,
-        "http://127.0.0.1:8082/snapshot",
-    )
-    .response(
-        200,
-        "{\"accounts\":[{\"id\":\"6Pd…\"}],\"transactions\":[]}",
-    );
 
     // A client that hung up before its answer, which is what closing the app
     // mid-refresh looks like from the server.

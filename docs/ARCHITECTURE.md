@@ -217,8 +217,8 @@ event to send. `if self.db.is_some()` is the tell. Nothing about that is
 visible in a log, and nothing about it can be replayed.
 
 `server-main` writes this out as a real loop over requests;
-`crates/phone-main/src/runtime_app.rs` is the same thing driven by user
-interaction rather than by a `loop`, because a browser app is woken rather than
+`swift/Sources/MeridianApp/RuntimeApp.swift` is the same thing driven by user
+interaction rather than by a `loop`, because a phone app is woken rather than
 polling.
 
 ### The shape of the machine
@@ -278,12 +278,12 @@ The split falls differently for the two because their IO does:
 - The **server** owns its machine and its runtime in one crate, because it owns
   both halves.
 - The **phone** keeps its machine in `phone-state` alone, because the runtime
-  is Swift and Kotlin. `phone-main` is a third runtime — a Leptos one — that
-  exists so the design can be run and judged without a Mac.
+  is Swift and Kotlin, and neither of those goes in a crate.
 
 ### What this looks like once it is built
 
-`crates/phone-main` is the worked example. Two of its properties are worth
+The phone is the worked example: `phone-state` decides, and
+`swift/Sources/MeridianApp` carries it out. Two of its properties are worth
 stating here, because they are what the design actually buys:
 
 - **The whole screen crosses, not a diff.** `UiAction::Render` carries the
@@ -318,7 +318,6 @@ signal graph becomes plumbing, not the place where behaviour is decided.
 | `web-components` | Domain components: the shell, charts, and the markets page's blocks. |
 | `web-state` | State shared across pages. |
 | `web-main` | The web front-end: `io`, `state`, `pages`, and the styles. |
-| `phone-main` | A Leptos runtime over `phone-state`. Renders what the machine decides and holds one signal; a runnable specification for the Swift and Kotlin views. |
 
 ## Talking to price sources
 

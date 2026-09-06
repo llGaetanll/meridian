@@ -6,9 +6,8 @@
 /// `performAction`, which fans out to one function per action group.
 ///
 /// It holds the last screen the machine rendered and nothing else that the
-/// machine could have decided. SwiftUI's `@Published` is playing the part
-/// Leptos signals play in `crates/phone-main/src/runtime_app.rs`: plumbing
-/// that redraws the view, not a place where behaviour is decided.
+/// machine could have decided. SwiftUI's `@Published` is plumbing that redraws
+/// the view, not a place where behaviour is decided.
 ///
 /// `@MainActor` because every field here drives the view. The `Core` behind it
 /// is `Send + Sync` and has no opinion about threads, so the choice costs

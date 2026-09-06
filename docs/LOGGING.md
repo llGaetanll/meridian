@@ -123,12 +123,10 @@ personal data and not enough to debug from — the server's own lines already sa
 what it decided to serve. `bytes` is what is worth knowing about an answer: a
 snapshot that left as 300 bytes rather than 300 kilobytes is the bug.
 
-The phone logs its own half of the same conversation, `source=meridian`, and
-that one does carry the body: it is the string the machine is about to parse,
-and whether an error page or a snapshot arrived is the question. Two logs on
-two machines, so each has to stand on its own — and only the web build keeps
-one at all. **The Swift and Kotlin clients do their HTTP in platform code and
-write nothing here**, which is most of why the server end of this matters.
+**The phone writes nothing here.** The Swift and Kotlin clients do their HTTP
+in platform code, and their half of the conversation is a log on a different
+machine that we never see. That is most of why the server end of this matters:
+it is the only end we have.
 
 ## A log file is not a credential, and is still personal data
 
@@ -251,7 +249,6 @@ means adding, changing or removing its example here.
 
 - `INFO web_main meridian starting version=0.1.0`
 - `INFO server_main meridian server starting version=0.1.0`
-- `INFO phone_main meridian phone starting version=0.1.0`
   — one per binary, each first thing in its own `main`.
 - `INFO server_main::runtime_server store ready store=postgres`
   — once at startup. There is no second form: `DATABASE_URL` is required, and
@@ -456,25 +453,6 @@ means adding, changing or removing its example here.
   — `stage` says which of a sync's three calls it was, because what a failure
   costs depends on that. `ITEM_LOGIN_REQUIRED` needs the user to sign in again
   and no retry will fix it.
-- `DEBUG phone_main::runtime_app turn events=[FromUi { event: MaskToggled }] actions=[ToUi { action: Render { .. } }]`
-  — one per turn of the loop, both vectors paired, the same shape the server
-  logs. The exception is a tick that decided nothing: time arrives once a
-  second whatever is on screen, and a line each would bury everything else.
-- `INFO phone_main::runtime_io -> id=2 source=meridian method=GET url="http://127.0.0.1:8082/snapshot"`
-- `INFO phone_main::runtime_io <- id=2 source=meridian status=200 ms=44 body="{\"accounts\":[{\"id\":\"6Pd…"`
-  — the phone asking the server for everything, and the body it is about to
-  hand the machine to parse. `?refresh=true` is pull-to-refresh, which is why
-  there is no longer a separate `snapshot asked for` line: it said what this
-  one already says. Only the web build writes these — the Swift and Kotlin
-  clients do their HTTP in platform code.
-- `WARN phone_main::runtime_app load failed message="could not reach the server at http://127.0.0.1:8082 — is `cargo run -p server-main` running?"`
-- `WARN phone_main::runtime_app first run is not drawn on the web action=StartBankLink`
-  — first run is a phone flow for now, and the web answers `LoadSession` as
-  already signed in so that it is never walked. A line here means that answer
-  changed and the web reached a road it cannot draw. `action=ForgetSession` is
-  the same line from the other end: the Account tab's Sign out, which the
-  browser has no stored session to honour — reloading the page signs it back
-  in.
 - `INFO src_yahoo::yahoo_client quote{symbol=SPY range=1D} -> id=2 source=yahoo method=GET url="/v8/finance/chart/SPY?period1=1785542400&period2=1785628800&interval=1m"`
 - `INFO src_yahoo::yahoo_client quote{symbol=SPY range=1D} <- id=2 source=yahoo status=200 ms=412 body="{\"chart\":{\"result\":[{\"meta\":{\"currency\":\"USD\",\"symbol\":\"SPY\"…"`
   — the body as it arrived, cut at 400 characters.

@@ -65,11 +65,10 @@ struct LedgerScreen: View {
 private extension ViewMonthSection {
     /// What identifies a month: the month, not the transactions inside it.
     ///
-    /// `phone-main` keys its `<For>` on `format!("{}{}", month.name, month.year)`
-    /// and this has to agree. Keying on the whole value instead makes a month's
-    /// identity change whenever any row inside it does, so SwiftUI throws the
-    /// section away and builds a new one — losing scroll position in a list
-    /// that is pinned and lazy.
+    /// Keying on the whole value instead makes a month's identity change
+    /// whenever any row inside it does, so SwiftUI throws the section away and
+    /// builds a new one — losing scroll position in a list that is pinned and
+    /// lazy.
     var key: String { name + year }
 }
 

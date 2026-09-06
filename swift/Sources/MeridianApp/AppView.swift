@@ -2,7 +2,8 @@
 ///
 /// There is no router and no page state. The core says which screen it is on
 /// and hands over everything that screen shows, so this is a `switch` over the
-/// last thing it rendered — the same shape as `crates/phone-main/src/app.rs`.
+/// last thing it rendered. It is the only place a `ViewScreen` becomes a
+/// screen, and Kotlin's will be the same switch.
 ///
 /// The shell is built here rather than by each screen, and there is one of it.
 /// Returning a whole screen from each `case` gives every case its own

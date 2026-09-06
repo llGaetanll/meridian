@@ -1,12 +1,13 @@
 /// The icon set, drawn from the same path data the web draws.
 ///
-/// The geometry below is copied verbatim out of
-/// `crates/phone-main/src/ui/icon.rs` — the same `d` strings, the same 24-unit
-/// box, the same 1.8 stroke. That is deliberate: the core sends an icon *name*
-/// (`ViewDockItem.icon`) and each platform resolves it, so the only way the
-/// two apps can show the same glyph is for them to share the drawing rather
-/// than each pick something that looks close. SF Symbols would have been less
-/// code and a different icon set.
+/// The geometry below is the phone's icon set, and this file is where it
+/// lives: a 24-unit box, a 1.8 stroke, and the same `d` strings the sketches
+/// under `sketches/mobile` draw. The core sends an icon *name*
+/// (`ViewDockItem.icon`) and each platform resolves it, so the only way two
+/// platforms can show the same glyph is to share the drawing rather than each
+/// pick something that looks close — which makes these strings the thing
+/// Kotlin copies. SF Symbols would have been less code and a different icon
+/// set.
 ///
 /// Which means a little SVG path evaluation, since SwiftUI has none. It
 /// handles the subset these icons use; `Svg.append` says what that is.

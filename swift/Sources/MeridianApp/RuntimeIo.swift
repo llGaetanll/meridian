@@ -1,10 +1,10 @@
 /// Talking to the server. No decisions and no state — async functions over
 /// plain data, exactly as `docs/ARCHITECTURE.md` asks.
 ///
-/// The transcription of `crates/phone-main/src/runtime_io.rs`, down to handing
-/// the snapshot back as a string rather than parsing it. The machine parses,
-/// so all three platforms get the same parse and there is only one place that
-/// decides what a missing field means.
+/// Every call the app makes, and the list `docs/API_FLOW.md` is written from.
+/// It hands the snapshot back as a string rather than parsing it: the machine
+/// parses, so every platform gets the same parse and there is only one place
+/// that decides what a missing field means.
 ///
 /// Nothing here reads the keychain, and nothing here decides what a failure
 /// means. The token is a parameter because these are plain functions over

@@ -17,17 +17,15 @@ cargo binstall trunk
 rustup target add wasm32-unknown-unknown
 ```
 
-Then run `trunk serve --open` from inside the front-end you want:
-`crates/web-main` for the web app, `crates/phone-main` for the phone app.
-They use different ports, so both can run at once.
+Then run `trunk serve --open` from `crates/web-main`, which is the web app.
 
-The phone app reads its data from `server-main`, which is what holds the Plaid
-secret — see [PLAID.md](PLAID.md) for why that cannot live in the app. So the
-phone app is two commands:
+It reads its data from `server-main`, which is what holds the Plaid secret —
+see [PLAID.md](PLAID.md) for why that cannot live in the app. So the web app is
+two commands:
 
 ```
 cargo run -p server-main                  # :8082
-cd crates/phone-main && trunk serve    # :8081
+cd crates/web-main && trunk serve         # :8080
 ```
 
 **The server needs `.env` filled in, and it needs Postgres.** Every variable is
@@ -55,8 +53,8 @@ that window rather than in whichever terminal ran it.
 [DATABASE.md](DATABASE.md) has the rest, including the one rule about
 migrations.
 
-That is everything the web and phone front-ends need. The rest of this document
-is only for working on the native phone apps.
+That is everything the web front-end needs. The rest of this document is only
+for working on the native phone apps.
 
 ## The native phone apps
 
@@ -108,10 +106,12 @@ physical phone over `adb` is the easier path.
 codesigning are Apple-platform only, and no toolchain works around that. A Mac
 is required to build or run it.
 
-What that means in practice is that iOS work happens in two places: the design
-and the logic are worked out in `crates/phone-main`, which runs in a browser
-and loops in seconds, and the SwiftUI is a transcription of a settled design
-written later. The more that lives in Rust, the less is stuck behind a Mac.
+What that means in practice is that as little of the app as possible waits on a
+Mac. The logic is `phone-state`, which is plain Rust tested with `eval!` and
+needs no phone at all; the design is settled in
+`sketches/design-language.html`, which is a page. The SwiftUI is a
+transcription of the two. The more that lives in Rust, the less is stuck behind
+a Mac.
 
 Swift on Linux is therefore optional. It buys you a compiler that can
 typecheck any Swift not importing SwiftUI — worth having if you are writing
