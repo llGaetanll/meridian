@@ -124,7 +124,7 @@ all.
    b. `200 {"outcome":"abandoned"}`: *Nothing was collected. Today this is also what an unfinished session answers, so a bank Plaid has not stamped yet reads as one that was never connected.*
    c. `401 Unauthorized`: *No bearer token, or one the server no longer honours.*
    d. `429 Too Many Requests`: *Too many closes from this caller.*
-   e. `500 Internal Server Error`: *This user's open sessions could not be read.*
+   e. `500 Internal Server Error`: *This user's open sessions could not be read, or the poll asking Plaid about them never came back. Deliberately not "abandoned": that is a sentence about somebody's bank, and this is not knowing.*
 
 One close attaches one bank. The first `public_token` found is exchanged and
 that session is marked collected in the same turn, so a second Item made inside
@@ -155,7 +155,7 @@ app switch and a request to get through, and Plaid has none of that.
    c. `200 {"outcome":"pending"}`: *Ten seconds passed and Plaid still has not said. Not "no bank": the phone goes to the sync screen and polls, and a late bank shows up there. It gives up after twenty.*
    d. `401 Unauthorized`: *No bearer token, or one the server no longer honours.*
    e. `429 Too Many Requests`: *Too many closes from this caller.*
-   f. `500 Internal Server Error`: *This user's open sessions could not be read.*
+   f. `500 Internal Server Error`: *This user's open sessions could not be read. Not `abandoned` and not `pending`: both of those are things Plaid said, and this is Postgres.*
 
 ## D. The first sync, and watching it
 

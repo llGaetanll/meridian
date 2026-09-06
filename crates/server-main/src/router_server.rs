@@ -271,13 +271,24 @@ async fn link_finish(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
+    // The machine could not answer: the store would not say what this caller
+    // has open, or the poll it asked for never came back. Told apart from a
+    // session that came to nothing, the same way `/auth/verify` tells a store
+    // that would not answer apart from a code that was no good — "abandoned"
+    // here is a sentence about somebody's bank, and saying it because Postgres
+    // was down is saying something we do not know.
+    if let Some(ActionRouter::Unavailable) = answer {
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
     Ok(Json(match answer {
         Some(ActionRouter::Linked { count }) => LinkFinished::Linked { count },
         Some(ActionRouter::LinkPending) => LinkFinished::Pending,
         Some(ActionRouter::LinkAbandoned) => LinkFinished::Abandoned,
 
-        // The machine giving up on a poll that never answered, which from here
-        // is the same sentence as a session that came to nothing.
+        // Nothing at all, which cannot happen: every router event answers. It
+        // reads as the ordinary ending rather than a 500, because a phone with
+        // no bank attached has the same road out of both.
         _ => LinkFinished::Abandoned,
     }))
 }
