@@ -1043,7 +1043,7 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
-    if (lib.uniffi_phone_state_checksum_method_core_handle_events() != 25690) {
+    if (lib.uniffi_phone_state_checksum_method_core_handle_events() != 43271) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_phone_state_checksum_constructor_core_new() != 22848) {
@@ -1479,22 +1479,15 @@ public object FfiConverterString : FfiConverter<String, RustBuffer.ByValue> {
 /**
  * The state machine, as the platforms see it.
  *
- * Swift and Kotlin get a handle to one of these and send it events. The
- * `Mutex` is what makes it `Send + Sync`, which UniFFI requires of an
+ * The `Mutex` is what makes it `Send + Sync`, which UniFFI requires of an
  * exported object; the machine itself has no opinion about threads.
  */
 public interface CoreInterface {
     /**
      * Hand in what happened, get back what to do about it.
      *
-     * No clock: the machine has none of its own and is not given one here
-     * either. The runtime reads the platform's clock and sends it in as an
-     * [`EventRuntime::Tick`] like anything else it observed.
-     *
      * The owning counterpart to [`StateApp::handle_events`]: a `&mut Vec` does
-     * not cross FFI, so the buffer is allocated here instead of reused. The
-     * borrowing version stays for replay and tests, where the allocation is
-     * worth avoiding.
+     * not cross FFI, so the buffer is allocated here instead of reused.
      */
     fun `handleEvents`(`events`: List<Event>): List<Action>
 
@@ -1504,8 +1497,7 @@ public interface CoreInterface {
 /**
  * The state machine, as the platforms see it.
  *
- * Swift and Kotlin get a handle to one of these and send it events. The
- * `Mutex` is what makes it `Send + Sync`, which UniFFI requires of an
+ * The `Mutex` is what makes it `Send + Sync`, which UniFFI requires of an
  * exported object; the machine itself has no opinion about threads.
  */
 open class Core :
@@ -1622,14 +1614,8 @@ open class Core :
     /**
      * Hand in what happened, get back what to do about it.
      *
-     * No clock: the machine has none of its own and is not given one here
-     * either. The runtime reads the platform's clock and sends it in as an
-     * [`EventRuntime::Tick`] like anything else it observed.
-     *
      * The owning counterpart to [`StateApp::handle_events`]: a `&mut Vec` does
-     * not cross FFI, so the buffer is allocated here instead of reused. The
-     * borrowing version stays for replay and tests, where the allocation is
-     * worth avoiding.
+     * not cross FFI, so the buffer is allocated here instead of reused.
      */
     override fun `handleEvents`(`events`: List<Event>): List<Action> =
         FfiConverterSequenceTypeAction.lift(
@@ -1683,8 +1669,7 @@ data class ViewAccount(
      */
     var `banks`: List<ViewAccountBank>,
     /**
-     * What the list says when there are none — which is three different
-     * nothings, and they need different words.
+     * What the list says when there are none.
      */
     var `banksEmpty`: kotlin.String?,
     /**
@@ -1696,8 +1681,7 @@ data class ViewAccount(
      */
     var `signOutLabel`: kotlin.String,
     /**
-     * `"Meridian 0.1.0"`. Nobody reads it until something is wrong, and then
-     * it is the first thing we ask them for.
+     * `"Meridian 0.1.0"`.
      */
     var `build`: kotlin.String,
 ) {
@@ -1742,11 +1726,10 @@ public object FfiConverterTypeViewAccount : FfiConverterRustBuffer<ViewAccount> 
 }
 
 /**
- * One bank, as this screen lists it.
+ * One bank, as this screen lists it: a name and whether it is still working.
  *
- * Not [`ViewConnection`](crate::ViewConnection): that one carries the account
- * rows and their balances, which is the Balances screen's business. Here a
- * bank is a name and whether it is still working.
+ * Not [`ViewConnection`](crate::ViewConnection), which also carries the
+ * account rows and their balances.
  */
 data class ViewAccountBank(
     var `id`: kotlin.String,
@@ -1757,9 +1740,7 @@ data class ViewAccountBank(
      */
     var `detail`: kotlin.String,
     /**
-     * Whether the bank has stopped syncing and wants a fresh sign-in. The one
-     * thing in the app that stops the numbers being true, so the row says so
-     * rather than hiding it.
+     * Whether the bank has stopped syncing and wants a fresh sign-in.
      */
     var `needsReconnect`: kotlin.Boolean,
 ) {
@@ -1862,10 +1843,8 @@ public object FfiConverterTypeViewAccountRow : FfiConverterRustBuffer<ViewAccoun
 
 data class ViewBalances(
     /**
-     * `"3 connections · 14 accounts"`.
-     * `"Held"`. The headline is what you hold, not net worth: Plaid reports
-     * the mortgage but never the house behind it, so a net figure is
-     * structurally too red.
+     * `"Held"`. What you hold, not net worth: Plaid reports the mortgage but
+     * never the house behind it, so a net figure is structurally too red.
      */
     var `headlineLabel`: kotlin.String,
     /**
@@ -1873,13 +1852,12 @@ data class ViewBalances(
      */
     var `headline`: kotlin.String,
     /**
-     * Whether the figures are covered. The view draws a bar over them; the
-     * value itself was already replaced, so nothing is hidden in the DOM.
+     * Whether the figures are covered. They are already replaced in the text
+     * above, so nothing is merely hidden in the DOM.
      */
     var `masked`: kotlin.Boolean,
     /**
-     * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks, and
-     * the only place on the page money still takes a colour.
+     * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks.
      */
     var `owedLabel`: kotlin.String,
     var `owedTotal`: kotlin.String,
@@ -1932,10 +1910,8 @@ data class ViewBreakdownSlice(
     var `label`: kotlin.String,
     var `token`: kotlin.String,
     /**
-     * The segment's share of the bar, 0..1.
-     *
-     * A ratio rather than a percentage string, because this one is geometry —
-     * the exception `docs/FFI.md` carves out for the chart.
+     * The segment's share of the bar, 0..1 — a ratio rather than a string
+     * because it is geometry, the exception `docs/FFI.md` carves out.
      */
     var `share`: kotlin.Double,
     /**
@@ -1981,19 +1957,13 @@ public object FfiConverterTypeViewBreakdownSlice : FfiConverterRustBuffer<ViewBr
  * Three months side by side: the one you are looking at, and the one either
  * side of it.
  *
- * The calendar runs sideways, because months do, and turning it is a scroll
- * rather than a redraw — so the months either side have to be here in full.
- * Only a column of each shows at the edge, but that column is the real month's
- * first or last, and a swipe brings the rest of it over.
- *
- * Drawn as a whole month each rather than as the one visible column, because a
- * column that has to become a month when the finger moves is two drawings of
- * the same thing that can disagree.
+ * Turning the calendar is a scroll rather than a redraw, so the neighbouring
+ * months are here in full rather than as the one visible column.
  */
 data class ViewCalendar(
     /**
      * `["M", "T", "W", "T", "F", "S", "S"]` — the column headings, starting
-     * on Monday. One set: all three months are laid out the same way.
+     * on Monday. One set for all three months.
      */
     var `weekdays`: List<kotlin.String>,
     var `prev`: ViewCalendarMonth,
@@ -2036,8 +2006,8 @@ public object FfiConverterTypeViewCalendar : FfiConverterRustBuffer<ViewCalendar
 
 data class ViewCalendarDay(
     /**
-     * What a tap on this day sends back — the day itself, not where it sits
-     * in the grid, so the same day in two months' grids is one day.
+     * What a tap sends back: the day itself, not where it sits in the grid,
+     * so the same day in two months' grids is one day.
      */
     var `id`: kotlin.String,
     /**
@@ -2050,17 +2020,12 @@ data class ViewCalendarDay(
     var `outside`: kotlin.Boolean,
     var `today`: kotlin.Boolean,
     /**
-     * The day the user tapped, filled in grey. Grey and not outlined: an
-     * outline reads as a different kind of control sitting in the grid.
+     * The day the user tapped, filled in grey.
      */
     var `picked`: kotlin.Boolean,
     /**
-     * One per stream landing that day, as category tokens — the same tokens
-     * the breakdown above colours its segments with.
-     *
-     * Only dates the source actually predicts. Nothing here is projected
-     * forward from a stream's frequency, so a month shows as many marks as
-     * there are streams and no more.
+     * One per stream landing that day, as category tokens. Only dates the
+     * source predicts — nothing is projected forward from a frequency.
      */
     var `marks`: List<kotlin.String>,
 ) {
@@ -2105,19 +2070,13 @@ public object FfiConverterTypeViewCalendarDay : FfiConverterRustBuffer<ViewCalen
 }
 
 /**
- * One month's grid.
- *
- * As many rows as the month has weeks in it — five for July, six for August —
- * rather than six always. A row that is entirely next month is a row of
- * nothing, and the grid changing height as the months turn is the price.
+ * One month's grid, with as many rows as the month has weeks in it — five
+ * for July, six for August — so the grid changes height as the months turn.
  */
 data class ViewCalendarMonth(
     /**
-     * `"August 2026"`.
-     *
-     * The year on all three and not just the middle one: the label travels
-     * from the edge to the centre as the month turns, and a label that gains a
-     * year on the way is a label that changes rather than moves.
+     * `"August 2026"`. The year on all three months, because the label
+     * travels from the edge to the centre as the month turns.
      */
     var `label`: kotlin.String,
     var `weeks`: List<List<ViewCalendarDay>>,
@@ -2172,7 +2131,7 @@ data class ViewCategoryChip(
     var `count`: kotlin.String,
     var `selected`: kotlin.Boolean,
     /**
-     * Nothing matches. The chip stays visible but reads as unavailable.
+     * Nothing matches. The chip stays visible, reading as unavailable.
      */
     var `empty`: kotlin.Boolean,
 ) {
@@ -2273,8 +2232,7 @@ data class ViewConnection(
      */
     var `synced`: kotlin.String,
     /**
-     * Whether the user has to sign in again. Carries the action rather than
-     * just naming the problem.
+     * Whether the user has to sign in again.
      */
     var `needsReconnect`: kotlin.Boolean,
     /**
@@ -2429,10 +2387,6 @@ public object FfiConverterTypeViewDayRow : FfiConverterRustBuffer<ViewDayRow> {
 
 /**
  * A day's worth of rows, under its heading.
- *
- * Grouping is done in the machine rather than in the view because three view
- * layers would otherwise each write the same date-bucketing loop, and the one
- * that got it subtly wrong would be the one nobody looked at.
  */
 data class ViewDaySection(
     /**
@@ -2440,8 +2394,7 @@ data class ViewDaySection(
      */
     var `heading`: kotlin.String,
     /**
-     * `"−$30.40"`, the day's net. It sits on the heading's own line, so the
-     * two halves of the line say the same thing about the same day.
+     * `"−$30.40"`, the day's net.
      */
     var `total`: kotlin.String,
     var `rows`: List<ViewTxRow>,
@@ -2557,14 +2510,12 @@ data class ViewField(
      */
     var `icon`: kotlin.String,
     /**
-     * What is in it. Empty means the placeholder shows instead.
+     * What is in it. Empty draws the placeholder.
      */
     var `value`: kotlin.String,
     var `placeholder`: kotlin.String,
     /**
-     * What the server, or the machine, made of the value. `Some` is what
-     * draws the field wrong — never an empty field, which has not done
-     * anything yet.
+     * What the server, or the machine, made of the value.
      */
     var `fault`: kotlin.String?,
 ) {
@@ -2610,8 +2561,7 @@ data class ViewFilter(
      */
     var `categories`: List<ViewCategoryChip>,
     /**
-     * What a shut category group says instead of its chips: the first few
-     * selected, then `"+2"`.
+     * What a shut category group shows instead of its chips.
      */
     var `categoriesSummary`: List<ViewCategoryChip>,
     var `categoriesOverflow`: kotlin.String?,
@@ -2665,10 +2615,8 @@ public object FfiConverterTypeViewFilter : FfiConverterRustBuffer<ViewFilter> {
 }
 
 /**
- * An icon, a line, a line under it, and something on the right.
- *
- * Every list in this flow is this one row: what connecting a bank means, what
- * the first sync has fetched, what is still true after a failure.
+ * An icon, a line, a line under it, and something on the right — the one row
+ * every list in this flow is made of.
  */
 data class ViewIconRow(
     /**
@@ -2679,8 +2627,7 @@ data class ViewIconRow(
     var `title`: kotlin.String,
     var `sub`: kotlin.String?,
     /**
-     * `"8"`, `"48 so far"`, `"waiting"` — what the row has to say about
-     * itself, on the right.
+     * `"8"`, `"48 so far"`, `"waiting"`.
      */
     var `value`: kotlin.String?,
 ) {
@@ -2723,7 +2670,7 @@ public object FfiConverterTypeViewIconRow : FfiConverterRustBuffer<ViewIconRow> 
 
 data class ViewLedger(
     /**
-     * `"3 connections · synced 2m ago"`.
+     * The transactions, grouped by month and then by day.
      */
     var `months`: List<ViewMonthSection>,
     /**
@@ -2892,22 +2839,19 @@ data class ViewRecurring(
      */
     var `headline`: kotlin.String,
     /**
-     * `"+$4.22 in · net −$3,767.18"`.
-     *
-     * The phone draws `flow_in` and `flow_out` instead; this is the one line
-     * the web still sets under its headline.
+     * `"+$4.22 in · net −$3,767.18"` — the two directions and the net on one
+     * line, which is what the web sets under its headline.
      */
     var `detail`: kotlin.String,
     /**
-     * `"$4.22"` and `"$3,771.40"` — the two directions, unsigned. The words
-     * beside them say which way the money goes, so the figures do not carry a
-     * sign as well.
+     * `"$4.22"` and `"$3,771.40"` — the two directions, unsigned, for where a
+     * word beside the figure says which way the money goes.
      */
     var `flowIn`: kotlin.String,
     var `flowOut`: kotlin.String,
     /**
      * `"+$4.22"` and `"−$3,771.40"` — the same two with the sign back on, for
-     * where there is no room for the words. A diff, read as one.
+     * where there is no room for the words.
      */
     var `flowInSigned`: kotlin.String,
     var `flowOutSigned`: kotlin.String,
@@ -2918,12 +2862,11 @@ data class ViewRecurring(
     var `breakdownLabel`: kotlin.String,
     var `breakdownTotal`: kotlin.String,
     /**
-     * The breakdown bar and its legend are two views of one split, so they
-     * come from one list.
+     * The split behind both the bar and its legend.
      */
     var `breakdown`: List<ViewBreakdownSlice>,
     /**
-     * When it all lands, under the breakdown.
+     * When it all lands.
      */
     var `calendar`: ViewCalendar,
     /**
@@ -3010,11 +2953,8 @@ public object FfiConverterTypeViewRecurring : FfiConverterRustBuffer<ViewRecurri
 /**
  * A stretch of body copy, and whether it is set strong.
  *
- * The sketch's `<b>`: the address on the code screen, Plaid's name on the
- * bank screen. A list of runs rather than one string with markup in it,
- * because the alternative is every platform learning to parse the same
- * markup — and the alternative to *that* is losing the emphasis the sentence
- * was written around.
+ * A list of runs rather than one string with markup in it, so no platform
+ * has to learn to parse the same markup to keep the emphasis.
  */
 data class ViewRun(
     var `text`: kotlin.String,
@@ -3059,8 +2999,7 @@ data class ViewStreamGroup(
      */
     var `total`: kotlin.String,
     /**
-     * `"1 stream"` / `"2 streams"`, which is what the group's heading says
-     * now that the figures below it are the ones worth reading.
+     * `"1 stream"` / `"2 streams"`.
      */
     var `countLabel`: kotlin.String,
     var `streams`: List<ViewStreamRow>,
@@ -3111,12 +3050,11 @@ data class ViewStreamRow(
      */
     var `when`: kotlin.String,
     /**
-     * `"Monthly · next Aug 22"` — the whole line under the name, which is
-     * the frequency and the date read as one phrase rather than two.
+     * `"Monthly · next Aug 22"` — the frequency and the date as one phrase.
      */
     var `sub`: kotlin.String,
     /**
-     * Due within the week, so it reads as a heads-up rather than an alarm.
+     * Due within the week.
      */
     var `soon`: kotlin.Boolean,
     /**
@@ -3229,8 +3167,8 @@ data class ViewTxRow(
      */
     var `category`: kotlin.String,
     /**
-     * A palette token for the category, e.g. `"c-food"`. The view maps this
-     * to its own colour; it never works one out from the category name.
+     * A palette token for the category, e.g. `"c-food"`, which the view maps
+     * to its own colour.
      */
     var `categoryToken`: kotlin.String,
     /**
@@ -3238,17 +3176,16 @@ data class ViewTxRow(
      */
     var `amount`: kotlin.String,
     /**
-     * Whether the amount should read as money arriving. The view uses this
-     * for colour; it does not parse the sign back out of `amount`.
+     * Whether the amount reads as money arriving, so that nothing has to
+     * parse the sign back out of `amount`.
      */
     var `isInflow`: kotlin.Boolean,
     /**
-     * A merchant logo, where one exists. The slot is reserved either way, so
-     * every row's text starts on the same line.
+     * A merchant logo, where one exists. The slot is reserved either way.
      */
     var `logoUrl`: kotlin.String?,
     /**
-     * Authorised but not settled. The whole row recedes.
+     * Authorised but not settled.
      */
     var `pending`: kotlin.Boolean,
 ) {
@@ -3299,11 +3236,11 @@ public object FfiConverterTypeViewTxRow : FfiConverterRustBuffer<ViewTxRow> {
 }
 
 /**
- * `ToUi` is far larger than `ToSource`, which clippy notices. It is
- * deliberate: the whole screen crosses in one action so that the view holds
- * no state to apply a diff against (see [`ActionUi::Render`]). Boxing would
- * not help — UniFFI copies the payload across the boundary either way, so the
- * indirection would cost an allocation and buy nothing.
+ * What the machine asks for, and of whom.
+ *
+ * `ToUi` is far larger than `ToSource` because the whole screen crosses in
+ * one action (see [`ActionUi::Render`]). Boxing would not help — UniFFI
+ * copies the payload across the boundary either way.
  */
 sealed class Action {
     data class ToUi(
@@ -3385,41 +3322,26 @@ public object FfiConverterTypeAction : FfiConverterRustBuffer<Action> {
 
 sealed class ActionSource {
     /**
-     * Go and get everything.
-     *
-     * It carries nothing. Pull-to-refresh used to send `?refresh=true`, which
-     * skipped the server's freshness window and went straight to Plaid — a
-     * gesture anybody can repeat, spending an account-wide budget. When to
-     * ask a bank again is the server's decision, so this asks for the ledger
-     * and the server decides where the ledger comes from.
+     * Go and get everything. No freshness hint: when to ask a bank again is
+     * the server's decision, since a hint the app can repeat at will spends
+     * an account-wide Plaid budget.
      */
     object LoadSnapshot : ActionSource()
 
     /**
-     * Read who the device says is signed in. The first thing the app asks
-     * for, because the answer decides whether it opens on the Ledger or on
-     * the first screen of first run.
+     * Read who the device says is signed in.
      */
     object LoadSession : ActionSource()
 
     /**
      * Commit the session the runtime is holding, so that the next launch
-     * opens on the Ledger.
-     *
-     * No payload: the credential to write is the one `VerifyCode` came back
-     * with, and the runtime has held it since. This is the machine saying
-     * *now* — first run is through, and what was good enough to live in
-     * memory is worth keeping.
+     * opens on the Ledger. No payload: the credential is the one `VerifyCode`
+     * came back with, and the runtime has held it since.
      */
     object SaveSession : ActionSource()
 
     /**
      * Throw the session away, so that the next launch opens on first run.
-     *
-     * The counterpart to [`SaveSession`](ActionSource::SaveSession), and the
-     * only way out of a session the server no longer honours — a token good
-     * for ninety days that the server has stopped accepting answers 401 to
-     * everything, and there is nothing the app can do about it but forget it.
      */
     object ForgetSession : ActionSource()
 
@@ -3432,6 +3354,9 @@ sealed class ActionSource {
         companion object
     }
 
+    /**
+     * Check a six-digit code against the address it was sent to.
+     */
     data class VerifyCode(
         val `email`: kotlin.String,
         val `code`: kotlin.String,
@@ -3441,32 +3366,27 @@ sealed class ActionSource {
 
     /**
      * Ask the server for a `link_token` and open the `hosted_link_url` that
-     * comes back, which is Plaid's own page over the web.
-     *
-     * The app never holds a token of either kind: the server creates the link
-     * token and the server exchanges the public token, because the secret
-     * that signs both cannot ship inside an app (`docs/PLAID.md`).
+     * comes back. The app never holds a token of either kind: the secret that
+     * signs both cannot ship inside an app (`docs/PLAID.md`).
      */
     object StartBankLink : ActionSource()
 
     /**
-     * Ask how far the first sync has got.
+     * Open a stream the server writes the sync's progress to, and report
+     * what arrives on it.
      *
-     * One question, not a subscription: the runtime makes one request and
-     * sends one event back. Asking *again* is the machine's to decide, and it
-     * does so on the tick — so every poll is an action in the log and a
-     * replay makes the same number of them in the same places. A loop in the
-     * runtime would be a decision no log records.
-     *
-     * The work is the server's — it holds the `access_token` and runs the
-     * three calls — so this only ever reads. Backgrounding the app while it
-     * runs is safe for the same reason.
-     *
-     * It is a poll because the server can only answer questions it is asked.
-     * Issue #30 is the push channel this wants; when it lands, this action
-     * and the tick rule that repeats it are the whole of what goes away.
+     * The runtime holds the connection and chooses how to read it; when to
+     * have one at all, and when to try again after losing one, are decisions
+     * and stay here — so a replay reproduces every attempt.
      */
-    object PollSync : ActionSource()
+    object WatchSync : ActionSource()
+
+    /**
+     * Let that stream go. Its own action rather than something the runtime
+     * infers from a screen it cannot see: a connection nobody closes is a
+     * connection the server holds a slot for.
+     */
+    object StopWatchingSync : ActionSource()
 
     companion object
 }
@@ -3511,7 +3431,11 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
             }
 
             8 -> {
-                ActionSource.PollSync
+                ActionSource.WatchSync
+            }
+
+            9 -> {
+                ActionSource.StopWatchingSync
             }
 
             else -> {
@@ -3573,7 +3497,14 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
                 )
             }
 
-            is ActionSource.PollSync -> {
+            is ActionSource.WatchSync -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is ActionSource.StopWatchingSync -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
                     4UL
@@ -3624,8 +3555,13 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
                 Unit
             }
 
-            is ActionSource.PollSync -> {
+            is ActionSource.WatchSync -> {
                 buf.putInt(8)
+                Unit
+            }
+
+            is ActionSource.StopWatchingSync -> {
+                buf.putInt(9)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -3633,21 +3569,17 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
 }
 
 /**
- * These carry finished values, not instructions to go and compute one. A
- * platform that receives `Render` draws exactly what it is given.
+ * Something for the view to do. These carry finished values, not
+ * instructions to go and compute one.
  */
 sealed class ActionUi {
     /**
      * Draw this screen. The whole screen, in the state it should be in.
      *
-     * One action rather than a set of fine-grained ones — no `ShowTxs`,
-     * `SelectTab`, `OpenFilter`. A view that applies a diff has to hold the
-     * state the diff applies to, and holding state above the boundary is the
-     * thing this design exists to prevent. Sending the whole screen means the
-     * view can be a pure function of the last action it saw.
-     * The dock is absent on a screen that is not one of its tabs — every
-     * screen of first run. `None` rather than an empty dock: a dock with no
-     * items would still be a strip of ground at the bottom of the phone.
+     * One action rather than a set of fine-grained ones: a view that applies
+     * a diff has to hold the state the diff applies to. The dock is `None` on
+     * a screen that is not one of its tabs, rather than an empty dock, which
+     * would still be a strip of ground at the bottom of the phone.
      */
     data class Render(
         val `screen`: uniffi.phone_state.ViewScreen,
@@ -3736,14 +3668,9 @@ public object FfiConverterTypeActionUi : FfiConverterRustBuffer<ActionUi> {
 /**
  * Where an event came from.
  *
- * Grouping by origin is what keeps a match on `Event` readable as the app
- * grows, and makes a recorded log read as a story rather than a flat list.
- *
- * Note what this enum does *not* carry: a timestamp. Time arrives as its own
- * event, [`EventRuntime::Tick`](crate::EventRuntime), rather than stapled to
- * every other one — so no event has to invent a clock reading it does not
- * have, and a log of events is a recording of the session rather than a list
- * of things that happened at whatever time the replay runs at.
+ * No timestamp: time arrives as its own event,
+ * [`EventRuntime::Tick`](crate::EventRuntime), so a log of events is a
+ * recording of the session rather than of whenever the replay runs.
  */
 sealed class Event {
     data class FromUi(
@@ -3856,8 +3783,7 @@ sealed class EventRuntime {
      *
      * A bare `u64` rather than a [`Timestamp`](api_common::Timestamp),
      * because this crosses FFI and `custom_newtype!` cannot be applied to a
-     * type from another crate — the same reason
-     * [`RangeSelection::Between`](crate::RangeSelection) carries integers.
+     * type from another crate.
      */
     data class Tick(
         val `now`: kotlin.ULong,
@@ -3911,18 +3837,14 @@ public object FfiConverterTypeEventRuntime : FfiConverterRustBuffer<EventRuntime
 }
 
 /**
- * Note that neither variant carries a clock reading. The runtime hands the
- * time to `handle_events` once per batch; a source's job is to say what came
- * back, not when it happened to arrive.
+ * What a source came back with. No variant carries a clock reading.
  */
 sealed class EventSource {
     /**
      * A snapshot arrived. Everything the app knows, in one value.
      *
-     * The payload is JSON rather than a structured record because the
-     * alternative is redeclaring every wire type as a UniFFI record and
-     * keeping the two in step by hand. The machine parses it, which keeps the
-     * parse in one place for all three platforms.
+     * JSON rather than a structured record, which would mean redeclaring
+     * every wire type as a UniFFI record and keeping the two in step by hand.
      */
     data class SnapshotLoaded(
         val `json`: kotlin.String,
@@ -3940,13 +3862,8 @@ sealed class EventSource {
     }
 
     /**
-     * Whether the device has a session to act on.
-     *
-     * A bool rather than the address, because that is the whole of what the
-     * machine does with it: a session decides which screen the app opens on
-     * and nothing else. The credential itself is the runtime's — it never
-     * crosses this boundary, so a recorded log carries no way into anybody's
-     * bank. `docs/ARCHITECTURE.md` has the rule this follows from.
+     * Whether the device has a session to act on. A bool rather than the
+     * credential, which stays the runtime's and never crosses this boundary.
      */
     data class SessionLoaded(
         val `signedIn`: kotlin.Boolean,
@@ -3967,66 +3884,48 @@ sealed class EventSource {
     /**
      * It was not.
      *
-     * No reason, and the app does not work one out either. The server knows
-     * whether a code was wrong, too late or guessed at too often — it writes
-     * all three to its own log — and answers alike for every one of them, so
-     * that nobody can ask it whether an address has a code standing against
-     * it. A screen saying "that one expired" would give back exactly what
-     * answering alike was protecting.
+     * No reason: wrong, too late and guessed at too often answer alike, so
+     * nobody can ask whether an address has a code standing against it.
      */
     object CodeRejected : EventSource()
 
     /**
      * Plaid came back with at least one bank attached.
      *
-     * No name, because at that moment nobody has one: it is in neither the
-     * Link session nor the token exchange, and the server first learns it
-     * from the balances call inside the sync that follows. It arrives a
-     * second or two later on
-     * [`SyncStatusLoaded`](EventSource::SyncStatusLoaded), and the screen
-     * says "Your bank" until it does.
-     *
-     * No count either, though the server sends one: attaching two banks at
-     * once and attaching one lead to the same screen, and a number the flow
-     * does not read is a number that can be wrong without anything noticing.
+     * No name, because nobody has one yet — it arrives on
+     * [`SyncStatusLoaded`](EventSource::SyncStatusLoaded). No count either:
+     * one bank and two lead to the same screen.
      */
     object BankLinked : EventSource()
 
     /**
      * The bank sign-in ended with nothing — dismissed, failed, timed out.
-     * The common ending, not a rare one.
      */
     object BankAbandoned : EventSource()
 
     /**
-     * The server has not been told what the sign-in came to.
-     *
-     * The third answer, and it exists because the two events that end a Link
-     * session — the browser coming back, and Plaid telling the server —
-     * race, and only the server sees both. It waited, and Plaid was still
-     * late. So the bank may yet be attached: this leads to the sync screen,
-     * which polls and will see it arrive, rather than to the one that says
-     * nothing was connected.
+     * The server has not been told what the sign-in came to, because the
+     * browser coming back and Plaid telling the server race. The bank may
+     * yet be attached.
      */
     object BankPending : EventSource()
 
     /**
-     * How far the first sync has got.
-     *
-     * JSON for the same reason [`SnapshotLoaded`](EventSource::SnapshotLoaded)
-     * is: the machine parses it, so all three platforms get the same parse and
-     * there is one place that decides what a missing field means. It is
-     * `server_wire::WireSyncStatus` on the way out of the server.
-     *
-     * One event rather than a progressed/finished pair, because the server
-     * answers one question with one document — whether anything is still
-     * running is a field in it, not a different reply.
+     * How far the first sync has got, as `server_wire::WireSyncStatus` in
+     * JSON, for the reason [`SnapshotLoaded`](EventSource::SnapshotLoaded) is.
      */
     data class SyncStatusLoaded(
         val `json`: kotlin.String,
     ) : EventSource() {
         companion object
     }
+
+    /**
+     * The stream carrying those went away — backgrounded, out of signal, or
+     * refused. A fact and not a verdict: whether to open another one is the
+     * machine's, and it decides that from where the flow is.
+     */
+    object SyncWatchEnded : EventSource()
 
     companion object
 }
@@ -4083,6 +3982,10 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
                 EventSource.SyncStatusLoaded(
                     FfiConverterString.read(buf),
                 )
+            }
+
+            11 -> {
+                EventSource.SyncWatchEnded
             }
 
             else -> {
@@ -4165,6 +4068,13 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
                         FfiConverterString.allocationSize(value.`json`)
                 )
             }
+
+            is EventSource.SyncWatchEnded -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
         }
 
     override fun write(
@@ -4225,6 +4135,11 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
                 FfiConverterString.write(value.`json`, buf)
                 Unit
             }
+
+            is EventSource.SyncWatchEnded -> {
+                buf.putInt(11)
+                Unit
+            }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 }
@@ -4250,10 +4165,7 @@ sealed class EventUi {
     object RefreshRequested : EventUi()
 
     /**
-     * The eye on a covered figure.
-     *
-     * One switch for the whole app: revealing on Balances and staying covered
-     * on Recurring would be a strange thing to have to explain.
+     * The eye on a covered figure. One switch for the whole app.
      */
     object MaskToggled : EventUi()
 
@@ -4291,7 +4203,7 @@ sealed class EventUi {
 
     /**
      * A day in the recurring calendar. Tapping the day already selected
-     * clears it, so the card below can be put away the way it was opened.
+     * clears it.
      */
     data class CalendarDaySelected(
         val `id`: kotlin.String,
@@ -4320,16 +4232,13 @@ sealed class EventUi {
 
     /**
      * The Welcome screen's one button. There is no Sign up and no Sign in:
-     * an address that exists signs in and one that does not signs up, so
-     * there is nothing to choose and no way to choose wrong.
+     * an address that exists signs in and one that does not signs up.
      */
     object EmailChosen : EventUi()
 
     /**
-     * The address field, as it now reads.
-     *
-     * The whole value rather than one keystroke, so a paste, a backspace and
-     * a tap are the same event and the machine holds what the field holds.
+     * The address field, as a whole value rather than one keystroke, so a
+     * paste, a backspace and a tap are the same event.
      */
     data class EmailTyped(
         val `text`: kotlin.String,
@@ -4343,13 +4252,8 @@ sealed class EventUi {
     object EmailSubmitted : EventUi()
 
     /**
-     * The code field, as it now reads.
-     *
-     * Typing alone never submits. It used to: the sixth digit went straight
-     * to the server, on the reasoning that there is nothing to check before
-     * it. What that missed is the typo — a wrong sixth digit spent the guess
-     * before the user had seen what they had typed, and left six digits on
-     * screen that could only be edited backwards.
+     * The code field, as it reads. Typing alone never submits: auto-sending
+     * on the sixth digit spends a guess on a typo the user has not seen yet.
      */
     data class CodeTyped(
         val `digits`: kotlin.String,
@@ -4358,8 +4262,7 @@ sealed class EventUi {
     }
 
     /**
-     * Continue, under the six boxes. Only drawn once all six are in, since
-     * there is nothing to submit before that.
+     * Continue, under the six boxes. Only drawn once all six are in.
      */
     object CodeSubmitted : EventUi()
 
@@ -4374,10 +4277,8 @@ sealed class EventUi {
     object BackPressed : EventUi()
 
     /**
-     * Connect a bank, Try again, and Add another bank.
-     *
-     * One event rather than three, because it is one thing: whichever screen
-     * the tap came from, the next thing that happens is Plaid opening.
+     * Connect a bank, Try again, and Add another bank — one event, because
+     * whichever screen the tap came from, Plaid opens next.
      */
     object BankConnectRequested : EventUi()
 
@@ -4387,12 +4288,8 @@ sealed class EventUi {
     object OnboardingFinished : EventUi()
 
     /**
-     * Sign out, on the Account tab.
-     *
-     * Everything the app holds belongs to the account being signed out of, so
-     * this is the one event that puts the machine back to where a fresh
-     * install starts. There is no confirmation: nothing is destroyed, and
-     * signing in again is the same six digits it was the first time.
+     * Sign out, on the Account tab. Everything the app holds belongs to the
+     * account, so this puts the machine back to where a fresh install starts.
      */
     object SignOutRequested : EventUi()
 
@@ -4829,9 +4726,8 @@ public object FfiConverterTypeFilterGroup : FfiConverterRustBuffer<FilterGroup> 
 /**
  * A time range the user asked for.
  *
- * The parameters ride along with the choice rather than being separate
- * events, so "last 3 months" is one event and not three. A replay of the log
- * then shows the range the user actually picked, not a reconstruction of it.
+ * The parameters ride along with the choice, so "last 3 months" is one event
+ * and not three, and a replay shows the range the user picked.
  */
 sealed class RangeSelection {
     /**
@@ -4857,9 +4753,8 @@ sealed class RangeSelection {
      * Between two days, as seconds since the epoch.
      *
      * A bare `u64` rather than a [`Timestamp`], because this crosses FFI and
-     * `custom_newtype!` cannot be applied to a type from another crate. The
-     * conversion happens in [`RangeSelection::window_bounds`], so nothing
-     * downstream handles a raw integer.
+     * `custom_newtype!` cannot be applied to a type from another crate;
+     * [`RangeSelection::window_bounds`] converts.
      */
     data class Between(
         val `start`: kotlin.ULong,
@@ -5011,10 +4906,7 @@ public object FfiConverterTypeRangeUnit : FfiConverterRustBuffer<RangeUnit> {
 }
 
 /**
- * Which screen the app is on.
- *
- * The dock's four tabs. Search is deliberately absent — the sketch draws the
- * button but never the screen, so there is nothing to be faithful to yet.
+ * Which screen the app is on — the dock's four tabs.
  */
 
 enum class Screen {
@@ -5053,16 +4945,12 @@ public object FfiConverterTypeScreen : FfiConverterRustBuffer<Screen> {
  *
  * An enum rather than one record of optional fields, for the same reason
  * [`ViewScreen`](crate::ViewScreen) is one: the view draws the arm it is
- * handed and holds no "which step am I on" of its own. The repeated `step`,
- * `title` and `body` are the price of that, and a cheap one — a variant
- * carries exactly what its screen has and no arm has to check whether a field
- * applies to it.
+ * handed and holds no "which step am I on" of its own.
  */
 sealed class ViewOnboarding {
     /**
-     * One door, not two. An address that exists signs in and one that does
-     * not signs up, so there is nothing to choose here and no way to choose
-     * wrong.
+     * One door, not two: an address that exists signs in, one that does not
+     * signs up.
      */
     data class Welcome(
         val `title`: kotlin.String,
@@ -5085,8 +4973,7 @@ sealed class ViewOnboarding {
         val `body`: List<uniffi.phone_state.ViewRun>,
         val `field`: uniffi.phone_state.ViewField,
         /**
-         * `"Continue"`. Under the field rather than on the bottom edge: the
-         * keyboard covers the bottom third the moment this opens.
+         * `"Continue"`.
          */
         val `action`: kotlin.String,
     ) : ViewOnboarding() {
@@ -5107,11 +4994,8 @@ sealed class ViewOnboarding {
          */
         val `fault`: kotlin.String?,
         /**
-         * `Some("Continue")` once the code is complete, `None` before that.
-         *
-         * Absent rather than present-and-dim: there is nothing to submit yet,
-         * and a button that cannot be pressed still invites a press. It takes
-         * the place the resend was in, which is why the resend sits below it.
+         * `Some("Continue")` once the code is complete — absent rather than
+         * present-and-dim, because a dim button still invites a press.
          */
         val `action`: kotlin.String?,
         val `resend`: uniffi.phone_state.ViewResend,
@@ -5120,9 +5004,8 @@ sealed class ViewOnboarding {
     }
 
     /**
-     * What connecting a bank means, said plainly, and the button that does
-     * it. No skip: every screen in the app is a view of transactions, so an
-     * app that let someone past this would open on three empty tabs.
+     * What connecting a bank means, and the button that does it. No skip:
+     * every screen in the app is a view of transactions.
      */
     data class Bank(
         val `step`: kotlin.String,
@@ -5132,10 +5015,6 @@ sealed class ViewOnboarding {
         val `action`: kotlin.String,
         /**
          * Whether the button is waiting on Plaid's page to appear.
-         *
-         * A second or so passes between the tap and the sheet — the server
-         * creates a Link session and iOS raises a web view — and a button
-         * that looks untapped for a second is a button people tap twice.
          */
         val `opening`: kotlin.Boolean,
         val `legal`: kotlin.String,
@@ -5161,17 +5040,14 @@ sealed class ViewOnboarding {
     }
 
     /**
-     * Counts rather than a tick and a slogan: they are the first proof the
-     * thing works, and they set the expectation for the Ledger the next tap
-     * opens.
+     * The end of the flow: counts rather than a tick and a slogan.
      */
     data class Ready(
         val `title`: kotlin.String,
         val `body`: List<uniffi.phone_state.ViewRun>,
         val `tally`: List<uniffi.phone_state.ViewTally>,
         /**
-         * `"Add another bank"` — most people have more than one, and the
-         * second connection will never be likelier than it is right now.
+         * `"Add another bank"`.
          */
         val `another`: kotlin.String,
         /**
@@ -5183,9 +5059,8 @@ sealed class ViewOnboarding {
     }
 
     /**
-     * The common ending, not a rare one: people close the sheet to go and
-     * find a password. Nothing was created, and saying so plainly is the
-     * whole job.
+     * The sheet closed without a connection — the common ending, not a rare
+     * one. Nothing was created.
      */
     data class Failed(
         val `step`: kotlin.String,
@@ -5194,14 +5069,11 @@ sealed class ViewOnboarding {
         val `rows`: List<uniffi.phone_state.ViewIconRow>,
         val `action`: kotlin.String,
         /**
-         * The same wait as [`Bank`](ViewOnboarding::Bank)'s: Try again opens
-         * the very same page.
+         * The same wait as [`Bank`](ViewOnboarding::Bank)'s.
          */
         val `opening`: kotlin.Boolean,
         /**
-         * The way out, worded, when there is one — and there is one only
-         * once a bank has connected. Before that the screen has a single
-         * button because the flow has a single way on.
+         * The way out, worded — `Some` only once a bank has connected.
          */
         val `open`: kotlin.String?,
     ) : ViewOnboarding() {
@@ -5506,18 +5378,17 @@ public object FfiConverterTypeViewRangeKind : FfiConverterRustBuffer<ViewRangeKi
 /**
  * Whether a new code can be asked for yet.
  *
- * Two states rather than a countdown string that is sometimes empty: while it
- * is counting there is a line to read, and once it is not there is a button
- * to press. They are not the same control.
+ * Two states rather than a countdown string that is sometimes empty: a line
+ * to read and a button to press are not the same control.
  */
 sealed class ViewResend {
     /**
-     * `"Resend in 0:42"`, beside the way back to a mistyped address.
+     * `"Resend in 0:42"`.
      */
     data class Waiting(
         val `text`: kotlin.String,
         /**
-         * `"Wrong address?"` — a typo in the step before is otherwise a dead
+         * `"Wrong address?"` — without it a typo in the step before is a dead
          * end, because the code never arrives and nothing says why.
          */
         val `wrongAddress`: kotlin.String,
@@ -5608,13 +5479,13 @@ public object FfiConverterTypeViewResend : FfiConverterRustBuffer<ViewResend> {
 
 enum class ViewRowTone {
     /**
-     * A statement, not a step. The bank screen's four facts.
+     * A statement, not a step.
      */
     PLAIN,
     DONE,
 
     /**
-     * Happening now, and the only row that spins.
+     * Happening now.
      */
     RUNNING,
 
@@ -5650,14 +5521,9 @@ public object FfiConverterTypeViewRowTone : FfiConverterRustBuffer<ViewRowTone> 
 }
 
 /**
- * Everything on screen, in one value.
- *
- * One type rather than three optional ones: the view renders whichever arm it
- * is handed and holds no "which screen am I on" state of its own.
- *
- * [`Onboarding`](ViewScreen::Onboarding) is not one of [`Screen`]'s tabs and
- * never will be — first run is a road with an end, not a place in the app you
- * can navigate back to.
+ * Everything on screen, in one value, so the view holds no "which screen am
+ * I on" state of its own. [`Onboarding`](ViewScreen::Onboarding) is not one
+ * of [`Screen`]'s tabs — first run has an end.
  */
 sealed class ViewScreen {
     data class Ledger(

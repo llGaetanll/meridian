@@ -3,6 +3,7 @@
 use crate::ActionEmail;
 use crate::ActionProcess;
 use crate::ActionRouter;
+use crate::ActionSocket;
 use crate::ActionSource;
 use crate::ActionStore;
 use crate::RequestId;
@@ -18,6 +19,9 @@ pub enum Action {
     },
     ToSource {
         action: ActionSource,
+    },
+    ToSocket {
+        action: ActionSocket,
     },
     ToStore {
         action: ActionStore,

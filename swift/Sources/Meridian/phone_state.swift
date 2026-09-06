@@ -602,8 +602,7 @@ fileprivate struct FfiConverterString: FfiConverter {
 /**
  * The state machine, as the platforms see it.
  *
- * Swift and Kotlin get a handle to one of these and send it events. The
- * `Mutex` is what makes it `Send + Sync`, which UniFFI requires of an
+ * The `Mutex` is what makes it `Send + Sync`, which UniFFI requires of an
  * exported object; the machine itself has no opinion about threads.
  */
 public protocol CoreProtocol: AnyObject, Sendable {
@@ -611,14 +610,8 @@ public protocol CoreProtocol: AnyObject, Sendable {
     /**
      * Hand in what happened, get back what to do about it.
      *
-     * No clock: the machine has none of its own and is not given one here
-     * either. The runtime reads the platform's clock and sends it in as an
-     * [`EventRuntime::Tick`] like anything else it observed.
-     *
      * The owning counterpart to [`StateApp::handle_events`]: a `&mut Vec` does
-     * not cross FFI, so the buffer is allocated here instead of reused. The
-     * borrowing version stays for replay and tests, where the allocation is
-     * worth avoiding.
+     * not cross FFI, so the buffer is allocated here instead of reused.
      */
     func handleEvents(events: [Event])  -> [Action]
     
@@ -626,8 +619,7 @@ public protocol CoreProtocol: AnyObject, Sendable {
 /**
  * The state machine, as the platforms see it.
  *
- * Swift and Kotlin get a handle to one of these and send it events. The
- * `Mutex` is what makes it `Send + Sync`, which UniFFI requires of an
+ * The `Mutex` is what makes it `Send + Sync`, which UniFFI requires of an
  * exported object; the machine itself has no opinion about threads.
  */
 open class Core: CoreProtocol, @unchecked Sendable {
@@ -694,14 +686,8 @@ public convenience init() {
     /**
      * Hand in what happened, get back what to do about it.
      *
-     * No clock: the machine has none of its own and is not given one here
-     * either. The runtime reads the platform's clock and sends it in as an
-     * [`EventRuntime::Tick`] like anything else it observed.
-     *
      * The owning counterpart to [`StateApp::handle_events`]: a `&mut Vec` does
-     * not cross FFI, so the buffer is allocated here instead of reused. The
-     * borrowing version stays for replay and tests, where the allocation is
-     * worth avoiding.
+     * not cross FFI, so the buffer is allocated here instead of reused.
      */
 open func handleEvents(events: [Event]) -> [Action]  {
     return try!  FfiConverterSequenceTypeAction.lift(try! rustCall() {
@@ -774,8 +760,7 @@ public struct ViewAccount: Equatable, Hashable {
      */
     public var banks: [ViewAccountBank]
     /**
-     * What the list says when there are none — which is three different
-     * nothings, and they need different words.
+     * What the list says when there are none.
      */
     public var banksEmpty: String?
     /**
@@ -787,8 +772,7 @@ public struct ViewAccount: Equatable, Hashable {
      */
     public var signOutLabel: String
     /**
-     * `"Meridian 0.1.0"`. Nobody reads it until something is wrong, and then
-     * it is the first thing we ask them for.
+     * `"Meridian 0.1.0"`.
      */
     public var build: String
 
@@ -802,8 +786,7 @@ public struct ViewAccount: Equatable, Hashable {
          * The same connections the Balances screen draws, one row each.
          */banks: [ViewAccountBank], 
         /**
-         * What the list says when there are none — which is three different
-         * nothings, and they need different words.
+         * What the list says when there are none.
          */banksEmpty: String?, 
         /**
          * `"Session"`.
@@ -812,8 +795,7 @@ public struct ViewAccount: Equatable, Hashable {
          * `"Sign out"`.
          */signOutLabel: String, 
         /**
-         * `"Meridian 0.1.0"`. Nobody reads it until something is wrong, and then
-         * it is the first thing we ask them for.
+         * `"Meridian 0.1.0"`.
          */build: String) {
         self.banksLabel = banksLabel
         self.banks = banks
@@ -875,11 +857,10 @@ public func FfiConverterTypeViewAccount_lower(_ value: ViewAccount) -> RustBuffe
 
 
 /**
- * One bank, as this screen lists it.
+ * One bank, as this screen lists it: a name and whether it is still working.
  *
- * Not [`ViewConnection`](crate::ViewConnection): that one carries the account
- * rows and their balances, which is the Balances screen's business. Here a
- * bank is a name and whether it is still working.
+ * Not [`ViewConnection`](crate::ViewConnection), which also carries the
+ * account rows and their balances.
  */
 public struct ViewAccountBank: Equatable, Hashable {
     public var id: String
@@ -890,9 +871,7 @@ public struct ViewAccountBank: Equatable, Hashable {
      */
     public var detail: String
     /**
-     * Whether the bank has stopped syncing and wants a fresh sign-in. The one
-     * thing in the app that stops the numbers being true, so the row says so
-     * rather than hiding it.
+     * Whether the bank has stopped syncing and wants a fresh sign-in.
      */
     public var needsReconnect: Bool
 
@@ -903,9 +882,7 @@ public struct ViewAccountBank: Equatable, Hashable {
          * `"8 accounts · synced 2m ago"`, or what is wrong with it.
          */detail: String, 
         /**
-         * Whether the bank has stopped syncing and wants a fresh sign-in. The one
-         * thing in the app that stops the numbers being true, so the row says so
-         * rather than hiding it.
+         * Whether the bank has stopped syncing and wants a fresh sign-in.
          */needsReconnect: Bool) {
         self.id = id
         self.name = name
@@ -1059,10 +1036,8 @@ public func FfiConverterTypeViewAccountRow_lower(_ value: ViewAccountRow) -> Rus
 
 public struct ViewBalances: Equatable, Hashable {
     /**
-     * `"3 connections · 14 accounts"`.
-     * `"Held"`. The headline is what you hold, not net worth: Plaid reports
-     * the mortgage but never the house behind it, so a net figure is
-     * structurally too red.
+     * `"Held"`. What you hold, not net worth: Plaid reports the mortgage but
+     * never the house behind it, so a net figure is structurally too red.
      */
     public var headlineLabel: String
     /**
@@ -1070,13 +1045,12 @@ public struct ViewBalances: Equatable, Hashable {
      */
     public var headline: String
     /**
-     * Whether the figures are covered. The view draws a bar over them; the
-     * value itself was already replaced, so nothing is hidden in the DOM.
+     * Whether the figures are covered. They are already replaced in the text
+     * above, so nothing is merely hidden in the DOM.
      */
     public var masked: Bool
     /**
-     * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks, and
-     * the only place on the page money still takes a colour.
+     * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks.
      */
     public var owedLabel: String
     public var owedTotal: String
@@ -1086,21 +1060,18 @@ public struct ViewBalances: Equatable, Hashable {
     // declare one manually.
     public init(
         /**
-         * `"3 connections · 14 accounts"`.
-         * `"Held"`. The headline is what you hold, not net worth: Plaid reports
-         * the mortgage but never the house behind it, so a net figure is
-         * structurally too red.
+         * `"Held"`. What you hold, not net worth: Plaid reports the mortgage but
+         * never the house behind it, so a net figure is structurally too red.
          */headlineLabel: String, 
         /**
          * `"$86,541.74"`, or the same figure covered.
          */headline: String, 
         /**
-         * Whether the figures are covered. The view draws a bar over them; the
-         * value itself was already replaced, so nothing is hidden in the DOM.
+         * Whether the figures are covered. They are already replaced in the text
+         * above, so nothing is merely hidden in the DOM.
          */masked: Bool, 
         /**
-         * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks, and
-         * the only place on the page money still takes a colour.
+         * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks.
          */owedLabel: String, owedTotal: String, connections: [ViewConnection]) {
         self.headlineLabel = headlineLabel
         self.headline = headline
@@ -1168,10 +1139,8 @@ public struct ViewBreakdownSlice: Equatable, Hashable {
     public var label: String
     public var token: String
     /**
-     * The segment's share of the bar, 0..1.
-     *
-     * A ratio rather than a percentage string, because this one is geometry —
-     * the exception `docs/FFI.md` carves out for the chart.
+     * The segment's share of the bar, 0..1 — a ratio rather than a string
+     * because it is geometry, the exception `docs/FFI.md` carves out.
      */
     public var share: Double
     /**
@@ -1183,10 +1152,8 @@ public struct ViewBreakdownSlice: Equatable, Hashable {
     // declare one manually.
     public init(label: String, token: String, 
         /**
-         * The segment's share of the bar, 0..1.
-         *
-         * A ratio rather than a percentage string, because this one is geometry —
-         * the exception `docs/FFI.md` carves out for the chart.
+         * The segment's share of the bar, 0..1 — a ratio rather than a string
+         * because it is geometry, the exception `docs/FFI.md` carves out.
          */share: Double, 
         /**
          * `"$2,078.50"`.
@@ -1248,19 +1215,13 @@ public func FfiConverterTypeViewBreakdownSlice_lower(_ value: ViewBreakdownSlice
  * Three months side by side: the one you are looking at, and the one either
  * side of it.
  *
- * The calendar runs sideways, because months do, and turning it is a scroll
- * rather than a redraw — so the months either side have to be here in full.
- * Only a column of each shows at the edge, but that column is the real month's
- * first or last, and a swipe brings the rest of it over.
- *
- * Drawn as a whole month each rather than as the one visible column, because a
- * column that has to become a month when the finger moves is two drawings of
- * the same thing that can disagree.
+ * Turning the calendar is a scroll rather than a redraw, so the neighbouring
+ * months are here in full rather than as the one visible column.
  */
 public struct ViewCalendar: Equatable, Hashable {
     /**
      * `["M", "T", "W", "T", "F", "S", "S"]` — the column headings, starting
-     * on Monday. One set: all three months are laid out the same way.
+     * on Monday. One set for all three months.
      */
     public var weekdays: [String]
     public var prev: ViewCalendarMonth
@@ -1272,7 +1233,7 @@ public struct ViewCalendar: Equatable, Hashable {
     public init(
         /**
          * `["M", "T", "W", "T", "F", "S", "S"]` — the column headings, starting
-         * on Monday. One set: all three months are laid out the same way.
+         * on Monday. One set for all three months.
          */weekdays: [String], prev: ViewCalendarMonth, current: ViewCalendarMonth, next: ViewCalendarMonth) {
         self.weekdays = weekdays
         self.prev = prev
@@ -1329,8 +1290,8 @@ public func FfiConverterTypeViewCalendar_lower(_ value: ViewCalendar) -> RustBuf
 
 public struct ViewCalendarDay: Equatable, Hashable {
     /**
-     * What a tap on this day sends back — the day itself, not where it sits
-     * in the grid, so the same day in two months' grids is one day.
+     * What a tap sends back: the day itself, not where it sits in the grid,
+     * so the same day in two months' grids is one day.
      */
     public var id: String
     /**
@@ -1343,17 +1304,12 @@ public struct ViewCalendarDay: Equatable, Hashable {
     public var outside: Bool
     public var today: Bool
     /**
-     * The day the user tapped, filled in grey. Grey and not outlined: an
-     * outline reads as a different kind of control sitting in the grid.
+     * The day the user tapped, filled in grey.
      */
     public var picked: Bool
     /**
-     * One per stream landing that day, as category tokens — the same tokens
-     * the breakdown above colours its segments with.
-     *
-     * Only dates the source actually predicts. Nothing here is projected
-     * forward from a stream's frequency, so a month shows as many marks as
-     * there are streams and no more.
+     * One per stream landing that day, as category tokens. Only dates the
+     * source predicts — nothing is projected forward from a frequency.
      */
     public var marks: [String]
 
@@ -1361,8 +1317,8 @@ public struct ViewCalendarDay: Equatable, Hashable {
     // declare one manually.
     public init(
         /**
-         * What a tap on this day sends back — the day itself, not where it sits
-         * in the grid, so the same day in two months' grids is one day.
+         * What a tap sends back: the day itself, not where it sits in the grid,
+         * so the same day in two months' grids is one day.
          */id: String, 
         /**
          * `"12"`.
@@ -1371,16 +1327,11 @@ public struct ViewCalendarDay: Equatable, Hashable {
          * A day belonging to the month either side. Drawn, and dimmed.
          */outside: Bool, today: Bool, 
         /**
-         * The day the user tapped, filled in grey. Grey and not outlined: an
-         * outline reads as a different kind of control sitting in the grid.
+         * The day the user tapped, filled in grey.
          */picked: Bool, 
         /**
-         * One per stream landing that day, as category tokens — the same tokens
-         * the breakdown above colours its segments with.
-         *
-         * Only dates the source actually predicts. Nothing here is projected
-         * forward from a stream's frequency, so a month shows as many marks as
-         * there are streams and no more.
+         * One per stream landing that day, as category tokens. Only dates the
+         * source predicts — nothing is projected forward from a frequency.
          */marks: [String]) {
         self.id = id
         self.label = label
@@ -1442,19 +1393,13 @@ public func FfiConverterTypeViewCalendarDay_lower(_ value: ViewCalendarDay) -> R
 
 
 /**
- * One month's grid.
- *
- * As many rows as the month has weeks in it — five for July, six for August —
- * rather than six always. A row that is entirely next month is a row of
- * nothing, and the grid changing height as the months turn is the price.
+ * One month's grid, with as many rows as the month has weeks in it — five
+ * for July, six for August — so the grid changes height as the months turn.
  */
 public struct ViewCalendarMonth: Equatable, Hashable {
     /**
-     * `"August 2026"`.
-     *
-     * The year on all three and not just the middle one: the label travels
-     * from the edge to the centre as the month turns, and a label that gains a
-     * year on the way is a label that changes rather than moves.
+     * `"August 2026"`. The year on all three months, because the label
+     * travels from the edge to the centre as the month turns.
      */
     public var label: String
     public var weeks: [[ViewCalendarDay]]
@@ -1463,11 +1408,8 @@ public struct ViewCalendarMonth: Equatable, Hashable {
     // declare one manually.
     public init(
         /**
-         * `"August 2026"`.
-         *
-         * The year on all three and not just the middle one: the label travels
-         * from the edge to the centre as the month turns, and a label that gains a
-         * year on the way is a label that changes rather than moves.
+         * `"August 2026"`. The year on all three months, because the label
+         * travels from the edge to the centre as the month turns.
          */label: String, weeks: [[ViewCalendarDay]]) {
         self.label = label
         self.weeks = weeks
@@ -1538,7 +1480,7 @@ public struct ViewCategoryChip: Equatable, Hashable {
     public var count: String
     public var selected: Bool
     /**
-     * Nothing matches. The chip stays visible but reads as unavailable.
+     * Nothing matches. The chip stays visible, reading as unavailable.
      */
     public var empty: Bool
 
@@ -1558,7 +1500,7 @@ public struct ViewCategoryChip: Equatable, Hashable {
          * How many transactions match, as text.
          */count: String, selected: Bool, 
         /**
-         * Nothing matches. The chip stays visible but reads as unavailable.
+         * Nothing matches. The chip stays visible, reading as unavailable.
          */empty: Bool) {
         self.id = id
         self.label = label
@@ -1707,8 +1649,7 @@ public struct ViewConnection: Equatable, Hashable {
      */
     public var synced: String
     /**
-     * Whether the user has to sign in again. Carries the action rather than
-     * just naming the problem.
+     * Whether the user has to sign in again.
      */
     public var needsReconnect: Bool
     /**
@@ -1732,8 +1673,7 @@ public struct ViewConnection: Equatable, Hashable {
          * `"synced 2m"`, or empty when the connection needs attention.
          */synced: String, 
         /**
-         * Whether the user has to sign in again. Carries the action rather than
-         * just naming the problem.
+         * Whether the user has to sign in again.
          */needsReconnect: Bool, 
         /**
          * Whether these balances are owed rather than held.
@@ -1957,10 +1897,6 @@ public func FfiConverterTypeViewDayRow_lower(_ value: ViewDayRow) -> RustBuffer 
 
 /**
  * A day's worth of rows, under its heading.
- *
- * Grouping is done in the machine rather than in the view because three view
- * layers would otherwise each write the same date-bucketing loop, and the one
- * that got it subtly wrong would be the one nobody looked at.
  */
 public struct ViewDaySection: Equatable, Hashable {
     /**
@@ -1968,8 +1904,7 @@ public struct ViewDaySection: Equatable, Hashable {
      */
     public var heading: String
     /**
-     * `"−$30.40"`, the day's net. It sits on the heading's own line, so the
-     * two halves of the line say the same thing about the same day.
+     * `"−$30.40"`, the day's net.
      */
     public var total: String
     public var rows: [ViewTxRow]
@@ -1981,8 +1916,7 @@ public struct ViewDaySection: Equatable, Hashable {
          * `"Wed, Aug 12"`.
          */heading: String, 
         /**
-         * `"−$30.40"`, the day's net. It sits on the heading's own line, so the
-         * two halves of the line say the same thing about the same day.
+         * `"−$30.40"`, the day's net.
          */total: String, rows: [ViewTxRow]) {
         self.heading = heading
         self.total = total
@@ -2161,14 +2095,12 @@ public struct ViewField: Equatable, Hashable {
      */
     public var icon: String
     /**
-     * What is in it. Empty means the placeholder shows instead.
+     * What is in it. Empty draws the placeholder.
      */
     public var value: String
     public var placeholder: String
     /**
-     * What the server, or the machine, made of the value. `Some` is what
-     * draws the field wrong — never an empty field, which has not done
-     * anything yet.
+     * What the server, or the machine, made of the value.
      */
     public var fault: String?
 
@@ -2179,12 +2111,10 @@ public struct ViewField: Equatable, Hashable {
          * An icon name the view resolves in its own set.
          */icon: String, 
         /**
-         * What is in it. Empty means the placeholder shows instead.
+         * What is in it. Empty draws the placeholder.
          */value: String, placeholder: String, 
         /**
-         * What the server, or the machine, made of the value. `Some` is what
-         * draws the field wrong — never an empty field, which has not done
-         * anything yet.
+         * What the server, or the machine, made of the value.
          */fault: String?) {
         self.icon = icon
         self.value = value
@@ -2247,8 +2177,7 @@ public struct ViewFilter: Equatable, Hashable {
      */
     public var categories: [ViewCategoryChip]
     /**
-     * What a shut category group says instead of its chips: the first few
-     * selected, then `"+2"`.
+     * What a shut category group shows instead of its chips.
      */
     public var categoriesSummary: [ViewCategoryChip]
     public var categoriesOverflow: String?
@@ -2265,8 +2194,7 @@ public struct ViewFilter: Equatable, Hashable {
          * All sixteen, each with its live count.
          */categories: [ViewCategoryChip], 
         /**
-         * What a shut category group says instead of its chips: the first few
-         * selected, then `"+2"`.
+         * What a shut category group shows instead of its chips.
          */categoriesSummary: [ViewCategoryChip], categoriesOverflow: String?, range: ViewRange, 
         /**
          * `"Last 3 months"` — what a shut range group shows.
@@ -2334,10 +2262,8 @@ public func FfiConverterTypeViewFilter_lower(_ value: ViewFilter) -> RustBuffer 
 
 
 /**
- * An icon, a line, a line under it, and something on the right.
- *
- * Every list in this flow is this one row: what connecting a bank means, what
- * the first sync has fetched, what is still true after a failure.
+ * An icon, a line, a line under it, and something on the right — the one row
+ * every list in this flow is made of.
  */
 public struct ViewIconRow: Equatable, Hashable {
     /**
@@ -2348,8 +2274,7 @@ public struct ViewIconRow: Equatable, Hashable {
     public var title: String
     public var sub: String?
     /**
-     * `"8"`, `"48 so far"`, `"waiting"` — what the row has to say about
-     * itself, on the right.
+     * `"8"`, `"48 so far"`, `"waiting"`.
      */
     public var value: String?
 
@@ -2360,8 +2285,7 @@ public struct ViewIconRow: Equatable, Hashable {
          * An icon name the view resolves in its own set.
          */icon: String, tone: ViewRowTone, title: String, sub: String?, 
         /**
-         * `"8"`, `"48 so far"`, `"waiting"` — what the row has to say about
-         * itself, on the right.
+         * `"8"`, `"48 so far"`, `"waiting"`.
          */value: String?) {
         self.icon = icon
         self.tone = tone
@@ -2421,7 +2345,7 @@ public func FfiConverterTypeViewIconRow_lower(_ value: ViewIconRow) -> RustBuffe
 
 public struct ViewLedger: Equatable, Hashable {
     /**
-     * `"3 connections · synced 2m ago"`.
+     * The transactions, grouped by month and then by day.
      */
     public var months: [ViewMonthSection]
     /**
@@ -2438,7 +2362,7 @@ public struct ViewLedger: Equatable, Hashable {
     // declare one manually.
     public init(
         /**
-         * `"3 connections · synced 2m ago"`.
+         * The transactions, grouped by month and then by day.
          */months: [ViewMonthSection], 
         /**
          * The filter panel, whose state travels with the screen it filters.
@@ -2687,22 +2611,19 @@ public struct ViewRecurring: Equatable, Hashable {
      */
     public var headline: String
     /**
-     * `"+$4.22 in · net −$3,767.18"`.
-     *
-     * The phone draws `flow_in` and `flow_out` instead; this is the one line
-     * the web still sets under its headline.
+     * `"+$4.22 in · net −$3,767.18"` — the two directions and the net on one
+     * line, which is what the web sets under its headline.
      */
     public var detail: String
     /**
-     * `"$4.22"` and `"$3,771.40"` — the two directions, unsigned. The words
-     * beside them say which way the money goes, so the figures do not carry a
-     * sign as well.
+     * `"$4.22"` and `"$3,771.40"` — the two directions, unsigned, for where a
+     * word beside the figure says which way the money goes.
      */
     public var flowIn: String
     public var flowOut: String
     /**
      * `"+$4.22"` and `"−$3,771.40"` — the same two with the sign back on, for
-     * where there is no room for the words. A diff, read as one.
+     * where there is no room for the words.
      */
     public var flowInSigned: String
     public var flowOutSigned: String
@@ -2713,12 +2634,11 @@ public struct ViewRecurring: Equatable, Hashable {
     public var breakdownLabel: String
     public var breakdownTotal: String
     /**
-     * The breakdown bar and its legend are two views of one split, so they
-     * come from one list.
+     * The split behind both the bar and its legend.
      */
     public var breakdown: [ViewBreakdownSlice]
     /**
-     * When it all lands, under the breakdown.
+     * When it all lands.
      */
     public var calendar: ViewCalendar
     /**
@@ -2742,29 +2662,25 @@ public struct ViewRecurring: Equatable, Hashable {
          * `"−$3,767.18"`, the net of everything that comes back.
          */headline: String, 
         /**
-         * `"+$4.22 in · net −$3,767.18"`.
-         *
-         * The phone draws `flow_in` and `flow_out` instead; this is the one line
-         * the web still sets under its headline.
+         * `"+$4.22 in · net −$3,767.18"` — the two directions and the net on one
+         * line, which is what the web sets under its headline.
          */detail: String, 
         /**
-         * `"$4.22"` and `"$3,771.40"` — the two directions, unsigned. The words
-         * beside them say which way the money goes, so the figures do not carry a
-         * sign as well.
+         * `"$4.22"` and `"$3,771.40"` — the two directions, unsigned, for where a
+         * word beside the figure says which way the money goes.
          */flowIn: String, flowOut: String, 
         /**
          * `"+$4.22"` and `"−$3,771.40"` — the same two with the sign back on, for
-         * where there is no room for the words. A diff, read as one.
+         * where there is no room for the words.
          */flowInSigned: String, flowOutSigned: String, masked: Bool, 
         /**
          * `"Where it goes"` and `"−$3,771.40"` — the heading over the split.
          */breakdownLabel: String, breakdownTotal: String, 
         /**
-         * The breakdown bar and its legend are two views of one split, so they
-         * come from one list.
+         * The split behind both the bar and its legend.
          */breakdown: [ViewBreakdownSlice], 
         /**
-         * When it all lands, under the breakdown.
+         * When it all lands.
          */calendar: ViewCalendar, 
         /**
          * What landed on the day that was tapped. `None` until one is.
@@ -2864,11 +2780,8 @@ public func FfiConverterTypeViewRecurring_lower(_ value: ViewRecurring) -> RustB
 /**
  * A stretch of body copy, and whether it is set strong.
  *
- * The sketch's `<b>`: the address on the code screen, Plaid's name on the
- * bank screen. A list of runs rather than one string with markup in it,
- * because the alternative is every platform learning to parse the same
- * markup — and the alternative to *that* is losing the emphasis the sentence
- * was written around.
+ * A list of runs rather than one string with markup in it, so no platform
+ * has to learn to parse the same markup to keep the emphasis.
  */
 public struct ViewRun: Equatable, Hashable {
     public var text: String
@@ -2935,8 +2848,7 @@ public struct ViewStreamGroup: Equatable, Hashable {
      */
     public var total: String
     /**
-     * `"1 stream"` / `"2 streams"`, which is what the group's heading says
-     * now that the figures below it are the ones worth reading.
+     * `"1 stream"` / `"2 streams"`.
      */
     public var countLabel: String
     public var streams: [ViewStreamRow]
@@ -2951,8 +2863,7 @@ public struct ViewStreamGroup: Equatable, Hashable {
          * `"$2,078.50"`.
          */total: String, 
         /**
-         * `"1 stream"` / `"2 streams"`, which is what the group's heading says
-         * now that the figures below it are the ones worth reading.
+         * `"1 stream"` / `"2 streams"`.
          */countLabel: String, streams: [ViewStreamRow]) {
         self.name = name
         self.token = token
@@ -3019,12 +2930,11 @@ public struct ViewStreamRow: Equatable, Hashable {
      */
     public var when: String
     /**
-     * `"Monthly · next Aug 22"` — the whole line under the name, which is
-     * the frequency and the date read as one phrase rather than two.
+     * `"Monthly · next Aug 22"` — the frequency and the date as one phrase.
      */
     public var sub: String
     /**
-     * Due within the week, so it reads as a heads-up rather than an alarm.
+     * Due within the week.
      */
     public var soon: Bool
     /**
@@ -3043,11 +2953,10 @@ public struct ViewStreamRow: Equatable, Hashable {
          * `"next Aug 22 · in 3 days"`.
          */when: String, 
         /**
-         * `"Monthly · next Aug 22"` — the whole line under the name, which is
-         * the frequency and the date read as one phrase rather than two.
+         * `"Monthly · next Aug 22"` — the frequency and the date as one phrase.
          */sub: String, 
         /**
-         * Due within the week, so it reads as a heads-up rather than an alarm.
+         * Due within the week.
          */soon: Bool, 
         /**
          * `"−$2,078.50"`.
@@ -3203,8 +3112,8 @@ public struct ViewTxRow: Equatable, Hashable {
      */
     public var category: String
     /**
-     * A palette token for the category, e.g. `"c-food"`. The view maps this
-     * to its own colour; it never works one out from the category name.
+     * A palette token for the category, e.g. `"c-food"`, which the view maps
+     * to its own colour.
      */
     public var categoryToken: String
     /**
@@ -3212,17 +3121,16 @@ public struct ViewTxRow: Equatable, Hashable {
      */
     public var amount: String
     /**
-     * Whether the amount should read as money arriving. The view uses this
-     * for colour; it does not parse the sign back out of `amount`.
+     * Whether the amount reads as money arriving, so that nothing has to
+     * parse the sign back out of `amount`.
      */
     public var isInflow: Bool
     /**
-     * A merchant logo, where one exists. The slot is reserved either way, so
-     * every row's text starts on the same line.
+     * A merchant logo, where one exists. The slot is reserved either way.
      */
     public var logoUrl: String?
     /**
-     * Authorised but not settled. The whole row recedes.
+     * Authorised but not settled.
      */
     public var pending: Bool
 
@@ -3239,22 +3147,21 @@ public struct ViewTxRow: Equatable, Hashable {
          * What the row calls its category, e.g. `"Food & drink"`.
          */category: String, 
         /**
-         * A palette token for the category, e.g. `"c-food"`. The view maps this
-         * to its own colour; it never works one out from the category name.
+         * A palette token for the category, e.g. `"c-food"`, which the view maps
+         * to its own colour.
          */categoryToken: String, 
         /**
          * The amount, ready to print: `"−$5.40"`, `"+$500.00"`.
          */amount: String, 
         /**
-         * Whether the amount should read as money arriving. The view uses this
-         * for colour; it does not parse the sign back out of `amount`.
+         * Whether the amount reads as money arriving, so that nothing has to
+         * parse the sign back out of `amount`.
          */isInflow: Bool, 
         /**
-         * A merchant logo, where one exists. The slot is reserved either way, so
-         * every row's text starts on the same line.
+         * A merchant logo, where one exists. The slot is reserved either way.
          */logoUrl: String?, 
         /**
-         * Authorised but not settled. The whole row recedes.
+         * Authorised but not settled.
          */pending: Bool) {
         self.id = id
         self.title = title
@@ -3322,11 +3229,11 @@ public func FfiConverterTypeViewTxRow_lower(_ value: ViewTxRow) -> RustBuffer {
 
 
 /**
- * `ToUi` is far larger than `ToSource`, which clippy notices. It is
- * deliberate: the whole screen crosses in one action so that the view holds
- * no state to apply a diff against (see [`ActionUi::Render`]). Boxing would
- * not help — UniFFI copies the payload across the boundary either way, so the
- * indirection would cost an allocation and buy nothing.
+ * What the machine asks for, and of whom.
+ *
+ * `ToUi` is far larger than `ToSource` because the whole screen crosses in
+ * one action (see [`ActionUi::Render`]). Boxing would not help — UniFFI
+ * copies the payload across the boundary either way.
  */
 
 public enum Action: Equatable, Hashable {
@@ -3404,38 +3311,23 @@ public func FfiConverterTypeAction_lower(_ value: Action) -> RustBuffer {
 public enum ActionSource: Equatable, Hashable {
     
     /**
-     * Go and get everything.
-     *
-     * It carries nothing. Pull-to-refresh used to send `?refresh=true`, which
-     * skipped the server's freshness window and went straight to Plaid — a
-     * gesture anybody can repeat, spending an account-wide budget. When to
-     * ask a bank again is the server's decision, so this asks for the ledger
-     * and the server decides where the ledger comes from.
+     * Go and get everything. No freshness hint: when to ask a bank again is
+     * the server's decision, since a hint the app can repeat at will spends
+     * an account-wide Plaid budget.
      */
     case loadSnapshot
     /**
-     * Read who the device says is signed in. The first thing the app asks
-     * for, because the answer decides whether it opens on the Ledger or on
-     * the first screen of first run.
+     * Read who the device says is signed in.
      */
     case loadSession
     /**
      * Commit the session the runtime is holding, so that the next launch
-     * opens on the Ledger.
-     *
-     * No payload: the credential to write is the one `VerifyCode` came back
-     * with, and the runtime has held it since. This is the machine saying
-     * *now* — first run is through, and what was good enough to live in
-     * memory is worth keeping.
+     * opens on the Ledger. No payload: the credential is the one `VerifyCode`
+     * came back with, and the runtime has held it since.
      */
     case saveSession
     /**
      * Throw the session away, so that the next launch opens on first run.
-     *
-     * The counterpart to [`SaveSession`](ActionSource::SaveSession), and the
-     * only way out of a session the server no longer honours — a token good
-     * for ninety days that the server has stopped accepting answers 401 to
-     * everything, and there is nothing the app can do about it but forget it.
      */
     case forgetSession
     /**
@@ -3443,35 +3335,32 @@ public enum ActionSource: Equatable, Hashable {
      */
     case sendCode(email: String
     )
+    /**
+     * Check a six-digit code against the address it was sent to.
+     */
     case verifyCode(email: String, code: String
     )
     /**
      * Ask the server for a `link_token` and open the `hosted_link_url` that
-     * comes back, which is Plaid's own page over the web.
-     *
-     * The app never holds a token of either kind: the server creates the link
-     * token and the server exchanges the public token, because the secret
-     * that signs both cannot ship inside an app (`docs/PLAID.md`).
+     * comes back. The app never holds a token of either kind: the secret that
+     * signs both cannot ship inside an app (`docs/PLAID.md`).
      */
     case startBankLink
     /**
-     * Ask how far the first sync has got.
+     * Open a stream the server writes the sync's progress to, and report
+     * what arrives on it.
      *
-     * One question, not a subscription: the runtime makes one request and
-     * sends one event back. Asking *again* is the machine's to decide, and it
-     * does so on the tick — so every poll is an action in the log and a
-     * replay makes the same number of them in the same places. A loop in the
-     * runtime would be a decision no log records.
-     *
-     * The work is the server's — it holds the `access_token` and runs the
-     * three calls — so this only ever reads. Backgrounding the app while it
-     * runs is safe for the same reason.
-     *
-     * It is a poll because the server can only answer questions it is asked.
-     * Issue #30 is the push channel this wants; when it lands, this action
-     * and the tick rule that repeats it are the whole of what goes away.
+     * The runtime holds the connection and chooses how to read it; when to
+     * have one at all, and when to try again after losing one, are decisions
+     * and stay here — so a replay reproduces every attempt.
      */
-    case pollSync
+    case watchSync
+    /**
+     * Let that stream go. Its own action rather than something the runtime
+     * infers from a screen it cannot see: a connection nobody closes is a
+     * connection the server holds a slot for.
+     */
+    case stopWatchingSync
 
 
 
@@ -3509,7 +3398,9 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
         
         case 7: return .startBankLink
         
-        case 8: return .pollSync
+        case 8: return .watchSync
+        
+        case 9: return .stopWatchingSync
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3550,8 +3441,12 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(7))
         
         
-        case .pollSync:
+        case .watchSync:
             writeInt(&buf, Int32(8))
+        
+        
+        case .stopWatchingSync:
+            writeInt(&buf, Int32(9))
         
         }
     }
@@ -3575,8 +3470,8 @@ public func FfiConverterTypeActionSource_lower(_ value: ActionSource) -> RustBuf
 
 
 /**
- * These carry finished values, not instructions to go and compute one. A
- * platform that receives `Render` draws exactly what it is given.
+ * Something for the view to do. These carry finished values, not
+ * instructions to go and compute one.
  */
 
 public enum ActionUi: Equatable, Hashable {
@@ -3584,14 +3479,10 @@ public enum ActionUi: Equatable, Hashable {
     /**
      * Draw this screen. The whole screen, in the state it should be in.
      *
-     * One action rather than a set of fine-grained ones — no `ShowTxs`,
-     * `SelectTab`, `OpenFilter`. A view that applies a diff has to hold the
-     * state the diff applies to, and holding state above the boundary is the
-     * thing this design exists to prevent. Sending the whole screen means the
-     * view can be a pure function of the last action it saw.
-     * The dock is absent on a screen that is not one of its tabs — every
-     * screen of first run. `None` rather than an empty dock: a dock with no
-     * items would still be a strip of ground at the bottom of the phone.
+     * One action rather than a set of fine-grained ones: a view that applies
+     * a diff has to hold the state the diff applies to. The dock is `None` on
+     * a screen that is not one of its tabs, rather than an empty dock, which
+     * would still be a strip of ground at the bottom of the phone.
      */
     case render(screen: ViewScreen, dock: ViewDock?
     )
@@ -3669,14 +3560,9 @@ public func FfiConverterTypeActionUi_lower(_ value: ActionUi) -> RustBuffer {
 /**
  * Where an event came from.
  *
- * Grouping by origin is what keeps a match on `Event` readable as the app
- * grows, and makes a recorded log read as a story rather than a flat list.
- *
- * Note what this enum does *not* carry: a timestamp. Time arrives as its own
- * event, [`EventRuntime::Tick`](crate::EventRuntime), rather than stapled to
- * every other one — so no event has to invent a clock reading it does not
- * have, and a log of events is a recording of the session rather than a list
- * of things that happened at whatever time the replay runs at.
+ * No timestamp: time arrives as its own event,
+ * [`EventRuntime::Tick`](crate::EventRuntime), so a log of events is a
+ * recording of the session rather than of whenever the replay runs.
  */
 
 public enum Event: Equatable, Hashable {
@@ -3769,8 +3655,7 @@ public enum EventRuntime: Equatable, Hashable {
      *
      * A bare `u64` rather than a [`Timestamp`](api_common::Timestamp),
      * because this crosses FFI and `custom_newtype!` cannot be applied to a
-     * type from another crate — the same reason
-     * [`RangeSelection::Between`](crate::RangeSelection) carries integers.
+     * type from another crate.
      */
     case tick(now: UInt64
     )
@@ -3832,9 +3717,7 @@ public func FfiConverterTypeEventRuntime_lower(_ value: EventRuntime) -> RustBuf
 
 
 /**
- * Note that neither variant carries a clock reading. The runtime hands the
- * time to `handle_events` once per batch; a source's job is to say what came
- * back, not when it happened to arrive.
+ * What a source came back with. No variant carries a clock reading.
  */
 
 public enum EventSource: Equatable, Hashable {
@@ -3842,10 +3725,8 @@ public enum EventSource: Equatable, Hashable {
     /**
      * A snapshot arrived. Everything the app knows, in one value.
      *
-     * The payload is JSON rather than a structured record because the
-     * alternative is redeclaring every wire type as a UniFFI record and
-     * keeping the two in step by hand. The machine parses it, which keeps the
-     * parse in one place for all three platforms.
+     * JSON rather than a structured record, which would mean redeclaring
+     * every wire type as a UniFFI record and keeping the two in step by hand.
      */
     case snapshotLoaded(json: String
     )
@@ -3855,13 +3736,8 @@ public enum EventSource: Equatable, Hashable {
     case loadFailed(message: String
     )
     /**
-     * Whether the device has a session to act on.
-     *
-     * A bool rather than the address, because that is the whole of what the
-     * machine does with it: a session decides which screen the app opens on
-     * and nothing else. The credential itself is the runtime's — it never
-     * crosses this boundary, so a recorded log carries no way into anybody's
-     * bank. `docs/ARCHITECTURE.md` has the rule this follows from.
+     * Whether the device has a session to act on. A bool rather than the
+     * credential, which stays the runtime's and never crosses this boundary.
      */
     case sessionLoaded(signedIn: Bool
     )
@@ -3876,59 +3752,40 @@ public enum EventSource: Equatable, Hashable {
     /**
      * It was not.
      *
-     * No reason, and the app does not work one out either. The server knows
-     * whether a code was wrong, too late or guessed at too often — it writes
-     * all three to its own log — and answers alike for every one of them, so
-     * that nobody can ask it whether an address has a code standing against
-     * it. A screen saying "that one expired" would give back exactly what
-     * answering alike was protecting.
+     * No reason: wrong, too late and guessed at too often answer alike, so
+     * nobody can ask whether an address has a code standing against it.
      */
     case codeRejected
     /**
      * Plaid came back with at least one bank attached.
      *
-     * No name, because at that moment nobody has one: it is in neither the
-     * Link session nor the token exchange, and the server first learns it
-     * from the balances call inside the sync that follows. It arrives a
-     * second or two later on
-     * [`SyncStatusLoaded`](EventSource::SyncStatusLoaded), and the screen
-     * says "Your bank" until it does.
-     *
-     * No count either, though the server sends one: attaching two banks at
-     * once and attaching one lead to the same screen, and a number the flow
-     * does not read is a number that can be wrong without anything noticing.
+     * No name, because nobody has one yet — it arrives on
+     * [`SyncStatusLoaded`](EventSource::SyncStatusLoaded). No count either:
+     * one bank and two lead to the same screen.
      */
     case bankLinked
     /**
      * The bank sign-in ended with nothing — dismissed, failed, timed out.
-     * The common ending, not a rare one.
      */
     case bankAbandoned
     /**
-     * The server has not been told what the sign-in came to.
-     *
-     * The third answer, and it exists because the two events that end a Link
-     * session — the browser coming back, and Plaid telling the server —
-     * race, and only the server sees both. It waited, and Plaid was still
-     * late. So the bank may yet be attached: this leads to the sync screen,
-     * which polls and will see it arrive, rather than to the one that says
-     * nothing was connected.
+     * The server has not been told what the sign-in came to, because the
+     * browser coming back and Plaid telling the server race. The bank may
+     * yet be attached.
      */
     case bankPending
     /**
-     * How far the first sync has got.
-     *
-     * JSON for the same reason [`SnapshotLoaded`](EventSource::SnapshotLoaded)
-     * is: the machine parses it, so all three platforms get the same parse and
-     * there is one place that decides what a missing field means. It is
-     * `server_wire::WireSyncStatus` on the way out of the server.
-     *
-     * One event rather than a progressed/finished pair, because the server
-     * answers one question with one document — whether anything is still
-     * running is a field in it, not a different reply.
+     * How far the first sync has got, as `server_wire::WireSyncStatus` in
+     * JSON, for the reason [`SnapshotLoaded`](EventSource::SnapshotLoaded) is.
      */
     case syncStatusLoaded(json: String
     )
+    /**
+     * The stream carrying those went away — backgrounded, out of signal, or
+     * refused. A fact and not a verdict: whether to open another one is the
+     * machine's, and it decides that from where the flow is.
+     */
+    case syncWatchEnded
 
 
 
@@ -3973,6 +3830,8 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
         
         case 10: return .syncStatusLoaded(json: try FfiConverterString.read(from: &buf)
         )
+        
+        case 11: return .syncWatchEnded
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4025,6 +3884,10 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(10))
             FfiConverterString.write(json, into: &buf)
             
+        
+        case .syncWatchEnded:
+            writeInt(&buf, Int32(11))
+        
         }
     }
 }
@@ -4063,10 +3926,7 @@ public enum EventUi: Equatable, Hashable {
      */
     case refreshRequested
     /**
-     * The eye on a covered figure.
-     *
-     * One switch for the whole app: revealing on Balances and staying covered
-     * on Recurring would be a strange thing to have to explain.
+     * The eye on a covered figure. One switch for the whole app.
      */
     case maskToggled
     /**
@@ -4090,7 +3950,7 @@ public enum EventUi: Equatable, Hashable {
     )
     /**
      * A day in the recurring calendar. Tapping the day already selected
-     * clears it, so the card below can be put away the way it was opened.
+     * clears it.
      */
     case calendarDaySelected(id: String
     )
@@ -4107,15 +3967,12 @@ public enum EventUi: Equatable, Hashable {
     )
     /**
      * The Welcome screen's one button. There is no Sign up and no Sign in:
-     * an address that exists signs in and one that does not signs up, so
-     * there is nothing to choose and no way to choose wrong.
+     * an address that exists signs in and one that does not signs up.
      */
     case emailChosen
     /**
-     * The address field, as it now reads.
-     *
-     * The whole value rather than one keystroke, so a paste, a backspace and
-     * a tap are the same event and the machine holds what the field holds.
+     * The address field, as a whole value rather than one keystroke, so a
+     * paste, a backspace and a tap are the same event.
      */
     case emailTyped(text: String
     )
@@ -4124,19 +3981,13 @@ public enum EventUi: Equatable, Hashable {
      */
     case emailSubmitted
     /**
-     * The code field, as it now reads.
-     *
-     * Typing alone never submits. It used to: the sixth digit went straight
-     * to the server, on the reasoning that there is nothing to check before
-     * it. What that missed is the typo — a wrong sixth digit spent the guess
-     * before the user had seen what they had typed, and left six digits on
-     * screen that could only be edited backwards.
+     * The code field, as it reads. Typing alone never submits: auto-sending
+     * on the sixth digit spends a guess on a typo the user has not seen yet.
      */
     case codeTyped(digits: String
     )
     /**
-     * Continue, under the six boxes. Only drawn once all six are in, since
-     * there is nothing to submit before that.
+     * Continue, under the six boxes. Only drawn once all six are in.
      */
     case codeSubmitted
     /**
@@ -4148,10 +3999,8 @@ public enum EventUi: Equatable, Hashable {
      */
     case backPressed
     /**
-     * Connect a bank, Try again, and Add another bank.
-     *
-     * One event rather than three, because it is one thing: whichever screen
-     * the tap came from, the next thing that happens is Plaid opening.
+     * Connect a bank, Try again, and Add another bank — one event, because
+     * whichever screen the tap came from, Plaid opens next.
      */
     case bankConnectRequested
     /**
@@ -4159,12 +4008,8 @@ public enum EventUi: Equatable, Hashable {
      */
     case onboardingFinished
     /**
-     * Sign out, on the Account tab.
-     *
-     * Everything the app holds belongs to the account being signed out of, so
-     * this is the one event that puts the machine back to where a fresh
-     * install starts. There is no confirmation: nothing is destroyed, and
-     * signing in again is the same six digits it was the first time.
+     * Sign out, on the Account tab. Everything the app holds belongs to the
+     * account, so this puts the machine back to where a fresh install starts.
      */
     case signOutRequested
 
@@ -4432,9 +4277,8 @@ public func FfiConverterTypeFilterGroup_lower(_ value: FilterGroup) -> RustBuffe
 /**
  * A time range the user asked for.
  *
- * The parameters ride along with the choice rather than being separate
- * events, so "last 3 months" is one event and not three. A replay of the log
- * then shows the range the user actually picked, not a reconstruction of it.
+ * The parameters ride along with the choice, so "last 3 months" is one event
+ * and not three, and a replay shows the range the user picked.
  */
 
 public enum RangeSelection: Equatable, Hashable {
@@ -4453,9 +4297,8 @@ public enum RangeSelection: Equatable, Hashable {
      * Between two days, as seconds since the epoch.
      *
      * A bare `u64` rather than a [`Timestamp`], because this crosses FFI and
-     * `custom_newtype!` cannot be applied to a type from another crate. The
-     * conversion happens in [`RangeSelection::window_bounds`], so nothing
-     * downstream handles a raw integer.
+     * `custom_newtype!` cannot be applied to a type from another crate;
+     * [`RangeSelection::window_bounds`] converts.
      */
     case between(start: UInt64, end: UInt64
     )
@@ -4618,10 +4461,7 @@ public func FfiConverterTypeRangeUnit_lower(_ value: RangeUnit) -> RustBuffer {
 
 
 /**
- * Which screen the app is on.
- *
- * The dock's four tabs. Search is deliberately absent — the sketch draws the
- * button but never the screen, so there is nothing to be faithful to yet.
+ * Which screen the app is on — the dock's four tabs.
  */
 
 public enum Screen: Equatable, Hashable {
@@ -4708,18 +4548,14 @@ public func FfiConverterTypeScreen_lower(_ value: Screen) -> RustBuffer {
  *
  * An enum rather than one record of optional fields, for the same reason
  * [`ViewScreen`](crate::ViewScreen) is one: the view draws the arm it is
- * handed and holds no "which step am I on" of its own. The repeated `step`,
- * `title` and `body` are the price of that, and a cheap one — a variant
- * carries exactly what its screen has and no arm has to check whether a field
- * applies to it.
+ * handed and holds no "which step am I on" of its own.
  */
 
 public enum ViewOnboarding: Equatable, Hashable {
     
     /**
-     * One door, not two. An address that exists signs in and one that does
-     * not signs up, so there is nothing to choose here and no way to choose
-     * wrong.
+     * One door, not two: an address that exists signs in, one that does not
+     * signs up.
      */
     case welcome(title: String, body: [ViewRun], 
         /**
@@ -4731,8 +4567,7 @@ public enum ViewOnboarding: Equatable, Hashable {
      */
     case email(step: String, title: String, body: [ViewRun], field: ViewField, 
         /**
-         * `"Continue"`. Under the field rather than on the bottom edge: the
-         * keyboard covers the bottom third the moment this opens.
+         * `"Continue"`.
          */action: String
     )
     /**
@@ -4744,25 +4579,17 @@ public enum ViewOnboarding: Equatable, Hashable {
          * fail, because the server answers with one.
          */fault: String?, 
         /**
-         * `Some("Continue")` once the code is complete, `None` before that.
-         *
-         * Absent rather than present-and-dim: there is nothing to submit yet,
-         * and a button that cannot be pressed still invites a press. It takes
-         * the place the resend was in, which is why the resend sits below it.
+         * `Some("Continue")` once the code is complete — absent rather than
+         * present-and-dim, because a dim button still invites a press.
          */action: String?, resend: ViewResend
     )
     /**
-     * What connecting a bank means, said plainly, and the button that does
-     * it. No skip: every screen in the app is a view of transactions, so an
-     * app that let someone past this would open on three empty tabs.
+     * What connecting a bank means, and the button that does it. No skip:
+     * every screen in the app is a view of transactions.
      */
     case bank(step: String, title: String, body: [ViewRun], rows: [ViewIconRow], action: String, 
         /**
          * Whether the button is waiting on Plaid's page to appear.
-         *
-         * A second or so passes between the tap and the sheet — the server
-         * creates a Link session and iOS raises a web view — and a button
-         * that looks untapped for a second is a button people tap twice.
          */opening: Bool, legal: String
     )
     /**
@@ -4775,33 +4602,26 @@ public enum ViewOnboarding: Equatable, Hashable {
          */progress: Double, rows: [ViewIconRow]
     )
     /**
-     * Counts rather than a tick and a slogan: they are the first proof the
-     * thing works, and they set the expectation for the Ledger the next tap
-     * opens.
+     * The end of the flow: counts rather than a tick and a slogan.
      */
     case ready(title: String, body: [ViewRun], tally: [ViewTally], 
         /**
-         * `"Add another bank"` — most people have more than one, and the
-         * second connection will never be likelier than it is right now.
+         * `"Add another bank"`.
          */another: String, 
         /**
          * `"Open Meridian"`.
          */`open`: String
     )
     /**
-     * The common ending, not a rare one: people close the sheet to go and
-     * find a password. Nothing was created, and saying so plainly is the
-     * whole job.
+     * The sheet closed without a connection — the common ending, not a rare
+     * one. Nothing was created.
      */
     case failed(step: String, title: String, body: [ViewRun], rows: [ViewIconRow], action: String, 
         /**
-         * The same wait as [`Bank`](ViewOnboarding::Bank)'s: Try again opens
-         * the very same page.
+         * The same wait as [`Bank`](ViewOnboarding::Bank)'s.
          */opening: Bool, 
         /**
-         * The way out, worded, when there is one — and there is one only
-         * once a bank has connected. Before that the screen has a single
-         * button because the flow has a single way on.
+         * The way out, worded — `Some` only once a bank has connected.
          */`open`: String?
     )
 
@@ -5025,19 +4845,18 @@ public func FfiConverterTypeViewRangeKind_lower(_ value: ViewRangeKind) -> RustB
 /**
  * Whether a new code can be asked for yet.
  *
- * Two states rather than a countdown string that is sometimes empty: while it
- * is counting there is a line to read, and once it is not there is a button
- * to press. They are not the same control.
+ * Two states rather than a countdown string that is sometimes empty: a line
+ * to read and a button to press are not the same control.
  */
 
 public enum ViewResend: Equatable, Hashable {
     
     /**
-     * `"Resend in 0:42"`, beside the way back to a mistyped address.
+     * `"Resend in 0:42"`.
      */
     case waiting(text: String, 
         /**
-         * `"Wrong address?"` — a typo in the step before is otherwise a dead
+         * `"Wrong address?"` — without it a typo in the step before is a dead
          * end, because the code never arrives and nothing says why.
          */wrongAddress: String
     )
@@ -5119,12 +4938,12 @@ public func FfiConverterTypeViewResend_lower(_ value: ViewResend) -> RustBuffer 
 public enum ViewRowTone: Equatable, Hashable {
     
     /**
-     * A statement, not a step. The bank screen's four facts.
+     * A statement, not a step.
      */
     case plain
     case done
     /**
-     * Happening now, and the only row that spins.
+     * Happening now.
      */
     case running
     /**
@@ -5205,14 +5024,9 @@ public func FfiConverterTypeViewRowTone_lower(_ value: ViewRowTone) -> RustBuffe
 
 
 /**
- * Everything on screen, in one value.
- *
- * One type rather than three optional ones: the view renders whichever arm it
- * is handed and holds no "which screen am I on" state of its own.
- *
- * [`Onboarding`](ViewScreen::Onboarding) is not one of [`Screen`]'s tabs and
- * never will be — first run is a road with an end, not a place in the app you
- * can navigate back to.
+ * Everything on screen, in one value, so the view holds no "which screen am
+ * I on" state of its own. [`Onboarding`](ViewScreen::Onboarding) is not one
+ * of [`Screen`]'s tabs — first run has an end.
  */
 
 public enum ViewScreen: Equatable, Hashable {
@@ -5927,7 +5741,7 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_phone_state_checksum_method_core_handle_events() != 25690) {
+    if (uniffi_phone_state_checksum_method_core_handle_events() != 43271) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_phone_state_checksum_constructor_core_new() != 22848) {

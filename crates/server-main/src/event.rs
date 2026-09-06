@@ -4,6 +4,7 @@ use crate::CallId;
 use crate::Client;
 use crate::EventProcess;
 use crate::EventRouter;
+use crate::EventSocket;
 use crate::EventSource;
 use crate::EventStore;
 use crate::EventTerminal;
@@ -25,6 +26,9 @@ pub enum Event {
 
     /// A source answered, or failed to.
     FromSource { event: EventSource },
+
+    /// A stream the server writes to changed, without being asked anything.
+    FromSocket { event: EventSocket },
 
     /// The store answered, or failed to.
     FromStore { call_id: CallId, event: EventStore },

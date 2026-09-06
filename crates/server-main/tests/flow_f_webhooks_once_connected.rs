@@ -42,7 +42,7 @@ fn a_sync_webhook_fetches_however_fresh_the_bank_is() {
         < Event::FromSource { event: EventSource::WebhookKeyLoaded { call_id: 1, kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
         > Action::ToStore { action: ActionStore::LoadItem { call_id: 2, .. } },
 
-        < Event::FromStore { call_id: 2, event: EventStore::ItemLoaded { item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }) } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemLoaded { item: Some(ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }) } },
         > @r#"ToSource { action: FetchPlaid { call_id: 3, item_id: "item-1", cursor: Some("cursor-1") } }"#,
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
@@ -60,7 +60,7 @@ fn a_sync_webhook_does_not_retry_a_dead_login() {
         < Event::FromSource { event: EventSource::WebhookKeyLoaded { call_id: 1, kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
         > Action::ToStore { action: ActionStore::LoadItem { call_id: 2, .. } },
 
-        < Event::FromStore { call_id: 2, event: EventStore::ItemLoaded { item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: true }) } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemLoaded { item: Some(ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: true }) } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }

@@ -158,6 +158,7 @@ fn a_burst_of_refreshes_is_rate_limited() {
     let mut state = state();
 
     let stale = [ItemFacts {
+        user_id: uuid::Uuid::nil(),
         item_id: "item-1".to_string(),
         cursor: Some("cursor-1".to_string()),
         synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)),
@@ -177,7 +178,7 @@ fn a_burst_of_refreshes_is_rate_limited() {
 
         // Stale, and asked for anyway — and no `FetchPlaid` comes out. Served
         // what the store already holds instead.
-        < Event::FromStore { call_id: 32, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromStore { call_id: 32, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 33, .. } },
 
         < Event::FromStore { call_id: 33, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
@@ -192,6 +193,7 @@ fn the_rate_limit_is_per_bank() {
     let mut state = state();
 
     let stale = [ItemFacts {
+        user_id: uuid::Uuid::nil(),
         item_id: "item-1".to_string(),
         cursor: Some("cursor-1".to_string()),
         synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)),
@@ -209,7 +211,7 @@ fn the_rate_limit_is_per_bank() {
         < Event::FromStore { call_id: 31, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 32, .. } },
 
-        < Event::FromStore { call_id: 32, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromStore { call_id: 32, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-2".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
     );
 }

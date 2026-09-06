@@ -274,6 +274,11 @@ means adding, changing or removing its example here.
   socket is the proxy, so there it is the address Caddy reports instead — see
   [Who the client is](#who-the-client-is). No bodies; see
   [The requests clients make of us](#the-requests-clients-make-of-us).
+
+  `/sync/status` reads oddly here and is right: the pair is written when the
+  headers go out, so a stream that stays open for a whole sync shows `ms` in
+  single figures and `bytes=0`, and everything written to it afterwards
+  appears under no request line at all.
 - `DEBUG server_main::router_trace answered nothing id=7 client=192.168.1.24 ms=12`
   — nothing went back: the client hung up mid-request, which is what closing
   the app during a refresh looks like from here. `DEBUG` because it is
@@ -332,6 +337,11 @@ means adding, changing or removing its example here.
   429. `WARN` rather than `INFO`: one line is somebody double-tapping, and a
   page of them is worth looking at. The caller is told none of this beyond the
   status — see `ActionRouter::TooMany`.
+- `WARN server_main::state_server a caller is holding too many streams open user_id=e8b13a2b… open=10`
+  — the other limit on `/sync/status`, and the one about how many are open at
+  once rather than how fast they are asked for. Also a 429. A run of these is
+  a client that is not closing what it opens, since a stream going away frees
+  its slot in the turn it is reported.
 - `WARN server_main::state_server a sign-in code was rejected email=alex@example.com verdict=Wrong`
   — `Wrong`, `Expired` or `Exhausted`. Which one is logged and deliberately not
   told to the caller: only somebody working through guesses benefits from
@@ -349,8 +359,8 @@ means adding, changing or removing its example here.
   because the store was down would look exactly like a wrong code.
 - `ERROR server_main::state_server the store answered banks nobody asked about call_id=1`
 - `ERROR server_main::state_server the store answered sessions nobody asked about call_id=1`
-  — the same shape as the two below, for the reads `/snapshot`, `/sync/status`
-  and `/link/finish` ask for. All four cannot happen: a request is written down
+  — the same shape as the two below, for the reads `/snapshot` and
+  `/link/finish` ask for. All four cannot happen: a request is written down
   when its read goes out.
 - `ERROR server_main::state_server the store answered a session nobody asked about call_id=1`
   — a session read answering a call the machine has no request for, which
@@ -485,6 +495,12 @@ means adding, changing or removing its example here.
   went quiet on a request rather than an outcome.
 - `DEBUG server_main::router_exchange a route hung up before its answer arrived request_id=3`
   — an ordinary dropped connection.
+- `DEBUG server_main::runtime_router pushed to a stream that is not open conn_id=4`
+  — a sync moved and what was watching it had gone. Ordinary: the connection
+  and the event saying so cross, and the machine finds out one turn later.
+- `ERROR server_main::runtime_server the router is gone; a push was dropped conn_id=4`
+  — the same as the line above it for an answer, on the other half of the
+  channel. Only reachable while shutting down.
 - `ERROR server_main::source_pool a call to a source did not finish source=plaid error="task panicked"`
   — the call itself panicked, so whatever was waiting on its answer still is.
   This line is the only trace of why.

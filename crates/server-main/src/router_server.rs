@@ -5,6 +5,9 @@
 //! reach the store, the machine or the runtime, so a route cannot grow a rule
 //! that no `eval!` test can reach.
 
+use std::pin::Pin;
+use std::task::Context;
+use std::task::Poll;
 use std::time::Duration;
 
 use axum::Json;
@@ -16,9 +19,15 @@ use axum::http::Method;
 use axum::http::StatusCode;
 use axum::http::header::AUTHORIZATION;
 use axum::http::header::CONTENT_TYPE;
+use axum::response::Sse;
+use axum::response::sse::Event as SseEvent;
+use axum::response::sse::KeepAlive;
+use axum::response::sse::KeepAliveStream;
 use axum::routing::get;
 use axum::routing::post;
 use serde::Deserialize;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio_stream::Stream;
 use tower_http::cors::CorsLayer;
 
 use crate::ActionRouter;
@@ -29,13 +38,15 @@ use crate::WEBHOOK_PATH;
 use crate::WebOrigins;
 use crate::router_trace;
 use crate::runtime_router;
-use crate::runtime_router::RequestTx;
+use crate::runtime_router::Closing;
+use crate::runtime_router::ToLoop;
+use crate::runtime_router::Watched;
 use crate::session_token;
 use server_wire::WireSnapshot;
 use server_wire::WireSyncStatus;
 
 /// Every route, over one channel.
-pub(crate) fn router(requests: RequestTx, origins: &WebOrigins) -> Router {
+pub(crate) fn router(to_loop: ToLoop, origins: &WebOrigins) -> Router {
     Router::new()
         .route("/snapshot", get(snapshot))
         .route("/auth/request", post(auth_request))
@@ -48,7 +59,7 @@ pub(crate) fn router(requests: RequestTx, origins: &WebOrigins) -> Router {
         // above this and never logged.
         .layer(axum::middleware::from_fn(router_trace::trace))
         .layer(cors(origins))
-        .with_state(requests)
+        .with_state(to_loop)
 }
 
 /// What a browser may do here, and from where. The webhook route is untouched:
@@ -76,7 +87,7 @@ fn cors(origins: &WebOrigins) -> CorsLayer {
 /// gesture anybody can repeat the power to spend this account's Plaid budget;
 /// `should_fetch` is where that decision belongs.
 async fn snapshot(
-    State(requests): State<RequestTx>,
+    State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<WireSnapshot>, StatusCode> {
@@ -85,7 +96,7 @@ async fn snapshot(
     // The machine answers only once every fetch this request set going has
     // landed, so a snapshot cannot serve rows its own sync would replace.
     let answer = runtime_router::dispatch(
-        &requests,
+        &to_loop,
         Client::anonymous(ip),
         EventRouter::SnapshotRequested { token_sha256 },
     )
@@ -111,7 +122,7 @@ struct AuthRequestBody {
 /// Always answers 204, whether or not the address is one we know. The
 /// alternative tells anybody who asks which addresses have accounts here.
 async fn auth_request(
-    State(requests): State<RequestTx>,
+    State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     Json(body): Json<AuthRequestBody>,
 ) -> StatusCode {
@@ -120,7 +131,7 @@ async fn auth_request(
     // `Unavailable` is the machine refusing to mint a code it has no entropy
     // for; 204 there leaves somebody waiting for an email that is not coming.
     let answer = runtime_router::dispatch(
-        &requests,
+        &to_loop,
         Client::anonymous(ip),
         EventRouter::CodeRequested { email },
     )
@@ -156,12 +167,12 @@ struct AuthVerified {
 /// too many guesses, no code at all — because the difference is only useful to
 /// somebody working through guesses.
 async fn auth_verify(
-    State(requests): State<RequestTx>,
+    State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     Json(body): Json<AuthVerifyBody>,
 ) -> Result<Json<AuthVerified>, StatusCode> {
     let answer = runtime_router::dispatch(
-        &requests,
+        &to_loop,
         Client::anonymous(ip),
         EventRouter::CodeSubmitted {
             email: normalize(&body.email),
@@ -194,7 +205,7 @@ struct LinkStarted {
 /// Answers with Plaid's own hosted page. Nothing is created at Plaid's end by
 /// this, so it is safe to call again if somebody backs out.
 async fn link_start(
-    State(requests): State<RequestTx>,
+    State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<LinkStarted>, StatusCode> {
@@ -205,7 +216,7 @@ async fn link_start(
     // Anonymous, because who is asking is not known yet — the machine resolves
     // the session and buckets the request once it has.
     let answer = runtime_router::dispatch(
-        &requests,
+        &to_loop,
         Client::anonymous(ip),
         EventRouter::LinkRequested { token_sha256 },
     )
@@ -260,14 +271,14 @@ enum LinkFinished {
 /// fraction of a second before the answer exists — which is why the machine
 /// waits and why `Pending` exists.
 async fn link_finish(
-    State(requests): State<RequestTx>,
+    State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<LinkFinished>, StatusCode> {
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
     let answer = runtime_router::dispatch(
-        &requests,
+        &to_loop,
         Client::anonymous(ip),
         EventRouter::LinkClosed { token_sha256 },
     )
@@ -307,7 +318,7 @@ async fn link_finish(
 /// Plaid retries anything else. One status for every way of being wrong; the
 /// reason is logged and not returned.
 async fn plaid_webhook(
-    State(requests): State<RequestTx>,
+    State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
     body: Bytes,
@@ -320,7 +331,7 @@ async fn plaid_webhook(
     };
 
     match runtime_router::dispatch(
-        &requests,
+        &to_loop,
         // Plaid, from addresses we do not choose. The one route with no
         // bucket — `EventRouter::route` says why.
         Client::anonymous(ip),
@@ -344,34 +355,93 @@ async fn plaid_webhook(
     }
 }
 
-/// `GET /sync/status` — how far the caller's first sync has got.
+/// `GET /sync/status` — how the caller's sync is going, for as long as it goes.
 ///
-/// Its own route rather than a field on the snapshot, because `/snapshot`
-/// blocks until the fetch it triggered has landed and could only ever report a
-/// sync that was already over. This answers immediately, so it is pollable
-/// while one runs, and a user with nothing syncing gets `finished` and zeroes
-/// rather than a 404.
+/// A response that does not end: the machine writes to it whenever the sync it
+/// is watching moves, and the phone reads the body as it arrives. Its own route
+/// rather than a field on the snapshot, because `/snapshot` blocks until the
+/// fetch it triggered has landed and could only ever report a sync that was
+/// already over.
+///
+/// The first message rides on the answer that opens the stream, so a client
+/// that connects late — or reconnects, which is every time iOS backgrounds the
+/// app — is told where things stand rather than waiting for the next change. A
+/// caller with nothing running is told that, and left connected.
 async fn sync_status(
-    State(requests): State<RequestTx>,
+    State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
-) -> Result<Json<WireSyncStatus>, StatusCode> {
+) -> Result<Sse<KeepAliveStream<Statuses>>, StatusCode> {
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
-    let answer = runtime_router::dispatch(
-        &requests,
-        Client::anonymous(ip),
-        EventRouter::SyncStatusRequested { token_sha256 },
-    )
-    .await;
+    // Refused before a byte of the response has gone out. A stream that opens
+    // and then dies silently reads to a client as a sync with nothing to say,
+    // which is a far worse answer than 401.
+    let watched = runtime_router::watch(&to_loop, Client::anonymous(ip), token_sha256).await;
 
-    too_many(&answer)?;
+    let statuses = match watched {
+        Watched::Open {
+            status,
+            updates,
+            closing,
+        } => Statuses {
+            first: Some(status),
+            updates,
+            closing,
+        },
 
-    match answer {
-        Some(ActionRouter::SyncStatus { status }) => Ok(Json(status)),
-        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
-        _ => Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Watched::Refused(Some(ActionRouter::Unauthorized)) => {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
+
+        Watched::Refused(Some(ActionRouter::TooMany)) => {
+            return Err(StatusCode::TOO_MANY_REQUESTS);
+        }
+
+        Watched::Refused(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+    };
+
+    // Comments down an idle connection, so nothing between here and the phone
+    // reaps a sync that is simply taking a while.
+    Ok(Sse::new(statuses).keep_alive(KeepAlive::default()))
+}
+
+/// The body of a watch: where things stood when it opened, then every message
+/// after it.
+struct Statuses {
+    /// What the stream was accepted with, taken on the first poll.
+    first: Option<WireSyncStatus>,
+
+    updates: UnboundedReceiver<WireSyncStatus>,
+
+    /// Dropped with the response, which is what tells the loop this connection
+    /// has gone. Held rather than read.
+    #[allow(dead_code)]
+    closing: Closing,
+}
+
+impl Stream for Statuses {
+    type Item = Result<SseEvent, axum::Error>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        // Every field is `Unpin`, so there is nothing here to project.
+        let this = self.get_mut();
+
+        if let Some(status) = this.first.take() {
+            return Poll::Ready(Some(named(status)));
+        }
+
+        this.updates.poll_recv(cx).map(|status| status.map(named))
     }
+}
+
+/// One status as a message on the wire.
+///
+/// Named, though it is the only kind this stream carries: a client that
+/// dispatches on the name reads a second kind added later as one it does not
+/// handle, rather than as a sync status it cannot parse.
+fn named(status: WireSyncStatus) -> Result<SseEvent, axum::Error> {
+    SseEvent::default().event("sync").json_data(status)
 }
 
 /// The hash of the bearer token this request carries, if it carries one.
