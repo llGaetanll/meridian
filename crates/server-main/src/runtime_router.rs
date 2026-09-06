@@ -16,6 +16,7 @@ use tokio::sync::oneshot;
 
 use crate::ActionRouter;
 use crate::Client;
+use crate::Event;
 use crate::EventRouter;
 use crate::RequestId;
 use crate::WebOrigins;
@@ -34,9 +35,10 @@ const REQUESTS_WAITING: usize = 256;
 pub(crate) type ActionRx = UnboundedReceiver<(RequestId, ActionRouter)>;
 pub(crate) type ActionTx = UnboundedSender<(RequestId, ActionRouter)>;
 
-/// What the loop is told: one request, and who made it.
-pub(crate) type EventRx = UnboundedReceiver<(RequestId, Client, EventRouter)>;
-pub(crate) type EventTx = UnboundedSender<(RequestId, Client, EventRouter)>;
+/// What the loop is told. Every producer in the runtime sends on one of
+/// these: the source pools, a fetch reporting its stages, and this.
+pub(crate) type EventRx = UnboundedReceiver<Event>;
+pub(crate) type EventTx = UnboundedSender<Event>;
 
 /// What a handler holds, and the whole of what it can do.
 pub(crate) type RequestTx = mpsc::Sender<Request>;
@@ -137,12 +139,16 @@ impl RuntimeRouter {
     }
 
     /// Name one request and keep hold of where its answer goes.
-    fn park(&mut self, request: Request) -> (RequestId, Client, EventRouter) {
+    fn park(&mut self, request: Request) -> Event {
         self.next_request += 1;
 
         self.parked.insert(self.next_request, request.response_tx);
 
-        (self.next_request, request.client, request.event)
+        Event::FromRouter {
+            request_id: self.next_request,
+            client: request.client,
+            event: request.event,
+        }
     }
 
     /// Hand one answer to the handler parked on it.

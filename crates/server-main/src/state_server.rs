@@ -226,15 +226,10 @@ fn authenticated(event: &EventRouter) -> Option<Authenticated> {
 /// still.
 #[derive(Debug, Default, PartialEq, Eq)]
 enum State {
-    /// Nothing has happened yet: the process has not said it is up.
+    /// Serving. Whether a credential can be minted is not this: that is
+    /// whether there is a generator, and [`StateServer::rng`] holds it.
     #[default]
-    Unstarted,
-
-    /// Up, without entropy. Nothing needing a credential can be answered.
-    Starting,
-
-    /// Up and seeded. Everything the machine does is available.
-    Started,
+    Running,
 
     /// A signal has arrived. What is outstanding finishes; nothing new starts
     /// and nothing new is minted.
@@ -341,7 +336,9 @@ impl StateServer {
                 event,
             } => self.handle_event_router(*request_id, client, event, actions),
             Event::FromSource { event } => self.handle_event_source(event, actions),
-            Event::FromStore { event } => self.handle_event_store(event, actions),
+            Event::FromStore { call_id, event } => {
+                self.handle_event_store(*call_id, event, actions)
+            }
             Event::FromProcess { event } => self.handle_event_process(event, actions),
             Event::FromTerminal { event } => self.handle_event_terminal(event, actions),
         }
@@ -424,21 +421,12 @@ impl StateServer {
                     return;
                 }
 
-                // No entropy, no credentials: a predictable sign-in code is
-                // a way into somebody's bank.
-                if self.state != State::Started {
-                    tracing::error!(
-                        state = ?self.state,
-                        "asked for a sign-in code by a machine that is not started",
-                    );
+                let Some(rng) = self.minting() else {
+                    tracing::error!("asked for a sign-in code by a machine that mints none");
 
                     self.answer(request_id, ActionRouter::Unavailable, actions);
 
                     return;
-                }
-
-                let Some(rng) = self.rng.as_mut() else {
-                    unreachable!("a started machine has a generator")
                 };
 
                 let code = login_code::generate(rng);
@@ -684,19 +672,12 @@ impl StateServer {
             return;
         }
 
-        if self.state != State::Started {
-            tracing::error!(
-                state = ?self.state,
-                "a code was accepted by a machine that is not started",
-            );
+        let Some(rng) = self.minting() else {
+            tracing::error!("a code was accepted by a machine that mints none");
 
             self.answer(request_id, ActionRouter::Rejected, actions);
 
             return;
-        }
-
-        let Some(rng) = self.rng.as_mut() else {
-            unreachable!("a started machine has a generator")
         };
 
         let token = login_code::generate_token(rng);
@@ -1411,13 +1392,7 @@ impl StateServer {
         match event {
             // Nothing is pulled into memory at boot: the store is read per
             // request, which is what makes a second server process possible.
-            EventProcess::Started { collect } => {
-                self.collect = Some(*collect);
-
-                if self.state == State::Unstarted {
-                    self.state = State::Starting;
-                }
-            }
+            EventProcess::Started { collect } => self.collect = Some(*collect),
 
             EventProcess::Seeded { seed } => {
                 // A seed on the way out is dropped: taking it would put a
@@ -1427,12 +1402,6 @@ impl StateServer {
                 }
 
                 self.rng = Some(ChaCha20Rng::from_seed(*seed));
-
-                // Reseeding an already started machine changes only the
-                // generator.
-                if self.state == State::Starting {
-                    self.state = State::Started;
-                }
             }
 
             EventProcess::Tick { now } => {
@@ -1458,30 +1427,35 @@ impl StateServer {
         }
     }
 
-    fn handle_event_store(&mut self, event: &EventStore, actions: &mut Vec<Action>) {
+    fn handle_event_store(
+        &mut self,
+        call_id: CallId,
+        event: &EventStore,
+        actions: &mut Vec<Action>,
+    ) {
         match event {
-            EventStore::CodeLoaded { call_id, stored } => {
-                let Some(Pending::Submitted { email, code }) = self.pending.remove(call_id) else {
+            EventStore::CodeLoaded { stored } => {
+                let Some(Pending::Submitted { email, code }) = self.pending.remove(&call_id) else {
                     tracing::error!(call_id, "the store answered a sign-in nobody submitted");
 
                     return;
                 };
 
-                let Some(request_id) = self.answered(*call_id) else {
+                let Some(request_id) = self.answered(call_id) else {
                     return;
                 };
 
                 self.verify_code(request_id, &email, &code, stored.as_ref(), actions);
             }
 
-            EventStore::ItemLoaded { call_id, item } => {
-                let Some(Pending::WebhookItem { item_id }) = self.pending.remove(call_id) else {
+            EventStore::ItemLoaded { item } => {
+                let Some(Pending::WebhookItem { item_id }) = self.pending.remove(&call_id) else {
                     tracing::error!(call_id, "the store answered a bank nobody asked about");
 
                     return;
                 };
 
-                let Some(request_id) = self.answered(*call_id) else {
+                let Some(request_id) = self.answered(call_id) else {
                     return;
                 };
 
@@ -1495,14 +1469,15 @@ impl StateServer {
                 );
             }
 
-            EventStore::ItemsLoaded { call_id, items } => {
-                let Some(Pending::Loading { user_id, event }) = self.pending.remove(call_id) else {
+            EventStore::ItemsLoaded { items } => {
+                let Some(Pending::Loading { user_id, event }) = self.pending.remove(&call_id)
+                else {
                     tracing::error!(call_id, "the store answered banks nobody asked about");
 
                     return;
                 };
 
-                let Some(request_id) = self.answered(*call_id) else {
+                let Some(request_id) = self.answered(call_id) else {
                     return;
                 };
 
@@ -1519,25 +1494,22 @@ impl StateServer {
                 }
             }
 
-            EventStore::PendingLinksLoaded {
-                call_id,
-                link_tokens,
-            } => {
-                let Some(Pending::Loading { .. }) = self.pending.remove(call_id) else {
+            EventStore::PendingLinksLoaded { link_tokens } => {
+                let Some(Pending::Loading { .. }) = self.pending.remove(&call_id) else {
                     tracing::error!(call_id, "the store answered sessions nobody asked about");
 
                     return;
                 };
 
-                let Some(request_id) = self.answered(*call_id) else {
+                let Some(request_id) = self.answered(call_id) else {
                     return;
                 };
 
                 self.handle_link_closed(request_id, link_tokens, actions);
             }
 
-            EventStore::SnapshotLoaded { call_id, snapshot } => {
-                let Some(request_id) = self.answered(*call_id) else {
+            EventStore::SnapshotLoaded { snapshot } => {
+                let Some(request_id) = self.answered(call_id) else {
                     return;
                 };
 
@@ -1550,15 +1522,15 @@ impl StateServer {
                 );
             }
 
-            EventStore::SessionResolved { call_id, user_id } => {
-                let Some(Pending::Authenticating { ip, event }) = self.pending.remove(call_id)
+            EventStore::SessionResolved { user_id } => {
+                let Some(Pending::Authenticating { ip, event }) = self.pending.remove(&call_id)
                 else {
                     tracing::error!(call_id, "the store answered a session nobody asked about");
 
                     return;
                 };
 
-                let Some(request_id) = self.answered(*call_id) else {
+                let Some(request_id) = self.answered(call_id) else {
                     return;
                 };
 
@@ -1567,26 +1539,26 @@ impl StateServer {
 
             // There is no answer to fall back on: a sign-in refused because
             // the store was down is indistinguishable from a wrong code.
-            EventStore::ReadError { call_id, message } => {
+            EventStore::ReadError { message } => {
                 tracing::error!(message, "could not read the store");
 
-                self.pending.remove(call_id);
+                self.pending.remove(&call_id);
 
-                let Some(request_id) = self.answered(*call_id) else {
+                let Some(request_id) = self.answered(call_id) else {
                     return;
                 };
 
                 self.answer(request_id, ActionRouter::Unavailable, actions);
             }
 
-            EventStore::WriteSuccess { call_id } => self.landed(*call_id, actions),
+            EventStore::WriteSuccess => self.landed(call_id, actions),
 
             // Ends the wait: a route held for a failed write is held for
             // ever.
-            EventStore::WriteError { call_id, message } => {
+            EventStore::WriteError { message } => {
                 tracing::error!(message, "could not write the store");
 
-                self.landed(*call_id, actions);
+                self.landed(call_id, actions);
             }
         }
     }
@@ -1909,6 +1881,19 @@ impl StateServer {
     }
 
     /// Whether the machine is on its way out, drained or not.
+    /// The generator, when the machine may draw a credential from it.
+    ///
+    /// Two conditions in one place: entropy has arrived, and we are not on the
+    /// way out. A predictable sign-in code is a way into somebody's bank, and
+    /// one minted by a process that is about to exit is a code nobody can use.
+    fn minting(&mut self) -> Option<&mut ChaCha20Rng> {
+        if self.shutting_down() {
+            return None;
+        }
+
+        self.rng.as_mut()
+    }
+
     pub fn shutting_down(&self) -> bool {
         matches!(self.state, State::Stopping | State::Stopped)
     }

@@ -1,5 +1,6 @@
 //! What happened to the server.
 
+use crate::CallId;
 use crate::Client;
 use crate::EventProcess;
 use crate::EventRouter;
@@ -26,7 +27,7 @@ pub enum Event {
     FromSource { event: EventSource },
 
     /// The store answered, or failed to.
-    FromStore { event: EventStore },
+    FromStore { call_id: CallId, event: EventStore },
 
     /// The process did something to itself.
     FromProcess { event: EventProcess },

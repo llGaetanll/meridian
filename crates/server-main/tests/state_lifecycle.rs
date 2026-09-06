@@ -77,10 +77,10 @@ fn a_call_that_never_answers_is_given_up_on() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 3, .. } },
 
         // Plaid says nothing. Time passes and nothing else arrives.
@@ -89,7 +89,7 @@ fn a_call_that_never_answers_is_given_up_on() {
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
         > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 4, .. } },
 
-        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 4, snapshot: WireSnapshot::default() } },
+        < Event::FromStore { call_id: 4, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
@@ -105,7 +105,7 @@ fn a_route_with_nothing_decided_is_told_it_cannot_be_answered() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToSource { action: ActionSource::OpenLink { call_id: 2, .. } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
@@ -153,7 +153,7 @@ fn a_signal_with_a_call_out_waits_for_it() {
     assert!(!state.stopped(), "a write is still out");
 
     eval!(&mut state,
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
+        < Event::FromStore { call_id: 1, event: EventStore::WriteSuccess },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 
@@ -217,13 +217,13 @@ fn shutting_down_stops_new_work() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 3, .. } },
 
-        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 3, snapshot: WireSnapshot::default() } },
+        < Event::FromStore { call_id: 3, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 
