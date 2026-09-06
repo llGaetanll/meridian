@@ -84,7 +84,8 @@ and runs again unchanged for Try again and for Add another bank later on.
    a. `200 {"url"}`: *The page to open. A `link_sessions` row keyed by the `link_token` is written first, carrying the `user_id` that the bearer token resolved to, which is what stops one account collecting a bank another account connected.*
    b. `401 Unauthorized`: *No bearer token, or one the server no longer honours.*
    c. `429 Too Many Requests`: *Too many sessions opened from this caller.*
-   d. `502 Bad Gateway`: *Plaid refused, was unreachable, or answered a `link_token` with no hosted URL. All three become one abandoned session inside, and the route turns anything that is not a URL into this.*
+   d. `500 Internal Server Error`: *The session this caller holds could not be read. Not `502`: that points at Plaid, and this went wrong here.*
+   e. `502 Bad Gateway`: *Plaid refused, was unreachable, or answered a `link_token` with no hosted URL. All three become one abandoned session inside.*
 5. `sheet` -> `plaid` - `GET https://secure.plaid.com/hl/...`: *Plaid's own page, where the user picks a bank and signs into it. Nothing of ours is in this exchange.*
 6. `sheet` <- `plaid` - one of:
    a. `302 meridian://linked`: *Closes the sheet. It carries no token and is not proof a bank was connected, but it is the one signal that separates a finished flow from a dismissed one, which is what decides whether the phone asks the next question at all.*
@@ -171,7 +172,7 @@ says the three Plaid calls are through.
    b. `200 {...,"finished":true}`: *Nothing is running any more, and the totals are on this reply. The screen that says "You're set." reads them from here.*
    c. `401 Unauthorized`: *No bearer token, or one the server no longer honours.*
    d. `429 Too Many Requests`: *Polling harder than the limit allows.*
-   e. `500 Internal Server Error`: *The machine answered with something other than a status, which is a bug rather than an outcome.*
+   e. `500 Internal Server Error`: *This user's banks could not be read, so there is no telling what is running. An empty status would say "nothing is syncing", which is a different sentence and one we do not know to be true.*
 5. `server` -> `plaid` - `POST /transactions/sync`: *The history, as a diff from the cursor. A bank attached seconds ago has no cursor, so this is the long one.*
 6. `server` <- `plaid` - one of:
    a. `200` added, modified, removed and a `next_cursor`: *Written to Postgres, cursor last and separately, so a failure earlier in the batch means the next sync re-reads rather than skipping.*
@@ -193,6 +194,7 @@ launch and every pull-to-refresh afterwards.
    a. `200` `WireSnapshot`: *Entries, connections and streams in one document, which is why switching tabs afterwards costs nothing.*
    b. `401 Unauthorized`: *The session has run out. It arrives as a failed load and a banner; the stored session is thrown away only on a deliberate sign-out.*
    c. `429 Too Many Requests`: *Refused before the ledger is read out of Postgres, so a declined request does not pay for the expensive part.*
+   d. `503 Service Unavailable`: *The session or this user's banks could not be read. Not an empty ledger: that is what somebody with no bank sees, and serving it because Postgres was down would show a first run to somebody who has one.*
 
 That is the whole of it. From here the phone makes exactly two kinds of call:
 `GET /snapshot` on launch and on pull-to-refresh, and `POST /link/start` again

@@ -215,7 +215,15 @@ async fn link_start(
 
     match answer {
         Some(ActionRouter::LinkOpened { url }) => Ok(Json(LinkStarted { url })),
+
         Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
+
+        // The session this caller holds could not be read. Told apart from
+        // Plaid refusing, the same way the other routes tell a store that
+        // would not answer apart from an answer: a gateway error points at
+        // somebody else's service for something that went wrong here.
+        Some(ActionRouter::Unavailable) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+
         _ => Err(StatusCode::BAD_GATEWAY),
     }
 }
