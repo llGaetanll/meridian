@@ -742,6 +742,83 @@ fn shutting_down_stops_new_work() {
     assert!(state.shutting_down());
 }
 
+/// A signal on an idle server stops it in the turn it arrives in.
+///
+/// `Stopping` is transient. Nothing is outstanding here, so there is nothing
+/// to wait for and the machine says so at once — which is what the loop is
+/// watching for.
+#[test]
+fn a_signal_on_an_idle_server_stops_it_at_once() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromTerminal { event: EventTerminal::SigInt },
+        > Action::ToProcess { action: ActionProcess::Shutdown },
+    );
+
+    assert!(state.stopped(), "nothing was outstanding");
+}
+
+/// A signal while a call is out waits for it, and stops on the turn it lands.
+///
+/// The whole reason the machine says when rather than the runtime guessing:
+/// only the machine knows what it is still owed. Stopping on the signal would
+/// drop a write that had already been asked for.
+#[test]
+fn a_signal_with_a_call_out_waits_for_it() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
+
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveCode { call_id: 1, .. } },
+        > Action::ToEmail { action: ActionEmail::SendCode { .. } },
+
+        < Event::FromTerminal { event: EventTerminal::SigInt },
+        > Action::ToProcess { action: ActionProcess::Shutdown },
+    );
+
+    assert!(!state.stopped(), "a write is still out");
+
+    eval!(&mut state,
+        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 1 } },
+        > Action::ToRouter { action: ActionRouter::Accepted, .. },
+    );
+
+    assert!(
+        state.stopped(),
+        "the write landed and the route was answered"
+    );
+}
+
+/// A call that never comes back does not hold the shutdown open forever.
+///
+/// `handle_timeouts` is what bounds it: the route is answered anyway and the
+/// machine is free to stop. Without this a source that went quiet would be a
+/// process that never exits.
+#[test]
+fn a_shutdown_does_not_wait_forever_on_a_quiet_source() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
+
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveCode { call_id: 1, .. } },
+        > Action::ToEmail { action: ActionEmail::SendCode { .. } },
+
+        < Event::FromTerminal { event: EventTerminal::SigInt },
+        > Action::ToProcess { action: ActionProcess::Shutdown },
+
+        // The store never answers. Time passes and the route is let go of.
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
+        > Action::ToRouter { action: ActionRouter::Accepted, .. },
+    );
+
+    assert!(state.stopped(), "the call was given up on");
+}
+
 /// A second signal while the first is still draining must not queue a second
 /// shutdown.
 #[test]

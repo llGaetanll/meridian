@@ -27,6 +27,28 @@ place by explaining a decision, a constraint, or a trap:
 // which is the same thing, but only absent is documented.
 ```
 
+**Say what is, not what changed.** A comment describes the code as it stands.
+It never describes the edit that produced it:
+
+```rust
+// This used to answer 204 before any event existed, which is why no test
+// could reach it.
+```
+
+The reader has `git log` and `git blame` for that, and those stay right when
+the code moves on. A comment about a past state goes stale the moment somebody
+changes it again, and it costs every future reader the work of deciding whether
+the old behaviour still matters. If the old shape was a *trap* somebody could
+fall into again, say what the trap is — not what we did about it.
+
+The same goes for words that only mean anything next to a diff: *now*,
+*no longer*, *used to*, *replaced*, *instead of*, *moved*.
+
+**No issue numbers.** Not `(#24)`, not `see #40`. An issue is a conversation
+with a beginning and an end; code outlives it, and a number is not a reason. If
+the issue explained something worth knowing, write the something down. If it did
+not, the reference was never carrying anything.
+
 **Doc comments on anything public**, and on private items whose purpose is not
 obvious from the name. Start with a one-line summary that reads as a sentence.
 

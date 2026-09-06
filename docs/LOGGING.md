@@ -493,9 +493,14 @@ means adding, changing or removing its example here.
   happen while the process is up.
 - `WARN trace log file unavailable error="logs/meridian.log: permission denied"`
 - `ERROR panic panicked at=crates/web-main/src/pages/markets.rs:112 message="…"`
-- `INFO server_main::runtime_server shutting down` / `INFO server_main::runtime_server server stopped`
-  — SIGINT becomes a `FromTerminal` event, so shutdown is a decision the state
-  machine makes rather than something a signal handler does behind its back.
+- `INFO server_main::state_server shutting down` / `INFO server_main::state_server stopped` / `INFO server_main::runtime_server server stopped`
+  — three lines and three moments. SIGINT becomes a `FromTerminal` event, so
+  the decision to stop is the machine's rather than something a signal handler
+  does behind its back; `stopped` is the machine saying nothing is outstanding
+  any more, which is what ends the loop; and the last is the loop having ended.
+  The gap between the second and the first is whatever was still in flight —
+  bounded by `CALL_GOOD_FOR_SECS`, because a source that goes quiet is given
+  up on rather than waited for.
 - `INFO server_main::runtime_server swept expired sessions sessions=3`
   — the hourly sweep the machine asks for, logged only when it dropped
   something. Most hours it drops nothing and says nothing.

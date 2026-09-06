@@ -221,6 +221,9 @@ impl RuntimeServer {
         // machine, which will not ask for a call it has no budget for.
         let (landed, mut landing) = mpsc::unbounded_channel::<Event>();
 
+        // The same channel, for the three events that start the machine off.
+        let boot = landed.clone();
+
         // The router, on its own task, reachable only through these two.
         let (answers, action_rx): (ActionTx, ActionRx) = mpsc::unbounded_channel();
         let (event_tx, mut asked): (EventTx, EventRx) = mpsc::unbounded_channel();
@@ -258,53 +261,28 @@ impl RuntimeServer {
         let mut events: Vec<Event> = Vec::new();
         let mut actions: Vec<Action> = Vec::new();
 
-        // The clock first. The machine starts at the epoch, and a code minted
-        // before the first tick would expire in 1970. Then the process saying
-        // it is up, which is what makes the boot sequence replayable: the
-        // machine is asked rather than the runtime deciding on its own.
-        events.push(Event::FromProcess {
-            event: EventProcess::Tick { now: unix_now() },
-        });
-
-        events.push(Event::FromProcess {
-            event: EventProcess::Started { collect },
-        });
-
-        events.push(Event::FromProcess {
-            event: EventProcess::Seeded { seed: fresh_seed() },
-        });
-
-        // Both intervals fire immediately, and the two events above are what
-        // that first tick would have been.
-        clock.tick().await;
-        reseed.tick().await;
+        // The boot sequence, sent the way everything else arrives rather than
+        // pushed in behind the loop's back. The clock is first: the machine
+        // starts at the epoch, and a code minted before the first tick would
+        // expire in 1970. Then the process saying it is up, and the entropy it
+        // needs before it will mint anything.
+        for event in [
+            EventProcess::Tick { now: unix_now() },
+            EventProcess::Started { collect },
+            EventProcess::Seeded { seed: fresh_seed() },
+        ] {
+            let _ = boot.send(Event::FromProcess { event });
+        }
 
         loop {
-            // Whatever arrived while the last turn ran, handed over together —
-            // which is what makes a batch worth batching: three banks
-            // reporting are one turn rather than three.
-            if !events.is_empty() {
-                state.handle_events(&events, &mut actions);
-
-                tracing::debug!(?events, ?actions, "turn");
-
-                runtime.perform_actions(&mut actions);
-
-                events.clear();
-
-                if state.shutting_down() {
-                    break;
-                }
-            }
-
             tokio::select! {
                 _ = clock.tick() => events.push(Event::FromProcess {
                     event: EventProcess::Tick { now: unix_now() },
                 }),
 
-                // Reseeded on a timer, which is what bounds the damage of a
-                // leaked log: a seed tells you the codes drawn before the next
-                // one and no more.
+                // Reseeded on a timer, which is what bounds the damage of
+                // a leaked log: a seed tells you the codes drawn before
+                // the next one and no more.
                 _ = reseed.tick() => events.push(Event::FromProcess {
                     event: EventProcess::Seeded { seed: fresh_seed() },
                 }),
@@ -315,9 +293,32 @@ impl RuntimeServer {
 
                 Some(event) = landing.recv() => events.push(event),
 
-                // The signal is not the decision. The machine gets to say what
-                // happens next, which is what makes shutdown replayable.
+                // The signal is not the decision. The machine gets to say
+                // what happens next, which is what makes shutdown
+                // replayable.
                 event = signal_received() => events.push(Event::FromTerminal { event }),
+            }
+
+            // Every branch above pushes exactly one event, so this is only
+            // reachable if one of them stops doing so.
+            if events.is_empty() {
+                continue;
+            }
+
+            state.handle_events(&events, &mut actions);
+
+            tracing::debug!(?events, ?actions, "turn");
+
+            runtime.perform_actions(&mut actions);
+
+            events.clear();
+
+            // Not `Stopping`: that one is transient, and what is outstanding
+            // when a signal arrives still has to come back or be given up on.
+            // The machine is what says when there is nothing left, because it
+            // is the only thing that knows what it is still owed.
+            if state.stopped() {
+                break;
             }
         }
 
@@ -1098,10 +1099,11 @@ impl RuntimeServer {
 
     fn perform_action_process(&self, action: &ActionProcess) {
         match action {
-            // Nothing to do: the loop reads `shutting_down` on the turn this
-            // came out of and lets go of the router, which is what stops the
-            // server. The action exists so the decision is in the log.
-            ActionProcess::Shutdown => tracing::info!("shutting down"),
+            // Nothing to carry out. What stops this server is the loop
+            // reading `stopped` once the machine has drained, and the machine
+            // says so itself. The action is here because a runtime that had
+            // something to wind down would wind it down on this.
+            ActionProcess::Shutdown => {}
 
             ActionProcess::ReportLoginRequired => tracing::warn!(
                 "a connection needs the user to sign in again; syncs will fail until they do",
