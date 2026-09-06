@@ -58,7 +58,7 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         // started from — on a call nobody is parked on, so the webhook is
         // answered without waiting for it.
         < Event::FromStore { call_id: 3, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 4, .. } },
+        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 4, .. } },
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
 
         // The phone catches up and is told what its session came to, which is
@@ -75,12 +75,24 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         < Event::FromStore { call_id: 7, event: EventStore::WriteSuccess },
         > @r#"ToRouter { request_id: 2, action: Linked { count: 1 } }"#,
 
-        // The first sync lands. Nobody is waiting on it, so its write is the
-        // end of it.
-        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 4, item_id: "item-9".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], connection: Some(Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![] }), streams: vec![], cursor: "cursor-2".into() } },
-        > Action::ToStore { action: ActionStore::SaveFetched { call_id: 8, .. } },
+        // The first sync runs its three calls out. Nobody is waiting on it,
+        // so its last write is the end of it.
+        < Event::FromSource { event: EventSource::BalancesLoaded { call_id: 4, item_id: "item-9".to_string(), connection: Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![] } } },
+        > Action::ToStore { action: ActionStore::SaveAccounts { call_id: 8, .. } },
+        > Action::ToSource { action: ActionSource::SyncTransactions { call_id: 9, .. } },
 
         < Event::FromStore { call_id: 8, event: EventStore::WriteSuccess },
+
+        < Event::FromSource { event: EventSource::TransactionsLoaded { call_id: 9, item_id: "item-9".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: false } },
+        > Action::ToStore { action: ActionStore::SaveTransactions { call_id: 10, .. } },
+        > Action::ToSource { action: ActionSource::FetchRecurring { call_id: 11, .. } },
+
+        < Event::FromStore { call_id: 10, event: EventStore::WriteSuccess },
+
+        < Event::FromSource { event: EventSource::RecurringLoaded { call_id: 11, item_id: "item-9".to_string(), streams: vec![] } },
+        > Action::ToStore { action: ActionStore::SaveStreams { call_id: 12, .. } },
+
+        < Event::FromStore { call_id: 12, event: EventStore::WriteSuccess },
 
         // Ten minutes in which nobody calls. Long enough for every window the
         // close was metered in to have gone idle.
@@ -89,21 +101,33 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         // The launch after it. The bank was synced ten minutes ago, so this
         // one goes back to Plaid before it serves anything.
         < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 9, .. } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 13, .. } },
 
-        < Event::FromStore { call_id: 9, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { action: ActionStore::LoadItems { call_id: 10, .. } },
+        < Event::FromStore { call_id: 13, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 14, .. } },
 
-        < Event::FromStore { call_id: 10, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: Some("cursor-2".to_string()), synced_at: Some(T0), login_required: false }] } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 11, .. } },
+        < Event::FromStore { call_id: 14, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: Some("cursor-2".to_string()), synced_at: Some(T0), login_required: false }] } },
+        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 15, .. } },
 
-        < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 11, item_id: "item-9".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], connection: Some(Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: Timestamp::from_secs(T0.as_secs() + 600) }, accounts: vec![] }), streams: vec![], cursor: "cursor-3".into() } },
-        > Action::ToStore { action: ActionStore::SaveFetched { call_id: 12, .. } },
+        < Event::FromSource { event: EventSource::BalancesLoaded { call_id: 15, item_id: "item-9".to_string(), connection: Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: Timestamp::from_secs(T0.as_secs() + 600) }, accounts: vec![] } } },
+        > Action::ToStore { action: ActionStore::SaveAccounts { call_id: 16, .. } },
+        > Action::ToSource { action: ActionSource::SyncTransactions { call_id: 17, .. } },
 
-        < Event::FromStore { call_id: 12, event: EventStore::WriteSuccess },
-        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 13, .. } },
+        < Event::FromStore { call_id: 16, event: EventStore::WriteSuccess },
 
-        < Event::FromStore { call_id: 13, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
+        < Event::FromSource { event: EventSource::TransactionsLoaded { call_id: 17, item_id: "item-9".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-3".to_string(), has_more: false } },
+        > Action::ToStore { action: ActionStore::SaveTransactions { call_id: 18, .. } },
+        > Action::ToSource { action: ActionSource::FetchRecurring { call_id: 19, .. } },
+
+        < Event::FromStore { call_id: 18, event: EventStore::WriteSuccess },
+
+        < Event::FromSource { event: EventSource::RecurringLoaded { call_id: 19, item_id: "item-9".to_string(), streams: vec![] } },
+        > Action::ToStore { action: ActionStore::SaveStreams { call_id: 20, .. } },
+
+        < Event::FromStore { call_id: 20, event: EventStore::WriteSuccess },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 21, .. } },
+
+        < Event::FromStore { call_id: 21, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { request_id: 3, action: ActionRouter::Serve { .. } },
 
         // And another quiet minute, so the launch's own windows — this

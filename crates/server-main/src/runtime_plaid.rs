@@ -7,7 +7,6 @@
 use api_ledger::Connection;
 use api_ledger::Entry;
 use api_ledger::Stream;
-use server_wire::SyncStage;
 use src_plaid::PlaidClient;
 use src_plaid::PlaidCredentials;
 use src_plaid::PlaidEnv;
@@ -15,84 +14,76 @@ use src_plaid::PlaidError;
 
 use crate::project;
 
-/// What one trip to Plaid turned up.
+/// One page of `/transactions/sync`, projected.
 ///
 /// A **diff**, not a snapshot: a second call usually returns three empty
 /// lists, and reading that as "the ledger is empty" is the trap.
-pub struct Fetched {
+pub struct Page {
     pub added: Vec<Entry>,
     pub modified: Vec<Entry>,
 
     /// Ids of transactions the bank retracted.
     pub removed: Vec<String>,
 
-    pub connections: Vec<Connection>,
-    pub streams: Vec<Stream>,
+    /// Where to resume, whether or not there is more behind it.
     pub cursor: String,
+
+    /// Whether Plaid has another page after this one.
+    pub has_more: bool,
 }
 
-/// Everything the app needs, in as few calls as Plaid allows.
+/// What every account on one bank holds, and what the bank is called.
 ///
-/// **Sequential, and deliberately so.** The three endpoints could run at once
-/// and halve a first sync, but the first-run screen is three rows filling in
-/// one at a time and has nothing to draw if they land together. `report` is
-/// called as each stage completes, with what is known so far.
-pub async fn fetch_all(
+/// The first place the institution's name exists: it is in neither the Link
+/// session nor the exchange.
+pub async fn fetch_balances(
+    credentials: &PlaidCredentials,
+    access_token: &str,
+    now: api_common::Timestamp,
+) -> Result<Connection, PlaidError> {
+    let client = client(credentials)?;
+
+    let balances = src_plaid::fetch_balances(&client, access_token).await?;
+
+    Ok(project::connection(&balances, now))
+}
+
+/// Everything that changed on one bank since `cursor`, one page of it.
+pub async fn sync_transactions(
     credentials: &PlaidCredentials,
     access_token: &str,
     cursor: Option<String>,
-    now: api_common::Timestamp,
-    report: impl Fn(SyncStage, Option<&str>, u32, u32, u32),
-) -> Result<Fetched, PlaidError> {
+) -> Result<Page, PlaidError> {
     let client = client(credentials)?;
 
-    let token = access_token;
+    let sync = src_plaid::sync_transactions(&client, access_token, cursor).await?;
 
-    // Not even the bank's name is known yet: it is in neither the Link session
-    // nor the exchange, and the balances call below is where it appears.
-    report(SyncStage::Accounts, None, 0, 0, 0);
-
-    let balances = src_plaid::fetch_balances(&client, token).await?;
-    let connections = vec![project::connection(&balances, now)];
-
-    let accounts = connections
-        .first()
-        .map_or(0, |c| c.accounts.len().try_into().unwrap_or(u32::MAX));
-
-    let institution = connections.first().map(|c| c.name.as_str());
-
-    report(SyncStage::Transactions, institution, accounts, 0, 0);
-
-    let sync = src_plaid::sync_transactions(&client, token, cursor).await?;
-
-    let transactions = sync.added.len().try_into().unwrap_or(u32::MAX);
-
-    report(SyncStage::Streams, institution, accounts, transactions, 0);
-
-    // Recurring is derived from transactions, so a freshly created Item has
-    // none yet. That is a thin screen, not a failed sync.
-    let streams = match src_plaid::fetch_recurring(&client, token).await {
-        Ok(recurring) => project::streams(&recurring),
-        Err(e) => {
-            tracing::warn!(
-                error = %e,
-                "recurring unavailable, continuing without it",
-            );
-            Vec::new()
-        }
-    };
-
-    // No fourth report: nothing could observe it, because the fetch answers in
-    // the same turn. The stream count arrives with the snapshot instead.
-
-    Ok(Fetched {
+    Ok(Page {
         added: sync.added.iter().map(project::entry).collect(),
         modified: sync.modified.iter().map(project::entry).collect(),
-        removed: sync.removed,
-        connections,
-        streams,
-        cursor: sync.cursor,
+        removed: sync
+            .removed
+            .iter()
+            .map(|r| r.transaction_id.clone())
+            .collect(),
+        cursor: sync.next_cursor,
+        has_more: sync.has_more,
     })
+}
+
+/// The charges Plaid has worked out come back on this bank.
+///
+/// Derived from transactions, so a freshly created Item has none until its
+/// history has landed.
+pub async fn fetch_recurring(
+    credentials: &PlaidCredentials,
+    access_token: &str,
+) -> Result<Vec<Stream>, PlaidError> {
+    let client = client(credentials)?;
+
+    let recurring = src_plaid::fetch_recurring(&client, access_token).await?;
+
+    Ok(project::streams(&recurring))
 }
 
 /// Open a Link session, and answer with the token and the page that hosts it.
@@ -194,7 +185,20 @@ fn client(credentials: &PlaidCredentials) -> Result<PlaidClient, PlaidError> {
     })
 }
 
-/// The same thing, from the captured Sandbox responses.
+/// A whole app's worth of data, as one value.
+///
+/// Only the fixtures answer in this shape. A real sync is three calls the
+/// machine makes one at a time, and each of them writes what it brought.
+pub struct Fetched {
+    pub added: Vec<Entry>,
+    pub modified: Vec<Entry>,
+    pub removed: Vec<String>,
+    pub connections: Vec<Connection>,
+    pub streams: Vec<Stream>,
+    pub cursor: String,
+}
+
+/// Everything the app needs, from the captured Sandbox responses.
 ///
 /// For `examples/snapshot.rs`, which generates the corpus `phone-state`'s
 /// tests read and wants a fixed answer. Nothing the server serves comes
