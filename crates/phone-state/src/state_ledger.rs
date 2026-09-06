@@ -1,18 +1,9 @@
 //! The Ledger screen's own state.
 //!
 //! A sub-machine rather than fields on [`StateApp`](crate::StateApp): the
-//! filter is the one piece of state that belongs to a single screen, and
-//! keeping it here means the app's machine never has to know what a category
-//! chip is.
-//!
-//! Note what is *not* here: the entries. They are the ledger, and the ledger is
-//! the app's — Home previews it, Recurring is derived from the same feed, and a
-//! copy per screen would be a copy that can disagree. A screen's machine owns
-//! the screen's *choices*; the data stays in one place.
-//!
-//! It handles no events of its own. [`StateApp`](crate::StateApp) routes the
-//! ones that are the Ledger's business here, which keeps a single
-//! `handle_events` as the only way anything changes.
+//! filter is the one piece of state that belongs to a single screen. The
+//! entries are not here — they stay on the app, because a copy per screen is a
+//! copy that can disagree — and this machine handles no events of its own.
 
 use api_common::Timestamp;
 use api_ledger::Category;
@@ -39,11 +30,8 @@ pub struct StateLedger {
 impl Default for StateLedger {
     fn default() -> Self {
         Self {
-            // Both groups start shut. They used to start open, because the
-            // panel was something you opened and two collapsed headings would
-            // have told you nothing — but the panel is always drawn now, and
-            // two open groups are a screen of filter in front of the list they
-            // filter. Shut, each still says what it is set to.
+            // Both groups start shut: the panel is always drawn, and two open
+            // groups are a screen of filter in front of the list they filter.
             categories_open: false,
             range_open: false,
             categories: Vec::new(),
@@ -62,9 +50,8 @@ impl StateLedger {
 
     /// Add or remove a category. Multi-select, so this toggles rather than sets.
     ///
-    /// An unknown category is ignored rather than filed under `Unknown`: an id
-    /// the view invented should narrow nothing, not silently filter to a
-    /// category no transaction is in.
+    /// `Unknown` is ignored: an id the view invented should narrow nothing,
+    /// not filter to a category no transaction is in.
     pub(crate) fn toggle_category(&mut self, category: Category) {
         if category == Category::Unknown {
             return;
@@ -132,9 +119,7 @@ impl StateLedger {
                     unreachable!("the arm matched Between")
                 };
 
-                // The end is a day, and a day includes its own transactions, so
-                // the window runs to the end of it rather than to midnight at
-                // its start.
+                // The end is a day, and a day includes its own transactions.
                 (Some(start), Some(end.saturating_add_secs(86_400)))
             }
         }
@@ -151,10 +136,9 @@ impl StateLedger {
 
     /// The range half on its own.
     ///
-    /// Separate because the category chips' counts need it: a count computed
-    /// through the current category selection would read zero for everything
-    /// unselected, when what a chip has to say is what selecting *it* would
-    /// give. The two filters are independent, so they are asked independently.
+    /// Separate because the category chips' counts need it: a count taken
+    /// through the current selection would read zero for everything
+    /// unselected, when a chip has to say what selecting *it* would give.
     pub(crate) fn matches_range(&self, entry: &Entry, now: Timestamp) -> bool {
         let (start, end) = self.window(now);
         let ts = entry.ts();
@@ -174,10 +158,8 @@ impl StateLedger {
         true
     }
 
-    /// Which tokens the range sentence draws.
-    ///
-    /// They keep their last value even when another form is live, so switching
-    /// back does not reset the sentence.
+    /// Which tokens the range sentence draws. They keep their last value even
+    /// when another form is live, so switching back does not reset it.
     pub(crate) fn range_units(&self) -> (RangeUnit, u32, RangeUnit) {
         match self.range {
             RangeSelection::This { unit } => (unit, 3, RangeUnit::Month),

@@ -1,7 +1,6 @@
 //! The phone's frame: a status bar, a header, a scrolling body, and the dock
-//! floating over it.
-//!
-//! Deliberately not `web_components::Shell` — that one is a desktop sidebar.
+//! floating over it. Deliberately not `web_components::Shell` — that one is a
+//! desktop sidebar.
 
 use leptos::prelude::*;
 use phone_state::EventUi;
@@ -18,8 +17,7 @@ pub fn PhoneShell(
     #[prop(optional, into)]
     title: Option<String>,
     #[prop(optional, into)] subtitle: Option<String>,
-    /// Drawn between the header and the body — the filter panel, on the one
-    /// screen that has one.
+    /// Drawn between the header and the body — the ledger's filter panel.
     #[prop(optional, into)]
     panel: Option<ViewFn>,
     children: Children,
@@ -70,8 +68,7 @@ pub fn PhoneShell(
             </header>
 
             // A banner rather than a screen: whatever was loaded before is
-            // still worth looking at, so the failure sits above it instead of
-            // replacing it.
+            // still worth looking at, so the failure sits above it.
             {move || {
                 error
                     .get()
@@ -144,8 +141,8 @@ fn Dock() -> impl IntoView {
     }
 }
 
-/// The status bar glyphs — signal, wifi, battery. Scenery, so that the frame
-/// reads as a phone rather than as a narrow web page.
+/// The status bar glyphs — signal, wifi, battery. Scenery, so the frame reads
+/// as a phone.
 #[component]
 fn StatusGlyphs() -> impl IntoView {
     view! {

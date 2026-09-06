@@ -1,32 +1,18 @@
 //! What a screen shows, already decided.
 //!
-//! Every type in the `view_*` modules carries finished values. A `ViewTxRow`
-//! holds the date as the string the row prints and the amount as the text
-//! `"−$5.40"`, not a timestamp and an `f64` for three platforms to format the
-//! same way three times. `docs/FFI.md` is explicit about why: the type surface
-//! gets a little larger, and the *logic* surface — the part that can disagree
-//! between platforms — stays at zero.
-//!
-//! The rule to hold onto when adding one: if a view layer would have to write
-//! an `if`, a `switch`, or a `format!` to use a field, the field is wrong.
-//! Send the answer, not the ingredients.
+//! Every type in the `view_*` modules carries finished values: the amount is
+//! the text `"−$5.40"`, not an `f64` for three platforms to format three ways.
+//! If a view layer would have to write an `if`, a `switch` or a `format!` to
+//! use a field, the field is wrong (`docs/FFI.md`). They are `Clone` where
+//! events and actions are not, because a view value is data the UI owns.
 
-/// `Clone` on the view types, but not on events or actions.
-///
-/// A view value is *data the UI owns*: a Leptos signal stores one, and SwiftUI
-/// and Compose will each hold their own copy too. Events and actions are
-/// messages that are passed by reference all the way down, so they need
-/// nothing but `Debug`.
 use crate::ViewAccount;
 use crate::ViewBalances;
 use crate::ViewLedger;
 use crate::ViewOnboarding;
 use crate::ViewRecurring;
 
-/// Which screen the app is on.
-///
-/// The dock's four tabs. Search is deliberately absent — the sketch draws the
-/// button but never the screen, so there is nothing to be faithful to yet.
+/// Which screen the app is on — the dock's four tabs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, uniffi::Enum)]
 pub enum Screen {
     #[default]
@@ -36,14 +22,9 @@ pub enum Screen {
     Account,
 }
 
-/// Everything on screen, in one value.
-///
-/// One type rather than three optional ones: the view renders whichever arm it
-/// is handed and holds no "which screen am I on" state of its own.
-///
-/// [`Onboarding`](ViewScreen::Onboarding) is not one of [`Screen`]'s tabs and
-/// never will be — first run is a road with an end, not a place in the app you
-/// can navigate back to.
+/// Everything on screen, in one value, so the view holds no "which screen am
+/// I on" state of its own. [`Onboarding`](ViewScreen::Onboarding) is not one
+/// of [`Screen`]'s tabs — first run has an end.
 #[derive(Debug, Clone, uniffi::Enum)]
 #[expect(
     clippy::large_enum_variant,

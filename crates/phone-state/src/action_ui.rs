@@ -3,8 +3,8 @@
 use crate::ViewDock;
 use crate::ViewScreen;
 
-/// These carry finished values, not instructions to go and compute one. A
-/// platform that receives `Render` draws exactly what it is given.
+/// Something for the view to do. These carry finished values, not
+/// instructions to go and compute one.
 #[expect(
     clippy::large_enum_variant,
     reason = "the whole screen crosses at once, by design — see Render"
@@ -13,14 +13,10 @@ use crate::ViewScreen;
 pub enum ActionUi {
     /// Draw this screen. The whole screen, in the state it should be in.
     ///
-    /// One action rather than a set of fine-grained ones — no `ShowTxs`,
-    /// `SelectTab`, `OpenFilter`. A view that applies a diff has to hold the
-    /// state the diff applies to, and holding state above the boundary is the
-    /// thing this design exists to prevent. Sending the whole screen means the
-    /// view can be a pure function of the last action it saw.
-    /// The dock is absent on a screen that is not one of its tabs — every
-    /// screen of first run. `None` rather than an empty dock: a dock with no
-    /// items would still be a strip of ground at the bottom of the phone.
+    /// One action rather than a set of fine-grained ones: a view that applies
+    /// a diff has to hold the state the diff applies to. The dock is `None` on
+    /// a screen that is not one of its tabs, rather than an empty dock, which
+    /// would still be a strip of ground at the bottom of the phone.
     Render {
         screen: ViewScreen,
         dock: Option<ViewDock>,

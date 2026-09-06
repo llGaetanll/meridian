@@ -1,24 +1,18 @@
 //! First run: the flow that ends with a bank connected.
 //!
-//! One value per screen, in the order they are drawn.
-//! `sketches/mobile/onboarding.html` is the drawing these are the finished
-//! form of. Plaid's own page is not among them — the bank sign-in happens on
-//! `secure.plaid.com`, in a web session the app opens and does not draw — so
-//! the flow has a screen either side of it and nothing for it.
+//! One value per screen, in the order they are drawn. Plaid's own page is not
+//! among them — the bank sign-in happens on `secure.plaid.com`, in a web
+//! session the app opens and does not draw.
 
 /// Where the flow is, and everything that screen prints.
 ///
 /// An enum rather than one record of optional fields, for the same reason
 /// [`ViewScreen`](crate::ViewScreen) is one: the view draws the arm it is
-/// handed and holds no "which step am I on" of its own. The repeated `step`,
-/// `title` and `body` are the price of that, and a cheap one — a variant
-/// carries exactly what its screen has and no arm has to check whether a field
-/// applies to it.
+/// handed and holds no "which step am I on" of its own.
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum ViewOnboarding {
-    /// One door, not two. An address that exists signs in and one that does
-    /// not signs up, so there is nothing to choose here and no way to choose
-    /// wrong.
+    /// One door, not two: an address that exists signs in, one that does not
+    /// signs up.
     Welcome {
         title: String,
         body: Vec<ViewRun>,
@@ -33,8 +27,7 @@ pub enum ViewOnboarding {
         title: String,
         body: Vec<ViewRun>,
         field: ViewField,
-        /// `"Continue"`. Under the field rather than on the bottom edge: the
-        /// keyboard covers the bottom third the moment this opens.
+        /// `"Continue"`.
         action: String,
     },
 
@@ -47,18 +40,14 @@ pub enum ViewOnboarding {
         /// `"That code is not right."` One sentence for every way a code can
         /// fail, because the server answers with one.
         fault: Option<String>,
-        /// `Some("Continue")` once the code is complete, `None` before that.
-        ///
-        /// Absent rather than present-and-dim: there is nothing to submit yet,
-        /// and a button that cannot be pressed still invites a press. It takes
-        /// the place the resend was in, which is why the resend sits below it.
+        /// `Some("Continue")` once the code is complete — absent rather than
+        /// present-and-dim, because a dim button still invites a press.
         action: Option<String>,
         resend: ViewResend,
     },
 
-    /// What connecting a bank means, said plainly, and the button that does
-    /// it. No skip: every screen in the app is a view of transactions, so an
-    /// app that let someone past this would open on three empty tabs.
+    /// What connecting a bank means, and the button that does it. No skip:
+    /// every screen in the app is a view of transactions.
     Bank {
         step: String,
         title: String,
@@ -66,10 +55,6 @@ pub enum ViewOnboarding {
         rows: Vec<ViewIconRow>,
         action: String,
         /// Whether the button is waiting on Plaid's page to appear.
-        ///
-        /// A second or so passes between the tap and the sheet — the server
-        /// creates a Link session and iOS raises a web view — and a button
-        /// that looks untapped for a second is a button people tap twice.
         opening: bool,
         legal: String,
     },
@@ -85,46 +70,36 @@ pub enum ViewOnboarding {
         rows: Vec<ViewIconRow>,
     },
 
-    /// Counts rather than a tick and a slogan: they are the first proof the
-    /// thing works, and they set the expectation for the Ledger the next tap
-    /// opens.
+    /// The end of the flow: counts rather than a tick and a slogan.
     Ready {
         title: String,
         body: Vec<ViewRun>,
         tally: Vec<ViewTally>,
-        /// `"Add another bank"` — most people have more than one, and the
-        /// second connection will never be likelier than it is right now.
+        /// `"Add another bank"`.
         another: String,
         /// `"Open Meridian"`.
         open: String,
     },
 
-    /// The common ending, not a rare one: people close the sheet to go and
-    /// find a password. Nothing was created, and saying so plainly is the
-    /// whole job.
+    /// The sheet closed without a connection — the common ending, not a rare
+    /// one. Nothing was created.
     Failed {
         step: String,
         title: String,
         body: Vec<ViewRun>,
         rows: Vec<ViewIconRow>,
         action: String,
-        /// The same wait as [`Bank`](ViewOnboarding::Bank)'s: Try again opens
-        /// the very same page.
+        /// The same wait as [`Bank`](ViewOnboarding::Bank)'s.
         opening: bool,
-        /// The way out, worded, when there is one — and there is one only
-        /// once a bank has connected. Before that the screen has a single
-        /// button because the flow has a single way on.
+        /// The way out, worded — `Some` only once a bank has connected.
         open: Option<String>,
     },
 }
 
 /// A stretch of body copy, and whether it is set strong.
 ///
-/// The sketch's `<b>`: the address on the code screen, Plaid's name on the
-/// bank screen. A list of runs rather than one string with markup in it,
-/// because the alternative is every platform learning to parse the same
-/// markup — and the alternative to *that* is losing the emphasis the sentence
-/// was written around.
+/// A list of runs rather than one string with markup in it, so no platform
+/// has to learn to parse the same markup to keep the emphasis.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewRun {
     pub text: String,
@@ -137,14 +112,12 @@ pub struct ViewField {
     /// An icon name the view resolves in its own set.
     pub icon: String,
 
-    /// What is in it. Empty means the placeholder shows instead.
+    /// What is in it. Empty draws the placeholder.
     pub value: String,
 
     pub placeholder: String,
 
-    /// What the server, or the machine, made of the value. `Some` is what
-    /// draws the field wrong — never an empty field, which has not done
-    /// anything yet.
+    /// What the server, or the machine, made of the value.
     pub fault: Option<String>,
 }
 
@@ -163,15 +136,14 @@ pub struct ViewCodeCell {
 
 /// Whether a new code can be asked for yet.
 ///
-/// Two states rather than a countdown string that is sometimes empty: while it
-/// is counting there is a line to read, and once it is not there is a button
-/// to press. They are not the same control.
+/// Two states rather than a countdown string that is sometimes empty: a line
+/// to read and a button to press are not the same control.
 #[derive(Debug, Clone, uniffi::Enum)]
 pub enum ViewResend {
-    /// `"Resend in 0:42"`, beside the way back to a mistyped address.
+    /// `"Resend in 0:42"`.
     Waiting {
         text: String,
-        /// `"Wrong address?"` — a typo in the step before is otherwise a dead
+        /// `"Wrong address?"` — without it a typo in the step before is a dead
         /// end, because the code never arrives and nothing says why.
         wrong_address: String,
     },
@@ -180,10 +152,8 @@ pub enum ViewResend {
     Ready { label: String },
 }
 
-/// An icon, a line, a line under it, and something on the right.
-///
-/// Every list in this flow is this one row: what connecting a bank means, what
-/// the first sync has fetched, what is still true after a failure.
+/// An icon, a line, a line under it, and something on the right — the one row
+/// every list in this flow is made of.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewIconRow {
     /// An icon name the view resolves in its own set.
@@ -195,18 +165,17 @@ pub struct ViewIconRow {
 
     pub sub: Option<String>,
 
-    /// `"8"`, `"48 so far"`, `"waiting"` — what the row has to say about
-    /// itself, on the right.
+    /// `"8"`, `"48 so far"`, `"waiting"`.
     pub value: Option<String>,
 }
 
 /// What a row's icon means, which is the only thing that colours it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum ViewRowTone {
-    /// A statement, not a step. The bank screen's four facts.
+    /// A statement, not a step.
     Plain,
     Done,
-    /// Happening now, and the only row that spins.
+    /// Happening now.
     Running,
     /// Not reached yet.
     Waiting,

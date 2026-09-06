@@ -5,7 +5,7 @@ use crate::ViewTxRow;
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewLedger {
-    /// `"3 connections · synced 2m ago"`.
+    /// The transactions, grouped by month and then by day.
     pub months: Vec<ViewMonthSection>,
 
     /// The filter panel, whose state travels with the screen it filters.
@@ -29,17 +29,12 @@ pub struct ViewMonthSection {
 }
 
 /// A day's worth of rows, under its heading.
-///
-/// Grouping is done in the machine rather than in the view because three view
-/// layers would otherwise each write the same date-bucketing loop, and the one
-/// that got it subtly wrong would be the one nobody looked at.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewDaySection {
     /// `"Wed, Aug 12"`.
     pub heading: String,
 
-    /// `"−$30.40"`, the day's net. It sits on the heading's own line, so the
-    /// two halves of the line say the same thing about the same day.
+    /// `"−$30.40"`, the day's net.
     pub total: String,
 
     pub rows: Vec<ViewTxRow>,

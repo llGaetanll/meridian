@@ -1,8 +1,6 @@
-//! The whole app: one signal, matched on.
-//!
-//! There is no router and no page state. The core says which screen it is on
-//! and hands over everything that screen shows, so this is a `match` over the
-//! last thing it rendered.
+//! The whole app: one signal, matched on. There is no router and no page
+//! state — the core says which screen it is on and hands over everything that
+//! screen shows.
 
 use leptos::prelude::*;
 use phone_state::ViewScreen;
@@ -32,11 +30,8 @@ pub fn App() -> impl IntoView {
             Some(ViewScreen::Account { view }) => {
                 view! { <AccountScreen view=view /> }.into_any()
             }
-            // Reached only by signing out, which is what the Account tab's
-            // one button does — the web has no session to forget, so the
-            // machine's way back to first run is a road that stops here. It
-            // is also what makes adding a screen in Rust keep failing to
-            // compile until every front end has drawn it.
+            // Reached only by signing out. The web has no session to forget,
+            // so the machine's way back to first run stops here.
             Some(ViewScreen::Onboarding { .. }) => {
                 view! { <div class="boot">"First run is on the phone."</div> }.into_any()
             }

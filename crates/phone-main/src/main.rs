@@ -9,8 +9,7 @@ mod ui;
 use app::App;
 
 fn main() {
-    // Before anything else: a log that starts after the first request is a log
-    // missing the request that broke.
+    // Before anything else: a log started later is missing what broke.
     api_trace::init(api_trace::Config::default());
 
     tracing::info!(

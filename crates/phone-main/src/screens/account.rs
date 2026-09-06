@@ -1,8 +1,5 @@
-//! Which banks are attached, and the way out.
-//!
-//! Deliberately small. Everything a setting could configure already lives on
-//! the screen it affects, so what is left for this tab is the connections and
-//! the session.
+//! Which banks are attached, and the way out. Deliberately small: everything a
+//! setting could configure already lives on the screen it affects.
 
 use leptos::prelude::*;
 use phone_state::EventUi;

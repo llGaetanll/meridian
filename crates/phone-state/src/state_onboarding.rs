@@ -1,20 +1,11 @@
 //! First run's own state.
 //!
-//! A sub-machine rather than fields on [`StateApp`](crate::StateApp): the
-//! address being typed, the digits so far, which code fault, how much of the
-//! first sync has landed — nothing outside the flow reads any of it, and once
-//! the flow is through there is nothing left to read. That is the split
-//! `docs/STYLE.md` asks for, and the same one [`StateLedger`](crate::StateLedger)
-//! is.
+//! A sub-machine rather than fields on [`StateApp`](crate::StateApp): nothing
+//! outside the flow reads any of it, and once the flow is through there is
+//! nothing left to read.
 //!
-//! It handles no events of its own. [`StateApp`](crate::StateApp) routes the
-//! ones that are the flow's business here, which keeps a single
-//! `handle_events` as the only way anything changes.
-//!
-//! The order of the steps is forced rather than chosen. Plaid's `access_token`
-//! is permanent and lives on the server (`docs/PLAID.md`), so it has to belong
-//! to somebody before it can be stored: the account exists before the bank
-//! does.
+//! The order of the steps is forced: Plaid's `access_token` lives on the
+//! server (`docs/PLAID.md`), so the account exists before the bank does.
 
 use std::time::Duration;
 
@@ -42,29 +33,20 @@ pub(crate) enum Step {
     Failed,
 }
 
-/// What the last thing the user did was wrong about.
-///
-/// One at a time: a fault belongs to the screen it happened on, and moving off
-/// that screen clears it.
+/// What the last thing the user did was wrong about. One at a time: a fault
+/// belongs to the screen it happened on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Fault {
     /// Not an address.
     Address,
 
-    /// The code did not work.
-    ///
-    /// One fault for every way of failing, because the server answers with
-    /// one — see [`EventSource::CodeRejected`](crate::EventSource). A code
-    /// that has expired reads as wrong and the resend is the way out of both,
-    /// which is the same way out the user would have wanted anyway.
+    /// The code did not work. One fault for every way of failing, because a
+    /// rejection carries no reason — expired and wrong are indistinguishable.
     CodeWrong,
 }
 
-/// How much of the first sync has arrived.
-///
-/// The counts and the stage are separate because they are separate facts: the
-/// transactions row shows `48 so far` while it is still running, so a count is
-/// not a claim that the stage is finished.
+/// How much of the first sync has arrived. The stage and the counts are
+/// separate facts: a count climbs while its stage is still running.
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct Progress {
     pub(crate) stage: SyncStage,
@@ -78,8 +60,8 @@ pub(crate) struct Progress {
 pub struct StateOnboarding {
     step: Step,
 
-    /// What is in the address field. Kept across a step back, so returning to
-    /// fix a typo does not mean typing it again.
+    /// What is in the address field. Kept across a step back, so fixing a typo
+    /// does not mean typing it again.
     email: String,
 
     /// The digits entered so far, at most [`CODE_LENGTH`] of them.
@@ -87,36 +69,27 @@ pub struct StateOnboarding {
 
     fault: Option<Fault>,
 
-    /// When the last code went out, for the countdown. A timestamp rather than
-    /// a remaining count, because the machine reads no clock — the difference
-    /// is taken on the way out, against the `now` the runtime handed in.
+    /// When the last code went out. A timestamp rather than a remaining count,
+    /// because the machine reads no clock.
     sent_at: Option<Timestamp>,
 
     /// The bank most recently connected, which is the one the sync is for.
     bank: Option<String>,
 
-    /// Whether a bank has ever finished connecting in this flow.
-    ///
-    /// Separate from [`Self::bank`], which is a name and is cleared while the
-    /// next connection is being made. This one never goes back to false: what
-    /// it answers is whether there is a Meridian to open, and one bank is
-    /// enough for the rest of the app to have something to draw.
+    /// Whether a bank has ever finished connecting in this flow. Never goes
+    /// back to false, unlike [`Self::bank`], which is cleared while the next
+    /// connection is being made.
     linked: bool,
 
     /// When the server last said it did not know how the sign-in ended.
     ///
-    /// The sync screen is watching a sync that may not have started, so while
-    /// this is set a status saying nothing is running is *not* news that one
-    /// finished — it is the gap before Plaid has spoken. It is a timestamp
-    /// rather than a flag because the wait is bounded: the machine reads no
-    /// clock, so the giving-up is arithmetic against the `now` handed in.
+    /// While it is set, a status saying nothing is running is the gap before
+    /// Plaid has spoken rather than news that a sync finished. A timestamp
+    /// because the wait is bounded and the machine reads no clock.
     awaiting: Option<Timestamp>,
 
-    /// Whether a bank sign-in is being opened.
-    ///
-    /// True from the tap until Plaid's page has been and gone, one way or the
-    /// other. It is a fact about the flow rather than about the runtime — the
-    /// screen has to say something during it, and what it says is a decision.
+    /// Whether a bank sign-in is being opened, from the tap until Plaid's page
+    /// has been and gone.
     opening: bool,
 
     sync: Progress,
@@ -163,7 +136,6 @@ impl StateOnboarding {
         self.sync
     }
 
-    /// The Welcome button: there is one door, and this is it.
     pub(crate) fn choose_email(&mut self) {
         self.step = Step::Email;
         self.fault = None;
@@ -172,15 +144,13 @@ impl StateOnboarding {
     pub(crate) fn type_email(&mut self, text: &str) {
         self.email = text.to_string();
 
-        // Typing is how a rejected address stops being rejected. A field that
-        // stayed red while it was being fixed would be arguing with the user.
+        // A field that stayed red while being fixed argues with the user.
         if self.fault == Some(Fault::Address) {
             self.fault = None;
         }
     }
 
-    /// Continue, on the address screen. The address to send a code to, or
-    /// `None` if there is nothing to send one to.
+    /// Continue, on the address screen. `None` if that is not an address.
     pub(crate) fn submit_email(&mut self) -> Option<String> {
         if !is_address(&self.email) {
             self.fault = Some(Fault::Address);
@@ -195,9 +165,8 @@ impl StateOnboarding {
     }
 
     /// A digit typed, or the whole field filled by iOS from the notification.
-    ///
-    /// Takes the value the field now holds rather than one keystroke, so a
-    /// paste and a backspace are the same event as a tap.
+    /// Takes what the field holds rather than one keystroke, so a paste and a
+    /// backspace are the same event as a tap.
     pub(crate) fn type_code(&mut self, digits: &str) {
         let code: String = digits
             .chars()
@@ -205,26 +174,20 @@ impl StateOnboarding {
             .take(CODE_LENGTH)
             .collect();
 
-        // Nothing changed, so nothing to clear. Worth checking because the
-        // field sends its whole contents: a seventh digit typed into six full
-        // boxes arrives here as the same six, and that is not an edit.
+        // A seventh digit typed into six full boxes arrives as the same six.
+        // That is not an edit, so the rejection below stands.
         if code == self.code {
             return;
         }
 
         self.code = code;
 
-        // Any change at all clears the rejection. A screen that stayed red
-        // while it was being corrected would be arguing with the user, which
-        // is the same reason [`Self::type_email`] does this.
         self.fault = None;
     }
 
-    /// Continue, under the boxes.
-    ///
-    /// `None` on a code that is not six digits long, which the button being
-    /// absent should already have prevented — a stale tap, not an invariant
-    /// worth asserting.
+    /// Continue, under the boxes. `None` on a code that is not six digits,
+    /// which the absent button should have prevented — a stale tap, not an
+    /// invariant worth asserting.
     pub(crate) fn submit_code(&mut self) -> Option<(String, String)> {
         if self.code.len() < CODE_LENGTH {
             return None;
@@ -245,10 +208,8 @@ impl StateOnboarding {
         Some(self.email.clone())
     }
 
-    /// Whether the countdown is still running.
-    ///
-    /// A code that was never sent can be sent, which is what makes the button
-    /// live on a screen reached by replay rather than by tapping Continue.
+    /// Whether the countdown is still running. A code that was never sent can
+    /// be sent, which makes the button live on a screen reached by replay.
     pub(crate) fn waiting_to_resend(&self, now: Timestamp) -> bool {
         match self.sent_at {
             Some(sent) => now.since(sent) < RESEND_AFTER,
@@ -267,21 +228,17 @@ impl StateOnboarding {
                 Step::Email
             }
 
-            // Everything from the bank screen on has a connection behind it or
-            // an account made, and neither unwinds.
+            // From the bank screen on there is a connection behind it or an
+            // account made, and neither unwinds.
             step => step,
         };
     }
 
-    /// Connect a bank — the button on the bank screen, Try again on the
-    /// failure, and Add another bank on the last screen. One event, because it
-    /// is one thing: the next tap opens Plaid.
     /// Connect a bank, Try again, and Add another bank all land here.
     ///
     /// `opening` is what the button reads while the server creates a Link
-    /// session and iOS raises the sheet — around a second between the two, and
-    /// a button that looked untapped for a second is a button people tap
-    /// twice.
+    /// session and iOS raises the sheet — around a second, and a button that
+    /// looks untapped is a button people tap twice.
     pub(crate) fn connect_bank(&mut self) {
         self.step = Step::Bank;
         self.opening = true;
@@ -302,9 +259,8 @@ impl StateOnboarding {
         self.fault = Some(Fault::CodeWrong);
     }
 
-    /// A bank is attached. What it is called is not known yet — see
-    /// [`EventSource::BankLinked`](crate::EventSource) — so the screen opens
-    /// on the fallback and [`Self::bank_named`] fills it in.
+    /// A bank is attached. What it is called is not known yet;
+    /// [`Self::bank_named`] fills it in.
     pub(crate) fn bank_linked(&mut self) {
         self.opening = false;
         self.linked = true;
@@ -323,13 +279,9 @@ impl StateOnboarding {
         self.step = Step::Failed;
     }
 
-    /// The server does not know yet, and neither do we.
-    ///
-    /// The sync screen rather than the failed one: a bank that is still
-    /// landing arrives on the very next status, and this is the screen that
-    /// asks for one. What it does *not* do is set
-    /// [`linked`](Self::linked) — nothing has finished connecting, and the
-    /// claim that there is a Meridian to open has not been earned.
+    /// The server does not know yet, and neither do we. The sync screen rather
+    /// than the failed one, because a bank still landing arrives on the next
+    /// status; [`linked`](Self::linked) stays false until one has.
     pub(crate) fn bank_pending(&mut self, now: Timestamp) {
         self.opening = false;
         self.bank = None;
@@ -353,13 +305,8 @@ impl StateOnboarding {
     }
 
     /// The last reply, which carries the totals as well as the news that there
-    /// will be no more of them.
-    ///
-    /// They are taken from this reply rather than left to the one before,
-    /// because a sync that finishes between two ticks has no reply before —
-    /// the first status the phone reads is already the last. Dropping its
-    /// counts is how "You're set." came to say nought accounts over a ledger
-    /// with fourteen in it.
+    /// will be no more of them. They come from this reply because a sync that
+    /// finishes between two ticks has no reply before it.
     pub(crate) fn sync_finished(&mut self, sync: Progress, now: Timestamp) {
         debug_assert_eq!(
             self.step,
@@ -367,14 +314,11 @@ impl StateOnboarding {
             "a sync reports its end only while one is running",
         );
 
-        // Nothing is running and nothing ever was. Ordinarily that cannot
-        // happen here — the server starts the sync in the same turn as it
-        // attaches the bank — but after a pending answer there may be no bank
-        // yet, and this is that gap rather than the end of anything.
+        // Nothing is running and nothing ever was: after a pending answer there
+        // may be no bank yet, and this is that gap rather than an end.
         if let Some(since) = self.awaiting.filter(|_| nothing_arrived(&self.bank, sync)) {
-            // Long enough is long enough. The server had already waited
-            // before it answered pending, so by here Plaid is late twice
-            // over and there is nothing left to wait for.
+            // The server had already waited before it answered pending, so by
+            // here Plaid is late twice over.
             if now.since(since) >= AWAIT_GOOD_FOR {
                 self.awaiting = None;
                 self.step = Step::Failed;
@@ -396,31 +340,24 @@ impl StateOnboarding {
     }
 }
 
-/// How long the phone waits after the server has given up waiting.
-///
-/// Twice what the server allows itself, because a request cannot be held open
-/// that long and a screen can. Past it, Plaid is late enough that a bank is
-/// not coming and saying so beats a spinner that never stops.
+/// How long the phone waits after the server has given up waiting. Twice what
+/// the server allows itself, because a request cannot be held open that long
+/// and a screen can.
 pub const AWAIT_GOOD_FOR_SECS: u64 = 20;
 
 const AWAIT_GOOD_FOR: Duration = Duration::from_secs(AWAIT_GOOD_FOR_SECS);
 
-/// Whether a status says anything at all.
-///
-/// The name is the strongest of the three: it arrives one poll into a sync and
-/// exists nowhere before the balances call answers, so a flow that has one has
-/// certainly got a bank.
+/// Whether a status says anything at all. The name is the strongest signal: it
+/// exists nowhere before the balances call answers.
 fn nothing_arrived(bank: &Option<String>, sync: Progress) -> bool {
     bank.is_none() && sync.accounts == 0 && sync.transactions == 0 && sync.streams == 0
 }
 
 /// Whether this could be an address.
 ///
-/// Deliberately shallow: something, an `@`, and a domain with a dot in it. The
-/// only address that matters is the one the code arrives at, and the code
-/// arriving is what checks that — so anything stricter here would reject real
-/// addresses to catch typos it cannot catch anyway. It does reject
-/// `al@example`, which is the one the design sheet draws wrong.
+/// Deliberately shallow: the code arriving is what really checks it, so
+/// anything stricter would reject real addresses to catch typos it cannot
+/// catch anyway.
 fn is_address(text: &str) -> bool {
     let text = text.trim();
 

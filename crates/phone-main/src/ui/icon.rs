@@ -1,10 +1,7 @@
-//! The icon set, as inline SVG.
-//!
-//! Inline rather than a sprite sheet: the phone app is one page, the icons are
-//! few, and a `<use>` reference costs a document-wide id namespace that the
-//! sketch had to work around. The names match the `icon` field the core puts
-//! on a `ViewDockItem`, so the mapping from core to glyph is a lookup rather than
-//! a decision.
+//! The icon set, as inline SVG. Inline rather than a sprite sheet: the phone
+//! app is one page, the icons are few, and a `<use>` reference costs a
+//! document-wide id namespace. The names match the `icon` field the core puts
+//! on a `ViewDockItem`.
 
 use leptos::prelude::*;
 
@@ -117,9 +114,8 @@ fn path(name: &str) -> AnyView {
         }
         .into_any(),
 
-        // First run's set. Drawn here rather than only in Swift because this
-        // file is the drawing both apps copy: an icon that exists on one
-        // platform is how two apps end up with two icon sets.
+        // First run's set. Drawn here rather than only in Swift: an icon that
+        // exists on one platform is how two apps end up with two icon sets.
         "mail" => view! {
             <rect x="2.5" y="5" width="19" height="14" rx="2.5" />
             <path d="m3 7 9 6 9-6" />
@@ -158,9 +154,7 @@ fn path(name: &str) -> AnyView {
         }
         .into_any(),
 
-        // The account tab's. A head and shoulders and nothing else: the app
-        // never asked for a name, so anything more would be a face invented
-        // for somebody who did not give us one.
+        // A head and shoulders and nothing else: the app never asked for a name.
         "user" => view! {
             <circle cx="12" cy="8.5" r="3.8" />
             <path d="M4.5 20.5a7.5 7.5 0 0 1 15 0" />
@@ -174,17 +168,14 @@ fn path(name: &str) -> AnyView {
         }
         .into_any(),
 
-        // One three-quarter arc and no faint track behind it. The turning is
-        // what says "working"; a second ring at a fifth of the opacity is a
-        // detail nothing reads at 18px, and it would have to be a second shape
-        // on a platform that strokes a glyph in one colour.
+        // One three-quarter arc and no faint track behind it: a second ring at
+        // a fifth of the opacity reads as nothing at 18px.
         "spin" => view! { <path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5" /> }.into_any(),
 
         // A step not reached yet: the tick's circle with nothing in it.
         "dot" => view! { <circle cx="12" cy="12" r="8" /> }.into_any(),
 
-        // An unknown name draws nothing rather than a "missing" glyph: a gap
-        // is easier to spot in review than a box that looks deliberate.
+        // A gap is easier to spot in review than a deliberate-looking box.
         _ => ().into_any(),
     }
 }

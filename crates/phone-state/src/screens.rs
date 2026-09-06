@@ -1,9 +1,7 @@
 //! State in, finished screens out.
 //!
-//! Every string a platform prints is produced here. That is more code in Rust
-//! than a view-model of raw values would be, and it is the trade `docs/FFI.md`
-//! argues for: the type surface grows a little, and the number of places that
-//! can format a date differently stays at one.
+//! Every string a platform prints is produced here, so the number of places
+//! that can format a date differently stays at one. See `docs/FFI.md`.
 
 use std::collections::BTreeMap;
 
@@ -61,8 +59,7 @@ const SOON_DAYS: u64 = 7;
 const SUMMARY_CHIPS: usize = 2;
 
 pub fn screen(state: &StateApp) -> ViewScreen {
-    // First run is a road with an end rather than a place in the app, so while
-    // it is being walked it is the only thing on screen — tabs included.
+    // First run is a road with an end, so it owns the screen — tabs included.
     if let Some(flow) = state.onboarding() {
         return ViewScreen::Onboarding {
             view: screens_onboarding::onboarding(flow, state.now()),
@@ -115,9 +112,7 @@ fn ledger(state: &StateApp) -> ViewLedger {
 
 /// What the list says when it has nothing to show.
 ///
-/// Three different nothings, and they need different words: still loading,
-/// loaded but the filter excludes everything, and loaded with an empty ledger.
-/// A single "No transactions" would be wrong in two of the three.
+/// Three nothings, three different words: loading, filtered out, empty.
 fn empty_message(state: &StateApp, shown: usize) -> Option<String> {
     if shown > 0 {
         return None;
@@ -142,11 +137,8 @@ fn empty_message(state: &StateApp, shown: usize) -> Option<String> {
 
 /// The rows, cut into months and then days.
 ///
-/// One pass, over entries rather than over finished rows: they arrive
-/// newest-first and stay in that order, so a change of day or month is a
-/// change of key from the row before. Grouping before formatting is what lets
-/// a day's net be summed from the amounts, rather than re-read out of the text
-/// the rows are already carrying.
+/// One pass, relying on entries arriving newest-first: a change of day or
+/// month is a change of key from the row before.
 fn group_by_month(entries: &[&Entry]) -> Vec<ViewMonthSection> {
     let mut months: Vec<Month<'_>> = Vec::new();
 
@@ -216,12 +208,7 @@ fn day_section((heading, entries): Day<'_>) -> ViewDaySection {
     }
 }
 
-/// Money is never masked on a ledger row.
-///
-/// The sketch covers the two headline figures and leaves the rows alone, which
-/// is the right call: a list of covered bars says nothing at all, and the
-/// figure worth hiding from someone glancing over is the total, not a $4.33
-/// coffee.
+/// A ledger row. Masking is for headline figures, not a $4.33 coffee.
 fn tx_row(entry: &Entry, masked: bool) -> ViewTxRow {
     ViewTxRow {
         id: entry.id.clone(),
@@ -274,8 +261,7 @@ fn range_view(state: &StateApp) -> ViewRange {
             Some((start, end)) => (fmt::short_date(start), fmt::short_date(end)),
             None => (String::new(), String::new()),
         },
-        // Defaults that read as a sensible starting sentence rather than as
-        // two empty slots.
+        // Defaults, so the picker opens on a sentence rather than two blanks.
         _ => (
             fmt::short_date(state.now().saturating_sub_secs(80 * 86_400)),
             fmt::short_date(state.now()),
@@ -314,9 +300,7 @@ fn range_summary(range: &RangeSelection) -> String {
 fn balances(state: &StateApp) -> ViewBalances {
     let held: f64 = state.connections().iter().map(|c| c.held()).sum();
 
-    // The debt blocks sit under a heading of their own, and the heading
-    // carries what they come to — the one place on the page money still takes
-    // a colour, now that the block totals are grey.
+    // Negated, so the heading reads as an amount owed.
     let owed: f64 = state
         .connections()
         .iter()
@@ -335,11 +319,8 @@ fn balances(state: &StateApp) -> ViewBalances {
     }
 }
 
-/// One block per connection, with debts split into their own block.
-///
-/// Splitting rather than mixing is the sketch's call and a sound one: a
-/// mortgage listed between a checking account and an HSA reads as something
-/// you have, and the minus sign is doing too much work to say otherwise.
+/// One block per connection, with debts split into their own block: a mortgage
+/// listed between a checking account and an HSA reads as something you have.
 fn connection_views(state: &StateApp) -> Vec<ViewConnection> {
     let mut views = Vec::new();
 
@@ -361,8 +342,7 @@ fn connection_views(state: &StateApp) -> Vec<ViewConnection> {
         }
     }
 
-    // Every debt block comes after every held block, so the screen opens on
-    // what you have.
+    // Debt blocks come last, so the screen opens on what you have.
     for connection in state.connections() {
         let owed: Vec<&Account> = connection.accounts.iter().filter(|a| a.is_debt()).collect();
 
@@ -421,8 +401,7 @@ fn account_row(account: &Account, masked: bool) -> ViewAccountRow {
         parts.push(format!("·{mask}"));
     }
 
-    // Only one of these is ever worth the room, and available beats APY: a
-    // number that moves says more than one that does not.
+    // Only one fits, and available beats APY: it moves.
     if let Some(available) = account.available {
         parts.push(format!("{} available", fmt::money(available, masked)));
     } else if let Some(apy) = account.apy {
@@ -438,8 +417,7 @@ fn account_row(account: &Account, masked: bool) -> ViewAccountRow {
     ViewAccountRow {
         id: account.id.clone(),
         name: account.name.clone(),
-        // The kind and mask read as one phrase, so they join with a space and
-        // the rest with a separator.
+        // Kind and mask read as one phrase, so only the rest gets a separator.
         subtitle: match parts.len() {
             0 | 1 => parts.join(""),
             _ => format!("{} {}", parts[0], parts[1..].join(" · ")),
@@ -462,8 +440,7 @@ fn utilisation(account: &Account, masked: bool) -> Option<String> {
         return None;
     }
 
-    // A HELOC reports what is still available, and that is the more useful
-    // half of it — how much room is left, rather than how much is gone.
+    // A HELOC reports what is still available, the more useful half.
     if let Some(available) = account.available {
         return Some(format!("{} still available", fmt_money(available)));
     }
@@ -476,10 +453,6 @@ fn utilisation(account: &Account, masked: bool) -> Option<String> {
 }
 
 /// Which banks are attached, and the way out.
-///
-/// The banks are the same [`Connection`]s the Balances screen draws, read a
-/// second way rather than fetched a second time — one state in two places, not
-/// two.
 fn account(state: &StateApp) -> ViewAccount {
     let banks: Vec<ViewAccountBank> = state
         .connections()
@@ -512,10 +485,8 @@ fn account(state: &StateApp) -> ViewAccount {
 
 /// What the bank list says when it is empty.
 ///
-/// The failure comes first and without the `loaded` guard the ledger's empty
-/// state uses: this is the screen somebody opens *because* the app is not
-/// working, and "no banks connected" over a session the server is refusing
-/// would be the app lying about why it is empty.
+/// The failure comes first, with no `loaded` guard: this is the screen
+/// somebody opens *because* the app is not working.
 fn no_banks_message(state: &StateApp) -> String {
     if let Some(error) = state.load_failed() {
         return error.to_string();
@@ -543,9 +514,8 @@ fn recurring(state: &StateApp) -> ViewRecurring {
     let streams: usize = groups.iter().map(|group| group.streams.len()).sum();
 
     ViewRecurring {
-        // Not "so far this month": that would be a claim about what has
-        // already landed, and every figure on this screen is Plaid's
-        // prediction of what comes back. The label says which one it is.
+        // Not "so far this month": every figure here is Plaid's prediction of
+        // what comes back, not a claim about what has landed.
         headline_label: "Every month".to_string(),
         headline: fmt::money(monthly_out + monthly_in, masked),
         detail: if masked {
@@ -557,8 +527,7 @@ fn recurring(state: &StateApp) -> ViewRecurring {
                 fmt_money(monthly_out + monthly_in),
             )
         },
-        // Unsigned: the word beside each figure says which way the money
-        // goes, so a sign would be saying it twice.
+        // Unsigned: the word beside each figure says which way money goes.
         flow_in: fmt::money(monthly_in.abs(), masked),
         flow_out: fmt::money(monthly_out.abs(), masked),
         flow_in_signed: fmt::money_signed(monthly_in, masked),
@@ -577,9 +546,7 @@ fn recurring(state: &StateApp) -> ViewRecurring {
 
 /// What lands on the day the calendar has selected.
 ///
-/// `None` covers both "nothing tapped" and "nothing lands there" — the day
-/// still fills in to acknowledge the tap, and an empty card would be a heading
-/// over nothing.
+/// `None` covers both "nothing tapped" and "nothing lands there".
 fn day_card(state: &StateApp, out: &[&Stream]) -> Option<ViewDayCard> {
     let picked = state.picked_day()?;
     let masked = state.masked();
@@ -646,8 +613,7 @@ fn breakdown(out: &[&Stream], masked: bool) -> Vec<ViewBreakdownSlice> {
         .map(|(category, total)| ViewBreakdownSlice {
             label: category.label().to_string(),
             token: category.token().to_string(),
-            // Guarded: an empty list would otherwise divide by zero and hand
-            // the view a NaN width.
+            // Guarded: an empty list would divide by zero into a NaN width.
             share: if sum > 0.0 { total / sum } else { 0.0 },
             amount: fmt::money(total, masked),
         })
@@ -664,8 +630,7 @@ fn stream_groups(
 ) -> Vec<ViewStreamGroup> {
     let mut groups = group_streams(out, now, masked);
 
-    // Money coming in is a different kind of thing from a commitment, so it
-    // sits after every outflow group rather than sorted among them.
+    // Money in is not a commitment, so it sits after every outflow group.
     groups.extend(group_streams(inflow, now, masked));
 
     groups
@@ -681,9 +646,7 @@ fn group_streams(streams: &[&Stream], now: Timestamp, masked: bool) -> Vec<ViewS
         }
     }
 
-    // Biggest commitment first, matching the breakdown bar above — the two are
-    // meant to read as one split, so they cannot disagree about the order.
-    // Sorted here, while the totals are still numbers rather than text.
+    // Biggest first, matching the breakdown bar: the two read as one split.
     groups.sort_by(|(_, a), (_, b)| {
         let total =
             |list: &Vec<&Stream>| list.iter().map(|s| s.monthly_amount().abs()).sum::<f64>();
@@ -693,8 +656,7 @@ fn group_streams(streams: &[&Stream], now: Timestamp, masked: bool) -> Vec<ViewS
     groups
         .into_iter()
         .map(|(category, mut list)| {
-            // Biggest first inside a group too, so the eye lands on the charge
-            // that matters.
+            // Biggest first inside a group too.
             list.sort_by(|a, b| a.monthly_amount().total_cmp(&b.monthly_amount()));
 
             let total: f64 = list.iter().map(|s| s.monthly_amount()).sum();
@@ -717,13 +679,10 @@ fn stream_row(stream: &Stream, now: Timestamp, masked: bool) -> ViewStreamRow {
             fmt::short_date(next),
             fmt::relative_day(next, now),
         ),
-        // Plaid stops predicting a stream it thinks has drifted. Saying so is
-        // better than showing a date that is not coming.
+        // Plaid stops predicting a stream it thinks has drifted.
         None => "no next date".to_string(),
     };
 
-    // The frequency and the date read as one phrase, which is one line under
-    // the name rather than two things sitting near each other.
     let sub = match stream.next_date {
         Some(next) => format!("{} · next {}", stream.frequency, fmt::short_date(next)),
         None => format!("{} · no next date", stream.frequency),
@@ -743,8 +702,8 @@ fn stream_row(stream: &Stream, now: Timestamp, masked: bool) -> ViewStreamRow {
 
 /// The stable id a category travels under.
 ///
-/// Written out rather than derived from the `Debug` name, so that renaming a
-/// variant cannot silently change what a saved filter means.
+/// Written out rather than derived from `Debug`, so renaming a variant cannot
+/// silently change what a saved filter means.
 pub fn category_id(category: Category) -> &'static str {
     match category {
         Category::Income => "Income",
@@ -777,9 +736,7 @@ pub fn category_from_id(id: &str) -> Category {
 
 /// Three months, with a mark on every day a stream lands.
 ///
-/// The one the app is on until it is swiped away from, and the one either side
-/// of it in full — turning the calendar is a scroll, and a scroll needs
-/// somewhere to scroll to.
+/// Either side is drawn in full because turning the calendar is a scroll.
 fn calendar(state: &StateApp, out: &[&Stream]) -> ViewCalendar {
     let now = state.now();
 
@@ -788,9 +745,8 @@ fn calendar(state: &StateApp, out: &[&Stream]) -> ViewCalendar {
         step_month(year, month, state.month_step() as i64)
     };
 
-    // What lands when. Only the dates the source predicts — nothing is
-    // projected forward from a stream's frequency, so a stream contributes at
-    // most one mark.
+    // Only the dates the source predicts — nothing is projected forward from a
+    // frequency, so a stream contributes at most one mark.
     let mut marks: BTreeMap<u64, Vec<String>> = BTreeMap::new();
 
     for stream in out {
@@ -849,8 +805,8 @@ fn calendar(state: &StateApp, out: &[&Stream]) -> ViewCalendar {
 
 /// Where a month's grid starts, and how many rows it takes.
 ///
-/// 1970-01-01 was a Thursday and the weeks here start on Monday, so the column
-/// a day falls in is its index shifted by three.
+/// 1970-01-01 was a Thursday and weeks start on Monday, so the column a day
+/// falls in is its index shifted by three.
 fn month_grid(year: i64, month: u32) -> (u64, u64) {
     let first = fmt::days_from_civil(year, month, 1);
 
