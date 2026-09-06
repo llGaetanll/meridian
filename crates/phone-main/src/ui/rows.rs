@@ -1,10 +1,6 @@
-//! The pieces more than one screen draws.
-//!
-//! Every one of these takes a finished value from the core and prints it. If
-//! you find yourself wanting a `format!` or an `if amount < 0.0` in this file,
-//! the field is missing from the view type — add it there instead. That rule
-//! is what keeps this crate a faithful preview of what SwiftUI and Compose
-//! will do.
+//! The pieces more than one screen draws. If you find yourself wanting a
+//! `format!` or an `if amount < 0.0` in this file, the field is missing from
+//! the view type — add it there instead.
 
 use leptos::prelude::*;
 use phone_state::EventUi;
@@ -49,8 +45,7 @@ pub fn TxRowView(row: ViewTxRow, #[prop(optional)] compact: bool) -> impl IntoVi
                 <div class="tx-meta">
                     {row.pending.then(|| view! { <span class="pending-tag">"Pending"</span> })}
                     // Home previews the category as plain text rather than a
-                    // chip: at preview scale a row of pills reads as noise,
-                    // and the sketch's Home rows are text too.
+                    // chip: at preview scale a row of pills reads as noise.
                     {if compact {
                         view! { <span class="cat-plain">{row.category}</span> }.into_any()
                     } else {
@@ -67,8 +62,7 @@ pub fn TxRowView(row: ViewTxRow, #[prop(optional)] compact: bool) -> impl IntoVi
 }
 
 /// The logo slot. Reserved whether or not there is a logo, so every row's text
-/// starts on the same line — the sketch is explicit that there is no stand-in
-/// glyph.
+/// starts on the same line; there is no stand-in glyph.
 #[component]
 pub fn Logo(url: Option<String>, #[prop(optional)] compact: bool) -> impl IntoView {
     let class = if url.is_some() {
@@ -88,9 +82,8 @@ pub fn Logo(url: Option<String>, #[prop(optional)] compact: bool) -> impl IntoVi
             {url
                 .map(|url| {
                     view! {
-                        // `onerror` blanks the slot rather than leaving a
-                        // broken-image glyph: Plaid's logo host is reachable
-                        // from a phone but not from every network.
+                        // Blank the slot rather than leave a broken-image
+                        // glyph: Plaid's logo host is not on every network.
                         <img
                             src=url
                             alt=""
@@ -177,12 +170,9 @@ pub fn ConnectionBlock(connection: ViewConnection) -> impl IntoView {
     }
 }
 
-/// The action a stale connection needs.
-///
-/// Inert, and deliberately so: clearing `ITEM_LOGIN_REQUIRED` takes Plaid Link
-/// in update mode, which is a hosted page and a server round trip that do not
-/// exist yet. A button that looked live and did nothing would be worse than
-/// one that says what it is waiting for.
+/// The action a stale connection needs. Inert, and deliberately so: clearing
+/// `ITEM_LOGIN_REQUIRED` takes Plaid Link in update mode, a hosted page and a
+/// server round trip that do not exist yet.
 #[component]
 pub fn ReconnectButton() -> impl IntoView {
     view! {
@@ -218,8 +208,7 @@ pub fn StreamRowView(row: ViewStreamRow) -> impl IntoView {
     }
 }
 
-/// The breakdown bar and its legend — two views of one split, so they are
-/// drawn from one list.
+/// The breakdown bar and its legend — two views of one split, one list.
 #[component]
 pub fn Breakdown(slices: Vec<ViewBreakdownSlice>, #[prop(optional)] legend: bool) -> impl IntoView {
     let bar = slices.clone();
@@ -255,11 +244,9 @@ pub fn Breakdown(slices: Vec<ViewBreakdownSlice>, #[prop(optional)] legend: bool
     }
 }
 
-/// A figure that can be covered.
-///
-/// The core already replaced the value with dots when masked, so this only
-/// draws the affordance. The real figure is never in the DOM while covered —
-/// which is stricter than the sketch, where it sat underneath at zero opacity.
+/// A figure that can be covered. The core already replaced the value with dots
+/// when masked, so this only draws the affordance — the real figure is never in
+/// the DOM while covered.
 #[component]
 pub fn Masked(
     #[prop(into)] value: String,

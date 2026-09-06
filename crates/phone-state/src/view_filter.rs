@@ -8,8 +8,7 @@ pub struct ViewFilter {
     /// All sixteen, each with its live count.
     pub categories: Vec<ViewCategoryChip>,
 
-    /// What a shut category group says instead of its chips: the first few
-    /// selected, then `"+2"`.
+    /// What a shut category group shows instead of its chips.
     pub categories_summary: Vec<ViewCategoryChip>,
     pub categories_overflow: Option<String>,
 
@@ -31,7 +30,7 @@ pub struct ViewCategoryChip {
     /// How many transactions match, as text.
     pub count: String,
     pub selected: bool,
-    /// Nothing matches. The chip stays visible but reads as unavailable.
+    /// Nothing matches. The chip stays visible, reading as unavailable.
     pub empty: bool,
 }
 

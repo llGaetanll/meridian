@@ -1,9 +1,5 @@
-//! The view layer. Components take finished values and print them.
-//!
-//! Nothing here decides anything: no formatting, no sorting, no working out
-//! what a row says. That is all in `phone-state`, which is what makes this crate
-//! a transcription target for SwiftUI and Compose rather than a thing to be
-//! reimplemented.
+//! The view layer. Components take finished values and print them; nothing
+//! here decides anything.
 
 mod icon;
 mod rows;

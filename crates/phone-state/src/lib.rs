@@ -1,13 +1,7 @@
 //! The phone app's decisions, and nothing else.
 //!
-//! This is a *program*'s state machine rather than a bag of shared types —
-//! `api-common` and `api-ledger` are where the types live. What is here is the
-//! app: what happens when a tab is tapped, what each screen shows, and what
-//! IO to ask for. `server-main` owns the equivalent for the server.
-//!
-//! The phone apps reach this over FFI, so its public surface is deliberately
-//! narrow: one object, one method that matters. Everything above it renders;
-//! everything below it does IO.
+//! What happens when a tab is tapped, what each screen shows, and what IO to
+//! ask for. The phone apps reach it over FFI: one object, one method.
 
 mod action;
 mod action_source;
@@ -89,8 +83,7 @@ uniffi::setup_scaffolding!();
 
 /// The state machine, as the platforms see it.
 ///
-/// Swift and Kotlin get a handle to one of these and send it events. The
-/// `Mutex` is what makes it `Send + Sync`, which UniFFI requires of an
+/// The `Mutex` is what makes it `Send + Sync`, which UniFFI requires of an
 /// exported object; the machine itself has no opinion about threads.
 #[derive(uniffi::Object)]
 pub struct Core {
@@ -108,22 +101,14 @@ impl Core {
 
     /// Hand in what happened, get back what to do about it.
     ///
-    /// No clock: the machine has none of its own and is not given one here
-    /// either. The runtime reads the platform's clock and sends it in as an
-    /// [`EventRuntime::Tick`] like anything else it observed.
-    ///
     /// The owning counterpart to [`StateApp::handle_events`]: a `&mut Vec` does
-    /// not cross FFI, so the buffer is allocated here instead of reused. The
-    /// borrowing version stays for replay and tests, where the allocation is
-    /// worth avoiding.
+    /// not cross FFI, so the buffer is allocated here instead of reused.
     pub fn handle_events(&self, events: Vec<Event>) -> Vec<Action> {
         let mut actions = Vec::new();
 
-        // A poisoned mutex means another thread panicked while holding it.
-        // Carrying on beats taking the app down — and a panic across FFI is
-        // undefined behaviour rather than an exception, so propagating is not
-        // an option either. It is logged loudly so the panic that caused it
-        // does not become a mystery here.
+        // Carrying on with the held state beats taking the app down, and a
+        // panic across FFI is undefined behaviour rather than an exception, so
+        // propagating is not an option either.
         let mut state = match self.state.lock() {
             Ok(state) => state,
             Err(poisoned) => {

@@ -14,10 +14,7 @@ pub enum EventUi {
     /// Pull to refresh.
     RefreshRequested,
 
-    /// The eye on a covered figure.
-    ///
-    /// One switch for the whole app: revealing on Balances and staying covered
-    /// on Recurring would be a strange thing to have to explain.
+    /// The eye on a covered figure. One switch for the whole app.
     MaskToggled,
 
     /// One of the two groups inside the filter panel.
@@ -33,7 +30,7 @@ pub enum EventUi {
     RangeSelected { kind: RangeSelection },
 
     /// A day in the recurring calendar. Tapping the day already selected
-    /// clears it, so the card below can be put away the way it was opened.
+    /// clears it.
     CalendarDaySelected { id: String },
 
     /// A swipe across the recurring calendar. `step` is months, so −1 is the
@@ -44,30 +41,21 @@ pub enum EventUi {
     TxSelected { id: String },
 
     /// The Welcome screen's one button. There is no Sign up and no Sign in:
-    /// an address that exists signs in and one that does not signs up, so
-    /// there is nothing to choose and no way to choose wrong.
+    /// an address that exists signs in and one that does not signs up.
     EmailChosen,
 
-    /// The address field, as it now reads.
-    ///
-    /// The whole value rather than one keystroke, so a paste, a backspace and
-    /// a tap are the same event and the machine holds what the field holds.
+    /// The address field, as a whole value rather than one keystroke, so a
+    /// paste, a backspace and a tap are the same event.
     EmailTyped { text: String },
 
     /// Continue, under the address.
     EmailSubmitted,
 
-    /// The code field, as it now reads.
-    ///
-    /// Typing alone never submits. It used to: the sixth digit went straight
-    /// to the server, on the reasoning that there is nothing to check before
-    /// it. What that missed is the typo — a wrong sixth digit spent the guess
-    /// before the user had seen what they had typed, and left six digits on
-    /// screen that could only be edited backwards.
+    /// The code field, as it reads. Typing alone never submits: auto-sending
+    /// on the sixth digit spends a guess on a typo the user has not seen yet.
     CodeTyped { digits: String },
 
-    /// Continue, under the six boxes. Only drawn once all six are in, since
-    /// there is nothing to submit before that.
+    /// Continue, under the six boxes. Only drawn once all six are in.
     CodeSubmitted,
 
     /// Send a new code.
@@ -76,21 +64,15 @@ pub enum EventUi {
     /// The chevron, and the code screen's way back to a mistyped address.
     BackPressed,
 
-    /// Connect a bank, Try again, and Add another bank.
-    ///
-    /// One event rather than three, because it is one thing: whichever screen
-    /// the tap came from, the next thing that happens is Plaid opening.
+    /// Connect a bank, Try again, and Add another bank — one event, because
+    /// whichever screen the tap came from, Plaid opens next.
     BankConnectRequested,
 
     /// Open Meridian, on the last screen of first run.
     OnboardingFinished,
 
-    /// Sign out, on the Account tab.
-    ///
-    /// Everything the app holds belongs to the account being signed out of, so
-    /// this is the one event that puts the machine back to where a fresh
-    /// install starts. There is no confirmation: nothing is destroyed, and
-    /// signing in again is the same six digits it was the first time.
+    /// Sign out, on the Account tab. Everything the app holds belongs to the
+    /// account, so this puts the machine back to where a fresh install starts.
     SignOutRequested,
 }
 

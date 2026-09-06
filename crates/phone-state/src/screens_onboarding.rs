@@ -1,13 +1,8 @@
 //! First run, turned into screens.
 //!
-//! Split out of [`crate::screens`] rather than added to it: the flow shares no
-//! data with the three tabs and none of its wording is reused by them, so the
-//! two files have nothing to say to each other.
-//!
-//! Every sentence the flow prints is here, which is the point — three
-//! platforms drawing this road should not be three chances to word the same
-//! promise differently. `sketches/mobile/onboarding.html` carries the
-//! reasoning behind each one.
+//! Every sentence the flow prints is here, so that three platforms drawing
+//! this road are not three chances to word the same promise differently.
+//! `sketches/mobile/onboarding.html` carries the reasoning behind each one.
 
 use std::cmp::Ordering;
 
@@ -29,7 +24,6 @@ use crate::state_onboarding::RESEND_AFTER;
 use crate::state_onboarding::Step;
 use server_wire::SyncStage;
 
-/// The three headings, which are the only reason the flow says how long it is.
 const STEP_ACCOUNT: &str = "Step 1 of 3 · Account";
 const STEP_BANK: &str = "Step 2 of 3 · Bank";
 const STEP_SYNC: &str = "Step 3 of 3 · Sync";
@@ -56,9 +50,8 @@ fn welcome() -> ViewOnboarding {
         body: plain("Meridian reads your banks and puts what you spend, hold and owe on one page."),
         action: "Continue with email".to_string(),
 
-        // At the point of consent rather than in a settings screen. Not a
-        // link yet: there is no page behind either name, and a tap that opens
-        // nothing is worse than a sentence that does not offer to.
+        // Not a link yet: there is no page behind either name, and a tap that
+        // opens nothing is worse than a sentence that does not offer to.
         legal: "By continuing you agree to our Terms and Privacy Policy.".to_string(),
     }
 }
@@ -68,7 +61,7 @@ fn email(flow: &StateOnboarding) -> ViewOnboarding {
         step: STEP_ACCOUNT.to_string(),
         title: "What's your email?".to_string(),
 
-        // No password anywhere in this flow, and this says why in the place
+        // There is no password anywhere in this flow, and this is where
         // someone would otherwise wonder about it.
         body: plain("We'll send a six-digit code. Nothing to make up and nothing to forget."),
 
@@ -92,8 +85,7 @@ fn code(flow: &StateOnboarding, now: Timestamp) -> ViewOnboarding {
     let digits: Vec<char> = flow.code().chars().collect();
 
     // Every box goes wrong at once: a rejected code is one wrong value, not
-    // six wrong digits, and reddening the last one would blame the keystroke
-    // that happened to complete it.
+    // six wrong digits.
     let bad = flow.fault().is_some();
 
     let cells = (0..CODE_LENGTH)
@@ -109,8 +101,7 @@ fn code(flow: &StateOnboarding, now: Timestamp) -> ViewOnboarding {
         title: "Check your email".to_string(),
 
         // The address is on screen and one tap from being fixed. A typo in the
-        // step before is otherwise a dead end: the code never arrives and
-        // nothing here says why.
+        // step before is otherwise a dead end.
         body: vec![run("We sent a code to "), strong(flow.email()), run(".")],
 
         cells,
@@ -126,10 +117,9 @@ fn code(flow: &StateOnboarding, now: Timestamp) -> ViewOnboarding {
     }
 }
 
-/// The way out of a code that did not work, whatever was wrong with it.
-///
-/// A countdown that gives way to a button, rather than a button that is there
-/// all along and does nothing for the first minute.
+/// The way out of a code that did not work, whatever was wrong with it. A
+/// countdown that gives way to a button, rather than a button that does
+/// nothing for the first minute.
 fn resend(flow: &StateOnboarding, now: Timestamp) -> ViewResend {
     let Some(sent) = flow.sent_at() else {
         return ViewResend::Ready {
@@ -154,12 +144,9 @@ fn resend(flow: &StateOnboarding, now: Timestamp) -> ViewResend {
     }
 }
 
-/// The screen the whole flow exists for.
-///
-/// The four lines are true ones, including the third — the one an app like
-/// this usually leaves out. Meridian sees your transactions and stores them.
-/// That is the product, and an app that implies otherwise has told its first
-/// lie on the screen where it is asking to be trusted.
+/// The screen the whole flow exists for. The four lines are true ones,
+/// including the third: Meridian stores your transactions, and an app that
+/// implies otherwise has lied on the screen where it asks to be trusted.
 fn bank(flow: &StateOnboarding) -> ViewOnboarding {
     ViewOnboarding::Bank {
         step: STEP_BANK.to_string(),
@@ -196,18 +183,15 @@ fn bank(flow: &StateOnboarding) -> ViewOnboarding {
         action: "Connect a bank".to_string(),
         opening: flow.opening(),
 
-        // Plaid's own end-user policy, named here rather than in a settings
-        // screen: this is where the data starts moving.
+        // Named here rather than in a settings screen: this is where the data
+        // starts moving.
         legal: "Plaid handles the connection under its end-user privacy policy.".to_string(),
     }
 }
 
 /// The only slow screen in the app, and it happens once per bank.
-///
-/// The counts climb because the pages actually land — `/transactions/sync`
-/// pages the whole history the first time and almost nothing every time after
-/// (`docs/PLAID.md`) — so a bar that says how far along it is beats a spinner
-/// that says nothing for a minute.
+/// `/transactions/sync` pages the whole history the first time
+/// (`docs/PLAID.md`), so a bar beats a spinner that says nothing for a minute.
 fn sync(flow: &StateOnboarding) -> ViewOnboarding {
     let sync = flow.sync();
 
@@ -216,9 +200,8 @@ fn sync(flow: &StateOnboarding) -> ViewOnboarding {
         title: "Reading your history".to_string(),
         body: plain("First time only. Every refresh after this one takes a moment."),
 
-        // The stage that is running counts half: it has started and it has not
-        // finished, and a bar that only moved between stages would sit still
-        // through the longest one.
+        // The stage that is running counts half: a bar that only moved between
+        // stages would sit still through the longest one.
         progress: (f64::from(stage_index(sync.stage)) + 1.5) / SYNC_STAGES,
 
         rows: vec![
@@ -246,15 +229,11 @@ fn sync(flow: &StateOnboarding) -> ViewOnboarding {
     }
 }
 
-/// Counts rather than a tick and a slogan.
-///
-/// They are the first proof the thing works, and they set the expectation for
-/// the Ledger the next tap opens: a thin-looking month reads as a short
-/// history rather than as a broken app.
+/// Counts rather than a tick and a slogan: they are the first proof the thing
+/// works, and they set the expectation for the Ledger the next tap opens.
 ///
 /// No balance. Balances are covered by default so the app can be opened in
-/// public, and putting the figure on the last screen of setup would undo that
-/// on day one.
+/// public, and putting the figure here would undo that on day one.
 fn ready(flow: &StateOnboarding) -> ViewOnboarding {
     let sync = flow.sync();
 
@@ -264,9 +243,8 @@ fn ready(flow: &StateOnboarding) -> ViewOnboarding {
         title: "You're set.".to_string(),
         body: vec![strong(bank), run(" is connected and syncing.")],
 
-        // The labels say what was counted and no more. The sketch's fuller
-        // wording — "back to 23 May" — is a fact about the ledger, and the
-        // ledger has not been fetched yet on this screen.
+        // The labels say what was counted and no more: anything about the
+        // ledger's reach is a fact this screen has not fetched.
         tally: vec![
             tally(sync.accounts, "account", "accounts"),
             tally(sync.transactions, "transaction", "transactions"),
@@ -277,8 +255,8 @@ fn ready(flow: &StateOnboarding) -> ViewOnboarding {
             ),
         ],
 
-        // Add another bank rather than Done: most people have more than one,
-        // and the second connection will never be likelier than it is now.
+        // Add another bank rather than Done: the second connection will never
+        // be likelier than it is now.
         another: "Add another bank".to_string(),
         open: "Open Meridian".to_string(),
     }
@@ -287,15 +265,9 @@ fn ready(flow: &StateOnboarding) -> ViewOnboarding {
 /// The common ending, not a rare one: people close the sheet to go and find a
 /// password, or their bank's own login fails.
 ///
-/// Nothing was created, and saying so plainly is the whole job — "something
-/// went wrong" leaves someone wondering whether their bank is half-attached to
-/// an app they have not finished setting up.
-///
-/// It reads two ways, because it is reached from two places. Before the first
-/// bank there is nothing behind this screen and Try again is the only honest
-/// button on it. After one, the same screen is the end of Add another bank —
-/// and a screen whose only button reopens the page somebody just closed is a
-/// trap rather than a road.
+/// It reads two ways because it is reached from two places: before the first
+/// bank, Try again is the only honest button on it; after one, it is the end
+/// of Add another bank and needs a way through to the app.
 fn failed(flow: &StateOnboarding) -> ViewOnboarding {
     let linked = flow.linked();
 
@@ -311,9 +283,8 @@ fn failed(flow: &StateOnboarding) -> ViewOnboarding {
             "The bank sign-in closed before it was done, so no bank was connected."
         }),
 
-        // Since there is no skip, this row carries the way out instead. That is
-        // the difference between insisting on a bank and trapping someone on a
-        // screen.
+        // There is no skip, so this row carries the reassurance instead — the
+        // difference between insisting on a bank and trapping someone.
         rows: vec![if linked {
             fact(
                 "tick-circle",
@@ -375,8 +346,7 @@ fn stage_row(title: &str, stage: SyncStage, running: SyncStage, count: u32) -> V
     }
 }
 
-/// How far through the three stages, as a number the bar and the rows both
-/// order by.
+/// How far through the three stages, as a number the bar and rows order by.
 fn stage_index(stage: SyncStage) -> u32 {
     match stage {
         SyncStage::Accounts => 0,

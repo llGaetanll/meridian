@@ -10,20 +10,17 @@ pub struct ViewRecurring {
     /// `"−$3,767.18"`, the net of everything that comes back.
     pub headline: String,
 
-    /// `"+$4.22 in · net −$3,767.18"`.
-    ///
-    /// The phone draws `flow_in` and `flow_out` instead; this is the one line
-    /// the web still sets under its headline.
+    /// `"+$4.22 in · net −$3,767.18"` — the two directions and the net on one
+    /// line, which is what the web sets under its headline.
     pub detail: String,
 
-    /// `"$4.22"` and `"$3,771.40"` — the two directions, unsigned. The words
-    /// beside them say which way the money goes, so the figures do not carry a
-    /// sign as well.
+    /// `"$4.22"` and `"$3,771.40"` — the two directions, unsigned, for where a
+    /// word beside the figure says which way the money goes.
     pub flow_in: String,
     pub flow_out: String,
 
     /// `"+$4.22"` and `"−$3,771.40"` — the same two with the sign back on, for
-    /// where there is no room for the words. A diff, read as one.
+    /// where there is no room for the words.
     pub flow_in_signed: String,
     pub flow_out_signed: String,
 
@@ -33,11 +30,10 @@ pub struct ViewRecurring {
     pub breakdown_label: String,
     pub breakdown_total: String,
 
-    /// The breakdown bar and its legend are two views of one split, so they
-    /// come from one list.
+    /// The split behind both the bar and its legend.
     pub breakdown: Vec<ViewBreakdownSlice>,
 
-    /// When it all lands, under the breakdown.
+    /// When it all lands.
     pub calendar: ViewCalendar,
 
     /// What landed on the day that was tapped. `None` until one is.
@@ -56,10 +52,8 @@ pub struct ViewBreakdownSlice {
     pub label: String,
     pub token: String,
 
-    /// The segment's share of the bar, 0..1.
-    ///
-    /// A ratio rather than a percentage string, because this one is geometry —
-    /// the exception `docs/FFI.md` carves out for the chart.
+    /// The segment's share of the bar, 0..1 — a ratio rather than a string
+    /// because it is geometry, the exception `docs/FFI.md` carves out.
     pub share: f64,
 
     /// `"$2,078.50"`.
@@ -94,8 +88,7 @@ pub struct ViewStreamGroup {
     pub token: String,
     /// `"$2,078.50"`.
     pub total: String,
-    /// `"1 stream"` / `"2 streams"`, which is what the group's heading says
-    /// now that the figures below it are the ones worth reading.
+    /// `"1 stream"` / `"2 streams"`.
     pub count_label: String,
     pub streams: Vec<ViewStreamRow>,
 }
@@ -109,11 +102,10 @@ pub struct ViewStreamRow {
     /// `"next Aug 22 · in 3 days"`.
     pub when: String,
 
-    /// `"Monthly · next Aug 22"` — the whole line under the name, which is
-    /// the frequency and the date read as one phrase rather than two.
+    /// `"Monthly · next Aug 22"` — the frequency and the date as one phrase.
     pub sub: String,
 
-    /// Due within the week, so it reads as a heads-up rather than an alarm.
+    /// Due within the week.
     pub soon: bool,
 
     /// `"−$2,078.50"`.

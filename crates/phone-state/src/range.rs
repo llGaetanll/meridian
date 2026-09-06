@@ -4,9 +4,8 @@ use api_common::Timestamp;
 
 /// A time range the user asked for.
 ///
-/// The parameters ride along with the choice rather than being separate
-/// events, so "last 3 months" is one event and not three. A replay of the log
-/// then shows the range the user actually picked, not a reconstruction of it.
+/// The parameters ride along with the choice, so "last 3 months" is one event
+/// and not three, and a replay shows the range the user picked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum RangeSelection {
     /// This month, this week, this year.
@@ -16,9 +15,8 @@ pub enum RangeSelection {
     /// Between two days, as seconds since the epoch.
     ///
     /// A bare `u64` rather than a [`Timestamp`], because this crosses FFI and
-    /// `custom_newtype!` cannot be applied to a type from another crate. The
-    /// conversion happens in [`RangeSelection::window_bounds`], so nothing
-    /// downstream handles a raw integer.
+    /// `custom_newtype!` cannot be applied to a type from another crate;
+    /// [`RangeSelection::window_bounds`] converts.
     Between { start: u64, end: u64 },
     /// Everything.
     All,
@@ -58,10 +56,9 @@ impl RangeUnit {
 
     /// How many seconds one of these covers.
     ///
-    /// Approximate for months and years on purpose: this is used to find the
-    /// start of a "last 3 months" window, where the user means "about three
-    /// months back" and not a calendar-exact boundary. The `This` forms, which
-    /// do mean an exact boundary, are computed from the civil date instead.
+    /// Approximate for months and years on purpose: a "last 3 months" window
+    /// means about three months back. The `This` forms, which do mean an exact
+    /// boundary, are computed from the civil date instead.
     pub fn seconds(&self) -> u64 {
         match self {
             RangeUnit::Week => 7 * 86_400,

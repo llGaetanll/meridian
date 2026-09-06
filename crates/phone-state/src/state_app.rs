@@ -26,15 +26,12 @@ use crate::state_onboarding::Step;
 
 /// Everything the app is, at one moment.
 ///
-/// Deliberately small. Every field is either data that arrived from outside or
-/// a choice the user made — nothing here is derived, because anything derived
-/// is computed on the way out instead. A field that could be recomputed is a
-/// field that can disagree with itself.
+/// Nothing here is derived: a field that could be recomputed is a field that
+/// can disagree with itself.
 ///
 /// **The fields are private and stay private.** State changes only through
 /// [`handle_events`](StateApp::handle_events); a `pub` field would be a way to
-/// mutate state without an event, which is the one thing this design exists to
-/// prevent.
+/// mutate state without an event.
 #[derive(Debug)]
 pub struct StateApp {
     /// Which tab.
@@ -52,17 +49,11 @@ pub struct StateApp {
     /// [`EventRuntime::Tick`](crate::EventRuntime) arrives.
     device_now: Timestamp,
 
-    /// Whether figures are covered.
-    ///
-    /// Starts revealed. It used to start covered, so that the ledger could be
-    /// opened in public without a decision — but the phone has no way to
-    /// uncover them any more, and a screen of grey bars with nothing to tap is
-    /// worse than one that shows the figures. The web still has its eye.
+    /// Whether figures are covered. Starts revealed: the phone draws nothing
+    /// that uncovers them.
     masked: bool,
 
-    /// The day tapped in the recurring calendar, as a day index. A choice
-    /// rather than data, and the only one the Recurring screen owns — not
-    /// enough to be worth a machine of its own.
+    /// The day tapped in the recurring calendar, as a day index.
     picked_day: Option<u64>,
 
     /// How many months the calendar has been swiped from the one the app is
@@ -70,24 +61,12 @@ pub struct StateApp {
     /// carries the calendar with it.
     month_step: i32,
 
-    /// The Ledger screen's own state.
-    ///
-    /// A sub-machine, because the filter is the one piece of state that belongs
-    /// to a single screen. Everything else here — the entries, the connections,
-    /// the streams, the mask — is read by more than one, and Home reads all of
-    /// them.
-    ///
-    /// That is why there is no `StateBalances` or `StateRecurring`: neither
-    /// screen owns any state, both being projections of data the app holds. A
-    /// machine per screen would mean several copies of the ledger that can
-    /// disagree, which is the failure `docs/ABOUT.md`'s one-ledger stance
-    /// exists to prevent. `docs/STYLE.md` states the rule: split when a screen
-    /// owns state nothing else reads.
+    /// The Ledger screen's own state. A sub-machine because the filter is the
+    /// one piece of state a single screen owns; a machine per screen would be
+    /// several copies of the ledger that can disagree.
     ledger: StateLedger,
 
-    /// Set once a load fails, cleared when one succeeds. Drives the empty
-    /// state's wording — "nothing yet" and "we could not reach the server" are
-    /// different screens.
+    /// Set once a load fails, cleared when one succeeds.
     load_failed: Option<String>,
 
     /// Whether a snapshot has ever arrived. Distinguishes "still loading" from
@@ -96,15 +75,9 @@ pub struct StateApp {
 
     /// First run, until it has been walked. `None` means the app is the app.
     ///
-    /// It starts *present*: a device the app has never run on is the
-    /// assumption, and a stored session is what clears it. The other way round
-    /// — absent until the store says there is no session — would draw an empty
-    /// Ledger for the frame between launching and the runtime answering, on
-    /// every launch, for the whole life of the app.
-    ///
-    /// A sub-machine for the same reason [`StateLedger`] is one: the address
-    /// being typed and the digits so far are read by nothing outside the flow,
-    /// and once the flow is through there is nothing left to read.
+    /// Starts *present*, cleared by a stored session: absent until the store
+    /// says otherwise would draw an empty Ledger on every launch, for the frame
+    /// between launching and the runtime answering.
     onboarding: Option<StateOnboarding>,
 }
 
@@ -135,17 +108,12 @@ impl StateApp {
     /// The only entry point. Everything under it is one function per event
     /// group, mirroring the enums.
     ///
-    /// No clock is handed in. Time arrives as an
-    /// [`EventRuntime::Tick`](crate::EventRuntime) like anything else the
-    /// machine cannot go and get for itself, which is what makes a log of the
-    /// events a recording of the session rather than a list of things that
-    /// happened at whatever time the replay runs at. A test that is *about*
-    /// time sends a tick.
+    /// No clock is handed in: time arrives as an
+    /// [`EventRuntime::Tick`](crate::EventRuntime), which is what makes a log
+    /// of the events a recording of the session.
     ///
     /// Actions are pushed into a buffer the caller owns, so a batch of events
-    /// costs one allocation and a replay can reuse the same one. The FFI
-    /// boundary in `lib.rs` wraps this with an owning version, since a `&mut
-    /// Vec` does not cross.
+    /// costs one allocation and a replay can reuse the same one.
     pub fn handle_events(&mut self, events: &[Event], actions: &mut Vec<Action>) {
         for event in events {
             self.handle_event(event, actions);
@@ -176,21 +144,16 @@ impl StateApp {
 
                 self.device_now = now;
 
-                // A sync runs on the server and finishes whether or not
-                // anybody asks, so while that screen is up the clock is what
-                // makes the app go and look. Deciding it here rather than
-                // looping in the runtime is what puts every poll in the log:
-                // a replay makes the same number of them in the same places.
+                // A sync finishes on the server whether or not anybody asks.
+                // Polling from here rather than the runtime puts it in the log.
                 if self.polls_on_a_tick() {
                     actions.push(Action::ToSource {
                         action: ActionSource::PollSync,
                     });
                 }
 
-                // The countdown on the code screen is the one thing in the app
-                // that changes while nobody is touching it, so it is the one
-                // screen a tick redraws. Drawing on every tick would rebuild
-                // the Ledger sixty times a minute to arrive at the same list.
+                // Drawing on every tick would rebuild the Ledger sixty times a
+                // minute to arrive at the same list.
                 if self.draws_on_a_tick() {
                     self.render(actions);
                 }
@@ -201,9 +164,8 @@ impl StateApp {
     fn handle_event_ui(&mut self, event: &EventUi, actions: &mut Vec<Action>) {
         match event {
             EventUi::Started => {
-                // Who is signed in is asked for first, because the answer is
-                // what decides whether the app opens on the Ledger or on the
-                // first screen of first run. The snapshot follows from it.
+                // Who is signed in decides whether the app opens on the Ledger
+                // or on the first screen of first run; the snapshot follows.
                 actions.push(Action::ToSource {
                     action: ActionSource::LoadSession,
                 });
@@ -213,14 +175,12 @@ impl StateApp {
                 self.screen = *screen;
 
                 // No fetch: one snapshot feeds every screen, so switching tabs
-                // is free. That is the whole reason the server answers with one
-                // document rather than four endpoints.
+                // is free.
             }
 
             EventUi::RefreshRequested => {
-                // The same ask as any other. The gesture is worth keeping —
-                // it is how somebody says "look again now" — but what it
-                // reaches is the server's freshness window, not Plaid.
+                // The same ask as any other: what it reaches is the server's
+                // freshness window, not Plaid.
                 actions.push(Action::ToSource {
                     action: ActionSource::LoadSnapshot,
                 });
@@ -228,8 +188,6 @@ impl StateApp {
 
             EventUi::MaskToggled => self.masked = !self.masked,
 
-            // Everything the Ledger owns is routed to its own machine, which
-            // keeps the app's arms free of what a category chip is.
             EventUi::FilterGroupToggled { group } => self.ledger.toggle_group(*group),
 
             EventUi::CategoryToggled { id } => {
@@ -241,8 +199,8 @@ impl StateApp {
             EventUi::RangeSelected { kind } => self.ledger.set_range(*kind),
 
             EventUi::CalendarDaySelected { id } => {
-                // Tapping the day already picked clears it. A card that could
-                // only be opened would need a close button of its own.
+                // A card that could only be opened would need a close button of
+                // its own, so tapping the day already picked clears it.
                 let day = id.parse::<u64>().ok();
 
                 self.picked_day = if day == self.picked_day { None } else { day };
@@ -257,15 +215,12 @@ impl StateApp {
             }
 
             EventUi::TxSelected { .. } => {
-                // There is no detail screen yet. The event exists so the view
-                // can already dispatch it, and so the log records the taps that
-                // will one day open one.
+                // No detail screen yet. The event exists so the view can
+                // already dispatch it and the log records the taps.
             }
 
-            // Everything first run owns is routed to its own machine. Each arm
-            // is guarded rather than asserted: an event for a flow that has
-            // finished is a stale tap, not a broken invariant, and dropping it
-            // is the right answer.
+            // Each first-run arm is guarded rather than asserted: an event for
+            // a flow that has finished is a stale tap, not a broken invariant.
             EventUi::EmailChosen => {
                 if let Some(flow) = &mut self.onboarding {
                     flow.choose_email();
@@ -339,10 +294,8 @@ impl StateApp {
             }
 
             EventUi::OnboardingFinished => {
-                // A road with an end: past this the machine holds no memory
-                // of the flow at all. Nothing has to be lifted out first —
-                // what first run produced is a credential, and that has been
-                // the runtime's since `VerifyCode` answered.
+                // Nothing has to be lifted out of the flow first: what first
+                // run produced is a credential, and that is the runtime's.
                 if self.onboarding.take().is_some() {
                     actions.push(Action::ToSource {
                         action: ActionSource::SaveSession,
@@ -355,15 +308,12 @@ impl StateApp {
             }
 
             EventUi::SignOutRequested => {
-                // Every field here belongs to the account being signed out of
-                // — the entries, the banks, the filter, which tab was open —
+                // Every field here belongs to the account being signed out of,
                 // so the way back is a machine as new as a fresh install's
-                // rather than a list of things to clear one at a time, which
-                // is a list somebody adds a field to and forgets.
+                // rather than a list of things to clear one at a time.
                 //
-                // The clock is the exception, and it is carried over rather
-                // than reset: it belongs to the device and not to the account.
-                // A machine put back to the epoch would draw the screen under
+                // The clock is the exception: it belongs to the device, and a
+                // machine put back to the epoch would draw the screen under
                 // this tap against 1970 until the next tick corrected it.
                 let now = self.device_now;
 
@@ -412,9 +362,8 @@ impl StateApp {
             }
 
             EventSource::SessionLoaded { signed_in } => {
-                // This only ever *ends* first run — see the field's own note on
-                // why it starts present. A device with nobody signed in stays
-                // on the Welcome screen it is already drawing.
+                // This only ever *ends* first run: a device with nobody signed
+                // in stays on the Welcome screen it is already drawing.
                 if *signed_in {
                     self.onboarding = None;
 
@@ -456,10 +405,9 @@ impl StateApp {
                 if let Some(flow) = &mut self.onboarding {
                     flow.bank_linked();
 
-                    // The bank being attached is what starts the history
-                    // arriving, so the first ask follows the news rather than
-                    // the runtime deciding a sync must be next. Every ask
-                    // after this one is a tick's.
+                    // The bank attaching is what starts the history arriving,
+                    // so the first ask follows the news. Every ask after is a
+                    // tick's.
                     actions.push(Action::ToSource {
                         action: ActionSource::PollSync,
                     });
@@ -474,10 +422,9 @@ impl StateApp {
                 if let Some(flow) = &mut self.onboarding {
                     flow.bank_pending(now);
 
-                    // The same first ask as a bank that did land. There may be
-                    // no sync to report yet — that is what pending means — and
-                    // the flow is what knows an empty status is the gap rather
-                    // than the end.
+                    // The same first ask as a bank that did land: there may be
+                    // no sync to report yet, and the flow is what knows an
+                    // empty status is the gap rather than the end.
                     actions.push(Action::ToSource {
                         action: ActionSource::PollSync,
                     });
@@ -497,24 +444,19 @@ impl StateApp {
             EventSource::SyncStatusLoaded { json } => {
                 let now = self.now();
 
-                // A status we cannot read leaves the screen where it is. The
-                // next tick asks again, which is a better answer than throwing
-                // somebody out of first run over one malformed reply.
+                // A status we cannot read leaves the screen where it is and the
+                // next tick asks again, rather than throwing somebody out of
+                // first run over one malformed reply.
                 match serde_json::from_str::<WireSyncStatus>(json) {
                     Ok(status) => {
                         if let Some(flow) = &mut self.onboarding {
-                            // The name whenever it is there. It shows up one
-                            // poll into the sync rather than with the bank
-                            // being attached, so the screen opens saying
-                            // "Your bank" and corrects itself.
+                            // The name shows up one poll into the sync rather
+                            // than with the bank attaching, so the screen opens
+                            // saying "Your bank" and corrects itself.
                             if let Some(institution) = &status.institution {
                                 flow.bank_named(institution);
                             }
 
-                            // The same counts either way: whether this is
-                            // the last reply decides the step and nothing
-                            // else. The totals are on the finished one too,
-                            // and Ready is the screen that shows them.
                             let progress = Progress {
                                 stage: status.stage(),
                                 accounts: status.accounts,
@@ -541,8 +483,8 @@ impl StateApp {
             EventSource::LoadFailed { message } => {
                 self.load_failed = Some(message.clone());
 
-                // Still render: the screen has to say something, and what it
-                // says depends on whether anything was ever loaded.
+                // Still render: what the screen says depends on whether
+                // anything was ever loaded.
                 self.render(actions);
 
                 actions.push(Action::ToUi {
@@ -554,10 +496,8 @@ impl StateApp {
         }
     }
 
-    /// Hand the view the whole screen.
-    ///
-    /// Called at the end of every event, which is what lets the view hold no
-    /// state of its own: whatever it last received is what it draws.
+    /// Hand the view the whole screen. Called at the end of every event, which
+    /// is what lets the view hold no state of its own.
     fn render(&self, actions: &mut Vec<Action>) {
         actions.push(Action::ToUi {
             action: ActionUi::Render {
@@ -593,11 +533,8 @@ impl StateApp {
         &self.streams
     }
 
-    /// Whether what is on screen is a function of the clock.
-    ///
-    /// The code screen is, and nothing else is: its countdown reads a new
-    /// value every second and then turns into a button, and the tick that
-    /// turns it has to draw as much as the ones before it.
+    /// Whether what is on screen is a function of the clock. Only the code
+    /// screen is: its countdown reads a new value every second.
     fn draws_on_a_tick(&self) -> bool {
         match &self.onboarding {
             Some(flow) => flow.step() == Step::Code,
@@ -605,10 +542,8 @@ impl StateApp {
         }
     }
 
-    /// Whether there is a sync worth asking about.
-    ///
-    /// Only the screen that draws one. Leaving it is what ends the polling —
-    /// there is nothing to cancel, because nothing was ever started.
+    /// Whether there is a sync worth asking about. Leaving the screen that
+    /// draws one ends the polling; there is nothing to cancel.
     fn polls_on_a_tick(&self) -> bool {
         match &self.onboarding {
             Some(flow) => flow.step() == Step::Sync,
@@ -616,13 +551,9 @@ impl StateApp {
         }
     }
 
-    /// What time it is, as the device last said.
-    ///
-    /// The device's clock is the only one the app has and it is taken at its
-    /// word. The snapshot carries the timestamps *of* things — when a sync
-    /// landed, when a stream is next due — and no clock of its own: a phone
-    /// that had to be told the time would draw nothing until the first fetch
-    /// answered, and would stop moving between fetches.
+    /// What time it is, as the device last said. A phone that had to be told
+    /// the time would draw nothing until the first fetch answered, and would
+    /// stop moving between fetches.
     pub(crate) fn now(&self) -> Timestamp {
         self.device_now
     }
@@ -667,11 +598,7 @@ impl StateApp {
     }
 
     /// How many entries fall in each category, ignoring the category filter
-    /// itself.
-    ///
-    /// Ignoring it is the point: the counts on the chips have to say what
-    /// selecting *that* chip would give, and a count computed through the
-    /// current category selection would read zero for everything unselected.
+    /// itself — counted through it, every unselected category would read zero.
     /// The time range still applies, because that filter is independent.
     pub(crate) fn category_counts(&self) -> Vec<(Category, usize)> {
         let now = self.now();
@@ -691,8 +618,7 @@ impl StateApp {
     }
 }
 
-/// Read by tests. The view learns everything it needs from the actions it is
-/// handed, so nothing in the app calls these.
+/// Read by tests. The view learns everything from the actions it is handed.
 impl StateApp {
     pub fn entry_count(&self) -> usize {
         self.entries.len()

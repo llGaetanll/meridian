@@ -44,10 +44,8 @@ pub fn RecurringScreen(view: ViewRecurring) -> impl IntoView {
     }
 }
 
-/// The month, with a mark on every day a stream lands.
-///
-/// Six rows of seven, days either side of the month included — the grid is the
-/// core's, and this places cells and colours marks.
+/// The month, with a mark on every day a stream lands. The grid is the core's,
+/// six rows of seven with the days either side of the month included.
 #[component]
 fn CalendarGrid(calendar: ViewCalendar) -> impl IntoView {
     let weekdays = calendar.weekdays.clone();
@@ -55,8 +53,8 @@ fn CalendarGrid(calendar: ViewCalendar) -> impl IntoView {
 
     view! {
         <div class="cal">
-            // The web draws the month it is on. The two either side come over
-            // for the phone, which scrolls between them.
+            // The web draws only the month it is on; the phone scrolls between
+            // the three the core sends.
             <div class="cal-month">{calendar.current.label}</div>
 
             <div class="cal-grid">

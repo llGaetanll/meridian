@@ -2,22 +2,18 @@
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewBalances {
-    /// `"3 connections · 14 accounts"`.
-
-    /// `"Held"`. The headline is what you hold, not net worth: Plaid reports
-    /// the mortgage but never the house behind it, so a net figure is
-    /// structurally too red.
+    /// `"Held"`. What you hold, not net worth: Plaid reports the mortgage but
+    /// never the house behind it, so a net figure is structurally too red.
     pub headline_label: String,
 
     /// `"$86,541.74"`, or the same figure covered.
     pub headline: String,
 
-    /// Whether the figures are covered. The view draws a bar over them; the
-    /// value itself was already replaced, so nothing is hidden in the DOM.
+    /// Whether the figures are covered. They are already replaced in the text
+    /// above, so nothing is merely hidden in the DOM.
     pub masked: bool,
 
-    /// `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks, and
-    /// the only place on the page money still takes a colour.
+    /// `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks.
     pub owed_label: String,
     pub owed_total: String,
 
@@ -33,8 +29,7 @@ pub struct ViewConnection {
     /// `"synced 2m"`, or empty when the connection needs attention.
     pub synced: String,
 
-    /// Whether the user has to sign in again. Carries the action rather than
-    /// just naming the problem.
+    /// Whether the user has to sign in again.
     pub needs_reconnect: bool,
 
     /// Whether these balances are owed rather than held.

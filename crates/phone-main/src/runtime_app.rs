@@ -1,19 +1,9 @@
-//! The IO half of the app: everything effectful, and nothing that decides.
-//!
-//! The pairing `docs/ARCHITECTURE.md` describes — a state machine that decides
-//! ([`phone_state::StateApp`]) and a runtime that acts. The function structure
-//! mirrors the machine's: `perform_actions` fans out to `perform_action`,
-//! which fans out to one function per action group.
-//!
-//! There is exactly one signal in the whole app, holding the last screen the
-//! machine rendered. That is the state minimisation the docs ask for, taken as
-//! far as it goes: the components read that signal and nothing else, which is
-//! what makes them a straight transcription target for SwiftUI and Compose.
-//! Neither of those has signals, and neither will need them.
-//!
-//! The loop is driven by user interaction rather than by a `loop`, because a
-//! browser app is woken by events rather than polling for them. `dispatch` is
-//! one turn of the loop the server's runtime writes out in full.
+//! The IO half of the app: everything effectful, and nothing that decides. The
+//! pairing `docs/ARCHITECTURE.md` describes: a state machine that decides
+//! ([`phone_state::StateApp`]) and a runtime that acts. There is exactly one
+//! signal in the whole app, holding the last screen the machine rendered, and
+//! the loop is driven by user interaction rather than by a `loop`, because a
+//! browser app is woken by events rather than polling for them.
 
 use std::time::Duration;
 
@@ -35,9 +25,8 @@ use crate::runtime_io;
 /// Everything on screen, and the one way to change it.
 #[derive(Clone, Copy)]
 pub struct RuntimeApp {
-    /// The machine. `StoredValue` rather than a signal: nothing reads it
-    /// reactively, because reading state is what the view is not supposed to
-    /// do. It is written to and asked for actions.
+    /// The machine. `StoredValue` rather than a signal: reading state
+    /// reactively is what the view is not supposed to do.
     state: StoredValue<StateApp, LocalStorage>,
 
     /// The last screen the machine rendered. The only reactive value in the app.
@@ -45,28 +34,23 @@ pub struct RuntimeApp {
 
     dock: RwSignal<Option<ViewDock>>,
 
-    /// The last error, for the banner. Cleared by the next successful load.
+    /// The last error, for the banner.
     error: RwSignal<Option<String>>,
 
     /// Whether a fetch is in flight, for the refresh spinner. Deliberately
-    /// *not* in the machine: it is a fact about the runtime rather than a
-    /// decision, and the machine would have to be told when a request started
-    /// in order to know it.
+    /// *not* in the machine: a fact about the runtime rather than a decision.
     loading: RwSignal<bool>,
 }
 
 impl RuntimeApp {
-    /// Start the app: provide the runtime and send the first event.
-    ///
-    /// The counterpart to the server's `run`. It returns rather than looping,
-    /// because Leptos owns the loop from here.
+    /// Start the app: provide the runtime and send the first event. Returns
+    /// rather than looping, because Leptos owns the loop from here.
     pub fn run() -> Self {
         let runtime = Self::new();
 
         provide_context(runtime);
 
-        // The clock first, so that nothing the app draws is drawn against a
-        // machine that has never been told the time.
+        // The clock first: nothing is drawn against a machine never told the time.
         runtime.tick();
 
         runtime.dispatch(Event::FromUi {
@@ -79,10 +63,7 @@ impl RuntimeApp {
     }
 
     /// The clock, read at the edge and sent in as an event like any other.
-    ///
-    /// Once a second whatever is on screen. Which ticks are worth drawing for
-    /// is the machine's decision — today only the code screen's countdown is —
-    /// so there is no rule here about when to send one.
+    /// Which ticks are worth drawing for is the machine's decision.
     fn tick(&self) {
         self.dispatch(Event::FromRuntime {
             event: EventRuntime::Tick {
@@ -117,11 +98,9 @@ impl RuntimeApp {
         self.loading
     }
 
-    /// Send an event in, and carry out whatever comes back. One turn of the
-    /// loop.
-    ///
-    /// Every interaction in the app goes through here. A component's click
-    /// handler dispatches; it never writes a signal itself.
+    /// Send an event in, and carry out whatever comes back — one turn of the
+    /// loop. A component's click handler dispatches; it never writes a signal
+    /// itself.
     pub fn dispatch(&self, event: Event) {
         let events = [event];
         let mut actions = Vec::new();
@@ -129,9 +108,7 @@ impl RuntimeApp {
         self.state
             .update_value(|state| state.handle_events(&events, &mut actions));
 
-        // Every turn is logged with its events and actions paired — except a
-        // tick that decided nothing, which is most of them and would bury the
-        // rest at sixty lines a minute.
+        // A tick that decided nothing would bury every other turn in the log.
         let quiet_tick = actions.is_empty() && matches!(events, [Event::FromRuntime { .. }]);
 
         if !quiet_tick {
@@ -179,12 +156,8 @@ impl RuntimeApp {
 
             ActionSource::LoadSession => self.load_session(),
 
-            // First run is drawn on the phone and not here yet, and
-            // `load_session` is what makes sure it is never reached — so an
-            // action from it arriving on the web is worth a line rather than a
-            // silent no-op. `ForgetSession` is the same story from the other
-            // end: the browser holds no token, so there is nothing to throw
-            // away and reloading the page signs back in.
+            // First run is drawn on the phone and not here, and `load_session`
+            // keeps it out of reach — so one arriving is worth a line.
             ActionSource::SaveSession
             | ActionSource::ForgetSession
             | ActionSource::SendCode { .. }
@@ -196,16 +169,10 @@ impl RuntimeApp {
         }
     }
 
-    /// Who the browser is signed in as.
-    ///
-    /// It answers as a browser that already is, which is what the web did
-    /// before there was a session to load at all: the phone owns first run
-    /// (`sketches/mobile/onboarding.html`), and until those screens exist here
-    /// too, sending the web down that road would be sending it to a placeholder.
-    ///
-    /// Answered on the next turn rather than inside this one, so the actions
-    /// from the batch that asked are all carried out before the answer starts
-    /// another.
+    /// Who the browser is signed in as: always signed in, because the phone
+    /// owns first run and the web has no onboarding screens to send anyone to.
+    /// Answered on the next turn, so the actions from the batch that asked are
+    /// carried out before the answer starts another.
     fn load_session(&self) {
         let runtime = *self;
 
@@ -216,14 +183,10 @@ impl RuntimeApp {
         });
     }
 
-    /// The one piece of IO that reaches the network.
-    ///
-    /// Whatever comes back re-enters the machine as an event, which is what
-    /// closes the loop: nothing here inspects the answer or decides anything
-    /// about it.
+    /// The one piece of IO that reaches the network. Whatever comes back
+    /// re-enters the machine as an event: nothing here decides anything.
     fn load_snapshot(&self) {
-        // Two refreshes at once would race to write the same state, and the
-        // slower one would win. One at a time.
+        // Two refreshes at once race to write the same state, slower one wins.
         if self.loading.get_untracked() {
             return;
         }
@@ -240,7 +203,6 @@ impl RuntimeApp {
 
             runtime.loading.set(false);
 
-            // A successful load clears whatever the last failure said.
             if matches!(event, EventSource::SnapshotLoaded { .. }) {
                 runtime.error.set(None);
             }

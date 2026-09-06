@@ -1,9 +1,6 @@
-//! Where the money sits.
-//!
-//! The headline is what you hold, not net worth. Plaid reports the mortgage
-//! but never the house behind it, and the student loan but not the degree, so
-//! a net figure is structurally too red — opening the app should not read as
-//! "you are $77k in the hole". Debts get their own blocks below.
+//! Where the money sits. The headline is what you hold, not net worth: Plaid
+//! reports the mortgage but never the house behind it, so a net figure is
+//! structurally too red. Debts get their own blocks below.
 
 use leptos::prelude::*;
 use phone_state::ViewBalances;

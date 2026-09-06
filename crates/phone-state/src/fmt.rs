@@ -1,9 +1,7 @@
 //! The wording the screens use.
 //!
-//! Everything here takes `now` as an argument rather than reading a clock.
-//! That is the whole reason a replay of an event log lands on the same screen
-//! it did the first time: `"in 3 days"` is a function of two timestamps, and
-//! one of them arrived in an event.
+//! Everything here takes `now` as an argument rather than reading a clock, so
+//! a replay of an event log lands on the same screen it did the first time.
 
 use std::time::Duration;
 
@@ -65,9 +63,8 @@ pub fn weekday(ts: Timestamp) -> &'static str {
 
 /// `"in 3 days"`, `"today"`, `"2 days ago"`.
 ///
-/// Whole days apart, computed on the day boundaries rather than on the raw
-/// difference: a transaction at 23:00 yesterday is "yesterday", not "9 hours
-/// ago", and a 25-hour gap is not "in 1 day" when it crosses two midnights.
+/// Whole days apart, counted on the day boundaries rather than on the raw
+/// difference: 23:00 yesterday is "yesterday", not "9 hours ago".
 pub fn relative_day(ts: Timestamp, now: Timestamp) -> String {
     let days = now.days_until(ts);
 
@@ -109,8 +106,7 @@ pub fn short_sync(ts: Timestamp, now: Timestamp) -> String {
 /// `"0:42"` — what is left of a countdown, in the shape a clock is read in.
 ///
 /// Never `"0:00"`: the caller offers the button instead once there is nothing
-/// left to wait for, so a countdown that is still on screen has at least a
-/// second in it.
+/// left to wait for.
 pub fn countdown(left: Duration) -> String {
     let secs = left.as_secs();
 
@@ -119,11 +115,9 @@ pub fn countdown(left: Duration) -> String {
 
 /// A source's account subtype, worded for a person.
 ///
-/// Plaid sends `"401k"` and `"home equity"`; a screen should say `"401(k)"`
-/// and `"HELOC"`. This is the only place that decides that, which is why it
-/// lives here with the rest of the wording rather than beside the data — the
-/// stored value stays raw, so changing a label here changes what a row from
-/// six months ago says too.
+/// Plaid sends `"401k"` and `"home equity"`; a screen says `"401(k)"` and
+/// `"HELOC"`. The only place that decides that — the stored value stays raw,
+/// so a label changed here changes what a row from six months ago says too.
 pub fn account_kind(subtype: Option<&str>, group: AccountGroup) -> String {
     let Some(subtype) = subtype else {
         return match group {
@@ -150,8 +144,8 @@ pub fn account_kind(subtype: Option<&str>, group: AccountGroup) -> String {
         "mortgage" => "Mortgage".to_string(),
         "auto" => "Auto loan".to_string(),
         "home equity" => "HELOC".to_string(),
-        // An unknown subtype is shown rather than hidden: "Sep Ira" reads
-        // better than nothing, and nothing would look like a bug.
+        // An unknown subtype is shown rather than hidden: nothing would look
+        // like a bug.
         other => title_case(other),
     }
 }
@@ -180,13 +174,12 @@ pub fn plural(count: usize, singular: &str, plural: &str) -> String {
 
 /// Money, covered when the app is masked.
 ///
-/// The mask is applied here rather than in the view so that no platform has to
-/// remember to apply it — and so a screenshot of the FFI payload does not
-/// carry the figure either.
+/// Masked here rather than in the view, so no platform has to remember to do
+/// it and the FFI payload does not carry the figure either.
 pub fn money(amount: f64, masked: bool) -> String {
     if masked {
-        // The bar the view draws is sized from the text it covers, so the
-        // placeholder keeps roughly the shape of a real figure.
+        // The view sizes its cover from the text, so the placeholder keeps
+        // roughly the shape of a real figure.
         return "••••••".to_string();
     }
 

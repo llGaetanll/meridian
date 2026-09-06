@@ -19,7 +19,7 @@ pub fn LedgerScreen(view: ViewLedger) -> impl IntoView {
     let filter = view.filter.clone();
 
     // Always drawn: the two groups are the filter, and a button to reveal
-    // them was a door in front of a door.
+    // them would be a door in front of a door.
     let panel = move || {
         let filter = filter.clone();
         view! { <FilterPanel filter=filter.clone() /> }
@@ -151,8 +151,7 @@ fn FilterPanel(filter: phone_state::ViewFilter) -> impl IntoView {
     }
 }
 
-/// The range, as the sentence the sketch draws. Each row is one of the four
-/// forms; tapping one makes it live.
+/// The range, as the sentence the sketch draws: four forms, one row each.
 #[component]
 fn RangeRows(range: phone_state::ViewRange) -> impl IntoView {
     let runtime = use_runtime();

@@ -1,5 +1,4 @@
-//! One module per screen. Each takes the view value the core built and draws
-//! it — see `phone_state::ViewScreen`.
+//! One module per screen, drawing the view value the core built.
 
 mod account;
 mod balances;
