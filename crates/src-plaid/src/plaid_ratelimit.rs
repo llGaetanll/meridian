@@ -72,6 +72,21 @@ impl PlaidRateLimiter {
         Self::default()
     }
 
+    /// Drop windows with nothing left in them.
+    ///
+    /// The keys are Items, so without this the map holds a window for every
+    /// bank the process has ever fetched. An idle window and one that was
+    /// never opened answer every question the same way, which is what makes
+    /// dropping one free — see `Window::is_idle`.
+    pub fn sweep(&mut self, now: Timestamp) {
+        self.windows.retain(|_, window| !window.is_idle(now));
+    }
+
+    /// How many windows are being kept, one per endpoint per Item.
+    pub fn kept(&self) -> usize {
+        self.windows.len()
+    }
+
     fn window_for(&mut self, ctx: &PlaidRateCtx) -> &mut Window {
         self.windows
             .entry((ctx.endpoint, ctx.item_id.clone()))
@@ -162,6 +177,29 @@ mod tests {
 
         let later = T0 + Duration::from_secs(61);
         assert!(limiter.can_send(later, &ctx));
+    }
+
+    /// Without this the map holds three windows for every bank the process
+    /// has ever fetched, and gives none of them back.
+    #[test]
+    fn the_sweep_drops_windows_nothing_is_left_in() {
+        let mut limiter = PlaidRateLimiter::new();
+
+        for i in 0..50 {
+            let ctx = PlaidRateCtx::new(PlaidEndpoint::BalanceGet, format!("item-{i}"));
+
+            limiter.can_send(T0, &ctx);
+        }
+
+        assert_eq!(limiter.kept(), 50);
+
+        limiter.sweep(T0 + Duration::from_secs(1));
+
+        assert_eq!(limiter.kept(), 50, "nothing has aged out yet");
+
+        limiter.sweep(T0 + Duration::from_secs(61));
+
+        assert_eq!(limiter.kept(), 0, "everything has aged out");
     }
 
     #[test]

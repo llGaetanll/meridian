@@ -30,6 +30,7 @@ use crate::ActionSocket;
 use crate::ActionSource;
 use crate::ActionStore;
 use crate::CallId;
+use crate::CensusServer;
 use crate::Client;
 use crate::ClientIp;
 use crate::ConnId;
@@ -1521,8 +1522,11 @@ impl StateServer {
 
                 self.now = *now;
 
-                // Or the limiter's maps grow for the life of the process.
+                // Or the limiters' maps grow for the life of the process:
+                // one is keyed by whoever calls us and the other by every bank
+                // we have ever fetched.
                 self.requests.sweep(self.now);
+                self.limiter.sweep(self.now);
                 self.sweep_webhook_keys();
 
                 self.handle_timeouts(actions);
@@ -2049,6 +2053,25 @@ impl StateServer {
         }
 
         self.rng.as_mut()
+    }
+
+    /// How much the machine is holding. See [`CensusServer`].
+    ///
+    /// The one thing about this machine no action reports, and so the only way
+    /// a test can say that a flow gave back everything it took.
+    pub fn census(&self) -> CensusServer {
+        CensusServer {
+            waiting: self.waiting.len(),
+            held: self.held.len(),
+            pending: self.pending.len(),
+            syncing: self.syncing.len(),
+            watchers: self.watchers.len(),
+            outcomes: self.outcomes.len(),
+            watching: self.watching.len(),
+            keys: self.keys.len(),
+            request_windows: self.requests.kept(),
+            plaid_windows: self.limiter.kept(),
+        }
     }
 
     pub fn shutting_down(&self) -> bool {
