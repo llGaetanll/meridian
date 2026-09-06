@@ -43,7 +43,7 @@ fn a_sync_webhook_fetches_however_fresh_the_bank_is() {
         > Action::ToStore { action: ActionStore::LoadItem { call_id: 2, .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::ItemLoaded { item: Some(ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }) } },
-        > @r#"ToSource { action: FetchPlaid { call_id: 3, item_id: "item-1", cursor: Some("cursor-1") } }"#,
+        > @r#"ToSource { action: FetchBalances { call_id: 3, item_id: "item-1" } }"#,
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }

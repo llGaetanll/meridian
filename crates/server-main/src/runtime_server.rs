@@ -38,8 +38,11 @@ use crate::runtime_router::EventRx;
 use crate::runtime_router::EventTx;
 use crate::runtime_router::RuntimeRouter;
 use crate::source_pool::SourcePool;
+use server_wire::SyncStage;
 use server_wire::WireSnapshot;
 use src_plaid::PlaidCredentials;
+use src_plaid::PlaidError;
+use src_plaid::PlaidFault;
 use src_postgres::Db;
 use src_postgres::DbKey;
 use src_resend::ResendClient;
@@ -76,10 +79,6 @@ pub struct RuntimeServer {
 
     /// Where an answer goes; the router is on another task.
     action_tx: ActionTx,
-
-    /// Where a fact nobody asked for goes: the stages a fetch reports as it
-    /// runs. The pools have their own clone for what a call returns.
-    event_tx: EventTx,
 
     /// The Plaid account these calls are made on behalf of. One per process.
     credentials: PlaidCredentials,
@@ -185,7 +184,6 @@ impl RuntimeServer {
             email: SourcePool::new("email", EMAIL_AT_ONCE, event_tx.clone()),
             store: SourcePool::new("store", STORE_AT_ONCE, event_tx.clone()),
             action_tx,
-            event_tx: event_tx.clone(),
             credentials,
             email_send,
             resend,
@@ -385,11 +383,22 @@ impl RuntimeServer {
     /// Everything Plaid is asked for.
     async fn perform_action_source(&self, action: &ActionSource) -> Vec<Event> {
         match action {
-            ActionSource::FetchPlaid {
+            ActionSource::FetchBalances { call_id, item_id } => {
+                self.fetch_balances(*call_id, item_id).await
+            }
+
+            ActionSource::SyncTransactions {
                 call_id,
                 item_id,
                 cursor,
-            } => self.fetch_plaid(*call_id, item_id, cursor.clone()).await,
+            } => {
+                self.sync_transactions(*call_id, item_id, cursor.clone())
+                    .await
+            }
+
+            ActionSource::FetchRecurring { call_id, item_id } => {
+                self.fetch_recurring(*call_id, item_id).await
+            }
 
             ActionSource::FetchWebhookKey { call_id, kid } => {
                 self.fetch_webhook_key(*call_id, kid).await
@@ -515,7 +524,7 @@ impl RuntimeServer {
     ///
     /// **The one call in this server whose effect cannot be undone.** In
     /// Production it spends an Item slot that `/item/remove` does not give
-    /// back; `fetch_all`'s Sandbox guard is what keeps that unreachable.
+    /// back; `runtime_plaid`'s Sandbox guard is what keeps that unreachable.
     ///
     /// The access token goes into the runtime's map and no further: an event
     /// carrying one would put a bank credential in the log.
@@ -725,7 +734,10 @@ impl RuntimeServer {
                 src_postgres::collect_link(db, link_token).await?;
             }
 
-            ActionStore::SaveFetched { .. } | ActionStore::SaveStatus { .. } => {
+            ActionStore::SaveAccounts { .. }
+            | ActionStore::SaveTransactions { .. }
+            | ActionStore::SaveStreams { .. }
+            | ActionStore::SaveStatus { .. } => {
                 self.write(db, action).await?;
             }
 
@@ -915,35 +927,31 @@ impl RuntimeServer {
         action: &ActionStore,
     ) -> Result<(), src_postgres::PostgresError> {
         match action {
-            ActionStore::SaveFetched {
+            ActionStore::SaveAccounts {
                 call_id: _,
                 item_id,
                 institution_name,
-                added,
-                modified,
-                removed,
                 accounts,
-                streams,
-                cursor,
             } => {
-                // Looked up rather than carried: the token never enters an
-                // action or the event log. A row written without one would
-                // claim a bank connection with no credential behind it.
-                let Some(access_token) = self.token_for(item_id) else {
-                    tracing::error!(item_id, "a sync landed for an item with no token");
-
-                    return Ok(());
-                };
-
                 // The Item row already exists, so this is the institution name
                 // catching up; `user_id` is deliberately not touched.
                 src_postgres::name_item(db, item_id, institution_name.as_deref()).await?;
 
-                let _ = access_token;
-
                 src_postgres::save_accounts(db, item_id, accounts).await?;
+            }
+
+            ActionStore::SaveTransactions {
+                call_id: _,
+                item_id,
+                added,
+                modified,
+                removed,
+                cursor,
+            } => {
                 src_postgres::apply_entries(db, item_id, added, modified, removed).await?;
-                src_postgres::save_streams(db, item_id, streams).await?;
+
+                // Last and separately, so a page that half-wrote is read again
+                // rather than skipped.
                 src_postgres::save_cursor(db, item_id, cursor).await?;
 
                 tracing::debug!(
@@ -953,6 +961,14 @@ impl RuntimeServer {
                     removed = removed.len(),
                     "written to the store",
                 );
+            }
+
+            ActionStore::SaveStreams {
+                call_id: _,
+                item_id,
+                streams,
+            } => {
+                src_postgres::save_streams(db, item_id, streams).await?;
             }
 
             ActionStore::SaveStatus {
@@ -996,78 +1012,74 @@ impl RuntimeServer {
         }
     }
 
-    /// Go to Plaid, and feed whatever comes back in as the next event.
+    /// Ask Plaid what one bank's accounts hold, and feed the answer back in.
     ///
-    /// Nothing here inspects the answer; that is what makes the loop closed.
-    async fn fetch_plaid(
+    /// Nothing here inspects it, and nothing here decides what happens next;
+    /// that is what makes the loop closed.
+    async fn fetch_balances(&self, call_id: crate::CallId, item_id: &str) -> Vec<Event> {
+        let Some(access_token) = self.token_for(item_id) else {
+            return vec![no_token(call_id, item_id, SyncStage::Accounts)];
+        };
+
+        let event =
+            match runtime_plaid::fetch_balances(&self.credentials, &access_token, unix_now()).await
+            {
+                Ok(connection) => EventSource::BalancesLoaded {
+                    call_id,
+                    item_id: item_id.to_string(),
+                    connection,
+                },
+
+                Err(e) => failed(call_id, item_id, SyncStage::Accounts, &e),
+            };
+
+        vec![Event::FromSource { event }]
+    }
+
+    /// Ask Plaid for one page of what has changed on a bank.
+    async fn sync_transactions(
         &self,
         call_id: crate::CallId,
         item_id: &str,
         cursor: Option<String>,
     ) -> Vec<Event> {
-        // The machine names an Item read off its own connection list, each
-        // built from a stored Item. Absent means those two have drifted.
         let Some(access_token) = self.token_for(item_id) else {
-            tracing::error!(item_id, "asked to fetch an item with no token");
-
-            return vec![Event::FromSource {
-                event: EventSource::PlaidFailed {
-                    call_id,
-                    item_id: item_id.to_string(),
-                    code: String::from("NO_ACCESS_TOKEN"),
-                },
-            }];
+            return vec![no_token(call_id, item_id, SyncStage::Transactions)];
         };
 
-        // Each stage reports as it lands rather than waiting for the return
-        // below. Nothing is parked on these: they release no route.
-        let report = |stage, institution: Option<&str>, accounts, transactions, streams| {
-            let _ = self.event_tx.send(Event::FromSource {
-                event: EventSource::PlaidProgressed {
-                    item_id: item_id.to_string(),
-                    stage,
-                    institution: institution.map(str::to_string),
-                    accounts,
-                    transactions,
-                    streams,
-                },
-            });
-        };
-
-        let event = match runtime_plaid::fetch_all(
-            &self.credentials,
-            &access_token,
-            cursor,
-            unix_now(),
-            report,
-        )
-        .await
+        let event = match runtime_plaid::sync_transactions(&self.credentials, &access_token, cursor)
+            .await
         {
-            Ok(fetched) => EventSource::PlaidLoaded {
+            Ok(page) => EventSource::TransactionsLoaded {
                 call_id,
                 item_id: item_id.to_string(),
-                added: fetched.added,
-                modified: fetched.modified,
-                removed: fetched.removed,
-                connection: fetched.connections.into_iter().next(),
-                streams: fetched.streams,
-                cursor: fetched.cursor,
+                added: page.added,
+                modified: page.modified,
+                removed: page.removed,
+                cursor: page.cursor,
+                has_more: page.has_more,
             },
 
-            Err(e) => {
-                let code = match &e {
-                    src_plaid::PlaidError::Plaid { error_code, .. } => error_code.clone(),
-                    _ => "REQUEST_FAILED".to_string(),
-                };
+            Err(e) => failed(call_id, item_id, SyncStage::Transactions, &e),
+        };
 
-                tracing::warn!(error = %e, code, "plaid fetch failed");
+        vec![Event::FromSource { event }]
+    }
 
-                EventSource::PlaidFailed {
-                    call_id,
-                    item_id: item_id.to_string(),
-                    code,
-                }
-            }
+    /// Ask Plaid which charges on a bank come back.
+    async fn fetch_recurring(&self, call_id: crate::CallId, item_id: &str) -> Vec<Event> {
+        let Some(access_token) = self.token_for(item_id) else {
+            return vec![no_token(call_id, item_id, SyncStage::Streams)];
+        };
+
+        let event = match runtime_plaid::fetch_recurring(&self.credentials, &access_token).await {
+            Ok(streams) => EventSource::RecurringLoaded {
+                call_id,
+                item_id: item_id.to_string(),
+                streams,
+            },
+
+            Err(e) => failed(call_id, item_id, SyncStage::Streams, &e),
         };
 
         vec![Event::FromSource { event }]
@@ -1164,4 +1176,47 @@ fn unix_now() -> Timestamp {
         .duration_since(UNIX_EPOCH)
         .map(|d| Timestamp::from_secs(d.as_secs()))
         .unwrap_or(Timestamp::EPOCH)
+}
+
+/// The machine named a bank the runtime holds no token for, so the call cannot
+/// be made at all.
+///
+/// The machine reads its Items off its own connection list, each built from a
+/// stored Item, so this is the two of them having drifted.
+fn no_token(call_id: crate::CallId, item_id: &str, stage: SyncStage) -> Event {
+    tracing::error!(item_id, "asked to call plaid about an item with no token");
+
+    Event::FromSource {
+        event: EventSource::PlaidFailed {
+            call_id,
+            item_id: item_id.to_string(),
+            stage,
+            fault: PlaidFault::Failed(String::from("NO_ACCESS_TOKEN")),
+        },
+    }
+}
+
+/// What one refused call reaches the machine as.
+fn failed(
+    call_id: crate::CallId,
+    item_id: &str,
+    stage: SyncStage,
+    error: &PlaidError,
+) -> EventSource {
+    let fault = PlaidFault::of(error);
+
+    tracing::warn!(
+        item_id,
+        stage = server_wire::stage_name(stage),
+        code = fault.as_str(),
+        error = %error,
+        "a plaid call failed",
+    );
+
+    EventSource::PlaidFailed {
+        call_id,
+        item_id: item_id.to_string(),
+        stage,
+        fault,
+    }
 }

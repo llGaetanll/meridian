@@ -1,4 +1,4 @@
-//! One sync against the Sandbox, printed.
+//! The first page of one sync against the Sandbox, printed.
 //!
 //! Credentials come from `.env` at the workspace root — copy `.env.example`
 //! and fill it in.
@@ -37,11 +37,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let sync = src_plaid::sync_transactions(&client, &access_token, None).await?;
 
-    println!("\ncursor: {}", sync.cursor);
+    println!("\ncursor: {}", sync.next_cursor);
     println!(
-        "{} added, {} removed\n",
+        "{} added, {} removed, {}\n",
         sync.added.len(),
-        sync.removed.len()
+        sync.removed.len(),
+        if sync.has_more {
+            "more to come"
+        } else {
+            "the end"
+        },
     );
 
     // Amounts are Plaid's own: positive means money left the account.

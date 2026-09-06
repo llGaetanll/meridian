@@ -17,49 +17,52 @@ pub enum EventSource {
         key: Option<src_plaid::PlaidJwk>,
     },
 
-    /// Plaid answered, about one Item.
+    /// Plaid said what one bank's accounts hold.
     ///
-    /// The transaction lists are a **diff** — what changed since the cursor —
-    /// so a second sync a minute later legitimately answers with three empty
-    /// lists.
-    PlaidLoaded {
+    /// The bank's name arrives on this and nowhere else, which is why it is
+    /// the call a sync starts with.
+    BalancesLoaded {
+        call_id: CallId,
+        item_id: String,
+        connection: Connection,
+    },
+
+    /// One page of what changed on a bank since the cursor it was asked with.
+    ///
+    /// The three lists are a **diff** — what changed — so a sync a minute
+    /// after the last one legitimately answers with all three empty.
+    TransactionsLoaded {
         call_id: CallId,
         item_id: String,
         added: Vec<Entry>,
         modified: Vec<Entry>,
         removed: Vec<String>,
 
-        /// The bank and its accounts, as the balances call reported them.
-        /// Optional because the balances half of a fetch can fail on its own.
-        connection: Option<Connection>,
-
-        streams: Vec<Stream>,
+        /// Where to resume: the next page's cursor, or the next sync's.
         cursor: String,
+
+        /// Whether Plaid has another page behind this one.
+        has_more: bool,
     },
 
-    /// One stage of a fetch has landed, and this is what is known so far.
-    ///
-    /// A fact, not an answer: it carries no `call_id` because nothing is
-    /// waiting on it. The whole fetch still answers once, with
-    /// [`PlaidLoaded`](EventSource::PlaidLoaded).
-    PlaidProgressed {
+    /// The charges Plaid says come back on this bank. Empty is ordinary on a
+    /// bank whose history has only just landed.
+    RecurringLoaded {
+        call_id: CallId,
         item_id: String,
-        stage: server_wire::SyncStage,
-
-        /// What the bank is called, absent until the balances call has said.
-        institution: Option<String>,
-
-        accounts: u32,
-        transactions: u32,
-        streams: u32,
+        streams: Vec<Stream>,
     },
 
-    /// Plaid did not answer, or answered with an error. `code` is Plaid's own
-    /// `error_code` where there was one.
+    /// Plaid did not answer one call, or answered it with an error.
+    ///
+    /// `stage` is which of a sync's calls this was, because what a failure
+    /// costs depends on that: the recurring one is one screen and the other
+    /// two are the sync.
     PlaidFailed {
         call_id: CallId,
         item_id: String,
-        code: String,
+        stage: server_wire::SyncStage,
+        fault: src_plaid::PlaidFault,
     },
 
     /// A Link session is open, and this is the page that hosts it.

@@ -19,6 +19,7 @@ use server_wire::SyncStage;
 use server_wire::WireSyncStatus;
 use src_plaid::ITEM_LOGIN_REQUIRED;
 use src_plaid::PlaidEndpoint;
+use src_plaid::PlaidFault;
 use src_plaid::PlaidRateCtx;
 use src_plaid::PlaidRateLimiter;
 
@@ -117,14 +118,54 @@ struct CachedKey {
     at: Timestamp,
 }
 
-/// A fetch that is running, and whose it is.
+/// A sync that is running, and whose it is.
 ///
 /// The owner is held rather than looked up: a sync outlives the request that
 /// started it, and both places one starts have an Item and no session.
 #[derive(Debug)]
 struct Syncing {
     user_id: Uuid,
-    status: WireSyncStatus,
+
+    /// Where this sync resumes from, and where its next page starts. Carried
+    /// because the balances call goes first and this is not wanted until
+    /// after it.
+    cursor: Option<String>,
+
+    /// Which of the calls is out.
+    stage: SyncStage,
+
+    /// Whether there is still a call out. A finished sync is kept rather than
+    /// dropped: it is what a screen watching one reads to say it is done, and
+    /// the totals under it.
+    finished: bool,
+
+    /// What the bank is called, once the balances call has said. It is in
+    /// neither the Link session nor the exchange.
+    institution: Option<String>,
+
+    /// What this sync has turned up. Counted here because it exists nowhere
+    /// else once the writes have gone out: these are what the sync brought,
+    /// not what the store now holds.
+    accounts: u32,
+    transactions: u32,
+    streams: u32,
+}
+
+impl Syncing {
+    /// What a screen watching this sync is told.
+    fn status(&self) -> WireSyncStatus {
+        let mut status = WireSyncStatus::new(
+            self.stage,
+            self.institution.clone(),
+            self.accounts,
+            self.transactions,
+            self.streams,
+        );
+
+        status.finished = self.finished;
+
+        status
+    }
 }
 
 /// A call in flight, and the route that wants its answer.
@@ -684,9 +725,10 @@ impl StateServer {
         self.syncing
             .values()
             .filter(|syncing| syncing.user_id == user_id)
-            .map(|syncing| &syncing.status)
-            .min_by_key(|status| stage_index(status.stage()))
-            .map_or_else(WireSyncStatus::idle, Clone::clone)
+            // One still running outranks one that finished at the same stage,
+            // or a second bank landing would be reported as already done.
+            .min_by_key(|syncing| (syncing.finished, stage_index(syncing.stage)))
+            .map_or_else(WireSyncStatus::idle, Syncing::status)
     }
 
     /// Tell everyone watching this user where their sync has got to.
@@ -1255,53 +1297,143 @@ impl StateServer {
                 self.verified(request_id, &parsed, key, &body, actions);
             }
 
-            // The lists are a **diff** handed straight to the store. Nothing
-            // here holds a ledger to assign over, the trap `docs/PLAID.md`
-            // describes.
-            EventSource::PlaidLoaded {
+            EventSource::BalancesLoaded {
+                call_id,
+                item_id,
+                connection,
+            } => {
+                if let Some(syncing) = self.syncing.get_mut(item_id) {
+                    syncing.institution = Some(connection.name.clone());
+                    syncing.accounts = connection.accounts.len().try_into().unwrap_or(u32::MAX);
+                    syncing.stage = SyncStage::Transactions;
+
+                    let user_id = syncing.user_id;
+
+                    self.push_status(user_id, actions);
+                }
+
+                // Written down by the call that brought it, whatever becomes
+                // of the rest of the sync. Nothing here holds a ledger to
+                // assign over, the trap `docs/PLAID.md` describes.
+                actions.push(Action::ToStore {
+                    action: ActionStore::SaveAccounts {
+                        call_id: self.alongside(*call_id),
+                        item_id: item_id.clone(),
+                        institution_name: Some(connection.name.clone()),
+                        accounts: connection.accounts.clone(),
+                    },
+                });
+
+                // A sync nothing is recording is one that was given up on, so
+                // there is nothing to ask Plaid next.
+                let Some(cursor) = self.syncing.get(item_id).map(|s| s.cursor.clone()) else {
+                    self.landed(*call_id, actions);
+
+                    return;
+                };
+
+                actions.push(Action::ToSource {
+                    action: ActionSource::SyncTransactions {
+                        call_id: self.passing(*call_id),
+                        item_id: item_id.clone(),
+                        cursor,
+                    },
+                });
+            }
+
+            // The lists are a **diff** handed straight to the store.
+            EventSource::TransactionsLoaded {
                 call_id,
                 item_id,
                 added,
                 modified,
                 removed,
-                connection,
-                streams,
                 cursor,
+                has_more,
             } => {
-                // Replaced rather than dropped: these counts exist nowhere
-                // else, and `added` is what this sync brought rather than what
-                // the store now holds.
-                self.progressed(
-                    item_id,
-                    WireSyncStatus::done(
-                        connection.as_ref().map(|c| c.name.clone()),
-                        connection
-                            .as_ref()
-                            .map_or(0, |c| c.accounts.len().try_into().unwrap_or(u32::MAX)),
-                        added.len().try_into().unwrap_or(u32::MAX),
-                        streams.len().try_into().unwrap_or(u32::MAX),
-                    ),
-                    actions,
-                );
+                // A page beyond the first spends a slot of its own. Plaid
+                // meters `/transactions/sync` per Item per minute and a first
+                // history is several pages, so a chain that asked nobody
+                // would be the one way past the budget. Stopping costs
+                // little: the write below saves the cursor to resume from.
+                let another_page =
+                    *has_more && self.may_call(PlaidEndpoint::TransactionsSync, item_id);
 
-                // The wait passes from the fetch to the write it caused, so
-                // the route is answered once the rows are there.
-                let writing = self.passing(*call_id);
+                if *has_more && !another_page {
+                    tracing::warn!(
+                        item_id,
+                        "out of budget part-way through a history; the next sync resumes",
+                    );
+                }
+
+                if let Some(syncing) = self.syncing.get_mut(item_id) {
+                    syncing.transactions = syncing
+                        .transactions
+                        .saturating_add(added.len().try_into().unwrap_or(u32::MAX));
+
+                    syncing.cursor = Some(cursor.clone());
+
+                    if !another_page {
+                        syncing.stage = SyncStage::Streams;
+                    }
+
+                    let user_id = syncing.user_id;
+
+                    self.push_status(user_id, actions);
+                }
 
                 actions.push(Action::ToStore {
-                    action: ActionStore::SaveFetched {
-                        call_id: writing,
+                    action: ActionStore::SaveTransactions {
+                        call_id: self.alongside(*call_id),
                         item_id: item_id.clone(),
-                        institution_name: connection.as_ref().map(|c| c.name.clone()),
                         added: added.clone(),
                         modified: modified.clone(),
                         removed: removed.clone(),
-                        accounts: connection
-                            .as_ref()
-                            .map(|c| c.accounts.clone())
-                            .unwrap_or_default(),
-                        streams: streams.clone(),
                         cursor: cursor.clone(),
+                    },
+                });
+
+                // A sync nothing is recording is one that was given up on.
+                let Some(cursor) = self.syncing.get(item_id).map(|s| s.cursor.clone()) else {
+                    self.landed(*call_id, actions);
+
+                    return;
+                };
+
+                let call_id = self.passing(*call_id);
+                let item_id = item_id.clone();
+
+                let action = if another_page {
+                    ActionSource::SyncTransactions {
+                        call_id,
+                        item_id,
+                        cursor,
+                    }
+                } else {
+                    ActionSource::FetchRecurring { call_id, item_id }
+                };
+
+                actions.push(Action::ToSource { action });
+            }
+
+            EventSource::RecurringLoaded {
+                call_id,
+                item_id,
+                streams,
+            } => {
+                if let Some(syncing) = self.syncing.get_mut(item_id) {
+                    syncing.streams = streams.len().try_into().unwrap_or(u32::MAX);
+                }
+
+                self.sync_finished(item_id, actions);
+
+                // The wait passes from the last call to the last write, so
+                // the route is answered once the rows are there.
+                actions.push(Action::ToStore {
+                    action: ActionStore::SaveStreams {
+                        call_id: self.passing(*call_id),
+                        item_id: item_id.clone(),
+                        streams: streams.clone(),
                     },
                 });
             }
@@ -1445,35 +1577,31 @@ impl StateServer {
                 self.answer(request_id, ActionRouter::LinkAbandoned, actions);
             }
 
-            EventSource::PlaidProgressed {
-                item_id,
-                stage,
-                institution,
-                accounts,
-                transactions,
-                streams,
-            } => {
-                self.progressed(
-                    item_id,
-                    WireSyncStatus::new(
-                        *stage,
-                        institution.clone(),
-                        *accounts,
-                        *transactions,
-                        *streams,
-                    ),
-                    actions,
-                );
-            }
-
             EventSource::PlaidFailed {
                 call_id,
                 item_id,
-                code,
+                stage,
+                fault,
             } => {
+                // The recurring call is the one a sync can do without.
+                // Transactions are what the app is for, and a missing list of
+                // charges costs one screen rather than all of them.
+                if *stage == SyncStage::Streams {
+                    tracing::warn!(
+                        item_id,
+                        code = fault.as_str(),
+                        "recurring unavailable, the sync stands without it",
+                    );
+
+                    self.sync_finished(item_id, actions);
+                    self.landed(*call_id, actions);
+
+                    return;
+                }
+
                 self.sync_stopped(item_id, actions);
 
-                if code == ITEM_LOGIN_REQUIRED {
+                if *fault == PlaidFault::LoginRequired {
                     actions.push(Action::ToProcess {
                         action: ActionProcess::ReportLoginRequired,
                     });
@@ -1482,7 +1610,7 @@ impl StateServer {
                         action: ActionStore::SaveStatus {
                             call_id: self.passing(*call_id),
                             item_id: item_id.clone(),
-                            error_code: Some(code.clone()),
+                            error_code: Some(fault.as_str().to_string()),
                         },
                     });
 
@@ -1757,9 +1885,13 @@ impl StateServer {
         self.release(request_id, owed, actions);
     }
 
-    /// Go and read one Item, and remember that we are — both in the same
-    /// turn, or a screen watching the sync reads the interval where nothing
-    /// says so as "finished".
+    /// Start a sync of one Item, and remember that we have — both in the same
+    /// turn, or a screen watching it reads the interval where nothing says so
+    /// as "finished".
+    ///
+    /// Only the first of the calls goes out here. What follows it is decided
+    /// when each answer lands, which is what puts the order, the paging and
+    /// the budget in one place a test can reach.
     fn fetch(
         &mut self,
         call_id: CallId,
@@ -1773,7 +1905,13 @@ impl StateServer {
             item_id.clone(),
             Syncing {
                 user_id,
-                status: WireSyncStatus::new(SyncStage::Accounts, None, 0, 0, 0),
+                cursor,
+                stage: SyncStage::Accounts,
+                finished: false,
+                institution: None,
+                accounts: 0,
+                transactions: 0,
+                streams: 0,
             },
         );
 
@@ -1782,12 +1920,17 @@ impl StateServer {
         self.push_status(user_id, actions);
 
         actions.push(Action::ToSource {
-            action: ActionSource::FetchPlaid {
-                call_id,
-                item_id,
-                cursor,
-            },
+            action: ActionSource::FetchBalances { call_id, item_id },
         });
+    }
+
+    /// Whether Plaid's budget for this endpoint and this bank has room, and
+    /// spend the slot if it has.
+    fn may_call(&mut self, endpoint: PlaidEndpoint, item_id: &str) -> bool {
+        let now = self.now;
+
+        self.limiter
+            .can_send(now, &PlaidRateCtx::new(endpoint, item_id))
     }
 
     /// One more bank attached on this request. Counted rather than set,
@@ -1813,24 +1956,27 @@ impl StateServer {
             .any(|waiter| waiter.request_id == request_id)
     }
 
-    /// Note where a fetch has reached, and tell whoever is watching it.
+    /// A sync is over and what it brought stands. Kept rather than dropped:
+    /// this is what a screen watching one reads to say it is done, and the
+    /// totals it draws under that.
     ///
-    /// A fetch with no record of having started is written down all the same
-    /// by whatever else the event asked for; it just cannot be reported,
-    /// because there is nobody it is known to belong to.
-    fn progressed(&mut self, item_id: &str, status: WireSyncStatus, actions: &mut Vec<Action>) {
+    /// A sync with no record of having started is one that was given up on.
+    /// What its calls brought is written down all the same by whatever else
+    /// the event asked for; there is just nobody it is known to belong to.
+    fn sync_finished(&mut self, item_id: &str, actions: &mut Vec<Action>) {
         let Some(syncing) = self.syncing.get_mut(item_id) else {
             return;
         };
 
-        let user_id = syncing.user_id;
+        syncing.finished = true;
+        syncing.stage = SyncStage::Streams;
 
-        syncing.status = status;
+        let user_id = syncing.user_id;
 
         self.push_status(user_id, actions);
     }
 
-    /// Stop reporting a fetch. Dropped rather than marked done: a screen
+    /// Stop reporting a sync. Dropped rather than marked done: a screen
     /// watching one that died would otherwise sit on its last stage.
     fn sync_stopped(&mut self, item_id: &str, actions: &mut Vec<Action>) {
         let Some(syncing) = self.syncing.remove(item_id) else {
@@ -1838,6 +1984,21 @@ impl StateServer {
         };
 
         self.push_status(syncing.user_id, actions);
+    }
+
+    /// A fresh [`CallId`] owed to the same route as `call_id`, which keeps
+    /// its own wait. For an answer that causes two: this is the branch that
+    /// does not carry the chain on, and the other takes the wait with
+    /// [`passing`](Self::passing).
+    fn alongside(&mut self, call_id: CallId) -> CallId {
+        match self.waiting.get(&call_id) {
+            Some(waiter) => {
+                let request_id = waiter.request_id;
+
+                self.calling(request_id)
+            }
+            None => self.call(),
+        }
     }
 
     /// A fresh [`CallId`] that inherits whatever `call_id` was holding. One
@@ -2024,8 +2185,9 @@ impl StateServer {
             return false;
         }
 
-        // A fetch is three calls, and the strictest budget decides. Asked last
-        // so a request refused for freshness does not spend a slot.
+        // A sync is three calls, and the strictest budget decides. Asked last
+        // so a request refused for freshness does not spend a slot. A history
+        // long enough to page asks again for each page after the first.
         let now = self.now;
         let item_id = item.item_id.as_str();
 

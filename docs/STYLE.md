@@ -149,7 +149,7 @@ state machine.
 ```rust
 eval!(&mut state,
     < EventRouter::SnapshotRequested { force: false },
-    > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None } },
+    > Action::ToSource { action: ActionSource::FetchBalances { item_id: "item-1" } },
 
     < EventRouter::SnapshotRequested { force: true },
     > Action::ToRouter { action: ActionRouter::Serve },
@@ -203,7 +203,7 @@ no local holding one, no closure — the whole event, where it is sent:
 ```rust
 eval!(&mut state,
     < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
-    > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 1, .. } },
+    > Action::ToSource { action: ActionSource::FetchBalances { call_id: 1, .. } },
 
     // Plaid says nothing. Time passes and nothing else arrives.
     < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
@@ -277,15 +277,15 @@ some sequence of events producing the wrong actions, and that sequence is an
 `eval!` test. If a bug seems not to be reproducible that way, the behaviour is
 in a runtime that should not be deciding it.
 
-The bug where the same transaction appeared three times was two `PlaidLoaded`
-events carrying an entry the ledger already held:
+The bug where the same transaction appeared three times was two
+`TransactionsLoaded` events carrying an entry the ledger already held:
 
 ```rust
 eval!(&mut state,
-    < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } }), Entry::from_tx("b".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
+    < Event::FromSource { event: EventSource::TransactionsLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } }), Entry::from_tx("b".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: false } },
     > Action::ToRouter { action: ActionRouter::Serve },
 
-    < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
+    < Event::FromSource { event: EventSource::TransactionsLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: false } },
     > Action::ToRouter { action: ActionRouter::Serve },
 );
 

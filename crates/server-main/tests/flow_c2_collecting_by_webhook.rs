@@ -52,7 +52,7 @@ fn an_outcome_that_arrives_first_is_waiting_when_the_phone_asks() {
         // bank quietly lost. D starts on the same event, because that write is
         // what resolves whose bank it is.
         < Event::FromStore { call_id: 3, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 4, .. } },
+        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 4, .. } },
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
 
         // 1 and 8a. The phone catches up, and is told what it came to.
@@ -97,7 +97,7 @@ fn a_close_that_arrives_first_waits_for_the_outcome() {
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
 
         < Event::FromStore { call_id: 5, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 7, .. } },
+        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 7, .. } },
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
 
         // 8a. The route that was waiting, answered once the session it is
@@ -275,7 +275,7 @@ fn the_session_that_attached_a_bank_is_the_one_reported() {
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 3, .. } },
 
         < Event::FromStore { call_id: 3, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 4, .. } },
+        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 4, .. } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
 
         < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },

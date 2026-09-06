@@ -20,10 +20,12 @@ mod fixtures;
 
 use api_common::Timestamp;
 use api_eval::eval;
+use api_ledger::Connection;
 use fixtures::T0;
 use fixtures::signed;
 use fixtures::state;
 use fixtures::webhook_jwk;
+use src_plaid::PlaidEndpoint;
 
 use server_main::*;
 
@@ -59,6 +61,38 @@ fn spend(state: &mut StateServer, request_id: u64, items: &[ItemFacts]) {
         actions.clear();
         state.handle_events(&answers, &mut actions);
     }
+}
+
+/// Answer one page of a sync with another page behind it, and say which call
+/// the machine asked the next one on.
+///
+/// A helper *around* the test: which id each page carries is never the claim,
+/// only how many go out before the budget stops them.
+fn another_page(state: &mut StateServer, call_id: u64, page: u32) -> Option<u64> {
+    let mut actions = Vec::new();
+
+    state.handle_events(
+        &[Event::FromSource {
+            event: EventSource::TransactionsLoaded {
+                call_id,
+                item_id: "item-1".to_string(),
+                added: Vec::new(),
+                modified: Vec::new(),
+                removed: Vec::new(),
+                cursor: format!("cursor-{page}"),
+                has_more: true,
+            },
+        }],
+        &mut actions,
+    );
+
+    actions.iter().find_map(|action| match action {
+        Action::ToSource {
+            action: ActionSource::SyncTransactions { call_id, .. },
+        } => Some(*call_id),
+
+        _ => None,
+    })
 }
 
 /// The event that answers one store read, if that is what this action is.
@@ -176,7 +210,7 @@ fn a_burst_of_refreshes_is_rate_limited() {
         < Event::FromStore { call_id: 31, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 32, .. } },
 
-        // Stale, and asked for anyway — and no `FetchPlaid` comes out. Served
+        // Stale, and asked for anyway — and no call to Plaid comes out. Served
         // what the store already holds instead.
         < Event::FromStore { call_id: 32, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 33, .. } },
@@ -212,7 +246,7 @@ fn the_rate_limit_is_per_bank() {
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 32, .. } },
 
         < Event::FromStore { call_id: 32, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-2".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { .. }, .. },
+        > Action::ToSource { action: ActionSource::FetchBalances { .. }, .. },
     );
 }
 
@@ -416,5 +450,84 @@ fn webhooks_are_not_rate_limited() {
     eval!(&mut state,
         < Event::FromRouter { request_id: 101, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"NEW_ACCOUNTS_AVAILABLE\"}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"NEW_ACCOUNTS_AVAILABLE\"}", T0.as_secs()).1 } },
         > @r#"ToRouter { request_id: 101, action: Accepted }"#,
+    );
+}
+
+/// A history long enough to page is metered a page at a time. Plaid meters
+/// `/transactions/sync` per Item per minute, so a chain that spent one slot
+/// however many pages it took would be the one way past that budget.
+///
+/// What it costs to stop is small and what it costs to be throttled is a
+/// user-visible failure: every page written down carries the cursor, so the
+/// next sync picks up exactly where the budget ran out.
+#[test]
+fn a_history_pages_only_as_far_as_the_budget_allows() {
+    let mut state = state();
+
+    let mut actions = Vec::new();
+
+    // A bank asked about the ordinary way, so the sync starts having spent
+    // the slot `should_fetch` takes for the first page.
+    state.handle_events(
+        &[
+            Event::FromRouter {
+                request_id: 1,
+                client: Client {
+                    ip: ClientIp::new("203.0.113.7"),
+                    user: None,
+                },
+                event: EventRouter::SnapshotRequested {
+                    token_sha256: hash_token("session-1"),
+                },
+            },
+            Event::FromStore {
+                call_id: 1,
+                event: EventStore::SessionResolved {
+                    user_id: Some(uuid::Uuid::nil()),
+                },
+            },
+            Event::FromStore {
+                call_id: 2,
+                event: EventStore::ItemsLoaded {
+                    items: vec![ItemFacts {
+                        item_id: "item-1".to_string(),
+                        user_id: uuid::Uuid::nil(),
+                        cursor: None,
+                        synced_at: None,
+                        login_required: false,
+                    }],
+                },
+            },
+            Event::FromSource {
+                event: EventSource::BalancesLoaded {
+                    call_id: 3,
+                    item_id: "item-1".to_string(),
+                    connection: Connection {
+                        id: "item-1".to_string(),
+                        name: "First Platypus Bank".to_string(),
+                        initials: "FP".to_string(),
+                        status: api_ledger::ConnectionStatus::Ok { synced_at: T0 },
+                        accounts: Vec::new(),
+                    },
+                },
+            },
+        ],
+        &mut actions,
+    );
+
+    // Every page says there is another behind it, so the budget is the only
+    // thing that can end this.
+    let mut sent = 1;
+    let mut call_id = 5;
+
+    while let Some(next) = another_page(&mut state, call_id, sent) {
+        sent += 1;
+        call_id = next;
+    }
+
+    assert_eq!(
+        sent,
+        PlaidEndpoint::TransactionsSync.per_minute(),
+        "a history pages until the endpoint's minute is spent, and no further",
     );
 }

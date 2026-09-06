@@ -120,30 +120,45 @@ pub enum ActionStore {
         link_token: String,
     },
 
-    /// Write what a sync just produced.
+    /// Write what a bank's accounts hold, and what the bank is called.
     ///
-    /// Carries the diff rather than asking the runtime to read it off state,
-    /// because by the time this is performed the diff is gone — state holds
-    /// the result of applying it.
-    SaveFetched {
+    /// One Plaid answer, one write — which is what makes a sync that stops
+    /// halfway leave behind what it did get rather than nothing.
+    SaveAccounts {
         call_id: CallId,
         item_id: String,
 
         /// What the bank is called, so a cold start has a name to draw before
-        /// the first fetch comes back.
+        /// the next fetch comes back.
         institution_name: Option<String>,
+
+        accounts: Vec<Account>,
+    },
+
+    /// Write one page of a sync.
+    ///
+    /// Carries the diff rather than asking the runtime to read it off state,
+    /// because by the time this is performed the diff is gone — state holds
+    /// the result of applying it.
+    SaveTransactions {
+        call_id: CallId,
+        item_id: String,
 
         added: Vec<Entry>,
         modified: Vec<Entry>,
         removed: Vec<String>,
 
-        accounts: Vec<Account>,
-        streams: Vec<Stream>,
-
-        /// Written last and separately, so a failure earlier in the batch
-        /// leaves it where it was and the next sync re-reads rather than
-        /// skipping.
+        /// Written last and separately, so a failure earlier in the page
+        /// leaves it where it was and the page is read again rather than
+        /// skipped.
         cursor: String,
+    },
+
+    /// Write the charges that come back on a bank.
+    SaveStreams {
+        call_id: CallId,
+        item_id: String,
+        streams: Vec<Stream>,
     },
 
     /// Remember whether a connection needs a person.
@@ -178,7 +193,9 @@ impl ActionStore {
             | Self::SaveLink { call_id, .. }
             | Self::CollectLink { call_id, .. }
             | Self::SaveItem { call_id, .. }
-            | Self::SaveFetched { call_id, .. }
+            | Self::SaveAccounts { call_id, .. }
+            | Self::SaveTransactions { call_id, .. }
+            | Self::SaveStreams { call_id, .. }
             | Self::SaveStatus { call_id, .. }
             | Self::SweepSessions { call_id, .. } => *call_id,
         }

@@ -331,7 +331,7 @@ impl WireSyncStatus {
 }
 
 /// Which part of the first sync is running, in the order they happen —
-/// `fetch_all`'s calls and the screen's rows both follow it.
+/// the server's calls and the screen's rows both follow it.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum SyncStage {
     #[default]

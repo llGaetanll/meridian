@@ -310,13 +310,14 @@ means adding, changing or removing its example here.
 - `INFO src_plaid::plaid_client -> id=3 source=plaid method=POST url=https://sandbox.plaid.com/transactions/recurring/get body="{\"access_token\":\"[redacted 16]\",\"client_id\":\"[redacted 24]\",\"secret\":\"[redacted 30]\"}"`
   — a GET carries no `body` field at all, rather than an empty one. Yahoo and
   CoinGecko lines below are the same shape as before.
-- `INFO src_plaid transactions synced added=18 modified=0 removed=1`
-  — a *diff*, not a total. A later sync answering `added=0` is normal and
-  means nothing changed, not that the ledger is empty.
+- `INFO src_plaid transactions synced added=18 modified=0 removed=1 more=false`
+  — one page, and a *diff* rather than a total. A later sync answering
+  `added=0` is normal and means nothing changed, not that the ledger is empty.
+  `more=true` means another page is waiting, which the machine asks for.
 - `INFO src_postgres::postgres_migrate schema is current migrations=2`
   — on every boot. A no-op against a database that is already current, and a
   loud failure against one where an applied migration has been edited.
-- `ERROR server_main::runtime_server asked to fetch an item with no token item_id=8Pd5Zx…`
+- `ERROR server_main::runtime_server asked to call plaid about an item with no token item_id=8Pd5Zx…`
 - `ERROR server_main::runtime_server a sync landed for an item with no token item_id=8Pd5Zx…`
   — the machine named an Item the runtime holds no access token for, which
   means its connection list and the store have drifted. Neither is handled on
@@ -442,11 +443,17 @@ means adding, changing or removing its example here.
 - `DEBUG server_main::state_server a webhook nothing acts on webhook_type=ASSETS webhook_code=PRODUCT_READY`
   — taken and ignored. Plaid sends types nobody planned for; `DEBUG` because a
   healthy server sees them routinely.
-- `WARN server_main::runtime_plaid recurring unavailable, continuing without it error="Plaid error PRODUCT_NOT_READY: …"`
+- `WARN server_main::state_server recurring unavailable, the sync stands without it item_id=8Pd5Zx… code=PRODUCT_NOT_READY`
   — recurring is derived from transactions, so a fresh Item has none yet. One
   thin screen rather than a failed sync.
-- `WARN server_main::runtime_server plaid fetch failed code=ITEM_LOGIN_REQUIRED error="Plaid error ITEM_LOGIN_REQUIRED: …"`
-  — the connection needs the user to sign in again, and no retry will fix it.
+- `WARN server_main::state_server out of budget part-way through a history; the next sync resumes item_id=8Pd5Zx…`
+  — a first history is several pages and Plaid meters them per minute. The
+  cursor of the last page written is where the next sync starts, so this costs
+  a delay and no transactions.
+- `WARN server_main::runtime_server a plaid call failed item_id=8Pd5Zx… stage=accounts code=ITEM_LOGIN_REQUIRED error="Plaid error ITEM_LOGIN_REQUIRED: …"`
+  — `stage` says which of a sync's three calls it was, because what a failure
+  costs depends on that. `ITEM_LOGIN_REQUIRED` needs the user to sign in again
+  and no retry will fix it.
 - `DEBUG phone_main::runtime_app turn events=[FromUi { event: MaskToggled }] actions=[ToUi { action: Render { .. } }]`
   — one per turn of the loop, both vectors paired, the same shape the server
   logs. The exception is a tick that decided nothing: time arrives once a
@@ -478,7 +485,7 @@ means adding, changing or removing its example here.
 - `DEBUG src_yahoo::yahoo_client quote{symbol=SPY range=1W} request cancelled id=5 source=yahoo ms=12`
   — the request was dropped before an answer, which is what switching range
   mid-fetch looks like from here.
-- `DEBUG server_main::runtime_server turn events=[FromRouter { request_id: 3, event: SnapshotRequested { .. } }] actions=[ToSource { action: FetchPlaid { call_id: 1, .. } }]`
+- `DEBUG server_main::runtime_server turn events=[FromRouter { request_id: 3, event: SnapshotRequested { .. } }] actions=[ToSource { action: FetchBalances { call_id: 1, .. } }]`
   — one per turn of the loop, both vectors paired. A quiet server logs none of
   these: a turn with nothing queued does not happen.
 - `WARN server_main::state_server a call took too long and was given up on call_id=7 request_id=3`
