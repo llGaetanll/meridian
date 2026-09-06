@@ -32,7 +32,7 @@ pub enum PlaidEndpoint {
 
 impl PlaidEndpoint {
     /// Calls allowed per minute, per Item.
-    fn per_minute(&self) -> u32 {
+    pub fn per_minute(&self) -> u32 {
         match self {
             PlaidEndpoint::TransactionsSync => 25,
             // 15/min published; 10 leaves room for a retry without tipping over.

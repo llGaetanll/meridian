@@ -9,16 +9,35 @@ pub enum ActionSource {
     /// The one call an unauthenticated request can cause.
     FetchWebhookKey { call_id: CallId, kid: String },
 
-    /// Go and ask Plaid about one Item.
+    /// Ask what one bank's accounts hold.
+    ///
+    /// The first call of a sync, and the only one that names the bank — the
+    /// institution is in neither the Link session nor the exchange.
     ///
     /// Names the Item and not the access token: an action carrying one would
-    /// put a bank credential in the event log. The cursor is where to resume
-    /// from, and losing it means re-fetching an entire history.
-    FetchPlaid {
+    /// put a bank credential in the event log. The same goes for the two
+    /// below.
+    FetchBalances { call_id: CallId, item_id: String },
+
+    /// Ask for one page of what has changed on a bank since `cursor`.
+    ///
+    /// One page. Whether there is another is on the answer, and asking for it
+    /// is another of these — so a history that takes four calls is four
+    /// decisions rather than a loop nothing can see into.
+    ///
+    /// `cursor` is where to resume from, and losing it means re-fetching an
+    /// entire history.
+    SyncTransactions {
         call_id: CallId,
         item_id: String,
         cursor: Option<String>,
     },
+
+    /// Ask which charges on a bank come back.
+    ///
+    /// The last call of a sync, and the one it can do without: Plaid derives
+    /// the streams from transactions, so a bank attached seconds ago has none.
+    FetchRecurring { call_id: CallId, item_id: String },
 
     /// Open a Link session and get the page that hosts it.
     ///

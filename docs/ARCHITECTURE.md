@@ -259,7 +259,7 @@ shape with the boilerplate removed:
 ```rust
 eval!(&mut state,
     < EventRouter::SnapshotRequested { force: false },
-    > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None } },
+    > Action::ToSource { action: ActionSource::FetchBalances { item_id: "item-1" } },
 );
 ```
 

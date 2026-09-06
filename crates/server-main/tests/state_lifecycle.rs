@@ -81,7 +81,7 @@ fn a_call_that_never_answers_is_given_up_on() {
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 3, .. } },
+        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 3, .. } },
 
         // Plaid says nothing. Time passes and nothing else arrives.
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 1) } },

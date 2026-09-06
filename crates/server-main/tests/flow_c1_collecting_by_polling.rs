@@ -58,7 +58,7 @@ fn a_closed_sheet_attaches_the_bank_and_starts_its_sync() {
         // resolves whose bank it is — and on a call nobody is parked on, or
         // this route stays open for the whole of the first sync.
         < Event::FromStore { call_id: 5, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
-        > @r#"ToSource { action: FetchPlaid { call_id: 7, item_id: "item-9", cursor: None } }"#,
+        > @r#"ToSource { action: FetchBalances { call_id: 7, item_id: "item-9" } }"#,
 
         // 6a. Both writes down, and the fetch still out. The count, not a
         // name: nothing knows what the bank is called yet.
@@ -120,7 +120,7 @@ fn a_second_bank_in_one_session_has_its_token_dropped() {
         > @r#"ToStore { action: CollectLink { call_id: 6, link_token: "link-1" } }"#,
 
         < Event::FromStore { call_id: 5, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 7, .. } },
+        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 7, .. } },
     );
 }
 

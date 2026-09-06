@@ -173,7 +173,7 @@ request, answered like any other — which is what lets a caller with no session
 be refused before a byte of the body has gone out. Everything after the first
 message is the server talking unprompted.
 
-1. `server` -> `plaid` - `POST /accounts/balance/get`: *The first of three, started without anybody asking rather than waiting for a `/snapshot` to trigger it.*
+1. `server` -> `plaid` - `POST /accounts/balance/get`: *The first of three, started without anybody asking rather than waiting for a `/snapshot` to trigger it. Each of the three is one action of the server's state machine and one answer back, so the order below, and every rule about it, is decided in one place.*
 2. `server` <- `plaid` - `200` accounts and balances: *The first place the bank's name exists. It is in neither the Link session nor the exchange.*
 3. `phone` -> `server` - `GET /sync/status` with `Authorization: Bearer <token>` and `Accept: text/event-stream`: *Opened once, on the news that a bank landed, and held for as long as the sync screen is up.*
 4. `phone` <- `server` - one of:
@@ -181,15 +181,15 @@ message is the server talking unprompted.
    b. `401 Unauthorized`: *No bearer token, or one the server no longer honours. Before the response starts: a stream that opens and then dies silently reads as a sync with nothing to say.*
    c. `429 Too Many Requests`: *Opening them faster than the limit allows, or ten already open for this user. The eleventh is refused rather than closing the oldest — a client that cannot let go is one whose oldest connection is the one still working.*
    d. `500 Internal Server Error`: *The session this caller holds could not be read.*
-5. `server` -> `plaid` - `POST /transactions/sync`: *The history, as a diff from the cursor. A bank attached seconds ago has no cursor, so this is the long one.*
+5. `server` -> `plaid` - `POST /transactions/sync`: *One page of the history, as a diff from the cursor. A bank attached seconds ago has no cursor, so this is the long one.*
 6. `server` <- `plaid` - one of:
-   a. `200` added, modified, removed and a `next_cursor`: *Written to Postgres, cursor last and separately, so a failure earlier in the batch means the next sync re-reads rather than skipping.*
+   a. `200` added, modified, removed, a `next_cursor` and `has_more`: *Written to Postgres, cursor last and separately, so a failure earlier in the page means the next sync re-reads rather than skipping. `has_more` sends 5 again with this page's cursor, until it does not — a page beyond the first spends a slot of Plaid's per-minute budget, and running out stops the history where it is rather than being throttled.*
    b. `400 PRODUCT_NOT_READY`: *Sandbox generates transactions asynchronously, so the first seconds after linking can answer this. Ask again.*
 7. `server` -> `plaid` - `POST /transactions/recurring/get`: *The recurring streams.*
 8. `server` <- `plaid` - one of:
    a. `200` streams: *Thin or empty on a fresh Item, because Plaid derives them from transactions that have only just landed. That is a thin screen, not a failed sync.*
-   b. any error: *Logged and carried on from. Transactions are what the app is for, and a missing recurring list costs one screen rather than all of them.*
-9. `phone` <- `server` - `event: sync` on the open stream: *One per stage, written the moment 2, 6 and 8 land. Nobody asked, which is the whole point.*
+   b. any error: *Logged and carried on from, and the sync stands with what it got. Transactions are what the app is for, and a missing recurring list costs one screen rather than all of them.*
+9. `phone` <- `server` - `event: sync` on the open stream: *One per answer, written the moment 2, 6 and 8 land. Nobody asked, which is the whole point.*
 10. `phone` <- `server` - `event: sync` with `"finished":true`: *The last one, carrying the totals. The sync screen turns into the one with the button that ends first run, and the phone lets the stream go.*
 
 The whole status every time, never a change since the last one. A client that
