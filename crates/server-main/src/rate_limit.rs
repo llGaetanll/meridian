@@ -168,9 +168,9 @@ impl ServerRateLimiter {
         self.by_inbox.retain(|_, window| !window.is_idle(now));
     }
 
-    /// How many windows are being kept, so a test can say the sweep works.
-    #[cfg(test)]
-    fn kept(&self) -> usize {
+    /// How many windows are being kept, which is what the sweep above is
+    /// there to bring back down.
+    pub fn kept(&self) -> usize {
         self.by_ip.len() + self.by_user.len() + self.by_inbox.len()
     }
 }
