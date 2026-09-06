@@ -16,12 +16,16 @@ use uuid::Uuid;
 use crate::Client;
 use crate::ClientIp;
 
-/// Calls a minute on the route the phone polls.
+/// Streams opened a minute on `/sync/status`.
 ///
-/// The phone asks `/sync/status` once a second during a first run, so sixty a
-/// minute is the *normal* rate; double leaves room for a retry and a second
-/// device.
-const POLLED_PER_MINUTE: u32 = 120;
+/// A stream is opened once and held, so one is the normal rate and this is
+/// entirely about a client that keeps losing it. What bounds that is the
+/// phone's own backoff, at about twenty a minute; this leaves room above it
+/// for a second device rather than sitting on the edge.
+///
+/// How many may be open *at once* is a different limit and a different place:
+/// see [`WATCHERS_AT_MOST`](crate::WATCHERS_AT_MOST).
+const WATCHES_PER_MINUTE: u32 = 30;
 
 /// Calls a minute on every other route.
 ///
@@ -60,7 +64,7 @@ pub enum Route {
     /// `POST /link/finish`
     LinkFinish,
 
-    /// `GET /sync/status` — the one the phone polls.
+    /// `GET /sync/status` — the stream the phone watches a sync on.
     SyncStatus,
 }
 
@@ -81,7 +85,7 @@ impl Route {
     /// How much of it, over how long.
     fn limit(self) -> (u32, u64) {
         match self {
-            Route::SyncStatus => (POLLED_PER_MINUTE, MINUTE),
+            Route::SyncStatus => (WATCHES_PER_MINUTE, MINUTE),
             Route::AuthRequest => (EMAILS_PER_QUARTER_HOUR, QUARTER_HOUR),
 
             Route::Snapshot | Route::AuthVerify | Route::LinkStart | Route::LinkFinish => {
@@ -552,21 +556,23 @@ mod tests {
         assert!(limiter.can_send(T0 + Duration::from_secs(QUARTER_HOUR + 1), &ctx));
     }
 
-    /// The phone's own polling rate must be comfortably inside the limit, or
-    /// first run breaks.
+    /// The phone's own reopening rate must be comfortably inside the limit,
+    /// or a stream that keeps dropping never comes back.
     #[test]
-    fn a_minute_of_the_phone_polling_is_under_the_limit() {
+    fn a_minute_of_the_phone_reopening_is_under_the_limit() {
         let mut limiter = ServerRateLimiter::default();
         let user = Uuid::from_u128(1);
 
-        // One a second for a minute, which is what `polls_on_a_tick` does.
-        for second in 0..60 {
+        // A stream is opened once and held, so this is the worst case rather
+        // than the ordinary one: a phone losing it every time and reopening at
+        // its own backoff, for a solid minute.
+        for second in (0..60).step_by(3) {
             let client = signed_in("203.0.113.7", user);
             let ctx = ServerRateCtx::new(Route::SyncStatus, client);
 
             assert!(
                 limiter.can_send(T0 + Duration::from_secs(second), &ctx),
-                "second {second} of an ordinary first run",
+                "second {second} of a connection that will not stay up",
             );
         }
     }
@@ -591,17 +597,17 @@ mod tests {
         let mut limiter = ServerRateLimiter::default();
         let user = Uuid::from_u128(1);
 
-        for i in 0..50 {
+        for i in 0..25 {
             let client = signed_in(&format!("203.0.113.{i}"), user);
 
             limiter.can_send(T0, &ServerRateCtx::new(Route::SyncStatus, client));
         }
 
-        assert_eq!(limiter.kept(), 51, "fifty addresses and one session");
+        assert_eq!(limiter.kept(), 26, "twenty-five addresses and one session");
 
         limiter.sweep(T0 + Duration::from_secs(1));
 
-        assert_eq!(limiter.kept(), 51, "nothing has aged out yet");
+        assert_eq!(limiter.kept(), 26, "nothing has aged out yet");
 
         limiter.sweep(T0 + Duration::from_secs(MINUTE + 1));
 

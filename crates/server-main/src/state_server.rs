@@ -26,14 +26,17 @@ use crate::Action;
 use crate::ActionEmail;
 use crate::ActionProcess;
 use crate::ActionRouter;
+use crate::ActionSocket;
 use crate::ActionSource;
 use crate::ActionStore;
 use crate::CallId;
 use crate::Client;
 use crate::ClientIp;
+use crate::ConnId;
 use crate::Event;
 use crate::EventProcess;
 use crate::EventRouter;
+use crate::EventSocket;
 use crate::EventSource;
 use crate::EventStore;
 use crate::EventTerminal;
@@ -89,6 +92,14 @@ pub const SWEEP_SESSIONS_EVERY_SECS: u64 = 60 * 60;
 /// failed to fetch must not be refused for the life of the process.
 pub const WEBHOOK_KEY_MISS_GOOD_FOR_SECS: u64 = 5 * 60;
 
+/// How many streams one user may hold open at once.
+///
+/// A rule rather than a socket count, so it is arithmetic the machine does and
+/// an `eval!` test can reach. Generous for a person — a phone, a laptop and
+/// room to spare — and small enough that a client reconnecting without letting
+/// go cannot collect connections for the life of the process.
+pub const WATCHERS_AT_MOST: usize = 10;
+
 /// How many webhook signing keys are remembered at once. Finite because the
 /// ids come off tokens strangers send: full means the misses are swept, and
 /// still full means the webhook is refused.
@@ -103,6 +114,16 @@ struct CachedKey {
     /// When it was fetched. Only a miss expires; a key for a given `kid` is
     /// the same key forever, because rotation gives the new one a new id.
     at: Timestamp,
+}
+
+/// A fetch that is running, and whose it is.
+///
+/// The owner is held rather than looked up: a sync outlives the request that
+/// started it, and both places one starts have an Item and no session.
+#[derive(Debug)]
+struct Syncing {
+    user_id: Uuid,
+    status: WireSyncStatus,
 }
 
 /// A call in flight, and the route that wants its answer.
@@ -176,7 +197,13 @@ enum Pending {
 enum Authenticated {
     LinkRequested,
     LinkClosed,
-    SyncStatusRequested,
+
+    /// The stream this request opens, carried through the session read so the
+    /// answer knows which connection it is accepting.
+    SyncWatchRequested {
+        conn_id: ConnId,
+    },
+
     SnapshotRequested,
 }
 
@@ -186,7 +213,7 @@ impl Authenticated {
         match self {
             Authenticated::LinkRequested => Route::LinkStart,
             Authenticated::LinkClosed => Route::LinkFinish,
-            Authenticated::SyncStatusRequested => Route::SyncStatus,
+            Authenticated::SyncWatchRequested { .. } => Route::SyncStatus,
             Authenticated::SnapshotRequested => Route::Snapshot,
         }
     }
@@ -216,7 +243,9 @@ fn authenticated(event: &EventRouter) -> Option<Authenticated> {
     match event {
         EventRouter::LinkRequested { .. } => Some(Authenticated::LinkRequested),
         EventRouter::LinkClosed { .. } => Some(Authenticated::LinkClosed),
-        EventRouter::SyncStatusRequested { .. } => Some(Authenticated::SyncStatusRequested),
+        EventRouter::SyncWatchRequested { conn_id, .. } => {
+            Some(Authenticated::SyncWatchRequested { conn_id: *conn_id })
+        }
         EventRouter::SnapshotRequested { .. } => Some(Authenticated::SnapshotRequested),
         _ => None,
     }
@@ -284,7 +313,12 @@ pub struct StateServer {
 
     /// How far each running fetch has got, by item. Kept because a fetch is
     /// over by the time anything could read what it did; empty means idle.
-    syncing: HashMap<String, WireSyncStatus>,
+    syncing: HashMap<String, Syncing>,
+
+    /// Who is being written to, and on whose behalf. Keyed by the connection
+    /// so that letting one go is a removal, and capped per user by
+    /// [`WATCHERS_AT_MOST`].
+    watchers: HashMap<ConnId, Uuid>,
 
     /// What each Link session came to, for a route that has not asked yet,
     /// keyed by the `link_token` that `SESSION_FINISHED` carries. Always empty
@@ -336,6 +370,7 @@ impl StateServer {
                 event,
             } => self.handle_event_router(*request_id, client, event, actions),
             Event::FromSource { event } => self.handle_event_source(event, actions),
+            Event::FromSocket { event } => self.handle_event_socket(event),
             Event::FromStore { call_id, event } => {
                 self.handle_event_store(*call_id, event, actions)
             }
@@ -405,7 +440,7 @@ impl StateServer {
                 unreachable!("a request carrying a token is resolved before it is decided")
             }
 
-            EventRouter::SyncStatusRequested { .. } | EventRouter::LinkClosed { .. } => {
+            EventRouter::SyncWatchRequested { .. } | EventRouter::LinkClosed { .. } => {
                 unreachable!("a request carrying a token is resolved before it is decided")
             }
 
@@ -533,7 +568,15 @@ impl StateServer {
                 return;
             }
 
-            Authenticated::SyncStatusRequested | Authenticated::SnapshotRequested => {
+            // Nothing to read either: what is running is the machine's own
+            // state, and it is the only thing that knows.
+            Authenticated::SyncWatchRequested { conn_id } => {
+                self.handle_sync_watch(request_id, *conn_id, user_id, actions);
+
+                return;
+            }
+
+            Authenticated::SnapshotRequested => {
                 let call_id = self.calling(request_id);
 
                 ActionStore::LoadItems { call_id, user_id }
@@ -577,7 +620,7 @@ impl StateServer {
         for (item_id, cursor) in asked {
             let call_id = self.calling(request_id);
 
-            self.fetch(call_id, item_id, cursor, actions);
+            self.fetch(call_id, item_id, user_id, cursor, actions);
         }
 
         // Read once the last of those has landed and been written, so what is
@@ -586,22 +629,85 @@ impl StateServer {
         self.owe(request_id, Owed::Snapshot { user_id }, actions);
     }
 
-    /// How far the sync this user is watching has got.
-    fn handle_sync_status(
+    /// Somebody wants to be told how their sync goes.
+    fn handle_sync_watch(
         &mut self,
         request_id: RequestId,
-        items: &[ItemFacts],
+        conn_id: ConnId,
+        user_id: Uuid,
         actions: &mut Vec<Action>,
     ) {
-        // The furthest-behind of this user's running fetches: the screen draws
-        // one set of rows, and the honest stage is the unfinished one.
-        let status = items
-            .iter()
-            .filter_map(|item| self.syncing.get(&item.item_id))
-            .min_by_key(|status| stage_index(status.stage()))
-            .map_or_else(WireSyncStatus::idle, Clone::clone);
+        let open = self
+            .watchers
+            .values()
+            .filter(|watcher| **watcher == user_id)
+            .count();
 
-        self.answer(request_id, ActionRouter::SyncStatus { status }, actions);
+        // Refused rather than closing the oldest: a client that cannot let go
+        // is a client whose oldest connection is the one still working.
+        if open >= WATCHERS_AT_MOST {
+            tracing::warn!(%user_id, open, "a caller is holding too many streams open");
+
+            self.answer(request_id, ActionRouter::TooMany, actions);
+
+            return;
+        }
+
+        self.watchers.insert(conn_id, user_id);
+
+        let status = self.status_for(user_id);
+
+        self.answer(
+            request_id,
+            ActionRouter::Watching { conn_id, status },
+            actions,
+        );
+    }
+
+    /// A stream went away.
+    fn handle_event_socket(&mut self, event: &EventSocket) {
+        match event {
+            EventSocket::Closed { conn_id } => {
+                // Absent is ordinary: one refused for the cap was never
+                // written down, and the connection still closes.
+                self.watchers.remove(conn_id);
+            }
+        }
+    }
+
+    /// How far this user's sync has got.
+    ///
+    /// The furthest-behind of their running fetches: the screen draws one set
+    /// of rows, and the honest stage is the unfinished one.
+    fn status_for(&self, user_id: Uuid) -> WireSyncStatus {
+        self.syncing
+            .values()
+            .filter(|syncing| syncing.user_id == user_id)
+            .map(|syncing| &syncing.status)
+            .min_by_key(|status| stage_index(status.stage()))
+            .map_or_else(WireSyncStatus::idle, Clone::clone)
+    }
+
+    /// Tell everyone watching this user where their sync has got to.
+    ///
+    /// The whole status every time. A stream that carried changes would leave
+    /// a client that reconnected mid-sync holding a picture it could not
+    /// complete.
+    fn push_status(&mut self, user_id: Uuid, actions: &mut Vec<Action>) {
+        let status = self.status_for(user_id);
+
+        for (conn_id, watcher) in &self.watchers {
+            if *watcher != user_id {
+                continue;
+            }
+
+            actions.push(Action::ToSocket {
+                action: ActionSocket::Send {
+                    conn_id: *conn_id,
+                    status: status.clone(),
+                },
+            });
+        }
     }
 
     /// A sheet closed. What that means depends on how results are collected.
@@ -1065,7 +1171,13 @@ impl StateServer {
                     // takes far longer than Plaid waits for its 2xx.
                     let call_id = self.call();
 
-                    self.fetch(call_id, item.item_id.clone(), item.cursor.clone(), actions);
+                    self.fetch(
+                        call_id,
+                        item.item_id.clone(),
+                        item.user_id,
+                        item.cursor.clone(),
+                        actions,
+                    );
                 }
 
                 self.answer(request_id, ActionRouter::Accepted, actions);
@@ -1158,8 +1270,8 @@ impl StateServer {
                 // Replaced rather than dropped: these counts exist nowhere
                 // else, and `added` is what this sync brought rather than what
                 // the store now holds.
-                self.syncing.insert(
-                    item_id.clone(),
+                self.progressed(
+                    item_id,
                     WireSyncStatus::done(
                         connection.as_ref().map(|c| c.name.clone()),
                         connection
@@ -1168,6 +1280,7 @@ impl StateServer {
                         added.len().try_into().unwrap_or(u32::MAX),
                         streams.len().try_into().unwrap_or(u32::MAX),
                     ),
+                    actions,
                 );
 
                 // The wait passes from the fetch to the write it caused, so
@@ -1268,6 +1381,9 @@ impl StateServer {
                     return;
                 };
 
+                // The first sync follows this write rather than racing it:
+                // whose bank it is comes from the Link session, and the write
+                // is what resolves that.
                 actions.push(Action::ToStore {
                     action: ActionStore::SaveItem {
                         call_id: self.calling(request_id),
@@ -1286,15 +1402,6 @@ impl StateServer {
                         },
                     });
                 }
-
-                // Now rather than on the next `/snapshot`: the first sync of
-                // a new bank is the long one, and a screen that watches a sync
-                // needs one running. `call` rather than `calling`, or
-                // `/link/finish` stays open for the whole of it.
-                let call_id = self.call();
-
-                // A bank attached seconds ago has no cursor to resume from.
-                self.fetch(call_id, item_id.clone(), None, actions);
 
                 // Plaid's POST caused this and is owed nothing beyond
                 // "taken": the outcome goes to `/link/finish`.
@@ -1345,8 +1452,8 @@ impl StateServer {
                 transactions,
                 streams,
             } => {
-                self.syncing.insert(
-                    item_id.clone(),
+                self.progressed(
+                    item_id,
                     WireSyncStatus::new(
                         *stage,
                         institution.clone(),
@@ -1354,6 +1461,7 @@ impl StateServer {
                         *transactions,
                         *streams,
                     ),
+                    actions,
                 );
             }
 
@@ -1362,9 +1470,7 @@ impl StateServer {
                 item_id,
                 code,
             } => {
-                // Dropped rather than marked done: a screen polling a fetch
-                // that died would otherwise sit on its last stage.
-                self.syncing.remove(item_id);
+                self.sync_stopped(item_id, actions);
 
                 if code == ITEM_LOGIN_REQUIRED {
                     actions.push(Action::ToProcess {
@@ -1469,6 +1575,21 @@ impl StateServer {
                 );
             }
 
+            EventStore::ItemSaved { item } => {
+                // Now rather than on the next `/snapshot`: the first sync of a
+                // new bank is the long one, and a screen watching a sync needs
+                // one running. Nobody waits on it — `/link/finish` would stay
+                // open for the whole of it.
+                if let Some(item) = item {
+                    let call_id = self.call();
+
+                    // A bank attached seconds ago has no cursor to resume from.
+                    self.fetch(call_id, item.item_id.clone(), item.user_id, None, actions);
+                }
+
+                self.landed(call_id, actions);
+            }
+
             EventStore::ItemsLoaded { items } => {
                 let Some(Pending::Loading { user_id, event }) = self.pending.remove(&call_id)
                 else {
@@ -1482,15 +1603,11 @@ impl StateServer {
                 };
 
                 match event {
-                    Authenticated::SyncStatusRequested => {
-                        self.handle_sync_status(request_id, items, actions)
-                    }
-
                     Authenticated::SnapshotRequested => {
                         self.handle_snapshot(request_id, user_id, items, actions)
                     }
 
-                    _ => unreachable!("only a snapshot and a status ask for banks"),
+                    _ => unreachable!("only a snapshot asks for banks"),
                 }
             }
 
@@ -1643,14 +1760,22 @@ impl StateServer {
         &mut self,
         call_id: CallId,
         item_id: String,
+        user_id: Uuid,
         cursor: Option<String>,
         actions: &mut Vec<Action>,
     ) {
         // Nothing is known yet. What matters is that it is *not* finished.
         self.syncing.insert(
             item_id.clone(),
-            WireSyncStatus::new(SyncStage::Accounts, None, 0, 0, 0),
+            Syncing {
+                user_id,
+                status: WireSyncStatus::new(SyncStage::Accounts, None, 0, 0, 0),
+            },
         );
+
+        // In the same turn it starts: a screen that opened its stream while
+        // nothing was running is told that something now is.
+        self.push_status(user_id, actions);
 
         actions.push(Action::ToSource {
             action: ActionSource::FetchPlaid {
@@ -1682,6 +1807,33 @@ impl StateServer {
         self.waiting
             .values()
             .any(|waiter| waiter.request_id == request_id)
+    }
+
+    /// Note where a fetch has reached, and tell whoever is watching it.
+    ///
+    /// A fetch with no record of having started is written down all the same
+    /// by whatever else the event asked for; it just cannot be reported,
+    /// because there is nobody it is known to belong to.
+    fn progressed(&mut self, item_id: &str, status: WireSyncStatus, actions: &mut Vec<Action>) {
+        let Some(syncing) = self.syncing.get_mut(item_id) else {
+            return;
+        };
+
+        let user_id = syncing.user_id;
+
+        syncing.status = status;
+
+        self.push_status(user_id, actions);
+    }
+
+    /// Stop reporting a fetch. Dropped rather than marked done: a screen
+    /// watching one that died would otherwise sit on its last stage.
+    fn sync_stopped(&mut self, item_id: &str, actions: &mut Vec<Action>) {
+        let Some(syncing) = self.syncing.remove(item_id) else {
+            return;
+        };
+
+        self.push_status(syncing.user_id, actions);
     }
 
     /// A fresh [`CallId`] that inherits whatever `call_id` was holding. One
@@ -1785,6 +1937,11 @@ impl StateServer {
                 request_id,
                 "a call took too long and was given up on"
             );
+
+            // What the request was doing goes with the call it was waiting
+            // on. Nothing else ever removes this: an answer is what does, and
+            // giving up is deciding there will not be one.
+            self.pending.remove(&call_id);
 
             // Another of this route's calls may still answer and release it.
             if self.outstanding(request_id) {

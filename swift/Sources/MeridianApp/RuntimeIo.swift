@@ -158,30 +158,120 @@ enum RuntimeIo {
         let outcome: String
     }
 
-    /// How far the first sync has got, as JSON.
+    /// How the sync is going, as JSON, for as long as it goes on.
     ///
-    /// Handed back as a string rather than parsed, the same as the snapshot:
-    /// the machine parses, so all three platforms get one parse and one place
-    /// that decides what a missing field means.
-    static func syncStatus(token: String) async throws -> String {
+    /// A response that never ends: the server holds it open and writes a
+    /// message whenever the sync moves. iOS has no `EventSource`, so this
+    /// reads the body as it arrives and splits it into Server-Sent Events by
+    /// hand, which is most of what the format is.
+    ///
+    /// Each status is handed back as a string rather than parsed, the same as
+    /// the snapshot: the machine parses, so all three platforms get one parse
+    /// and one place that decides what a missing field means.
+    ///
+    /// The sequence ending is a fact and not a failure — the connection went,
+    /// which happens every time the app is backgrounded. `RuntimeApp` reports
+    /// it, and the machine decides whether to open another.
+    static func syncStatuses(token: String) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            let reading = Task {
+                do {
+                    try await readStatuses(token: token, into: continuation)
+
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            // Letting go of the sequence closes the connection, which is what
+            // frees the slot the server is holding for it.
+            continuation.onTermination = { _ in reading.cancel() }
+        }
+    }
+
+    private static func readStatuses(
+        token: String,
+        into continuation: AsyncThrowingStream<String, Error>.Continuation
+    ) async throws {
         guard let url = URL(string: "\(server)/sync/status") else {
             throw Failure.unreachable
         }
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
-        let (data, status) = try await send(request)
+        // No timeout of its own. A first sync of a real bank is minutes of
+        // quiet punctuated by three messages, and what keeps the connection up
+        // through it is the server's keep-alive every fifteen seconds — well
+        // inside the sixty this would otherwise give up after. Which is the
+        // right way round: if the heartbeat stops, the connection *should*
+        // time out, and the machine opens another.
 
-        guard (200..<300).contains(status) else {
-            throw Failure.answered(status: status)
+        let bytes: URLSession.AsyncBytes
+        let response: URLResponse
+
+        do {
+            (bytes, response) = try await URLSession.shared.bytes(for: request)
+        } catch {
+            throw Failure.unreachable
         }
 
-        guard let json = String(data: data, encoding: .utf8) else {
-            throw Failure.emptyBody
+        guard let response = response as? HTTPURLResponse else {
+            throw Failure.unreachable
         }
 
-        return json
+        // Refused before any of the body went out, which is the whole reason
+        // the server answers the open as an ordinary request.
+        guard (200..<300).contains(response.statusCode) else {
+            throw Failure.answered(status: response.statusCode)
+        }
+
+        // The kind of message the last `event:` line named. Kept across lines
+        // because it arrives before the data it is about.
+        var kind = ""
+
+        for try await line in bytes.lines {
+            // The keep-alive, so that a quiet connection is not reaped.
+            if line.hasPrefix(":") {
+                continue
+            }
+
+            if let named = field("event", of: line) {
+                kind = named
+
+                continue
+            }
+
+            guard let json = field("data", of: line) else {
+                continue
+            }
+
+            // A message is one `data:` line here, which is what lets this
+            // dispatch on arrival: `AsyncLineSequence` drops the blank line
+            // that ends a message, so it is not something to wait for.
+            //
+            // Dispatched on the name so a kind added later is skipped rather
+            // than parsed as a status it cannot be read as.
+            if kind.isEmpty || kind == "sync" {
+                continuation.yield(json)
+            }
+
+            kind = ""
+        }
+    }
+
+    /// The value of one Server-Sent Events field, or `nil` if the line is not
+    /// that field. The space after the colon is optional and is dropped.
+    private static func field(_ name: String, of line: String) -> String? {
+        guard line.hasPrefix("\(name):") else {
+            return nil
+        }
+
+        let value = line.dropFirst(name.count + 1)
+
+        return String(value.hasPrefix(" ") ? value.dropFirst() : value)
     }
 
     /// Ask for a sign-in code.

@@ -15,6 +15,7 @@ use tokio::sync::mpsc;
 use crate::Action;
 use crate::ActionEmail;
 use crate::ActionProcess;
+use crate::ActionSocket;
 use crate::ActionSource;
 use crate::ActionStore;
 use crate::EmailSend;
@@ -32,6 +33,7 @@ use crate::project;
 use crate::runtime_plaid;
 use crate::runtime_router::ActionRx;
 use crate::runtime_router::ActionTx;
+use crate::runtime_router::Answer;
 use crate::runtime_router::EventRx;
 use crate::runtime_router::EventTx;
 use crate::runtime_router::RuntimeRouter;
@@ -276,8 +278,23 @@ impl RuntimeServer {
             // By now everything the answer was waiting on has landed: the
             // machine held it until the last write reported.
             Action::ToRouter { request_id, action } => {
-                if self.action_tx.send((request_id, action)).is_err() {
+                let answer = Answer::ToRoute { request_id, action };
+
+                if self.action_tx.send(answer).is_err() {
                     tracing::error!(request_id, "the router is gone; its answer was dropped");
+                }
+            }
+
+            // Down the same channel as an answer, because a push decided in
+            // the same turn as the answer that opened the stream must not
+            // overtake it.
+            Action::ToSocket {
+                action: ActionSocket::Send { conn_id, status },
+            } => {
+                let answer = Answer::ToSocket { conn_id, status };
+
+                if self.action_tx.send(answer).is_err() {
+                    tracing::error!(conn_id, "the router is gone; a push was dropped");
                 }
             }
 
@@ -325,7 +342,7 @@ impl RuntimeServer {
             Action::ToSource { action } => return self.perform_action_source(action).await,
             Action::ToStore { action } => return self.perform_action_store(action).await,
             Action::ToEmail { action } => self.perform_action_email(action).await,
-            Action::ToRouter { .. } | Action::ToProcess { .. } => {
+            Action::ToRouter { .. } | Action::ToSocket { .. } | Action::ToProcess { .. } => {
                 unreachable!("delivered rather than performed")
             }
         }
@@ -564,6 +581,18 @@ impl RuntimeServer {
 
             ActionStore::LoadCode { email, .. } => self.load_code(email).await,
 
+            ActionStore::SaveItem {
+                item_id,
+                link_token,
+                ..
+            } => match self.save_linked_item(&self.db, item_id, link_token).await {
+                Ok(item) => EventStore::ItemSaved { item },
+
+                Err(e) => EventStore::WriteError {
+                    message: e.to_string(),
+                },
+            },
+
             _ => match self.write_store(action).await {
                 Ok(()) => EventStore::WriteSuccess,
 
@@ -696,14 +725,6 @@ impl RuntimeServer {
                 src_postgres::collect_link(db, link_token).await?;
             }
 
-            ActionStore::SaveItem {
-                call_id: _,
-                item_id,
-                link_token,
-            } => {
-                self.save_linked_item(db, item_id, link_token).await?;
-            }
-
             ActionStore::SaveFetched { .. } | ActionStore::SaveStatus { .. } => {
                 self.write(db, action).await?;
             }
@@ -713,34 +734,40 @@ impl RuntimeServer {
             | ActionStore::LoadItems { .. }
             | ActionStore::LoadPendingLinks { .. }
             | ActionStore::LoadSnapshot { .. }
-            | ActionStore::LoadCode { .. } => {
-                unreachable!("a read is answered by `perform_action_store`")
+            | ActionStore::LoadCode { .. }
+            | ActionStore::SaveItem { .. } => {
+                unreachable!("answered by `perform_action_store`, which says what it wrote")
             }
         }
 
         Ok(())
     }
 
-    /// Write a newly linked bank.
+    /// Write a newly linked bank, and say what was written.
     ///
     /// The owner comes from the Link session rather than from the action,
     /// which is what stops one account collecting a bank another connected.
+    /// It is also the whole reason this answers rather than reporting that it
+    /// landed: the first sync starts here, and a sync has to know whose it is.
+    ///
+    /// `None` for the two ways there is nothing to write — no token held and
+    /// no session to attach it to — because neither leaves anything to sync.
     async fn save_linked_item(
         &self,
         db: &Db,
         item_id: &str,
         link_token: &str,
-    ) -> Result<(), src_postgres::PostgresError> {
+    ) -> Result<Option<crate::ItemFacts>, src_postgres::PostgresError> {
         let Some(access_token) = self.token_for(item_id) else {
             tracing::error!(item_id, "a bank was linked with no token held for it");
 
-            return Ok(());
+            return Ok(None);
         };
 
         let Some(user_id) = src_postgres::user_for_link(db, link_token).await? else {
             tracing::error!(link_token, "a bank was linked against no session");
 
-            return Ok(());
+            return Ok(None);
         };
 
         src_postgres::save_item(
@@ -761,7 +788,15 @@ impl RuntimeServer {
 
         tracing::info!(item_id, %user_id, "bank linked");
 
-        Ok(())
+        Ok(Some(crate::ItemFacts {
+            item_id: item_id.to_string(),
+            user_id,
+            // A bank attached seconds ago has synced nothing and has no cursor
+            // to resume from.
+            cursor: None,
+            synced_at: None,
+            login_required: false,
+        }))
     }
 
     /// One user's banks, as the store holds them.
@@ -834,6 +869,7 @@ impl RuntimeServer {
 
         Some(crate::ItemFacts {
             item_id: item.item_id,
+            user_id: item.user_id,
             cursor: item.cursor,
             synced_at: Some(item.synced_at),
             login_required: item.error_code.as_deref() == Some(src_plaid::ITEM_LOGIN_REQUIRED),
@@ -860,6 +896,7 @@ impl RuntimeServer {
             .iter()
             .map(|item| crate::ItemFacts {
                 item_id: item.item_id.clone(),
+                user_id: item.user_id,
                 cursor: item.cursor.clone(),
                 synced_at: Some(item.synced_at),
                 login_required: item.error_code.as_deref() == Some("ITEM_LOGIN_REQUIRED"),

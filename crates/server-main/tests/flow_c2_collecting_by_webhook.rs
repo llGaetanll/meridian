@@ -45,13 +45,14 @@ fn an_outcome_that_arrives_first_is_waiting_when_the_phone_asks() {
         // collected one is a session `/link/finish` can no longer see.
         < Event::FromSource { event: EventSource::ItemLinked { call_id: 2, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 3, .. } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 4, .. } },
 
         // 7a. Plaid is owed nothing beyond "taken", and it is owed it only
         // once the exchange has landed and been written — which is what makes
         // a failure mid-exchange a webhook Plaid sends again rather than a
-        // bank quietly lost.
-        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+        // bank quietly lost. D starts on the same event, because that write is
+        // what resolves whose bank it is.
+        < Event::FromStore { call_id: 3, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 4, .. } },
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
 
         // 1 and 8a. The phone catches up, and is told what it came to.
@@ -93,15 +94,15 @@ fn a_close_that_arrives_first_waits_for_the_outcome() {
 
         < Event::FromSource { event: EventSource::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 5, .. } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 6, .. } },
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 7, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
 
-        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 5, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 7, .. } },
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
 
         // 8a. The route that was waiting, answered once the session it is
         // being told about has actually been closed.
-        < Event::FromStore { call_id: 7, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 6, event: EventStore::WriteSuccess },
         > @r#"ToRouter { request_id: 1, action: Linked { count: 1 } }"#,
     );
 }
@@ -272,9 +273,9 @@ fn the_session_that_attached_a_bank_is_the_one_reported() {
 
         < Event::FromSource { event: EventSource::ItemLinked { call_id: 2, link_token: "link-2".to_string(), item_id: "item-9".to_string() } },
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 3, .. } },
-        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 4, .. } },
 
-        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 3, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
+        > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 4, .. } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
 
         < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },

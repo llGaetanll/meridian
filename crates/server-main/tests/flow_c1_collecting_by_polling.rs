@@ -48,14 +48,17 @@ fn a_closed_sheet_attaches_the_bank_and_starts_its_sync() {
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
         > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 4, .. } },
 
-        // 5. The bank is written down, the session is closed in the same turn,
-        // and D starts here — on a call nobody is waiting for.
+        // 5. The bank is written down and the session is closed in the same
+        // turn.
         < Event::FromSource { event: EventSource::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 5, .. } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
-        > @r#"ToSource { action: FetchPlaid { call_id: 7, item_id: "item-9", cursor: None } }"#,
 
-        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+        // D starts on the write reporting back, because that write is what
+        // resolves whose bank it is — and on a call nobody is parked on, or
+        // this route stays open for the whole of the first sync.
+        < Event::FromStore { call_id: 5, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
+        > @r#"ToSource { action: FetchPlaid { call_id: 7, item_id: "item-9", cursor: None } }"#,
 
         // 6a. Both writes down, and the fetch still out. The count, not a
         // name: nothing knows what the bank is called yet.
@@ -115,6 +118,8 @@ fn a_second_bank_in_one_session_has_its_token_dropped() {
         < Event::FromSource { event: EventSource::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 5, .. } },
         > @r#"ToStore { action: CollectLink { call_id: 6, link_token: "link-1" } }"#,
+
+        < Event::FromStore { call_id: 5, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 7, .. } },
     );
 }

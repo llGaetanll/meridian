@@ -46,4 +46,9 @@ pub enum EventSource {
     /// How far the first sync has got, as `server_wire::WireSyncStatus` in
     /// JSON, for the reason [`SnapshotLoaded`](EventSource::SnapshotLoaded) is.
     SyncStatusLoaded { json: String },
+
+    /// The stream carrying those went away — backgrounded, out of signal, or
+    /// refused. A fact and not a verdict: whether to open another one is the
+    /// machine's, and it decides that from where the flow is.
+    SyncWatchEnded,
 }

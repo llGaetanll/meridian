@@ -30,8 +30,16 @@ pub enum ActionSource {
     /// signs both cannot ship inside an app (`docs/PLAID.md`).
     StartBankLink,
 
-    /// Ask how far the first sync has got. One question, not a subscription:
-    /// asking again is the machine's to decide on the tick, so every poll is
-    /// an action in the log.
-    PollSync,
+    /// Open a stream the server writes the sync's progress to, and report
+    /// what arrives on it.
+    ///
+    /// The runtime holds the connection and chooses how to read it; when to
+    /// have one at all, and when to try again after losing one, are decisions
+    /// and stay here — so a replay reproduces every attempt.
+    WatchSync,
+
+    /// Let that stream go. Its own action rather than something the runtime
+    /// infers from a screen it cannot see: a connection nobody closes is a
+    /// connection the server holds a slot for.
+    StopWatchingSync,
 }

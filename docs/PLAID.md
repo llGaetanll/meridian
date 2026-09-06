@@ -193,7 +193,7 @@ successful connection and must listen for `SESSION_FINISHED` or call
   `link_token`. `SESSION_FINISHED` carries one and `link_sessions` already
   stores it, so this needs nothing new in the schema.
 - After ten seconds it answers **pending**. Not failure: the bank may still be
-  landing, and the screen that follows polls `/sync/status` and will see it.
+  landing, and the screen that follows watches `/sync/status` and will see it.
 
 A session is collected — `collected_at` — by whatever *reports* it, and not a
 moment earlier. A collected session is one `/link/finish` can no longer see,

@@ -3,6 +3,8 @@
 //! One per [`EventRouter`](crate::EventRouter): the handler parks until its
 //! own comes back, so an event that produced none never answers.
 
+use crate::ConnId;
+
 #[derive(Debug)]
 pub enum ActionRouter {
     /// Answer with this user's ledger, carried whole because nothing outside
@@ -45,9 +47,16 @@ pub enum ActionRouter {
     /// was attached nor that none was, which beats guessing between the two.
     LinkPending,
 
-    /// How far the sync this user is watching has got. Progress exists only in
-    /// the machine, and only while a fetch is running.
-    SyncStatus { status: server_wire::WireSyncStatus },
+    /// The stream is theirs, and this is where things stand on it.
+    ///
+    /// The status rides on the acceptance rather than following it, so a
+    /// connection cannot be opened without being told where the sync has got
+    /// to. A client that connects late, or reconnects, is then in the same
+    /// position as one that was there from the start.
+    Watching {
+        conn_id: ConnId,
+        status: server_wire::WireSyncStatus,
+    },
 
     /// Too many requests, and this one is not being served.
     ///

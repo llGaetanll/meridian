@@ -14,6 +14,13 @@ pub enum EventStore {
     /// have no row for — Plaid keeps sending after one is removed.
     ItemLoaded { item: Option<crate::ItemFacts> },
 
+    /// The bank a Link session produced, as it was written down.
+    ///
+    /// `None` is a write that found no session to attach it to or no token to
+    /// attach — both logged where they happen, and neither leaves anything to
+    /// sync.
+    ItemSaved { item: Option<crate::ItemFacts> },
+
     /// This user's banks, as the store holds them. Empty is a first run, not a
     /// failure.
     ItemsLoaded { items: Vec<crate::ItemFacts> },

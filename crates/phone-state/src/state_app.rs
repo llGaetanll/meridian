@@ -2,6 +2,8 @@
 //! awaits nothing — which is what makes a log of events a recording of the
 //! session.
 
+use std::time::Duration;
+
 use api_common::Timestamp;
 use api_ledger::Category;
 use api_ledger::Connection;
@@ -23,6 +25,13 @@ use crate::StateOnboarding;
 use crate::screens;
 use crate::state_onboarding::Progress;
 use crate::state_onboarding::Step;
+
+/// How long to wait before opening another stream after losing one.
+///
+/// Long enough that a server refusing them is asked twenty times a minute
+/// rather than sixty, and short enough that backgrounding the app and coming
+/// straight back does not leave the screen still on a connection it has lost.
+const WATCH_AGAIN_AFTER: Duration = Duration::from_secs(3);
 
 /// Everything the app is, at one moment.
 ///
@@ -73,6 +82,14 @@ pub struct StateApp {
     /// "loaded, and there is nothing".
     loaded: bool,
 
+    /// Whether a stream carrying the sync's progress is open, or on its way
+    /// to being. Cleared by the runtime saying the connection went.
+    watching: bool,
+
+    /// When one was last asked for, so a connection that will not stay up is
+    /// retried rather than reopened as fast as it fails.
+    watch_asked: Option<Timestamp>,
+
     /// First run, until it has been walked. `None` means the app is the app.
     ///
     /// Starts *present*, cleared by a stored session: absent until the store
@@ -95,6 +112,8 @@ impl Default for StateApp {
             ledger: StateLedger::default(),
             load_failed: None,
             loaded: false,
+            watching: false,
+            watch_asked: None,
             onboarding: Some(StateOnboarding::new()),
         }
     }
@@ -118,6 +137,11 @@ impl StateApp {
         for event in events {
             self.handle_event(event, actions);
         }
+
+        // Only once every event in the batch has been handled: whether a
+        // stream should be open is a fact about where the flow *is*, not about
+        // which event moved it there.
+        self.settle_watch(actions);
     }
 
     fn handle_event(&mut self, event: &Event, actions: &mut Vec<Action>) {
@@ -143,14 +167,6 @@ impl StateApp {
                 );
 
                 self.device_now = now;
-
-                // A sync finishes on the server whether or not anybody asks.
-                // Polling from here rather than the runtime puts it in the log.
-                if self.polls_on_a_tick() {
-                    actions.push(Action::ToSource {
-                        action: ActionSource::PollSync,
-                    });
-                }
 
                 // Drawing on every tick would rebuild the Ledger sixty times a
                 // minute to arrive at the same list.
@@ -404,13 +420,6 @@ impl StateApp {
             EventSource::BankLinked => {
                 if let Some(flow) = &mut self.onboarding {
                     flow.bank_linked();
-
-                    // The bank attaching is what starts the history arriving,
-                    // so the first ask follows the news. Every ask after is a
-                    // tick's.
-                    actions.push(Action::ToSource {
-                        action: ActionSource::PollSync,
-                    });
                 }
 
                 self.render(actions);
@@ -421,13 +430,6 @@ impl StateApp {
 
                 if let Some(flow) = &mut self.onboarding {
                     flow.bank_pending(now);
-
-                    // The same first ask as a bank that did land: there may be
-                    // no sync to report yet, and the flow is what knows an
-                    // empty status is the gap rather than the end.
-                    actions.push(Action::ToSource {
-                        action: ActionSource::PollSync,
-                    });
                 }
 
                 self.render(actions);
@@ -441,6 +443,13 @@ impl StateApp {
                 self.render(actions);
             }
 
+            EventSource::SyncWatchEnded => {
+                // Nothing is drawn about it and nothing is decided here: if the
+                // sync screen is still up, the rule at the end of this batch
+                // opens another one when the backoff allows.
+                self.watching = false;
+            }
+
             EventSource::SyncStatusLoaded { json } => {
                 let now = self.now();
 
@@ -450,7 +459,7 @@ impl StateApp {
                 match serde_json::from_str::<WireSyncStatus>(json) {
                     Ok(status) => {
                         if let Some(flow) = &mut self.onboarding {
-                            // The name shows up one poll into the sync rather
+                            // The name shows up one message into the sync rather
                             // than with the bank attaching, so the screen opens
                             // saying "Your bank" and corrects itself.
                             if let Some(institution) = &status.institution {
@@ -542,13 +551,48 @@ impl StateApp {
         }
     }
 
-    /// Whether there is a sync worth asking about. Leaving the screen that
-    /// draws one ends the polling; there is nothing to cancel.
-    fn polls_on_a_tick(&self) -> bool {
-        match &self.onboarding {
+    /// Have a stream open exactly while the sync screen is up.
+    ///
+    /// Decided from where the flow is rather than pushed by the events that
+    /// get it there, so a step reached by any road is watched the same way —
+    /// and so a connection that dies is reopened by the same rule that opened
+    /// the first one.
+    fn settle_watch(&mut self, actions: &mut Vec<Action>) {
+        let wanted = match &self.onboarding {
             Some(flow) => flow.step() == Step::Sync,
             None => false,
+        };
+
+        if !wanted {
+            if self.watching {
+                self.watching = false;
+
+                actions.push(Action::ToSource {
+                    action: ActionSource::StopWatchingSync,
+                });
+            }
+
+            return;
         }
+
+        if self.watching {
+            return;
+        }
+
+        // Backed off. Without it a stream the server keeps refusing is one
+        // request per turn, which is a poll wearing a different name.
+        if let Some(asked) = self.watch_asked
+            && self.now().since(asked) < WATCH_AGAIN_AFTER
+        {
+            return;
+        }
+
+        self.watching = true;
+        self.watch_asked = Some(self.now());
+
+        actions.push(Action::ToSource {
+            action: ActionSource::WatchSync,
+        });
     }
 
     /// What time it is, as the device last said. A phone that had to be told

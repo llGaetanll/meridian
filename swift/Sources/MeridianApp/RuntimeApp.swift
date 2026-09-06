@@ -29,10 +29,12 @@ final class RuntimeApp: ObservableObject {
     /// The last failure, for the banner. Cleared by the next successful load.
     @Published private(set) var error: String?
 
-    /// Whether a sync poll is in flight. The runtime's own bookkeeping, like
-    /// `loading` below: the machine asks on a tick and does not need to be
-    /// told that the last ask has not come back.
-    private var polling = false
+    /// The stream the sync's progress arrives on, held so it can be let go.
+    ///
+    /// The runtime's own bookkeeping, like `loading` below. Whether there
+    /// should be one is the machine's — it says so with `watchSync` and
+    /// `stopWatchingSync`; this is only the connection those two are about.
+    private var watch: Task<Void, Never>?
 
     /// Whether a fetch is in flight, for the refresh spinner. Deliberately not
     /// in the machine: it is a fact about the runtime rather than a decision,
@@ -186,7 +188,8 @@ final class RuntimeApp: ObservableObject {
         // is left of the stub. Nothing above this line can tell the
         // difference, and nothing below it decides anything.
         case .startBankLink: startBankLink()
-        case .pollSync: pollSync()
+        case .watchSync: watchSync()
+        case .stopWatchingSync: stopWatchingSync()
         }
     }
 
@@ -337,41 +340,51 @@ final class RuntimeApp: ObservableObject {
         }
     }
 
-    /// Ask how far the first sync has got, once.
+    /// Open the stream the sync's progress arrives on, and report what
+    /// arrives on it.
     ///
-    /// One request per action and no loop: asking again is the machine's
-    /// decision, made on the tick, which is what puts every poll in the event
-    /// log. A loop here would be behaviour no replay could reproduce.
+    /// The loop here is the *reading* of one connection and not a decision to
+    /// keep asking: the machine said to have a stream, and this is what having
+    /// one looks like. When to open another after losing this one is the
+    /// machine's, which is what keeps every attempt in the event log.
     ///
-    /// A poll that lands while one is still out is dropped rather than queued
-    /// — the same one-at-a-time rule `loadSnapshot` has, and for the same
-    /// reason: two answers racing to write the same state is one of them
-    /// losing, and the next tick is a second away regardless.
-    private func pollSync() {
-        if polling { return }
-
+    /// Every way it can end — refused, dropped, backgrounded — is the same
+    /// event, because none of them is this side's to interpret.
+    private func watchSync() {
         guard let token else {
-            NSLog("MERIDIAN asked for sync progress with no session")
+            NSLog("MERIDIAN asked to watch a sync with no session")
+
+            dispatch(.fromSource(event: .syncWatchEnded))
 
             return
         }
 
-        polling = true
+        // The machine decides when there is one, so a second is a bug rather
+        // than a race to live with.
+        watch?.cancel()
 
-        Task { [weak self] in
-            defer { self?.polling = false }
-
+        watch = Task { [weak self] in
             do {
-                let json = try await RuntimeIo.syncStatus(token: token)
-
-                self?.dispatch(.fromSource(event: .syncStatusLoaded(json: json)))
+                for try await json in RuntimeIo.syncStatuses(token: token) {
+                    self?.dispatch(.fromSource(event: .syncStatusLoaded(json: json)))
+                }
             } catch {
-                // Not reported to the machine. A poll that misses is answered
-                // by the next tick a second later, and a banner over the sync
-                // screen for one dropped request would be noise.
                 NSLog("MERIDIAN sync progress unavailable: %@", error.localizedDescription)
             }
+
+            // Not when the machine is the one that closed it: it knows, and a
+            // stream it let go of is not a stream that went away.
+            if !Task.isCancelled {
+                self?.dispatch(.fromSource(event: .syncWatchEnded))
+            }
         }
+    }
+
+    /// Let the stream go. Cancelling drops the response, which is what closes
+    /// the connection and frees the slot the server is holding for it.
+    private func stopWatchingSync() {
+        watch?.cancel()
+        watch = nil
     }
 
     /// The one piece of IO in the app.

@@ -14,6 +14,10 @@ further along, with a session already in hand, and fetches snapshots.
 party that started the exchange stays on the left either way, so the arrow is
 the only thing that has to be read to know which direction the bytes went.
 
+One request is usually one answer, and D is the exception: its stream is a
+single request whose response is written to many times, so several
+`phone <- server` lines share the one `phone -> server` above them.
+
 Flows are lettered, A to F, and C has two variants that do the same job by
 different means. Each flow numbers its own entries from 1, so a bare number is a
 reference within that flow and anything reaching across one names the route
@@ -153,7 +157,7 @@ app switch and a request to get through, and Plaid has none of that.
 8. `phone` <- `server` - one of:
    a. `200 {"outcome":"linked","count":n}`: *The webhook landed first, or landed while this request waited.*
    b. `200 {"outcome":"abandoned"}`: *Plaid said the session produced nothing. The first time this is something Plaid said rather than something inferred from a poll that came back empty.*
-   c. `200 {"outcome":"pending"}`: *Ten seconds passed and Plaid still has not said. Not "no bank": the phone goes to the sync screen and polls, and a late bank shows up there. It gives up after twenty.*
+   c. `200 {"outcome":"pending"}`: *Ten seconds passed and Plaid still has not said. Not "no bank": the phone goes to the sync screen and opens its stream, and a late bank arrives on it. It gives up after twenty.*
    d. `401 Unauthorized`: *No bearer token, or one the server no longer honours.*
    e. `429 Too Many Requests`: *Too many closes from this caller.*
    f. `500 Internal Server Error`: *This user's open sessions could not be read. Not `abandoned` and not `pending`: both of those are things Plaid said, and this is Postgres.*
@@ -161,18 +165,22 @@ app switch and a request to get through, and Plaid has none of that.
 ## D. The first sync, and watching it
 
 Starts in the same turn the Item is written down, before the answer above has
-even gone out, and the phone watches it from the sync screen until the server
-says the three Plaid calls are through.
+even gone out. The phone does not ask how it is going: it opens a stream and
+the server writes to it whenever the sync moves.
+
+The stream is one `GET` whose response never ends. Opening it is an ordinary
+request, answered like any other — which is what lets a caller with no session
+be refused before a byte of the body has gone out. Everything after the first
+message is the server talking unprompted.
 
 1. `server` -> `plaid` - `POST /accounts/balance/get`: *The first of three, started without anybody asking rather than waiting for a `/snapshot` to trigger it.*
 2. `server` <- `plaid` - `200` accounts and balances: *The first place the bank's name exists. It is in neither the Link session nor the exchange.*
-3. `phone` -> `server` - `GET /sync/status` with `Authorization: Bearer <token>`: *The first ask, on the news that a bank landed. Every one after it is a tick's, about once a second.*
+3. `phone` -> `server` - `GET /sync/status` with `Authorization: Bearer <token>` and `Accept: text/event-stream`: *Opened once, on the news that a bank landed, and held for as long as the sync screen is up.*
 4. `phone` <- `server` - one of:
-   a. `200 {"stage","institution","accounts","transactions","streams","finished":false}`: *How far the sync has got, answered immediately whatever is happening.*
-   b. `200 {...,"finished":true}`: *Nothing is running any more, and the totals are on this reply. The screen that says "You're set." reads them from here.*
-   c. `401 Unauthorized`: *No bearer token, or one the server no longer honours.*
-   d. `429 Too Many Requests`: *Polling harder than the limit allows.*
-   e. `500 Internal Server Error`: *This user's banks could not be read, so there is no telling what is running. An empty status would say "nothing is syncing", which is a different sentence and one we do not know to be true.*
+   a. `200 text/event-stream`, and on it `event: sync` with `{"stage","institution","accounts","transactions","streams","finished"}`: *Accepted, and the first message says where things stand. It rides on the acceptance rather than following it, so a phone that connected late — or reconnected, which is every time iOS backgrounds the app — is where one that was there from the start is. A caller with nothing running gets `finished` and zeroes and stays connected, because a bank landing a moment later is what they are waiting for.*
+   b. `401 Unauthorized`: *No bearer token, or one the server no longer honours. Before the response starts: a stream that opens and then dies silently reads as a sync with nothing to say.*
+   c. `429 Too Many Requests`: *Opening them faster than the limit allows, or ten already open for this user. The eleventh is refused rather than closing the oldest — a client that cannot let go is one whose oldest connection is the one still working.*
+   d. `500 Internal Server Error`: *The session this caller holds could not be read.*
 5. `server` -> `plaid` - `POST /transactions/sync`: *The history, as a diff from the cursor. A bank attached seconds ago has no cursor, so this is the long one.*
 6. `server` <- `plaid` - one of:
    a. `200` added, modified, removed and a `next_cursor`: *Written to Postgres, cursor last and separately, so a failure earlier in the batch means the next sync re-reads rather than skipping.*
@@ -181,8 +189,21 @@ says the three Plaid calls are through.
 8. `server` <- `plaid` - one of:
    a. `200` streams: *Thin or empty on a fresh Item, because Plaid derives them from transactions that have only just landed. That is a thin screen, not a failed sync.*
    b. any error: *Logged and carried on from. Transactions are what the app is for, and a missing recurring list costs one screen rather than all of them.*
-9. `phone` -> `server` - `GET /sync/status`: *3 again, and again, once a second while the sync screen is up.*
-10. `phone` <- `server` - `200 {...,"finished":true}`: *The last one. The sync screen turns into the one with the button that ends first run.*
+9. `phone` <- `server` - `event: sync` on the open stream: *One per stage, written the moment 2, 6 and 8 land. Nobody asked, which is the whole point.*
+10. `phone` <- `server` - `event: sync` with `"finished":true`: *The last one, carrying the totals. The sync screen turns into the one with the button that ends first run, and the phone lets the stream go.*
+
+The whole status every time, never a change since the last one. A client that
+missed a message, or connected halfway through, is then in the same position as
+one that saw all of them — which is what makes reconnecting cost nothing.
+
+Each message is named `sync`, though it is the only kind on this stream today.
+A client dispatching on the name reads a kind added later as one it does not
+handle, rather than as a status it cannot parse.
+
+A connection that goes — backgrounded, out of signal, refused — is a fact the
+phone's runtime reports and its machine decides about: while the sync screen is
+up it opens another, three seconds after the last attempt. That backoff is the
+only clock left in this flow.
 
 ## E. Into the app
 
@@ -198,7 +219,8 @@ launch and every pull-to-refresh afterwards.
 
 That is the whole of it. From here the phone makes exactly two kinds of call:
 `GET /snapshot` on launch and on pull-to-refresh, and `POST /link/start` again
-if somebody adds a second bank. Neither carries a way to insist on anything:
+if somebody adds a second bank — and D again behind the second of those, stream
+and all. Neither carries a way to insist on anything:
 whether a `/snapshot` becomes three calls to Plaid or is served straight out of
 Postgres is `should_fetch`'s decision, made against a freshness window and
 Plaid's own per-endpoint budget.
@@ -232,7 +254,13 @@ Every route is rate limited except the webhook, which is protected by the
 signature instead. A limit set slightly wrong there would break bank linking
 silently. A refused request is a bare `429` with no `Retry-After`.
 
-The phone polls because the server can only answer questions it is asked. Every
-poll is an action the machine decided on a tick, which is what puts it in the
-event log. A loop in the runtime would be behaviour no replay reproduces. Issue
-30 is the push channel that removes it.
+One route is a stream and the rest are questions. Which one a thing is comes
+down to who knows first: a snapshot is somebody asking for what is already
+written down, and a sync's progress is the server learning something nobody
+could have asked for at the right moment.
+
+What a runtime holds open is still not what a runtime decides. Opening a
+stream, letting it go, and opening another after losing one are the machine's,
+each one an action in the event log; reading the bytes is the runtime's. A
+runtime that reconnected on its own would be behaviour no replay reproduces,
+which is the same rule that keeps every other decision out of a runtime.
