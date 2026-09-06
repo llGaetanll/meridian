@@ -301,15 +301,15 @@ an image and 25 GB of disk, it will not be soon.
 
 ## Then the phone
 
-`swift/Support/Info.plist` names `http://127.0.0.1:8082` and carries an
-`NSAppTransportSecurity` exemption to permit plain http on the local network.
-Against a hosted server both are wrong: the URL becomes
-`https://api.meridiancash.io` and the exemption comes out, because https to a
-real name is exactly what App Transport Security wants by default.
+`swift/Support/Info.plist` names `https://api.meridiancash.io` and asks for no
+App Transport Security exemption, because https to a real name is exactly what
+ATS wants by default. A build off this tree points at the box with nothing set.
 
-`scripts/ios-device.sh` writes the LAN address into the plist at build time for
-a phone talking to a Mac. Pointing a build at the box is a separate switch, not
-a change to that one.
+A build pointed at a laptop is the exception, and it is the build scripts that
+make it: `ios-run.sh` writes the Mac's loopback into the copy under `target/`
+and `ios-device.sh` the Mac's address on the LAN, each adding the exemption
+plain http then needs. `MERIDIAN_SERVER` names the address yourself, and
+setting it to an `https://` one is how either script points back at the box.
 
 ## Backups
 

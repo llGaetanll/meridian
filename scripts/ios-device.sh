@@ -155,6 +155,24 @@ PLIST
 # this Mac's address in the tree.
 plutil -replace MeridianServer -string "$MERIDIAN_SERVER" $APP/Info.plist
 
+# A laptop serves plain http, which iOS blocks by default, so a build pointed
+# at one needs the narrow exemption for it: local and loopback addresses and
+# nothing else. It is written here for the same reason the address is — the
+# bundle that ships talks https to a real name and asks for neither.
+#
+# The usage string is separate from the exemption and only a device asks for
+# it: iOS wants a reason before an app may talk to anything on the local
+# network, and refuses silently if the app cannot give one.
+case "$MERIDIAN_SERVER" in
+http://*)
+    plutil -replace NSAppTransportSecurity \
+        -json '{ "NSAllowsLocalNetworking": true }' $APP/Info.plist
+    plutil -replace NSLocalNetworkUsageDescription \
+        -string "Meridian reads your accounts from server-main running on your computer." \
+        $APP/Info.plist
+    ;;
+esac
+
 # The same compile as the simulator's, differing only in the two flags that say
 # which machine it is for. See ios-run.sh for why the core is named as an
 # archive and why the sysroot warning is silenced.
