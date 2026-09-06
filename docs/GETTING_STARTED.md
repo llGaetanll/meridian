@@ -154,8 +154,11 @@ cargo run -p server-main       # :8082
 ```
 
 The simulator reaches the server over the Mac's own loopback, so both of these
-are the same `127.0.0.1:8082` the web app uses. A different simulator is an
-argument — any name from `xcrun simctl list devices`:
+are the same `127.0.0.1:8082` the web app uses — the script writes that address
+into the bundle it builds, over the hosted server the plist names.
+`MERIDIAN_SERVER=https://api.meridiancash.io` points the simulator at the box
+instead. A different simulator is an argument — any name from `xcrun simctl
+list devices`:
 
 ```
 ./scripts/ios-run.sh "iPhone 16e"
@@ -222,8 +225,9 @@ A phone cannot reach the Mac's loopback, so `ios-device.sh` looks up the Mac's
 address on the LAN and writes it into the bundle it builds. Both machines have
 to be on the same network, and a network change means building again.
 `MERIDIAN_SERVER=http://host:8082` names the address yourself when the server
-is somewhere else. A second phone is an argument, as the simulator's is — any
-identifier from `xcrun devicectl list devices`.
+is somewhere else, and `MERIDIAN_SERVER=https://api.meridiancash.io` points the
+phone at the hosted server. A second phone is an argument, as the simulator's
+is — any identifier from `xcrun devicectl list devices`.
 
 The very first launch is refused, with the phone saying the developer is not
 trusted. That is Apple asking you to vouch for your own certificate, and it is

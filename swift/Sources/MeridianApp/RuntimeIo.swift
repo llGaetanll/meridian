@@ -18,16 +18,16 @@ enum RuntimeIo {
     ///
     /// Read out of the bundle rather than written here, because the answer
     /// differs by where the app is running and neither answer belongs to the
-    /// code. The simulator shares the Mac's network, so loopback is the Mac's
-    /// loopback and the plist carries the same `127.0.0.1:8082` the web
-    /// front-end uses. A real phone has to name the Mac's address on the LAN,
-    /// which changes with the network it is on, so `scripts/ios-device.sh`
-    /// writes that address into the plist at build time.
+    /// code. The plist names the hosted server, which is what ships. A build
+    /// pointed at a laptop is the exception — the simulator reaches the Mac's
+    /// own loopback, a phone has to name the Mac's address on the LAN, and
+    /// that address changes with the network — so `scripts/ios-run.sh` and
+    /// `scripts/ios-device.sh` write it into the plist at build time.
     ///
-    /// The fallback is the simulator's, because a bundle built without the key
-    /// is a bundle built by the simulator script.
+    /// The fallback is the hosted server, because a bundle built without the
+    /// key is a bundle nobody pointed anywhere.
     static let server = Bundle.main.object(forInfoDictionaryKey: "MeridianServer") as? String
-        ?? "http://127.0.0.1:8082"
+        ?? "https://api.meridiancash.io"
 
     /// The snapshot, as JSON.
     ///
