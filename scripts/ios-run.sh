@@ -27,6 +27,13 @@ DEVICE=${1:-iPhone 17 Pro}
 
 BUNDLE_ID=com.meridian.phone
 DEPLOYMENT=17.0
+
+# Where the app looks for the server. The simulator shares the Mac's network,
+# so the Mac's own loopback is what `cargo run -p server-main` is reachable on.
+# MERIDIAN_SERVER overrides the whole address, which is how a simulator is
+# pointed at the hosted server instead.
+MERIDIAN_SERVER=${MERIDIAN_SERVER:-http://127.0.0.1:8082}
+
 BINDINGS=swift/Sources/Meridian
 APP=target/ios/Meridian.app
 
@@ -85,6 +92,19 @@ with open(app / "Info.plist", "wb") as f:
 
 partial.unlink()
 PLIST
+
+# The source plist names the hosted server, because that is what ships. A
+# simulator build talks to the Mac instead, so the address goes into the copy
+# under target/ — and with it the exemption plain http needs, which iOS blocks
+# by default. Neither belongs in the tree.
+plutil -replace MeridianServer -string "$MERIDIAN_SERVER" $APP/Info.plist
+
+case "$MERIDIAN_SERVER" in
+http://*)
+    plutil -replace NSAppTransportSecurity \
+        -json '{ "NSAllowsLocalNetworking": true }' $APP/Info.plist
+    ;;
+esac
 
 # One module out of the generated bindings and the app, which is what lets the
 # app say `Core()` without an import. `-Xcc -fmodule-map-file` is how the C

@@ -47,28 +47,20 @@
     <array>
         <string>UIInterfaceOrientationPortrait</string>
     </array>
-    <!-- Where server-main listens, read by RuntimeIo. Loopback is the
-         simulator's answer, which is the Mac's own loopback; the device script
-         overwrites this with the Mac's address on the LAN, because that is the
-         only way a phone can reach it. -->
     <!-- The icon lives in Assets.car, which the build compiles out of
          swift/Support/Assets.xcassets. iOS finds it by name from here. -->
     <key>CFBundleIconName</key>
     <string>AppIcon</string>
+    <!-- Where server-main listens, read by RuntimeIo. The hosted server is
+         the answer that ships: https to a real name, which is what App
+         Transport Security wants by default, so the bundle asks for no
+         exemption.
+
+         A build pointed at a laptop is the exception, and both build scripts
+         write that address into the copy under target/ rather than here —
+         along with the exemption plain http then needs. See ios-run.sh and
+         ios-device.sh. -->
     <key>MeridianServer</key>
-    <string>http://127.0.0.1:8082</string>
-    <!-- The app talks to server-main over plain HTTP, which iOS blocks by
-         default. This is the narrow exemption for exactly that: it permits
-         local and loopback addresses and nothing else. -->
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsLocalNetworking</key>
-        <true/>
-    </dict>
-    <!-- Separate from the exemption above, and only on a real device: iOS asks
-         the user before an app may talk to anything on the local network, and
-         refuses silently if the app cannot say why. The simulator never asks. -->
-    <key>NSLocalNetworkUsageDescription</key>
-    <string>Meridian reads your accounts from server-main running on your computer.</string>
+    <string>https://api.meridiancash.io</string>
 </dict>
 </plist>
