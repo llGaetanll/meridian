@@ -73,11 +73,11 @@ pub struct RuntimeServer {
     db_key: DbKey,
 
     /// Where an answer goes; the router is on another task.
-    answers: ActionTx,
+    action_tx: ActionTx,
 
     /// Where a fact nobody asked for goes: the stages a fetch reports as it
     /// runs. The pools have their own clone for what a call returns.
-    events: EventTx,
+    event_tx: EventTx,
 
     /// The Plaid account these calls are made on behalf of. One per process.
     credentials: PlaidCredentials,
@@ -168,7 +168,7 @@ impl RuntimeServer {
         // room is what bounds the work.
         let (event_tx, mut event_rx): (EventTx, EventRx) = mpsc::unbounded_channel();
 
-        let (answers, action_rx): (ActionTx, ActionRx) = mpsc::unbounded_channel();
+        let (action_tx, action_rx): (ActionTx, ActionRx) = mpsc::unbounded_channel();
 
         let router_events = event_tx.clone();
 
@@ -182,8 +182,8 @@ impl RuntimeServer {
             plaid: SourcePool::new("plaid", PLAID_AT_ONCE, event_tx.clone()),
             email: SourcePool::new("email", EMAIL_AT_ONCE, event_tx.clone()),
             store: SourcePool::new("store", STORE_AT_ONCE, event_tx.clone()),
-            answers,
-            events: event_tx.clone(),
+            action_tx,
+            event_tx: event_tx.clone(),
             credentials,
             email_send,
             resend,
@@ -276,7 +276,7 @@ impl RuntimeServer {
             // By now everything the answer was waiting on has landed: the
             // machine held it until the last write reported.
             Action::ToRouter { request_id, action } => {
-                if self.answers.send((request_id, action)).is_err() {
+                if self.action_tx.send((request_id, action)).is_err() {
                     tracing::error!(request_id, "the router is gone; its answer was dropped");
                 }
             }
@@ -985,7 +985,7 @@ impl RuntimeServer {
         // Each stage reports as it lands rather than waiting for the return
         // below. Nothing is parked on these: they release no route.
         let report = |stage, institution: Option<&str>, accounts, transactions, streams| {
-            let _ = self.events.send(Event::FromSource {
+            let _ = self.event_tx.send(Event::FromSource {
                 event: EventSource::PlaidProgressed {
                     item_id: item_id.to_string(),
                     stage,
