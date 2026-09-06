@@ -32,7 +32,7 @@ fn connecting_a_bank_opens_a_session_and_hands_over_its_page() {
 
         // 2. Nothing is read for it: the id the session resolved to is the
         // whole of what opening a Link session needs.
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToSource { action: ActionSource::OpenLink { call_id: 2, .. } },
 
         // 3 and 4a, in that order and never the other.
@@ -41,7 +41,7 @@ fn connecting_a_bank_opens_a_session_and_hands_over_its_page() {
 
         // The URL is handed over only once the row is down. Holding it until
         // the write lands is what makes "before" mean it.
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
+        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
         > @r#"ToRouter { request_id: 1, action: LinkOpened { url: "https://secure.plaid.com/hl/link-1" } }"#,
     );
 }
@@ -60,7 +60,7 @@ fn a_token_that_names_nobody_opens_no_session() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("stale") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: None } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: None } },
         > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
     );
 }
@@ -77,13 +77,13 @@ fn a_session_plaid_would_not_open_is_not_a_page() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToSource { action: ActionSource::OpenLink { call_id: 2, .. } },
 
         < Event::FromSource { event: EventSource::LinkAbandoned { call_id: 2, link_token: String::new() } },
         > @r#"ToStore { action: CollectLink { call_id: 3, link_token: "" } }"#,
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 3 } },
+        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
         > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
     );
 }

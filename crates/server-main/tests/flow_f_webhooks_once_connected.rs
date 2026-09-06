@@ -42,7 +42,7 @@ fn a_sync_webhook_fetches_however_fresh_the_bank_is() {
         < Event::FromSource { event: EventSource::WebhookKeyLoaded { call_id: 1, kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
         > Action::ToStore { action: ActionStore::LoadItem { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemLoaded { call_id: 2, item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }) } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemLoaded { item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }) } },
         > @r#"ToSource { action: FetchPlaid { call_id: 3, item_id: "item-1", cursor: Some("cursor-1") } }"#,
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
@@ -60,7 +60,7 @@ fn a_sync_webhook_does_not_retry_a_dead_login() {
         < Event::FromSource { event: EventSource::WebhookKeyLoaded { call_id: 1, kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
         > Action::ToStore { action: ActionStore::LoadItem { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemLoaded { call_id: 2, item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: true }) } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemLoaded { item: Some(ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: true }) } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }
@@ -79,7 +79,7 @@ fn a_sync_webhook_for_a_bank_we_do_not_hold_is_still_taken() {
         < Event::FromSource { event: EventSource::WebhookKeyLoaded { call_id: 1, kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
         > Action::ToStore { action: ActionStore::LoadItem { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemLoaded { call_id: 2, item: None } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemLoaded { item: None } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }
@@ -101,7 +101,7 @@ fn a_dead_login_webhook_is_written_down() {
 
         // 7a. Taken only once the row is down, for the same reason C2's is:
         // a failure before the write is a webhook Plaid sends again.
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 2 } },
+        < Event::FromStore { call_id: 2, event: EventStore::WriteSuccess },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }

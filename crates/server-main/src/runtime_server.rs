@@ -77,7 +77,7 @@ pub struct RuntimeServer {
 
     /// Where a fact nobody asked for goes: the stages a fetch reports as it
     /// runs. The pools have their own clone for what a call returns.
-    landed: mpsc::UnboundedSender<Event>,
+    events: EventTx,
 
     /// The Plaid account these calls are made on behalf of. One per process.
     credentials: PlaidCredentials,
@@ -166,25 +166,24 @@ impl RuntimeServer {
         // Unbounded deliberately: a pool that had to wait to report would be
         // holding an answer the loop is about to be asked for. Each pool's own
         // room is what bounds the work.
-        let (landed, mut landing) = mpsc::unbounded_channel::<Event>();
-
-        let boot = landed.clone();
+        let (event_tx, mut event_rx): (EventTx, EventRx) = mpsc::unbounded_channel();
 
         let (answers, action_rx): (ActionTx, ActionRx) = mpsc::unbounded_channel();
-        let (event_tx, mut asked): (EventTx, EventRx) = mpsc::unbounded_channel();
+
+        let router_events = event_tx.clone();
 
         tokio::spawn(async move {
-            if let Err(e) = RuntimeRouter::run(action_rx, event_tx, origins).await {
+            if let Err(e) = RuntimeRouter::run(action_rx, router_events, origins).await {
                 tracing::error!(error = %e, "the router stopped");
             }
         });
 
         let runtime = Arc::new(Self {
-            plaid: SourcePool::new("plaid", PLAID_AT_ONCE, landed.clone()),
-            email: SourcePool::new("email", EMAIL_AT_ONCE, landed.clone()),
-            store: SourcePool::new("store", STORE_AT_ONCE, landed.clone()),
+            plaid: SourcePool::new("plaid", PLAID_AT_ONCE, event_tx.clone()),
+            email: SourcePool::new("email", EMAIL_AT_ONCE, event_tx.clone()),
+            store: SourcePool::new("store", STORE_AT_ONCE, event_tx.clone()),
             answers,
-            landed,
+            events: event_tx.clone(),
             credentials,
             email_send,
             resend,
@@ -212,7 +211,7 @@ impl RuntimeServer {
             EventProcess::Started { collect },
             EventProcess::Seeded { seed: fresh_seed() },
         ] {
-            let _ = boot.send(Event::FromProcess { event });
+            let _ = event_tx.send(Event::FromProcess { event });
         }
 
         loop {
@@ -227,11 +226,7 @@ impl RuntimeServer {
                     event: EventProcess::Seeded { seed: fresh_seed() },
                 }),
 
-                Some((request_id, client, event)) = asked.recv() => {
-                    events.push(Event::FromRouter { request_id, client, event });
-                }
-
-                Some(event) = landing.recv() => events.push(event),
+                Some(event) = event_rx.recv() => events.push(event),
 
                 // The signal is not the decision: the machine says what
                 // happens next, which is what makes shutdown replayable.
@@ -543,102 +538,83 @@ impl RuntimeServer {
     /// reported nothing would be a request that never returns — which is why a
     /// failure is an event too.
     async fn perform_action_store(&self, action: &ActionStore) -> Vec<Event> {
+        // Which call this answers, named once. What comes back says what was
+        // found, never which question it was.
+        let call_id = action.call_id();
+
         // A read answers with what it found; a write answers that it landed.
         let event = match action {
             ActionStore::LoadSession {
-                call_id,
-                token_sha256,
-                now,
-            } => self.load_session(*call_id, token_sha256, *now).await,
+                token_sha256, now, ..
+            } => self.load_session(token_sha256, *now).await,
 
-            ActionStore::LoadItem { call_id, item_id } => EventStore::ItemLoaded {
-                call_id: *call_id,
+            ActionStore::LoadItem { item_id, .. } => EventStore::ItemLoaded {
                 item: self.item_facts(item_id).await,
             },
 
-            ActionStore::LoadItems { call_id, user_id } => {
-                self.load_items(*call_id, *user_id).await
+            ActionStore::LoadItems { user_id, .. } => self.load_items(*user_id).await,
+
+            ActionStore::LoadPendingLinks { user_id, .. } => {
+                self.load_pending_links(*user_id).await
             }
 
-            ActionStore::LoadPendingLinks { call_id, user_id } => {
-                self.load_pending_links(*call_id, *user_id).await
-            }
-
-            ActionStore::LoadSnapshot { call_id, user_id } => EventStore::SnapshotLoaded {
-                call_id: *call_id,
+            ActionStore::LoadSnapshot { user_id, .. } => EventStore::SnapshotLoaded {
                 snapshot: self.project_snapshot(*user_id).await,
             },
 
-            ActionStore::LoadCode { call_id, email } => self.load_code(*call_id, email).await,
+            ActionStore::LoadCode { email, .. } => self.load_code(email).await,
 
-            _ => {
-                let call_id = action.call_id();
+            _ => match self.write_store(action).await {
+                Ok(()) => EventStore::WriteSuccess,
 
-                match self.write_store(action).await {
-                    Ok(()) => EventStore::WriteSuccess { call_id },
-
-                    Err(e) => EventStore::WriteError {
-                        call_id,
-                        message: e.to_string(),
-                    },
-                }
-            }
+                Err(e) => EventStore::WriteError {
+                    message: e.to_string(),
+                },
+            },
         };
 
-        vec![Event::FromStore { event }]
+        vec![Event::FromStore { call_id, event }]
     }
 
     /// Who a session token signs in, as the store holds it.
     ///
     /// The clock comes from the action: the row this matches is the one the
     /// machine reckoned was still good.
-    async fn load_session(
-        &self,
-        call_id: crate::CallId,
-        token_sha256: &[u8],
-        now: Timestamp,
-    ) -> EventStore {
+    async fn load_session(&self, token_sha256: &[u8], now: Timestamp) -> EventStore {
         match src_postgres::user_for_session(&self.db, token_sha256, now).await {
-            Ok(user_id) => EventStore::SessionResolved { call_id, user_id },
+            Ok(user_id) => EventStore::SessionResolved { user_id },
 
             Err(e) => EventStore::ReadError {
-                call_id,
                 message: e.to_string(),
             },
         }
     }
 
     /// Which banks are this user's, and where each one's last sync reached.
-    async fn load_items(&self, call_id: crate::CallId, user_id: Uuid) -> EventStore {
+    async fn load_items(&self, user_id: Uuid) -> EventStore {
         match self.facts_for(user_id).await {
-            Ok(items) => EventStore::ItemsLoaded { call_id, items },
+            Ok(items) => EventStore::ItemsLoaded { items },
 
             Err(e) => EventStore::ReadError {
-                call_id,
                 message: e.to_string(),
             },
         }
     }
 
-    async fn load_pending_links(&self, call_id: crate::CallId, user_id: Uuid) -> EventStore {
+    async fn load_pending_links(&self, user_id: Uuid) -> EventStore {
         match self.pending_links(user_id).await {
-            Ok(link_tokens) => EventStore::PendingLinksLoaded {
-                call_id,
-                link_tokens,
-            },
+            Ok(link_tokens) => EventStore::PendingLinksLoaded { link_tokens },
 
             Err(e) => EventStore::ReadError {
-                call_id,
                 message: e.to_string(),
             },
         }
     }
 
     /// What code stands against an address, as the store holds it.
-    async fn load_code(&self, call_id: crate::CallId, email: &str) -> EventStore {
+    async fn load_code(&self, email: &str) -> EventStore {
         match src_postgres::load_code(&self.db, email).await {
             Ok(stored) => EventStore::CodeLoaded {
-                call_id,
                 stored: stored.map(|s| StoredCode {
                     code_sha256: s.code_sha256,
                     expires_at: s.expires_at,
@@ -647,7 +623,6 @@ impl RuntimeServer {
             },
 
             Err(e) => EventStore::ReadError {
-                call_id,
                 message: e.to_string(),
             },
         }
@@ -1010,7 +985,7 @@ impl RuntimeServer {
         // Each stage reports as it lands rather than waiting for the return
         // below. Nothing is parked on these: they release no route.
         let report = |stage, institution: Option<&str>, accounts, transactions, streams| {
-            let _ = self.landed.send(Event::FromSource {
+            let _ = self.events.send(Event::FromSource {
                 event: EventSource::PlaidProgressed {
                     item_id: item_id.to_string(),
                     stage,

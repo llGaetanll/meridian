@@ -51,10 +51,10 @@ fn a_first_sync_is_watched_from_the_fetch_to_the_totals() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: false } } }"#,
 
         // 2. The balances answered, which is the first place the bank's name
@@ -64,10 +64,10 @@ fn a_first_sync_is_watched_from_the_fetch_to_the_totals() {
         < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 3, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 3, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 3, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 4, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 4, items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromStore { call_id: 4, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > @r#"ToRouter { request_id: 2, action: SyncStatus { status: WireSyncStatus { stage: "transactions", institution: Some("First Platypus Bank"), accounts: 2, transactions: 0, streams: 0, finished: false } } }"#,
 
         // 6a and 8a. The whole fetch answers once, and the diff goes to the
@@ -81,10 +81,10 @@ fn a_first_sync_is_watched_from_the_fetch_to_the_totals() {
         < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 6, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 6, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 6, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 7, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 7, items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromStore { call_id: 7, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > @r#"ToRouter { request_id: 3, action: SyncStatus { status: WireSyncStatus { stage: "streams", institution: Some("First Platypus Bank"), accounts: 0, transactions: 1, streams: 0, finished: true } } }"#,
     );
 }
@@ -99,10 +99,10 @@ fn a_user_with_nothing_syncing_is_told_so() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![] } },
         > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
     );
 }
@@ -120,10 +120,10 @@ fn a_sync_is_only_watched_by_the_user_whose_bank_it_is() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-4".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-4".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
     );
 }
@@ -143,10 +143,10 @@ fn a_failed_sync_stops_being_something_to_watch() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncStatusRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-9".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > @r#"ToRouter { request_id: 1, action: SyncStatus { status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
     );
 }

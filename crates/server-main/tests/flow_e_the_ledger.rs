@@ -34,13 +34,13 @@ fn a_launch_is_served_the_ledger_without_asking_plaid() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 3, .. } },
 
-        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 3, snapshot: WireSnapshot::default() } },
+        < Event::FromStore { call_id: 3, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
@@ -59,7 +59,7 @@ fn a_token_that_names_nobody_is_served_nothing() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("stale") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: None } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: None } },
         > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
     );
 }
@@ -73,10 +73,10 @@ fn a_bank_that_has_never_synced_is_fetched() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
     );
 }
@@ -92,13 +92,13 @@ fn a_user_with_no_banks_is_just_served() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![] } },
         > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 3, .. } },
 
-        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 3, snapshot: WireSnapshot::default() } },
+        < Event::FromStore { call_id: 3, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
@@ -113,10 +113,10 @@ fn a_stale_bank_is_refetched_from_its_cursor() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: Some(_), .. } },
     );
 }
@@ -133,25 +133,25 @@ fn asking_twice_over_does_not_refetch_a_fresh_bank() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 3, .. } },
 
-        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 3, snapshot: WireSnapshot::default() } },
+        < Event::FromStore { call_id: 3, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
 
         < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 4, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 4, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 4, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 5, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 5, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
+        < Event::FromStore { call_id: 5, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }] } },
         > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 6, .. } },
 
-        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 6, snapshot: WireSnapshot::default() } },
+        < Event::FromStore { call_id: 6, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
@@ -165,13 +165,13 @@ fn a_login_required_bank_is_not_retried_however_stale() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: true }] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: true }] } },
         > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 3, .. } },
 
-        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 3, snapshot: WireSnapshot::default() } },
+        < Event::FromStore { call_id: 3, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
@@ -186,10 +186,10 @@ fn each_bank_is_decided_about_on_its_own() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: true }] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: true }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { cursor: None, .. } },
     );
 }
@@ -205,10 +205,10 @@ fn a_snapshot_is_answered_after_its_last_bank() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 3, .. } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 4, .. } },
 
@@ -218,7 +218,7 @@ fn a_snapshot_is_answered_after_its_last_bank() {
         < Event::FromSource { event: EventSource::PlaidFailed { call_id: 4, item_id: "item-2".to_string(), code: "REQUEST_FAILED".to_string() } },
         > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 5, .. } },
 
-        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 5, snapshot: WireSnapshot::default() } },
+        < Event::FromStore { call_id: 5, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
@@ -234,19 +234,19 @@ fn a_failed_write_still_answers_the_route() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 2, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSource { action: ActionSource::FetchPlaid { call_id: 3, .. } },
 
         < Event::FromSource { event: EventSource::PlaidLoaded { call_id: 3, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], connection: None, streams: vec![], cursor: "cursor-2".into() } },
         > Action::ToStore { action: ActionStore::SaveFetched { call_id: 4, .. } },
 
-        < Event::FromStore { event: EventStore::WriteError { call_id: 4, message: "connection refused".to_string() } },
+        < Event::FromStore { call_id: 4, event: EventStore::WriteError { message: "connection refused".to_string() } },
         > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 5, .. } },
 
-        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 5, snapshot: WireSnapshot::default() } },
+        < Event::FromStore { call_id: 5, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
@@ -265,20 +265,20 @@ fn two_routes_asking_at_once_get_their_own_answers() {
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 2, user_id: Some(uuid::Uuid::from_u128(9)) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 2, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::from_u128(9)) } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 3, .. } },
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 4, .. } },
 
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 3, items: vec![] } },
-        < Event::FromStore { event: EventStore::ItemsLoaded { call_id: 4, items: vec![] } },
+        < Event::FromStore { call_id: 3, event: EventStore::ItemsLoaded { items: vec![] } },
+        < Event::FromStore { call_id: 4, event: EventStore::ItemsLoaded { items: vec![] } },
         > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 5, .. } },
         > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 6, .. } },
 
         // Four hops each, interleaved the whole way, and each id comes back
         // to the route that drew it.
-        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 5, snapshot: WireSnapshot::default() } },
-        < Event::FromStore { event: EventStore::SnapshotLoaded { call_id: 6, snapshot: WireSnapshot::default() } },
+        < Event::FromStore { call_id: 5, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
+        < Event::FromStore { call_id: 6, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, request_id: 7 },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, request_id: 9 },
     );

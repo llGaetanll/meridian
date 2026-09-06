@@ -35,12 +35,12 @@ fn a_closed_sheet_attaches_the_bank_and_starts_its_sync() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
         // 2. One call for every session this user has open, because the
         // request does not say which one closed.
-        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
+        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         // 3a and 4. The irreversible call: in Production this spends an Item
@@ -55,11 +55,11 @@ fn a_closed_sheet_attaches_the_bank_and_starts_its_sync() {
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
         > @r#"ToSource { action: FetchPlaid { call_id: 7, item_id: "item-9", cursor: None } }"#,
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 5 } },
+        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
 
         // 6a. Both writes down, and the fetch still out. The count, not a
         // name: nothing knows what the bank is called yet.
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 6 } },
+        < Event::FromStore { call_id: 6, event: EventStore::WriteSuccess },
         > @r#"ToRouter { request_id: 1, action: Linked { count: 1 } }"#,
     );
 }
@@ -75,10 +75,10 @@ fn a_public_token_is_exchanged_even_before_the_session_finishes() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
+        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
@@ -103,10 +103,10 @@ fn a_second_bank_in_one_session_has_its_token_dropped() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
+        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string(), "public-2".to_string()] }] } },
@@ -129,16 +129,16 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
+        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }] } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
+        < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
         > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
@@ -155,10 +155,10 @@ fn an_open_session_is_left_pending() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
+        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
 
         // No `CollectLink`: an unfinished session stays standing.
@@ -177,10 +177,10 @@ fn closing_a_sheet_with_no_session_open_asks_nothing() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec![] } },
+        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec![] } },
         > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
@@ -198,10 +198,10 @@ fn every_open_session_is_polled_and_the_route_still_answers_once() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string(), "link-2".to_string(), "link-3".to_string()] } },
+        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string(), "link-2".to_string(), "link-3".to_string()] } },
         > @r#"ToSource { action: PollLinks { call_id: 3, link_tokens: ["link-1", "link-2", "link-3"] } }"#,
 
         < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-2".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-3".to_string(), finished: true, public_tokens: vec![] }] } },
@@ -209,11 +209,11 @@ fn every_open_session_is_polled_and_the_route_still_answers_once() {
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 5, .. } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 4 } },
+        < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 5 } },
+        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
 
-        < Event::FromStore { event: EventStore::WriteSuccess { call_id: 6 } },
+        < Event::FromStore { call_id: 6, event: EventStore::WriteSuccess },
         > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
@@ -228,10 +228,10 @@ fn sessions_that_cannot_be_read_cannot_be_collected() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::ReadError { call_id: 2, message: "connection refused".to_string() } },
+        < Event::FromStore { call_id: 2, event: EventStore::ReadError { message: "connection refused".to_string() } },
         > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
     );
 }
@@ -247,10 +247,10 @@ fn a_closed_sheet_still_polls_when_we_collect_by_polling() {
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
-        < Event::FromStore { event: EventStore::SessionResolved { call_id: 1, user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
-        < Event::FromStore { event: EventStore::PendingLinksLoaded { call_id: 2, link_tokens: vec!["link-1".to_string()] } },
+        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
         > Action::ToSource { action: ActionSource::PollLinks { .. } },
     );
 }
