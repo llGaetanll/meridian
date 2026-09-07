@@ -17,7 +17,15 @@ pub enum ActionSource {
     /// Names the Item and not the access token: an action carrying one would
     /// put a bank credential in the event log. The same goes for the two
     /// below.
-    FetchBalances { call_id: CallId, item_id: String },
+    FetchBalances {
+        call_id: CallId,
+        item_id: String,
+
+        /// Carries the clock, so the `synced_at` written against this bank is
+        /// the moment the machine reckoned rather than one the runtime read
+        /// behind its back — which no replay of the events could reproduce.
+        now: api_common::Timestamp,
+    },
 
     /// Ask for one page of what has changed on a bank since `cursor`.
     ///

@@ -318,6 +318,8 @@ means adding, changing or removing its example here.
   — on every boot. A no-op against a database that is already current, and a
   loud failure against one where an applied migration has been edited.
 - `ERROR server_main::runtime_server asked to call plaid about an item with no token item_id=8Pd5Zx…`
+  — the call is never made, and what reaches the machine says so: `NO_ACCESS_TOKEN`
+  is ours and not a code Plaid has.
 - `ERROR server_main::runtime_server a sync landed for an item with no token item_id=8Pd5Zx…`
   — the machine named an Item the runtime holds no access token for, which
   means its connection list and the store have drifted. Neither is handled on

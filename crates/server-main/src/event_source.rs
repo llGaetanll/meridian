@@ -53,7 +53,8 @@ pub enum EventSource {
         streams: Vec<Stream>,
     },
 
-    /// Plaid did not answer one call, or answered it with an error.
+    /// One call of a sync did not produce an answer — Plaid refused it, or it
+    /// was never made.
     ///
     /// `stage` is which of a sync's calls this was, because what a failure
     /// costs depends on that: the recurring one is one screen and the other

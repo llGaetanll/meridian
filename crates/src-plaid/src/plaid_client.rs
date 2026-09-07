@@ -57,6 +57,11 @@ pub struct PlaidClient {
     base_url: reqwest::Url,
     client_id: String,
     secret: String,
+
+    /// Which Plaid this talks to. Kept so that a caller holding only the
+    /// client can still say which one it is — the alternative is keeping the
+    /// credentials alive next to it for the sake of one field.
+    env: PlaidEnv,
 }
 
 impl PlaidClient {
@@ -96,7 +101,13 @@ impl PlaidClient {
             base_url,
             client_id: credentials.client_id,
             secret: credentials.secret,
+            env: credentials.env,
         })
+    }
+
+    /// Which Plaid this client talks to.
+    pub fn env(&self) -> PlaidEnv {
+        self.env
     }
 
     /// Build a request without sending it.

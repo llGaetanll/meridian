@@ -1920,7 +1920,11 @@ impl StateServer {
         self.push_status(user_id, actions);
 
         actions.push(Action::ToSource {
-            action: ActionSource::FetchBalances { call_id, item_id },
+            action: ActionSource::FetchBalances {
+                call_id,
+                item_id,
+                now: self.now,
+            },
         });
     }
 
