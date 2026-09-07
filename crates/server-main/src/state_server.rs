@@ -40,7 +40,6 @@ use crate::ActionStore;
 use crate::Authenticated;
 use crate::CachedKey;
 use crate::CallId;
-use crate::Calls;
 use crate::CensusServer;
 use crate::Client;
 use crate::ClientIp;
@@ -59,7 +58,6 @@ use crate::Pending;
 use crate::RequestId;
 use crate::StateSignup;
 use crate::Syncing;
-use crate::Turn;
 use crate::WebhookFacts;
 use crate::rate_limit::ServerRateCtx;
 use crate::rate_limit::ServerRateLimiter;
@@ -97,11 +95,9 @@ pub const WEBHOOK_KEYS_AT_MOST: usize = 64;
 pub struct StateServer {
     state: Lifecycle,
 
-    /// Signing somebody up, from the first code to the first bank.
+    /// Signing somebody up, from the first code to the first bank. The calls
+    /// in flight are its too — nearly all of them are its own.
     signup: StateSignup,
-
-    /// What is out, and who is waiting on it.
-    calls: Calls,
 
     /// What Plaid will let us send. A fact about this process's last minute,
     /// which is why it cannot be read back from the store.
@@ -175,9 +171,9 @@ impl StateServer {
                 unreachable!("a variant carrying a token names what it is waiting for")
             };
 
-            let call_id = self.calls.calling(request_id, self.now);
+            let call_id = self.signup.calling(request_id, self.now);
 
-            self.calls.waits_on(
+            self.signup.waits_on(
                 call_id,
                 Pending::Authenticating {
                     ip: client.ip.clone(),
@@ -212,7 +208,7 @@ impl StateServer {
                     "a caller is over its rate limit",
                 );
 
-                self.calls
+                self.signup
                     .answer(request_id, ActionRouter::TooMany, self.now, actions);
 
                 return;
@@ -229,16 +225,13 @@ impl StateServer {
             }
 
             EventRouter::CodeRequested { email } => {
-                let mut turn = Turn::new(self.now, &mut self.calls, actions);
-
-                self.signup.code_requested(request_id, email, &mut turn);
+                self.signup
+                    .code_requested(request_id, email, self.now, actions);
             }
 
             EventRouter::CodeSubmitted { email, code } => {
-                let mut turn = Turn::new(self.now, &mut self.calls, actions);
-
                 self.signup
-                    .code_submitted(request_id, email, code, &mut turn);
+                    .code_submitted(request_id, email, code, self.now, actions);
             }
 
             EventRouter::WebhookReceived { jwt, body } => {
@@ -265,7 +258,7 @@ impl StateServer {
     ) {
         // A token that names nobody: nothing to charge, nothing to serve.
         let Some(user_id) = user_id else {
-            self.calls
+            self.signup
                 .answer(request_id, ActionRouter::Unauthorized, self.now, actions);
 
             return;
@@ -281,7 +274,7 @@ impl StateServer {
                 "a caller is over its rate limit",
             );
 
-            self.calls
+            self.signup
                 .answer(request_id, ActionRouter::TooMany, self.now, actions);
 
             return;
@@ -289,15 +282,13 @@ impl StateServer {
 
         match event {
             Authenticated::LinkRequested => {
-                let mut turn = Turn::new(self.now, &mut self.calls, actions);
-
-                self.signup.link_requested(request_id, user_id, &mut turn);
+                self.signup
+                    .link_requested(request_id, user_id, self.now, actions);
             }
 
             Authenticated::LinkClosed => {
-                let mut turn = Turn::new(self.now, &mut self.calls, actions);
-
-                self.signup.link_closing(request_id, user_id, &mut turn);
+                self.signup
+                    .link_closing(request_id, user_id, self.now, actions);
             }
 
             // Nothing to read: what is running is the machine's own state, and
@@ -309,9 +300,9 @@ impl StateServer {
             // The rows this route decides from, scoped to the caller: two
             // users share a process and share no cursors.
             Authenticated::SnapshotRequested => {
-                let call_id = self.calls.calling(request_id, self.now);
+                let call_id = self.signup.calling(request_id, self.now);
 
-                self.calls.waits_on(
+                self.signup.waits_on(
                     call_id,
                     Pending::Loading {
                         user_id,
@@ -344,7 +335,7 @@ impl StateServer {
             .collect();
 
         for (item_id, cursor) in asked {
-            let call_id = self.calls.calling(request_id, self.now);
+            let call_id = self.signup.calling(request_id, self.now);
 
             self.fetch(call_id, item_id, user_id, cursor, actions);
         }
@@ -352,7 +343,7 @@ impl StateServer {
         // Read once the last of those has landed and been written, so what is
         // served is the rows they wrote. A user with no banks asked nothing,
         // so the read goes out now and serves the empty ledger.
-        self.calls
+        self.signup
             .owe(request_id, Owed::Snapshot { user_id }, self.now, actions);
     }
 
@@ -375,7 +366,7 @@ impl StateServer {
         if open >= WATCHERS_AT_MOST {
             tracing::warn!(%user_id, open, "a caller is holding too many streams open");
 
-            self.calls
+            self.signup
                 .answer(request_id, ActionRouter::TooMany, self.now, actions);
 
             return;
@@ -385,7 +376,7 @@ impl StateServer {
 
         let status = self.status_for(user_id);
 
-        self.calls.answer(
+        self.signup.answer(
             request_id,
             ActionRouter::Watching { conn_id, status },
             self.now,
@@ -460,7 +451,7 @@ impl StateServer {
             Err(rejection) => {
                 tracing::warn!(%rejection, "a webhook was not believed");
 
-                self.calls
+                self.signup
                     .answer(request_id, ActionRouter::Unauthorized, self.now, actions);
 
                 return;
@@ -477,7 +468,7 @@ impl StateServer {
                     "a webhook named a key plaid does not have"
                 );
 
-                self.calls
+                self.signup
                     .answer(request_id, ActionRouter::Unauthorized, self.now, actions);
             }
 
@@ -501,15 +492,15 @@ impl StateServer {
                 "refusing to fetch another webhook key: too many have been asked for",
             );
 
-            self.calls
+            self.signup
                 .answer(request_id, ActionRouter::Unauthorized, self.now, actions);
 
             return;
         }
 
-        let call_id = self.calls.calling(request_id, self.now);
+        let call_id = self.signup.calling(request_id, self.now);
 
-        self.calls.waits_on(
+        self.signup.waits_on(
             call_id,
             Pending::WebhookKey {
                 jwt: jwt.to_string(),
@@ -538,7 +529,7 @@ impl StateServer {
         if let Err(rejection) = jwt.verify(key, body, self.now.as_secs() as i64) {
             tracing::warn!(%rejection, "a webhook was not believed");
 
-            self.calls
+            self.signup
                 .answer(request_id, ActionRouter::Unauthorized, self.now, actions);
 
             return;
@@ -550,7 +541,7 @@ impl StateServer {
             Err(e) => {
                 tracing::error!(error = %e, "plaid signed a body that is not JSON");
 
-                self.calls
+                self.signup
                     .answer(request_id, ActionRouter::Unauthorized, self.now, actions);
 
                 return;
@@ -574,9 +565,9 @@ impl StateServer {
 
             // The one kind that needs a read: it names a bank, not a person.
             PlaidWebhookKind::SyncUpdatesAvailable { item_id } => {
-                let call_id = self.calls.calling(request_id, self.now);
+                let call_id = self.signup.calling(request_id, self.now);
 
-                self.calls.waits_on(
+                self.signup.waits_on(
                     call_id,
                     Pending::WebhookItem {
                         item_id: item_id.clone(),
@@ -647,10 +638,13 @@ impl StateServer {
                 link_token,
                 public_tokens,
             } => {
-                let mut turn = Turn::new(self.now, &mut self.calls, actions);
-
-                self.signup
-                    .session_finished(request_id, link_token, public_tokens, &mut turn);
+                self.signup.session_finished(
+                    request_id,
+                    link_token,
+                    public_tokens,
+                    self.now,
+                    actions,
+                );
             }
 
             WebhookFacts::SyncUpdatesAvailable { item_id, item } => {
@@ -659,7 +653,7 @@ impl StateServer {
                 let Some(item) = item else {
                     tracing::warn!(item_id, "plaid has news about a bank we do not hold");
 
-                    self.calls
+                    self.signup
                         .answer(request_id, ActionRouter::Accepted, self.now, actions);
 
                     return;
@@ -670,7 +664,7 @@ impl StateServer {
                 if self.should_fetch(item, true) {
                     // Nobody waits on it: a first sync of a long history
                     // takes far longer than Plaid waits for its 2xx.
-                    let call_id = self.calls.call();
+                    let call_id = self.signup.call();
 
                     self.fetch(
                         call_id,
@@ -681,7 +675,7 @@ impl StateServer {
                     );
                 }
 
-                self.calls
+                self.signup
                     .answer(request_id, ActionRouter::Accepted, self.now, actions);
             }
 
@@ -696,13 +690,13 @@ impl StateServer {
                 // the same question it was just refused.
                 actions.push(Action::ToStore {
                     action: ActionStore::SaveStatus {
-                        call_id: self.calls.calling(request_id, self.now),
+                        call_id: self.signup.calling(request_id, self.now),
                         item_id: item_id.clone(),
                         error_code: required.then(|| ITEM_LOGIN_REQUIRED.to_string()),
                     },
                 });
 
-                self.calls
+                self.signup
                     .answer(request_id, ActionRouter::Accepted, self.now, actions);
             }
 
@@ -712,7 +706,7 @@ impl StateServer {
             } => {
                 tracing::debug!(webhook_type, webhook_code, "a webhook nothing acts on");
 
-                self.calls
+                self.signup
                     .answer(request_id, ActionRouter::Accepted, self.now, actions);
             }
         }
@@ -731,20 +725,20 @@ impl StateServer {
                     },
                 );
 
-                let Some(Pending::WebhookKey { jwt, body }) = self.calls.resumed(*call_id) else {
+                let Some(Pending::WebhookKey { jwt, body }) = self.signup.resumed(*call_id) else {
                     tracing::error!(call_id, "a key answered a webhook nobody is waiting on");
 
                     return;
                 };
 
-                let Some(request_id) = self.calls.answered(*call_id) else {
+                let Some(request_id) = self.signup.answered(*call_id) else {
                     return;
                 };
 
                 let Some(key) = key else {
                     tracing::warn!(kid, "a webhook named a key plaid does not have");
 
-                    self.calls
+                    self.signup
                         .answer(request_id, ActionRouter::Unauthorized, self.now, actions);
 
                     return;
@@ -779,7 +773,7 @@ impl StateServer {
                 // assign over, the trap `docs/PLAID.md` describes.
                 actions.push(Action::ToStore {
                     action: ActionStore::SaveAccounts {
-                        call_id: self.calls.alongside(*call_id, self.now),
+                        call_id: self.signup.alongside(*call_id, self.now),
                         item_id: item_id.clone(),
                         institution_name: Some(connection.name.clone()),
                         accounts: connection.accounts.clone(),
@@ -789,14 +783,14 @@ impl StateServer {
                 // A sync nothing is recording is one that was given up on, so
                 // there is nothing to ask Plaid next.
                 let Some(cursor) = self.syncing.get(item_id).map(|s| s.cursor.clone()) else {
-                    self.calls.landed(*call_id, self.now, actions);
+                    self.signup.landed(*call_id, self.now, actions);
 
                     return;
                 };
 
                 actions.push(Action::ToSource {
                     action: ActionSource::SyncTransactions {
-                        call_id: self.calls.passing(*call_id, self.now),
+                        call_id: self.signup.passing(*call_id, self.now),
                         item_id: item_id.clone(),
                         cursor,
                     },
@@ -846,7 +840,7 @@ impl StateServer {
 
                 actions.push(Action::ToStore {
                     action: ActionStore::SaveTransactions {
-                        call_id: self.calls.alongside(*call_id, self.now),
+                        call_id: self.signup.alongside(*call_id, self.now),
                         item_id: item_id.clone(),
                         added: added.clone(),
                         modified: modified.clone(),
@@ -857,12 +851,12 @@ impl StateServer {
 
                 // A sync nothing is recording is one that was given up on.
                 let Some(cursor) = self.syncing.get(item_id).map(|s| s.cursor.clone()) else {
-                    self.calls.landed(*call_id, self.now, actions);
+                    self.signup.landed(*call_id, self.now, actions);
 
                     return;
                 };
 
-                let call_id = self.calls.passing(*call_id, self.now);
+                let call_id = self.signup.passing(*call_id, self.now);
                 let item_id = item_id.clone();
 
                 let action = if another_page {
@@ -893,7 +887,7 @@ impl StateServer {
                 // the route is answered once the rows are there.
                 actions.push(Action::ToStore {
                     action: ActionStore::SaveStreams {
-                        call_id: self.calls.passing(*call_id, self.now),
+                        call_id: self.signup.passing(*call_id, self.now),
                         item_id: item_id.clone(),
                         streams: streams.clone(),
                     },
@@ -906,29 +900,27 @@ impl StateServer {
                 link_token,
                 hosted_link_url,
             } => {
-                let Some(request_id) = self.calls.answered(*call_id) else {
+                let Some(request_id) = self.signup.answered(*call_id) else {
                     return;
                 };
-
-                let mut turn = Turn::new(self.now, &mut self.calls, actions);
 
                 self.signup.link_opened(
                     request_id,
                     *user_id,
                     link_token,
                     hosted_link_url,
-                    &mut turn,
+                    self.now,
+                    actions,
                 );
             }
 
             EventSource::LinksPolled { call_id, polls } => {
-                let Some(request_id) = self.calls.answered(*call_id) else {
+                let Some(request_id) = self.signup.answered(*call_id) else {
                     return;
                 };
 
-                let mut turn = Turn::new(self.now, &mut self.calls, actions);
-
-                self.signup.links_polled(request_id, polls, &mut turn);
+                self.signup
+                    .links_polled(request_id, polls, self.now, actions);
             }
 
             EventSource::ItemLinked {
@@ -936,28 +928,24 @@ impl StateServer {
                 link_token,
                 item_id,
             } => {
-                let Some(request_id) = self.calls.answered(*call_id) else {
+                let Some(request_id) = self.signup.answered(*call_id) else {
                     return;
                 };
 
-                let mut turn = Turn::new(self.now, &mut self.calls, actions);
-
                 self.signup
-                    .item_linked(request_id, link_token, item_id, &mut turn);
+                    .item_linked(request_id, link_token, item_id, self.now, actions);
             }
 
             EventSource::LinkAbandoned {
                 call_id,
                 link_token,
             } => {
-                let Some(request_id) = self.calls.answered(*call_id) else {
+                let Some(request_id) = self.signup.answered(*call_id) else {
                     return;
                 };
 
-                let mut turn = Turn::new(self.now, &mut self.calls, actions);
-
                 self.signup
-                    .link_abandoned(request_id, link_token, &mut turn);
+                    .link_abandoned(request_id, link_token, self.now, actions);
             }
 
             EventSource::PlaidFailed {
@@ -977,7 +965,7 @@ impl StateServer {
                     );
 
                     self.sync_finished(item_id, actions);
-                    self.calls.landed(*call_id, self.now, actions);
+                    self.signup.landed(*call_id, self.now, actions);
 
                     return;
                 }
@@ -991,7 +979,7 @@ impl StateServer {
 
                     actions.push(Action::ToStore {
                         action: ActionStore::SaveStatus {
-                            call_id: self.calls.passing(*call_id, self.now),
+                            call_id: self.signup.passing(*call_id, self.now),
                             item_id: item_id.clone(),
                             error_code: Some(fault.as_str().to_string()),
                         },
@@ -1001,7 +989,7 @@ impl StateServer {
                 }
 
                 // Nothing to write, so the route is not left hanging.
-                self.calls.landed(*call_id, self.now, actions);
+                self.signup.landed(*call_id, self.now, actions);
             }
         }
     }
@@ -1042,18 +1030,14 @@ impl StateServer {
 
                 // A route waiting on Plaid to report a Link session first, so
                 // that one let go of here is not then given up on as a call.
-                let mut turn = Turn::new(self.now, &mut self.calls, actions);
 
-                self.signup.timed_out(&mut turn);
-
-                self.calls.timed_out(self.now, actions);
+                self.signup.link_timed_out(self.now, actions);
+                self.signup.given_up(self.now, actions);
 
                 // Last, so a route let go of is decided before housekeeping.
                 // Nothing new starts once we are on the way out.
                 if !self.shutting_down() {
-                    let mut turn = Turn::new(self.now, &mut self.calls, actions);
-
-                    self.signup.sweep_sessions(&mut turn);
+                    self.signup.sweep_sessions(self.now, actions);
                 }
             }
         }
@@ -1067,30 +1051,34 @@ impl StateServer {
     ) {
         match event {
             EventStore::CodeLoaded { stored } => {
-                let Some(Pending::Submitted { email, code }) = self.calls.resumed(call_id) else {
+                let Some(Pending::Submitted { email, code }) = self.signup.resumed(call_id) else {
                     tracing::error!(call_id, "the store answered a sign-in nobody submitted");
 
                     return;
                 };
 
-                let Some(request_id) = self.calls.answered(call_id) else {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
-                let mut turn = Turn::new(self.now, &mut self.calls, actions);
-
-                self.signup
-                    .code_loaded(request_id, &email, &code, stored.as_ref(), &mut turn);
+                self.signup.code_loaded(
+                    request_id,
+                    &email,
+                    &code,
+                    stored.as_ref(),
+                    self.now,
+                    actions,
+                );
             }
 
             EventStore::ItemLoaded { item } => {
-                let Some(Pending::WebhookItem { item_id }) = self.calls.resumed(call_id) else {
+                let Some(Pending::WebhookItem { item_id }) = self.signup.resumed(call_id) else {
                     tracing::error!(call_id, "the store answered a bank nobody asked about");
 
                     return;
                 };
 
-                let Some(request_id) = self.calls.answered(call_id) else {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
@@ -1110,23 +1098,23 @@ impl StateServer {
                 // one running. Nobody waits on it — `/link/finish` would stay
                 // open for the whole of it.
                 if let Some(item) = item {
-                    let call_id = self.calls.call();
+                    let call_id = self.signup.call();
 
                     // A bank attached seconds ago has no cursor to resume from.
                     self.fetch(call_id, item.item_id.clone(), item.user_id, None, actions);
                 }
 
-                self.calls.landed(call_id, self.now, actions);
+                self.signup.landed(call_id, self.now, actions);
             }
 
             EventStore::ItemsLoaded { items } => {
-                let Some(Pending::Loading { user_id, event }) = self.calls.resumed(call_id) else {
+                let Some(Pending::Loading { user_id, event }) = self.signup.resumed(call_id) else {
                     tracing::error!(call_id, "the store answered banks nobody asked about");
 
                     return;
                 };
 
-                let Some(request_id) = self.calls.answered(call_id) else {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
@@ -1140,28 +1128,26 @@ impl StateServer {
             }
 
             EventStore::PendingLinksLoaded { link_tokens } => {
-                let Some(Pending::Loading { .. }) = self.calls.resumed(call_id) else {
+                let Some(Pending::Loading { .. }) = self.signup.resumed(call_id) else {
                     tracing::error!(call_id, "the store answered sessions nobody asked about");
 
                     return;
                 };
 
-                let Some(request_id) = self.calls.answered(call_id) else {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
-                let mut turn = Turn::new(self.now, &mut self.calls, actions);
-
                 self.signup
-                    .pending_links_loaded(request_id, link_tokens, &mut turn);
+                    .pending_links_loaded(request_id, link_tokens, self.now, actions);
             }
 
             EventStore::SnapshotLoaded { snapshot } => {
-                let Some(request_id) = self.calls.answered(call_id) else {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
-                self.calls.answer(
+                self.signup.answer(
                     request_id,
                     ActionRouter::Serve {
                         snapshot: snapshot.clone(),
@@ -1172,14 +1158,14 @@ impl StateServer {
             }
 
             EventStore::SessionResolved { user_id } => {
-                let Some(Pending::Authenticating { ip, event }) = self.calls.resumed(call_id)
+                let Some(Pending::Authenticating { ip, event }) = self.signup.resumed(call_id)
                 else {
                     tracing::error!(call_id, "the store answered a session nobody asked about");
 
                     return;
                 };
 
-                let Some(request_id) = self.calls.answered(call_id) else {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
@@ -1191,24 +1177,24 @@ impl StateServer {
             EventStore::ReadError { message } => {
                 tracing::error!(message, "could not read the store");
 
-                self.calls.resumed(call_id);
+                self.signup.resumed(call_id);
 
-                let Some(request_id) = self.calls.answered(call_id) else {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
-                self.calls
+                self.signup
                     .answer(request_id, ActionRouter::Unavailable, self.now, actions);
             }
 
-            EventStore::WriteSuccess => self.calls.landed(call_id, self.now, actions),
+            EventStore::WriteSuccess => self.signup.landed(call_id, self.now, actions),
 
             // Ends the wait: a route held for a failed write is held for
             // ever.
             EventStore::WriteError { message } => {
                 tracing::error!(message, "could not write the store");
 
-                self.calls.landed(call_id, self.now, actions);
+                self.signup.landed(call_id, self.now, actions);
             }
         }
     }
@@ -1353,9 +1339,9 @@ impl StateServer {
     /// a test can say that a flow gave back everything it took.
     pub fn census(&self) -> CensusServer {
         CensusServer {
-            waiting: self.calls.waiting(),
-            held: self.calls.held(),
-            pending: self.calls.pending(),
+            waiting: self.signup.waiting(),
+            held: self.signup.held(),
+            pending: self.signup.pending(),
             syncing: self.syncing.len(),
             watchers: self.watchers.len(),
             outcomes: self.signup.outcomes(),
@@ -1384,7 +1370,7 @@ impl StateServer {
             return;
         }
 
-        if !self.calls.quiet() || self.signup.parked() {
+        if !self.signup.quiet() {
             return;
         }
 
