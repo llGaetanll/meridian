@@ -8,7 +8,7 @@ use crate::ClientIp;
 /// A request parked on a read, and what it will do with the answer.
 ///
 /// Only what the machine cannot get back: who is waiting is already in
-/// [`Calls`](crate::Calls), keyed by the same call.
+/// [`StateSignup`](crate::StateSignup), keyed by the same call.
 #[derive(Debug)]
 pub enum Pending {
     /// A sign-in, waiting on the code the store holds against its address.
