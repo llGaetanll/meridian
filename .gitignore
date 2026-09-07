@@ -26,3 +26,4 @@ backups/
 # never shared: the laptop makes its own and so does the box, because a private
 # key that travels has been on two disks and in whatever carried it.
 certs/
+.claude/
