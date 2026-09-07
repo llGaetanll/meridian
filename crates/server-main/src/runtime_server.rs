@@ -541,7 +541,8 @@ impl RuntimeServer {
     ///
     /// **The one call in this server whose effect cannot be undone.** In
     /// Production it spends an Item slot that `/item/remove` does not give
-    /// back; `runtime_plaid`'s Sandbox guard is what keeps that unreachable.
+    /// back, which is why it carries the narrowest budget of the seven
+    /// endpoints and why the write behind it is retried rather than dropped.
     ///
     /// The access token goes into the runtime's map and no further: an event
     /// carrying one would put a bank credential in the log.

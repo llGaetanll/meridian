@@ -19,6 +19,16 @@ credentials in it, so every piece of development happens there.
 and anything else — unset, empty, `Sandbox`, `dev`, a leftover from another
 project — fails the process on the way up.
 
+It is now the only thing that picks. `runtime_plaid::client()` used to refuse
+to build a client for anything but Sandbox, and that one `if` was the whole
+protection for the ten slots. It is gone, because a refusal in the constructor
+can only say no to everything, and what it was standing in for now exists
+properly: a gate on who may sign up at all (`email_address::allowed`, one
+address), a per-minute budget on every endpoint that can spend a slot, and a
+write that is retried so a slot is never spent on a bank the server then drops. **Nothing counts how many Items
+the account already holds** — that is still a number somebody reads in the
+dashboard.
+
 This used to be a default. Unset meant Sandbox, on the reasoning that the lazy
 path should be the harmless one. The reasoning was right and the mechanism was
 wrong: a default is a decision made by whoever did not look, and it made a

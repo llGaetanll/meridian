@@ -11,7 +11,6 @@ use api_ledger::Entry;
 use api_ledger::Stream;
 use src_plaid::PlaidClient;
 use src_plaid::PlaidCredentials;
-use src_plaid::PlaidEnv;
 use src_plaid::PlaidError;
 
 use crate::OauthRedirect;
@@ -166,20 +165,16 @@ pub async fn exchange(
 ///
 /// Built once and shared, so a sync's calls reuse a connection rather than
 /// shaking hands three times, and the environment is decided in one place —
-/// nothing can reach Production by accident because there is nowhere else a
-/// client comes from.
+/// `PLAID_ENV`, read once on the way up and never again.
+///
+/// This used to refuse anything but Sandbox, and that one `if` was the whole
+/// protection for the account's ten Production Item slots. What replaced it is
+/// the three things it was standing in for: who may sign up at all
+/// (`email_address::allowed`), a budget on every call that can spend a slot
+/// (`PlaidEndpoint`), and a write that is retried rather than dropped once one
+/// has been spent ([`Attaching`](crate::Attaching)). A refusal here
+/// could only ever say no to everything; those say no to the thing that costs.
 pub fn client(credentials: PlaidCredentials) -> Result<PlaidClient, PlaidError> {
-    if credentials.env != PlaidEnv::Sandbox {
-        tracing::error!(
-            env = credentials.env.as_str(),
-            "refusing to call anything but the Plaid Sandbox — see docs/PLAID.md",
-        );
-
-        return Err(PlaidError::InvalidUrl(
-            "server-main only ever talks to the Plaid Sandbox".to_string(),
-        ));
-    }
-
     PlaidClient::new(credentials)
 }
 

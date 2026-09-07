@@ -10,10 +10,11 @@
 //! and in what order, somewhere no state machine can see it, count it or meter
 //! it.
 //!
-//! **Sandbox unless told otherwise.** [`PlaidEnv`] defaults to it and `PLAID_ENV`
-//! has to say `production` in as many words to get anything else. See
-//! `docs/PLAID.md` for why: the account allows ten Production Items and
-//! removing one does not give the slot back.
+//! **Which Plaid is never guessed.** [`PlaidEnv`] has no default and
+//! `PLAID_ENV` has to say `sandbox` or `production` in as many words, or the
+//! process does not start. See `docs/PLAID.md` for why it matters which:
+//! the account allows ten Production Items and removing one does not give the
+//! slot back.
 //!
 //! Everything here needs the secret, so all of it runs on the server. The
 //! phone never calls Plaid.
