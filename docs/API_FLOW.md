@@ -87,7 +87,7 @@ and runs again unchanged for Try again and for Add another bank later on.
 4. `phone` <- `server` - one of:
    a. `200 {"url"}`: *The page to open. A `link_sessions` row keyed by the `link_token` is written first, carrying the `user_id` that the bearer token resolved to, which is what stops one account collecting a bank another account connected.*
    b. `401 Unauthorized`: *No bearer token, or one the server no longer honours.*
-   c. `429 Too Many Requests`: *Too many sessions opened from this caller.*
+   c. `429 Too Many Requests`: *Too many sessions opened from this caller, or too many opened for the account this minute. The second budget is Plaid's rather than ours, so it sits under the caller's own window: several people at once can reach it where one cannot.*
    d. `500 Internal Server Error`: *The session this caller holds could not be read. Not `502`: that points at Plaid, and this went wrong here.*
    e. `502 Bad Gateway`: *Plaid refused, was unreachable, or answered a `link_token` with no hosted URL. All three become one abandoned session inside.*
 5. `sheet` -> `plaid` - `GET https://secure.plaid.com/hl/...`: *Plaid's own page, where the user picks a bank and signs into it. Nothing of ours is in this exchange.*
@@ -123,13 +123,13 @@ all.
    b. `200` finished, with none: *They closed the sheet without connecting anything. The session is marked collected so it is not polled forever.*
    c. `200` not finished: *Somebody is still typing their password. The session is left standing and the next close asks again.*
 4. `server` -> `plaid` - `POST /item/public_token/exchange {"public_token"}`: *Trades it for the permanent one. The only irreversible call in the flow: in Production this spends an Item slot that removing the Item does not give back.*
-5. `server` <- `plaid` - `200 {"access_token","item_id"}`: *The bank is attached. The access token stays in the runtime and never enters an event, an action or a log.*
+5. `server` <- `plaid` - `200 {"access_token","item_id"}`: *The bank is attached at Plaid, and an Item slot is spent. The access token stays in the runtime and never enters an event, an action or a log. Nothing is answered here: the row is written first, and asking again up to five times is what a store that refuses gets, because the slot behind it cannot be spent twice.*
 6. `phone` <- `server` - one of:
-   a. `200 {"outcome":"linked","count":1}`: *A bank is attached. The count, not a name: nothing knows what the bank is called yet.*
+   a. `200 {"outcome":"linked","count":1}`: *A bank is attached and written down — said in the turn the row appears and in no other. The count, not a name: nothing knows what the bank is called yet.*
    b. `200 {"outcome":"abandoned"}`: *Nothing was collected. Today this is also what an unfinished session answers, so a bank Plaid has not stamped yet reads as one that was never connected.*
    c. `401 Unauthorized`: *No bearer token, or one the server no longer honours.*
-   d. `429 Too Many Requests`: *Too many closes from this caller.*
-   e. `500 Internal Server Error`: *This user's open sessions could not be read, or the poll asking Plaid about them never came back. Deliberately not "abandoned": that is a sentence about somebody's bank, and this is not knowing.*
+   d. `429 Too Many Requests`: *Too many closes from this caller, too many polls of `/link/token/get` for the account this minute, or a token that came back when the exchange budget was spent. The exchange has the narrowest budget of the three, because it is the request nothing can undo.*
+   e. `500 Internal Server Error`: *This user's open sessions could not be read, the poll asking Plaid about them never came back, or the bank was exchanged and five writes of it were refused. Deliberately not "abandoned": that is a sentence about somebody's bank, and the last of those is a bank that is live at Plaid with nothing here owning it.*
 
 One close attaches one bank. The first `public_token` found is exchanged and
 that session is marked collected in the same turn, so a second Item made inside
@@ -148,10 +148,10 @@ app switch and a request to get through, and Plaid has none of that.
 2. `plaid` -> `server` - `POST /plaid/webhook` with `Plaid-Verification: <JWT>`: *`SESSION_FINISHED`, with the `public_token`s on it. Sent whether or not anybody asked.*
 3. `server` -> `plaid` - `POST /webhook_verification_key/get`: *Fetches the key that JWT names. Once per `kid`, then cached, hits and misses both, so an anonymous POST cannot become an outbound call at will.*
 4. `server` <- `plaid` - `200` JWK: *The key the signature is checked against, over the raw bytes Plaid put on the wire.*
-5. `server` -> `plaid` - `POST /item/public_token/exchange {"public_token"}`: *One call per token, and every token is exchanged: Plaid says this once, so a token nobody trades is a bank somebody connected and does not get.*
+5. `server` -> `plaid` - `POST /item/public_token/exchange {"public_token"}`: *One call per token, and every token is exchanged: Plaid says this once, so a token nobody trades is a bank somebody connected and does not get. Each is one request against the exchange budget, and a token past it is dropped rather than traded — which the phone reads as 8b, since Plaid's POST is what answers here and there is no 429 to give it.*
 6. `server` <- `plaid` - `200 {"access_token","item_id"}`: *One per exchange, and the same irreversible call as C1's step 4.*
 7. `plaid` <- `server` - one of:
-   a. `204 No Content`: *Believed and taken, sent once the exchanges have landed and been written. That is what makes a failure mid-exchange a webhook Plaid sends again rather than a bank quietly lost.*
+   a. `204 No Content`: *Believed and taken, sent once the exchanges have landed and been written. Taken is what stops Plaid sending it again, so a write that would not land answers 503 below instead — that is what makes a failure mid-exchange a webhook Plaid sends again rather than a bank quietly lost.*
    b. `401 Unauthorized`: *The POST was not Plaid's. The reason is logged and not returned.*
    c. `503 Service Unavailable`: *The machine could not take it, so Plaid sends it again in a minute. That is what we want.*
 8. `phone` <- `server` - one of:
@@ -160,7 +160,7 @@ app switch and a request to get through, and Plaid has none of that.
    c. `200 {"outcome":"pending"}`: *Ten seconds passed and Plaid still has not said. Not "no bank": the phone goes to the sync screen and opens its stream, and a late bank arrives on it. It gives up after twenty.*
    d. `401 Unauthorized`: *No bearer token, or one the server no longer honours.*
    e. `429 Too Many Requests`: *Too many closes from this caller.*
-   f. `500 Internal Server Error`: *This user's open sessions could not be read. Not `abandoned` and not `pending`: both of those are things Plaid said, and this is Postgres.*
+   f. `500 Internal Server Error`: *This user's open sessions could not be read. Not `abandoned` and not `pending`: both of those are things Plaid said, and this is Postgres. A session Plaid reported and we could not write answers `pending` rather than this, because the webhook it asked Plaid to re-send may yet be the turn that writes it.*
 
 ## D. The first sync, and watching it
 

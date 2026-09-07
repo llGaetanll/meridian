@@ -279,10 +279,13 @@ impl StateServer {
         }
 
         match event {
-            Authenticated::LinkRequested => {
-                self.signup
-                    .link_requested(request_id, user_id, self.now, actions);
-            }
+            Authenticated::LinkRequested => self.signup.link_requested(
+                request_id,
+                user_id,
+                &mut self.limiter,
+                self.now,
+                actions,
+            ),
 
             Authenticated::LinkClosed => {
                 self.signup
@@ -497,6 +500,18 @@ impl StateServer {
             return;
         }
 
+        // Unavailable rather than Unauthorized: this webhook may well be
+        // Plaid's, and a 503 is one it sends again in a minute — by which time
+        // the budget is back.
+        if !self.may_call(PlaidEndpoint::WebhookKeyGet, None) {
+            tracing::warn!(kid, "a webhook key was not fetched: too many this minute");
+
+            self.signup
+                .answer(request_id, ActionRouter::Unavailable, self.now, actions);
+
+            return;
+        }
+
         self.signup.waits_on(
             request_id,
             Pending::WebhookKey {
@@ -640,6 +655,7 @@ impl StateServer {
                     request_id,
                     link_token,
                     public_tokens,
+                    &mut self.limiter,
                     self.now,
                     actions,
                 );
@@ -812,7 +828,7 @@ impl StateServer {
                 // would be the one way past the budget. Stopping costs
                 // little: the write below saves the cursor to resume from.
                 let another_page =
-                    *has_more && self.may_call(PlaidEndpoint::TransactionsSync, item_id);
+                    *has_more && self.may_call(PlaidEndpoint::TransactionsSync, Some(item_id));
 
                 if *has_more && !another_page {
                     tracing::warn!(
@@ -933,7 +949,7 @@ impl StateServer {
                 );
 
                 self.signup
-                    .links_polled(request_id, polls, self.now, actions);
+                    .links_polled(request_id, polls, &mut self.limiter, self.now, actions);
             }
 
             EventSource::ItemLinked {
@@ -1107,18 +1123,22 @@ impl StateServer {
             }
 
             EventStore::ItemSaved { item } => {
+                let Some(item) = item else {
+                    self.signup.item_unattached(call_id, self.now, actions);
+
+                    return;
+                };
+
                 // Now rather than on the next `/snapshot`: the first sync of a
                 // new bank is the long one, and a screen watching a sync needs
                 // one running. Nobody waits on it — `/link/finish` would stay
                 // open for the whole of it.
-                if let Some(item) = item {
-                    let call_id = self.signup.call();
+                let fetching = self.signup.call();
 
-                    // A bank attached seconds ago has no cursor to resume from.
-                    self.fetch(call_id, item.item_id.clone(), item.user_id, None, actions);
-                }
+                // A bank attached seconds ago has no cursor to resume from.
+                self.fetch(fetching, item.item_id.clone(), item.user_id, None, actions);
 
-                self.signup.landed(call_id, self.now, actions);
+                self.signup.item_attached(call_id, self.now, actions);
             }
 
             EventStore::ItemsLoaded { items } => {
@@ -1153,8 +1173,13 @@ impl StateServer {
                     return;
                 };
 
-                self.signup
-                    .pending_links_loaded(request_id, link_tokens, self.now, actions);
+                self.signup.pending_links_loaded(
+                    request_id,
+                    link_tokens,
+                    &mut self.limiter,
+                    self.now,
+                    actions,
+                );
             }
 
             EventStore::SnapshotLoaded { snapshot } => {
@@ -1214,9 +1239,15 @@ impl StateServer {
             EventStore::WriteSuccess => self.signup.landed(call_id, self.now, actions),
 
             // Ends the wait: a route held for a failed write is held for
-            // ever.
+            // ever. The one exception is the write that attaches a newly
+            // linked bank, which is asked for again — what it is writing down
+            // is an Item slot already spent.
             EventStore::WriteError { message } => {
                 tracing::error!(message, "could not write the store");
+
+                if self.signup.attach_refused(call_id, self.now, actions) {
+                    return;
+                }
 
                 self.signup.landed(call_id, self.now, actions);
             }
@@ -1275,13 +1306,21 @@ impl StateServer {
         });
     }
 
-    /// Whether Plaid's budget for this endpoint and this bank has room, and
-    /// spend the slot if it has.
-    fn may_call(&mut self, endpoint: PlaidEndpoint, item_id: &str) -> bool {
+    /// Whether Plaid's budget for this endpoint has room, and spend it if it
+    /// has.
+    ///
+    /// `item_id` is the bank the request is about, where there is one: Plaid
+    /// meters those per Item, so two banks do not share a budget. The requests
+    /// that name no bank are counted for the account.
+    fn may_call(&mut self, endpoint: PlaidEndpoint, item_id: Option<&str>) -> bool {
         let now = self.now;
 
-        self.limiter
-            .can_send(now, &PlaidRateCtx::new(endpoint, item_id))
+        let ctx = match item_id {
+            Some(item_id) => PlaidRateCtx::new(endpoint, item_id),
+            None => PlaidRateCtx::account(endpoint),
+        };
+
+        self.limiter.can_send(now, &ctx)
     }
 
     /// A sync is over and what it brought stands. Kept rather than dropped:
@@ -1368,6 +1407,7 @@ impl StateServer {
             syncing: self.syncing.len(),
             watchers: self.watchers.len(),
             sessions: self.signup.sessions(),
+            attaching: self.signup.attaching(),
             keys: self.keys.len(),
             request_windows: self.requests.kept(),
             plaid_windows: self.limiter.kept(),

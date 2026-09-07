@@ -41,10 +41,16 @@ laptop's `docker build` is the only compiler in this document.
 | Name | Points at | Used for |
 | --- | --- | --- |
 | `api.meridiancash.io` | the box | The server. The only name that has to exist. |
-| `meridiancash.io` | nothing yet | The site, later. Kept free on purpose. |
+| `meridiancash.io` | nowhere yet | The site — `site/`, built to static files. |
+| `app.meridiancash.io` | nothing yet | The web app, when it ships. |
 
-The server is on its own subdomain so that putting a marketing page or the web
-app on the apex later is a DNS record rather than a migration.
+The server is on its own subdomain so that putting the site or the web app on
+the apex is a DNS record rather than a migration.
+
+The site is three static pages and nothing else, so it does not belong on this
+box: `npm run build` in `site/` writes `out/`, and any static host takes it
+from there. The apex and the API are independent, which is the point — a deploy
+of one cannot take down the other.
 
 ## Before the box exists
 

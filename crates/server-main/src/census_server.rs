@@ -39,6 +39,11 @@ pub struct CensusServer {
     /// by the tick that stops waiting for it.
     pub sessions: usize,
 
+    /// Banks waiting on the write that attaches them to somebody. Emptied by
+    /// that write answering, however many attempts it takes, and by the tick
+    /// that gives up on one that never does.
+    pub attaching: usize,
+
     /// Webhook signing keys remembered, misses included. A key is kept for
     /// the life of the process — Plaid gives a rotated one a new id — so this
     /// one only has to stay under

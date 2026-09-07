@@ -23,15 +23,21 @@
 use std::collections::HashMap;
 
 use api_common::Timestamp;
+use api_common::ratelimit::RateLimiter;
 use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use uuid::Uuid;
+
+use src_plaid::PlaidEndpoint;
+use src_plaid::PlaidRateCtx;
+use src_plaid::PlaidRateLimiter;
 
 use crate::Action;
 use crate::ActionEmail;
 use crate::ActionRouter;
 use crate::ActionSource;
 use crate::ActionStore;
+use crate::Attaching;
 use crate::Authenticated;
 use crate::CallId;
 use crate::LinkOutcome;
@@ -65,6 +71,16 @@ pub const LINK_ANSWER_GOOD_FOR_SECS: u64 = 10;
 /// How long an outcome nobody has asked about is kept. A phone that has not
 /// asked within ten minutes is not going to: the sheet is long closed.
 pub const OUTCOME_GOOD_FOR_SECS: u64 = 10 * 60;
+
+/// How many times a newly linked bank's write is asked for before the machine
+/// stops asking.
+///
+/// More than one because the exchange in front of it spent an Item slot that
+/// cannot be spent again, and a store that dropped a connection is the
+/// ordinary reason the first attempt failed. Not many more because the route
+/// is holding all the while: a store that has refused the same write five
+/// times is down rather than busy.
+pub const ATTACH_ATTEMPTS: u32 = 5;
 
 /// How long to wait on a source before giving up on it. Not a latency budget
 /// but the point past which a call has almost certainly gone quiet.
@@ -107,6 +123,12 @@ pub struct StateSignup {
     /// a request arrives and left on the turn it is answered, so what a
     /// request was doing outlives the turn it arrived in.
     requests: HashMap<RequestId, Pending>,
+
+    /// Each bank whose write is in flight, keyed by the call it is out on.
+    /// Its own table rather than a [`Pending`] step, because the route that
+    /// caused it is not always the one waiting on it: a webhook attaches a
+    /// bank that `/link/finish` is the one to hear about.
+    attaching: HashMap<CallId, Attaching>,
 }
 
 impl StateSignup {
@@ -291,13 +313,26 @@ impl StateSignup {
 
     /// Somebody wants a bank sign-in opened. Nothing to read: their id is the
     /// whole of what it takes.
+    ///
+    /// The budget is the account's, which is why it is passed in:
+    /// [`StateServer`](crate::StateServer) holds one for every request this
+    /// process sends Plaid.
     pub fn link_requested(
         &mut self,
         request_id: RequestId,
         user_id: Uuid,
+        limiter: &mut PlaidRateLimiter,
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) {
+        if !may_send(limiter, PlaidEndpoint::LinkTokenCreate, now) {
+            tracing::warn!(%user_id, "a bank sign-in was not opened: too many this minute");
+
+            self.answer(request_id, ActionRouter::TooMany, now, actions);
+
+            return;
+        }
+
         self.waits_on(request_id, Pending::Opening);
 
         actions.push(Action::ToSource {
@@ -338,6 +373,7 @@ impl StateSignup {
         &mut self,
         request_id: RequestId,
         link_tokens: &[String],
+        limiter: &mut PlaidRateLimiter,
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) {
@@ -352,6 +388,16 @@ impl StateSignup {
         // Nothing open, so nothing to go and ask about.
         if link_tokens.is_empty() {
             self.answer(request_id, ActionRouter::LinkAbandoned, now, actions);
+
+            return;
+        }
+
+        // Asked here rather than on the way in: a close that has nothing to
+        // poll about sends no request, and must not spend the budget for one.
+        if !may_send(limiter, PlaidEndpoint::LinkSessionGet, now) {
+            tracing::warn!("a link session was not polled: too many this minute");
+
+            self.answer(request_id, ActionRouter::TooMany, now, actions);
 
             return;
         }
@@ -530,6 +576,7 @@ impl StateSignup {
         &mut self,
         request_id: RequestId,
         polls: &[LinkPoll],
+        limiter: &mut PlaidRateLimiter,
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) {
@@ -541,6 +588,18 @@ impl StateSignup {
             .find_map(|poll| Some((poll.link_token.clone(), poll.public_tokens.first()?.clone())));
 
         if let Some((link_token, public_token)) = exchangeable {
+            // The narrowest budget there is, because each of these that lands
+            // creates an Item nothing gives back. Nothing goes out and the
+            // session stays open, because collecting one is what reporting an
+            // outcome does and there is no outcome.
+            if !may_send(limiter, PlaidEndpoint::PublicTokenExchange, now) {
+                tracing::error!(link_token, "a bank was connected past the exchange budget");
+
+                self.answer(request_id, ActionRouter::TooMany, now, actions);
+
+                return;
+            }
+
             self.waits_on(request_id, Pending::Exchanging);
 
             actions.push(Action::ToSource {
@@ -574,9 +633,14 @@ impl StateSignup {
         self.answer(request_id, ActionRouter::LinkAbandoned, now, actions);
     }
 
-    /// A bank is attached. The first sync follows this write rather than
-    /// racing it: whose bank it is comes from the Link session, and the write
-    /// is what resolves that.
+    /// A bank is attached at Plaid, and the write that attaches it here goes
+    /// out.
+    ///
+    /// Nothing is answered on this turn. What a route is owed depends on
+    /// whether the row appears, and the only thing that knows is the write:
+    /// the exchange behind this spent an Item slot, and saying it worked
+    /// before anything was written is saying it about a bank nothing here can
+    /// reach.
     pub fn item_linked(
         &mut self,
         request_id: RequestId,
@@ -585,13 +649,17 @@ impl StateSignup {
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) {
-        actions.push(Action::ToStore {
-            action: ActionStore::SaveItem {
-                call_id: self.calling(request_id, now),
+        let call_id = self.calling(request_id, now);
+
+        self.attaches(
+            call_id,
+            Attaching {
                 item_id: item_id.to_string(),
                 link_token: link_token.to_string(),
+                attempt: 1,
             },
-        });
+            actions,
+        );
 
         // A webhook arrives unprompted, so the session has to stand until
         // `/link/finish` reports it.
@@ -603,18 +671,121 @@ impl StateSignup {
                 },
             });
         }
+    }
 
-        // Plaid's POST caused this and is owed nothing beyond "taken": the
-        // outcome goes to `/link/finish`.
-        if self.collects_by_webhook() {
-            self.answer(request_id, ActionRouter::Accepted, now, actions);
+    /// Ask the store to write one bank down, and keep what it would take to
+    /// ask again.
+    fn attaches(&mut self, call_id: CallId, attaching: Attaching, actions: &mut Vec<Action>) {
+        actions.push(Action::ToStore {
+            action: ActionStore::SaveItem {
+                call_id,
+                item_id: attaching.item_id.clone(),
+                link_token: attaching.link_token.clone(),
+            },
+        });
 
-            self.settled(link_token, LinkOutcome::Linked, now, actions);
+        self.attaching.insert(call_id, attaching);
+    }
+
+    /// The bank is written down, which is the first turn in which anybody can
+    /// be told a bank was linked.
+    pub fn item_attached(&mut self, call_id: CallId, now: Timestamp, actions: &mut Vec<Action>) {
+        let Some(attaching) = self.attaching.remove(&call_id) else {
+            tracing::error!(call_id, "the store wrote a bank nobody asked it to");
 
             return;
+        };
+
+        // Plaid's POST is owed nothing beyond "taken": the outcome goes to
+        // whichever `/link/finish` asks for it, now or in a moment.
+        if self.collects_by_webhook() {
+            self.settled(&attaching.link_token, LinkOutcome::Linked, now, actions);
+        } else if let Some(request_id) = self.waiter(call_id) {
+            self.linked_one(request_id, now, actions);
         }
 
-        self.linked_one(request_id, now, actions);
+        self.landed(call_id, now, actions);
+    }
+
+    /// The store had nothing to write down: no access token held for the bank,
+    /// or no Link session to attach it to. Neither of those becomes true
+    /// later, so this is the end of it.
+    pub fn item_unattached(&mut self, call_id: CallId, now: Timestamp, actions: &mut Vec<Action>) {
+        let Some(attaching) = self.attaching.remove(&call_id) else {
+            tracing::error!(call_id, "the store answered a write nobody asked for");
+
+            return;
+        };
+
+        self.attach_given_up(call_id, &attaching, now, actions);
+    }
+
+    /// The store refused the write, and whether it was one of these is the
+    /// answer. An ordinary write lands or does not; this one is asked for
+    /// again, because the slot the exchange spent cannot be spent twice.
+    pub fn attach_refused(
+        &mut self,
+        call_id: CallId,
+        now: Timestamp,
+        actions: &mut Vec<Action>,
+    ) -> bool {
+        let Some(attaching) = self.attaching.remove(&call_id) else {
+            return false;
+        };
+
+        if attaching.attempt >= ATTACH_ATTEMPTS {
+            self.attach_given_up(call_id, &attaching, now, actions);
+
+            return true;
+        }
+
+        tracing::warn!(
+            item_id = %attaching.item_id,
+            attempt = attaching.attempt,
+            "a linked bank was not written down; asking again",
+        );
+
+        // The wait moves onto the new call, so the route is answered at the
+        // end of the chain rather than by a failure partway along it.
+        let next = self.passing(call_id, now);
+
+        self.attaches(
+            next,
+            Attaching {
+                attempt: attaching.attempt + 1,
+                ..attaching
+            },
+            actions,
+        );
+
+        true
+    }
+
+    /// A bank that is live at Plaid and written down nowhere.
+    ///
+    /// The route hears that this server could not answer, which is neither
+    /// that a bank was attached nor that none was. `LinkAbandoned` would be
+    /// the second of those, and it is a sentence about somebody's bank.
+    ///
+    /// The Link session is left as it stands. On a server Plaid calls, one
+    /// that was never settled is one the webhook can report again.
+    fn attach_given_up(
+        &mut self,
+        call_id: CallId,
+        attaching: &Attaching,
+        now: Timestamp,
+        actions: &mut Vec<Action>,
+    ) {
+        tracing::error!(
+            item_id = %attaching.item_id,
+            "a linked bank could not be written down; its Item slot is spent",
+        );
+
+        if let Some(request_id) = self.waiter(call_id) {
+            self.answer(request_id, ActionRouter::Unavailable, now, actions);
+        }
+
+        self.landed(call_id, now, actions);
     }
 
     /// An exchange came to nothing.
@@ -651,11 +822,13 @@ impl StateSignup {
         request_id: RequestId,
         link_token: &str,
         public_tokens: &[String],
+        limiter: &mut PlaidRateLimiter,
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) {
-        // Finished with nothing: they closed the sheet. An outcome Plaid
-        // *said*, not one inferred from an empty poll.
+        // Nothing left to trade: they closed the sheet, or there is no slot
+        // for what they produced. An outcome Plaid *said*, not one inferred
+        // from an empty poll.
         if public_tokens.is_empty() {
             self.answer(request_id, ActionRouter::Accepted, now, actions);
 
@@ -665,8 +838,16 @@ impl StateSignup {
         }
 
         // Every token, because Plaid says this once: one nobody exchanges is a
-        // bank somebody connected and does not get.
+        // bank somebody connected and does not get. One request each, so the
+        // budget is asked once each — and this is the endpoint where a burst
+        // is the thing worth stopping.
         for public_token in public_tokens {
+            if !may_send(limiter, PlaidEndpoint::PublicTokenExchange, now) {
+                tracing::error!(link_token, "a bank was connected past the exchange budget");
+
+                break;
+            }
+
             actions.push(Action::ToSource {
                 action: ActionSource::ExchangePublicToken {
                     call_id: self.calling(request_id, now),
@@ -822,6 +1003,12 @@ impl StateSignup {
         Some(request_id)
     }
 
+    /// The route parked on a call, without letting go of the wait. For a
+    /// handler that has more to do before the call is done with.
+    fn waiter(&self, call_id: CallId) -> Option<RequestId> {
+        self.waiting.get(&call_id).map(|waiter| waiter.request_id)
+    }
+
     /// Let a route go from every session it is parked on.
     fn unwatch(&mut self, request_id: RequestId) {
         self.sessions.retain(|_, session| {
@@ -964,6 +1151,15 @@ impl StateSignup {
                 "a call took too long and was given up on"
             );
 
+            // A write that never answered is a bank left unwritten, and what
+            // it would take to ask again goes with the call it was out on.
+            if let Some(attaching) = self.attaching.remove(&call_id) {
+                tracing::error!(
+                    item_id = %attaching.item_id,
+                    "a linked bank's write never answered; its Item slot is spent",
+                );
+            }
+
             // Another of this route's calls may still answer and release it.
             if self.outstanding(request_id) {
                 continue;
@@ -1002,4 +1198,18 @@ impl StateSignup {
     pub fn sessions(&self) -> usize {
         self.sessions.len()
     }
+
+    /// How many banks are waiting on the write that attaches them.
+    pub fn attaching(&self) -> usize {
+        self.attaching.len()
+    }
+}
+
+/// Whether Plaid's budget for an endpoint that names no bank has room, and
+/// spend it if it has.
+///
+/// Every request this machine sends Plaid goes through it. A free function
+/// rather than a method: the budget belongs to the process, not to signing up.
+fn may_send(limiter: &mut PlaidRateLimiter, endpoint: PlaidEndpoint, now: Timestamp) -> bool {
+    limiter.can_send(now, &PlaidRateCtx::account(endpoint))
 }

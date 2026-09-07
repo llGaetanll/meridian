@@ -146,6 +146,13 @@ The `access_token` is permanent and the flow above is run once, ever. The
 `cursor` from `/transactions/sync` is what makes the next sync incremental, so
 it is saved beside the token and passed back on the following call.
 
+Every request in that list is counted before it goes out — see
+`PlaidEndpoint`, which has one variant per endpoint this app calls, each with a
+per-minute budget. `/item/public_token/exchange` has the narrowest of them,
+because it is the one nothing can undo: each request that lands creates an Item
+and the account may hold ten. That stops a burst and nothing slower — nothing
+here counts how many Items the account already holds.
+
 ## The two redirects
 
 Plaid takes two addresses with similar names, and conflating them is why this

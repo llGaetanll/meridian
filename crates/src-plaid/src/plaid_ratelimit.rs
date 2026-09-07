@@ -1,8 +1,8 @@
-//! Plaid's rate limits, as a limiter the state machine can consult.
+//! Every request we send Plaid, counted before it goes out.
 //!
-//! Plaid meters **per endpoint, per Item**, and the endpoints this app uses do
-//! not share a budget. The published limits (Sandbox and Production alike) are
-//! per-minute, so the shape is one sliding window per endpoint per Item.
+//! One variant per endpoint this app calls, and a budget for each. Plaid meters
+//! per endpoint, per Item, per minute, and the endpoints this app uses do not
+//! share a budget, so the shape is one sliding window per endpoint per Item.
 //!
 //! No IO here, and no clock: `can_send` is arithmetic over what we have already
 //! sent, which is what lets it live inside a state machine. See
@@ -28,16 +28,38 @@ pub enum PlaidEndpoint {
     BalanceGet,
     /// `/transactions/recurring/get`.
     RecurringGet,
+    /// `/link/token/create` — the page somebody signs in to their bank on.
+    LinkTokenCreate,
+    /// `/link/token/get` — what a session came to, where Plaid does not call
+    /// us. One request per sheet closed.
+    LinkSessionGet,
+    /// `/item/public_token/exchange` — the irreversible one. Each request that
+    /// lands creates an Item, and the account may hold ten.
+    PublicTokenExchange,
+    /// `/webhook_verification_key/get` — the only request an unauthenticated
+    /// POST can cause, which is why it is metered rather than merely cached.
+    WebhookKeyGet,
 }
 
 impl PlaidEndpoint {
-    /// Calls allowed per minute, per Item.
+    /// Requests allowed per minute, per Item.
     pub fn per_minute(&self) -> u32 {
         match self {
             PlaidEndpoint::TransactionsSync => 25,
             // 15/min published; 10 leaves room for a retry without tipping over.
             PlaidEndpoint::BalanceGet => 10,
             PlaidEndpoint::RecurringGet => 10,
+            // Both are one request per sheet, and a sheet is a person doing
+            // something. Far more than that is something in a loop.
+            PlaidEndpoint::LinkTokenCreate => 30,
+            PlaidEndpoint::LinkSessionGet => 30,
+            // One per bank attached, and somebody connects one or two in a
+            // sitting. The lowest budget here, because it is the request
+            // nothing can undo.
+            PlaidEndpoint::PublicTokenExchange => 5,
+            // Cached per `kid`, hits and misses both, so a minute that needs
+            // ten of these is one where Plaid rotated every key it has.
+            PlaidEndpoint::WebhookKeyGet => 10,
         }
     }
 }
@@ -47,16 +69,26 @@ impl PlaidEndpoint {
 pub struct PlaidRateCtx {
     pub endpoint: PlaidEndpoint,
 
-    /// Which Item the call is for. Limits are per-Item, so two banks do not
-    /// share a budget.
-    pub item_id: String,
+    /// Which Item the request is about, where there is one. Limits are
+    /// per-Item, so two banks do not share a budget. `None` is a request that
+    /// names no bank, counted for the account as a whole.
+    pub item_id: Option<String>,
 }
 
 impl PlaidRateCtx {
+    /// A request about one Item.
     pub fn new(endpoint: PlaidEndpoint, item_id: impl Into<String>) -> Self {
         Self {
             endpoint,
-            item_id: item_id.into(),
+            item_id: Some(item_id.into()),
+        }
+    }
+
+    /// A request that names no Item, and so is counted for the whole account.
+    pub fn account(endpoint: PlaidEndpoint) -> Self {
+        Self {
+            endpoint,
+            item_id: None,
         }
     }
 }
@@ -64,7 +96,7 @@ impl PlaidRateCtx {
 /// One sliding window per endpoint per Item.
 #[derive(Debug, Default)]
 pub struct PlaidRateLimiter {
-    windows: HashMap<(PlaidEndpoint, String), Window>,
+    windows: HashMap<(PlaidEndpoint, Option<String>), Window>,
 }
 
 impl PlaidRateLimiter {
@@ -200,6 +232,26 @@ mod tests {
         limiter.sweep(T0 + Duration::from_secs(61));
 
         assert_eq!(limiter.kept(), 0, "everything has aged out");
+    }
+
+    /// The irreversible one is metered like the rest, and it is the tightest:
+    /// each request that lands creates an Item the account cannot give back.
+    #[test]
+    fn the_exchange_is_the_narrowest_budget() {
+        let mut limiter = PlaidRateLimiter::new();
+        let ctx = PlaidRateCtx::account(PlaidEndpoint::PublicTokenExchange);
+
+        for i in 0..PlaidEndpoint::PublicTokenExchange.per_minute() {
+            assert!(limiter.can_send(T0, &ctx), "exchange {i} should be allowed");
+        }
+
+        assert!(!limiter.can_send(T0, &ctx), "the next is over the budget");
+
+        assert!(
+            PlaidEndpoint::PublicTokenExchange.per_minute()
+                < PlaidEndpoint::LinkTokenCreate.per_minute(),
+            "a sheet may be opened more often than a bank may be attached",
+        );
     }
 
     #[test]

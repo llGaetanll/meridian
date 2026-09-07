@@ -346,6 +346,13 @@ means adding, changing or removing its example here.
   once rather than how fast they are asked for. Also a 429. A run of these is
   a client that is not closing what it opens, since a stream going away frees
   its slot in the turn it is reported.
+- `WARN server_main::state_signup a bank sign-in was not opened: too many this minute user_id=e8b13a2b…`
+  — the budget for `/link/token/create` is the account's rather than the
+  caller's, so it sits under every caller's own window and a run of these is
+  several people at once rather than one client in a loop. Also a 429.
+- `WARN server_main::state_signup a link session was not polled: too many this minute`
+  — the same, for `/link/token/get`. Only where `PLAID_COLLECT=poll`: a server
+  Plaid calls sends none of these.
 - `WARN server_main::state_server a sign-in code was rejected email=alex@example.com verdict=Wrong`
   — `Wrong`, `Expired` or `Exhausted`. Which one is logged and deliberately not
   told to the caller: only somebody working through guesses benefits from
@@ -383,6 +390,19 @@ means adding, changing or removing its example here.
   — the route waiting on it is answered anyway and serves the rows we already
   had, because a request held for a write that failed is held forever. The
   cursor not having moved is what makes the next sync recover rather than skip.
+- `WARN server_main::state_signup a linked bank was not written down; asking again item_id=8Pd5Zx… attempt=1`
+  — the one write that is asked for again. The exchange in front of it spent
+  an Item slot that cannot be spent twice, so a store that dropped a
+  connection is worth five attempts where an ordinary write is worth one.
+- `ERROR server_main::state_signup a linked bank could not be written down; its Item slot is spent item_id=8Pd5Zx…`
+  — five attempts, or nothing to write at all. This line is the whole record
+  that one of the account's ten Production Items is gone: the bank is live at
+  Plaid, nothing here owns it, and `/item/remove` does not give the slot back.
+  The caller is told this server could not answer rather than that their bank
+  was linked.
+- `ERROR server_main::state_signup a linked bank's write never answered; its Item slot is spent item_id=8Pd5Zx…`
+  — the same loss by the other road: the store went quiet and the tick gave up
+  on the write.
 - `DEBUG server_main::runtime_server written to the store item_id=8Pd5Zx… added=48 modified=0 removed=0`
   — one per sync. `DEBUG` because a healthy server writes on every refresh.
 - `INFO src_postgres::postgres_item item removed with its history item_id=8Pd5Zx…`
@@ -405,6 +425,14 @@ means adding, changing or removing its example here.
   — **the line that says a Production Item slot was spent**, and there are ten.
   The access token is deliberately not on it: it is a credential to somebody's
   bank, and a log is a file that gets pasted into issues.
+- `ERROR server_main::state_signup a bank was connected past the exchange budget link_token=link-sandbox-8a1f…`
+  — `/item/public_token/exchange` has the narrowest budget here, because each
+  request that lands creates an Item and nothing gives the slot back. The token
+  is not traded, so no Item is created and nothing is stored. `ERROR` because
+  somebody signed in to their bank and got nothing.
+- `WARN server_main::state_server a webhook key was not fetched: too many this minute kid=6c5516e1…`
+  — answered `503` rather than `401`: the POST may well be Plaid's, and a `503`
+  is one Plaid sends again in a minute, by which time the budget is back.
 - `INFO server_main::state_server a webhook arrived from plaid webhook_type=LINK webhook_code=SESSION_FINISHED`
   — one per webhook that was *believed*. Written after the signature, the
   replay window and the body hash have all passed, so a line here is Plaid and

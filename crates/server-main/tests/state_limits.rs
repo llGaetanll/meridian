@@ -24,6 +24,7 @@ use api_ledger::Connection;
 use fixtures::T0;
 use fixtures::signed;
 use fixtures::state;
+use fixtures::state_collecting_by_webhook;
 use fixtures::webhook_jwk;
 use src_plaid::PlaidEndpoint;
 
@@ -529,5 +530,197 @@ fn a_history_pages_only_as_far_as_the_budget_allows() {
         sent,
         PlaidEndpoint::TransactionsSync.per_minute(),
         "a history pages until the endpoint's minute is spent, and no further",
+    );
+}
+
+/// Send every exchange the minute allows, one Link session apiece.
+///
+/// A helper *around* a test: which session spends which is never the claim,
+/// only that the next one is refused.
+fn spend_the_exchanges(state: &mut StateServer) {
+    for i in 0..PlaidEndpoint::PublicTokenExchange.per_minute() {
+        deliver(
+            state,
+            1000 + i as u64,
+            &format!(
+                r#"{{"webhook_type":"LINK","webhook_code":"SESSION_FINISHED","link_token":"link-{i}","public_tokens":["public-{i}"]}}"#
+            ),
+        );
+    }
+}
+
+/// The narrowest budget there is. Every `/item/public_token/exchange` that
+/// lands creates an Item and nothing gives the slot back, so a burst of them
+/// is the one thing here worth stopping outright.
+///
+/// Plaid is still told the webhook was taken. It retries anything else, and a
+/// retry inside the minute is refused the same way.
+#[test]
+fn the_exchange_past_the_budget_produces_no_action() {
+    let mut state = state_collecting_by_webhook();
+
+    spend_the_exchanges(&mut state);
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-11\",\"public_tokens\":[\"public-11\"]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-11\",\"public_tokens\":[\"public-11\"]}", T0.as_secs()).1 } },
+        > @r#"ToRouter { request_id: 1, action: Accepted }"#,
+    );
+}
+
+/// `/link/token/create` is a request like any other, and its budget is the
+/// account's rather than the caller's — so it sits under every caller's own
+/// window. Thirty different people opening a sheet is still one Plaid budget
+/// being spent, and the thirty-first is refused by it.
+#[test]
+fn opening_bank_sign_ins_faster_than_the_budget_allows_is_refused() {
+    let mut state = state();
+
+    for n in 1..=PlaidEndpoint::LinkTokenCreate.per_minute() as u64 {
+        open_a_sign_in(&mut state, n);
+    }
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 31, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 61, .. } },
+
+        < Event::FromStore { call_id: 61, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::from_u128(31)) } },
+        > @r#"ToRouter { request_id: 31, action: TooMany }"#,
+    );
+}
+
+/// Ask for one bank sign-in, as the `n`th person to do so, and drop what comes
+/// of it.
+///
+/// A different address and a different account each time: both of those have
+/// windows of their own, and neither is the budget this test is about.
+fn open_a_sign_in(state: &mut StateServer, n: u64) {
+    let mut actions = Vec::new();
+
+    state.handle_events(
+        &[Event::FromRouter {
+            request_id: n,
+            client: Client {
+                ip: ClientIp::new(format!("203.0.113.{n}")),
+                user: None,
+            },
+            event: EventRouter::LinkRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        }],
+        &mut actions,
+    );
+
+    let answers: Vec<Event> = actions
+        .iter()
+        .filter_map(|action| match action {
+            Action::ToStore {
+                action: ActionStore::LoadSession { call_id, .. },
+            } => Some(Event::FromStore {
+                call_id: *call_id,
+                event: EventStore::SessionResolved {
+                    user_id: Some(uuid::Uuid::from_u128(n as u128)),
+                },
+            }),
+
+            _ => None,
+        })
+        .collect();
+
+    state.handle_events(&answers, &mut Vec::new());
+}
+
+/// Walk one bank sign-in in poll mode as far as the exchange, answering the
+/// reads it asks for along the way.
+///
+/// A helper *around* a test. What makes this flow C1 is `flow_c1_...`; all it
+/// is here to do is spend a slot.
+fn link_by_polling(state: &mut StateServer, request_id: u64, n: u32) {
+    let mut actions = Vec::new();
+
+    state.handle_events(
+        &[Event::FromRouter {
+            request_id,
+            client: Client {
+                ip: ClientIp::new("203.0.113.7"),
+                user: None,
+            },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        }],
+        &mut actions,
+    );
+
+    loop {
+        let answers: Vec<Event> = actions
+            .iter()
+            .filter_map(|action| match action {
+                Action::ToStore {
+                    action: ActionStore::LoadSession { call_id, .. },
+                } => Some(Event::FromStore {
+                    call_id: *call_id,
+                    event: EventStore::SessionResolved {
+                        user_id: Some(uuid::Uuid::nil()),
+                    },
+                }),
+
+                Action::ToStore {
+                    action: ActionStore::LoadPendingLinks { call_id, .. },
+                } => Some(Event::FromStore {
+                    call_id: *call_id,
+                    event: EventStore::PendingLinksLoaded {
+                        link_tokens: vec![format!("link-{n}")],
+                    },
+                }),
+
+                Action::ToSource {
+                    action: ActionSource::PollLinks { call_id, .. },
+                } => Some(Event::FromSource {
+                    event: EventSource::LinksPolled {
+                        call_id: *call_id,
+                        polls: vec![LinkPoll {
+                            link_token: format!("link-{n}"),
+                            public_tokens: vec![format!("public-{n}")],
+                            finished: true,
+                        }],
+                    },
+                }),
+
+                _ => None,
+            })
+            .collect();
+
+        if answers.is_empty() {
+            return;
+        }
+
+        actions.clear();
+        state.handle_events(&answers, &mut actions);
+    }
+}
+
+/// A sheet that was already open when the minute's exchanges went. The session
+/// polls back with a token, and the request that would trade it is refused
+/// like any other over its budget.
+#[test]
+fn a_token_polled_back_past_the_budget_is_not_exchanged() {
+    let mut state = state();
+
+    for n in 0..PlaidEndpoint::PublicTokenExchange.per_minute() {
+        link_by_polling(&mut state, 1000 + n as u64, n);
+    }
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 21, .. } },
+
+        < Event::FromStore { call_id: 21, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 22, .. } },
+
+        < Event::FromStore { call_id: 22, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-11".to_string()] } },
+        > Action::ToSource { action: ActionSource::PollLinks { call_id: 23, .. } },
+
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 23, polls: vec![LinkPoll { link_token: "link-11".to_string(), public_tokens: vec!["public-11".to_string()], finished: true }] } },
+        > @r#"ToRouter { request_id: 1, action: TooMany }"#,
     );
 }

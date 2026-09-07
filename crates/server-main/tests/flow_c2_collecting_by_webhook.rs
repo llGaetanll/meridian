@@ -94,15 +94,17 @@ fn a_close_that_arrives_first_waits_for_the_outcome() {
 
         < Event::FromSource { event: EventSource::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 5, .. } },
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
 
+        // The write is what the session came to, so it is the write that
+        // reaches the parked route and closes the session.
         < Event::FromStore { call_id: 5, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 7, .. } },
+        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 6, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 7, .. } },
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
 
         // 8a. The route that was waiting, answered once the session it is
         // being told about has actually been closed.
-        < Event::FromStore { call_id: 6, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 7, event: EventStore::WriteSuccess },
         > @r#"ToRouter { request_id: 1, action: Linked { count: 1 } }"#,
     );
 }
@@ -289,5 +291,70 @@ fn the_session_that_attached_a_bank_is_the_one_reported() {
 
         < Event::FromStore { call_id: 7, event: EventStore::WriteSuccess },
         > @r#"ToRouter { request_id: 3, action: Linked { count: 1 } }"#,
+    );
+}
+
+#[test]
+fn a_bank_the_store_would_not_write_is_not_taken_from_plaid() {
+    let mut state = state_collecting_by_webhook();
+
+    eval!(&mut state,
+        // Plaid says the session is finished, with a token on it.
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}", T0.as_secs()).1 } },
+        // The key the signature names.
+        > Action::ToSource { action: ActionSource::FetchWebhookKey { call_id: 1, .. } },
+
+        // Believed.
+        < Event::FromSource { event: EventSource::WebhookKeyLoaded { call_id: 1, kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
+        // The call that spends the slot.
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 2, .. } },
+
+        // The bank exists at Plaid from here on.
+        < Event::FromSource { event: EventSource::ItemLinked { call_id: 2, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        // Write it down. No `CollectLink`: the session stands until
+        // `/link/finish` reports it.
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 3, .. } },
+
+        // The first attempt.
+        < Event::FromStore { call_id: 3, event: EventStore::WriteError { message: "connection refused".to_string() } },
+        // The second.
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 4, .. } },
+
+        < Event::FromStore { call_id: 4, event: EventStore::WriteError { message: "connection refused".to_string() } },
+        // The third.
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 5, .. } },
+
+        < Event::FromStore { call_id: 5, event: EventStore::WriteError { message: "connection refused".to_string() } },
+        // The fourth.
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 6, .. } },
+
+        < Event::FromStore { call_id: 6, event: EventStore::WriteError { message: "connection refused".to_string() } },
+        // The fifth, and the last.
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 7, .. } },
+
+        < Event::FromStore { call_id: 7, event: EventStore::WriteError { message: "connection refused".to_string() } },
+        // A 503, so Plaid sends the webhook again. `Accepted` is a 204 meaning
+        // taken, and taken is what stops it. The session is left unsettled,
+        // which is what the close below then reads.
+        > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
+
+        // The phone catches up.
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        // Who is asking.
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 8, .. } },
+
+        // Them.
+        < Event::FromStore { call_id: 8, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        // What they have open.
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 9, .. } },
+
+        // One session, with no outcome recorded against it, so the route parks.
+        < Event::FromStore { call_id: 9, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
+
+        // Ten seconds of nobody saying anything.
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS) } },
+        // Neither `Linked` nor `Nothing`, both of which are false: the bank is
+        // live at Plaid, and Plaid's re-send may yet be the turn that writes it.
+        > @r#"ToRouter { request_id: 2, action: LinkPending }"#,
     );
 }
