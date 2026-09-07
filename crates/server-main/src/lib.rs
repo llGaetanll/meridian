@@ -44,7 +44,9 @@ mod runtime_router;
 mod runtime_server;
 mod session_token;
 mod source_pool;
+mod state_link;
 mod state_server;
+mod state_signin;
 mod web_origins;
 mod webhook_facts;
 
@@ -84,15 +86,17 @@ pub use runtime_server::RuntimeServer;
 pub use server_wire::WireSnapshot;
 /// Reachable so the machine's tests can build the token hash a request carries.
 pub use session_token::hash as hash_token;
+pub use state_link::LINK_ANSWER_GOOD_FOR_SECS;
+pub use state_link::OUTCOME_GOOD_FOR_SECS;
+pub use state_link::StateLink;
 pub use state_server::CALL_GOOD_FOR_SECS;
 pub use state_server::FRESH_FOR_SECS;
-pub use state_server::LINK_ANSWER_GOOD_FOR_SECS;
-pub use state_server::OUTCOME_GOOD_FOR_SECS;
-pub use state_server::SWEEP_SESSIONS_EVERY_SECS;
 pub use state_server::StateServer;
 pub use state_server::WATCHERS_AT_MOST;
 pub use state_server::WEBHOOK_KEY_MISS_GOOD_FOR_SECS;
 pub use state_server::WEBHOOK_KEYS_AT_MOST;
+pub use state_signin::SWEEP_SESSIONS_EVERY_SECS;
+pub use state_signin::StateSignIn;
 pub use web_origins::WebOrigins;
 pub use webhook_facts::WebhookFacts;
 

@@ -13,8 +13,6 @@ use std::collections::HashMap;
 
 use api_common::Timestamp;
 use api_common::ratelimit::RateLimiter;
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
 use server_wire::SyncStage;
 use server_wire::WireSyncStatus;
 use src_plaid::ITEM_LOGIN_REQUIRED;
@@ -43,16 +41,20 @@ use crate::EventSource;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::ItemFacts;
-use crate::PlaidCollect;
 use crate::RequestId;
+use crate::StateLink;
+use crate::StateSignIn;
 use crate::StoredCode;
 use crate::WebhookFacts;
-use crate::email_address;
 use crate::login_code;
 use crate::rate_limit::Route;
 use crate::rate_limit::ServerRateCtx;
 use crate::rate_limit::ServerRateLimiter;
 use crate::session_token;
+use crate::state_link::Closed;
+use crate::state_link::LinkOutcome;
+use crate::state_signin::Asked;
+use crate::state_signin::Checked;
 use src_plaid::PlaidJwk;
 use src_plaid::PlaidWebhook;
 use src_plaid::PlaidWebhookJwt;
@@ -67,25 +69,6 @@ pub const FRESH_FOR_SECS: u64 = 30;
 /// How long to wait on a source before giving up on it. Not a latency budget
 /// but the point past which a call has almost certainly gone quiet.
 pub const CALL_GOOD_FOR_SECS: u64 = 30;
-
-/// How long `/link/finish` waits for Plaid to say what a session came to.
-///
-/// The redirect that closes the sheet and Plaid's POST have no ordering
-/// between them, so the route waits.
-pub const LINK_ANSWER_GOOD_FOR_SECS: u64 = 10;
-
-/// How long an outcome nobody has asked about is kept. A phone that has not
-/// asked within ten minutes is not going to: the sheet is long closed.
-pub const OUTCOME_GOOD_FOR_SECS: u64 = 10 * 60;
-
-/// How long a session lasts. Long, because the alternative is asking somebody
-/// to check their email to look at their own balance.
-pub const SESSION_GOOD_FOR_SECS: u64 = 90 * 24 * 60 * 60;
-
-/// How often the expired sessions are swept out of the store. Nothing depends
-/// on it being prompt — an expired session signs nobody in either way — so
-/// this is only about the table not growing.
-pub const SWEEP_SESSIONS_EVERY_SECS: u64 = 60 * 60;
 
 /// How long a `kid` Plaid would not answer for is remembered as a miss.
 ///
@@ -177,24 +160,6 @@ struct Waiting {
     since: Timestamp,
 }
 
-/// What a Link session came to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LinkOutcome {
-    Linked,
-
-    /// The sheet was closed, or the exchange failed. The common ending.
-    Nothing,
-}
-
-impl LinkOutcome {
-    fn answer(self) -> ActionRouter {
-        match self {
-            LinkOutcome::Linked => ActionRouter::Linked { count: 1 },
-            LinkOutcome::Nothing => ActionRouter::LinkAbandoned,
-        }
-    }
-}
-
 /// What a request is owed, once everything it started has landed.
 ///
 /// Two shapes, because a snapshot is not decided until it is read: the read
@@ -261,24 +226,6 @@ impl Authenticated {
     }
 }
 
-/// An outcome nobody has asked about yet.
-#[derive(Debug)]
-struct Settled {
-    outcome: LinkOutcome,
-
-    /// When it was recorded, so one nobody collects does not sit here.
-    at: Timestamp,
-}
-
-/// A route parked on a session Plaid has not reported on yet.
-#[derive(Debug)]
-struct Watching {
-    request_id: RequestId,
-
-    /// When it parked, so it can be let go rather than held.
-    since: Timestamp,
-}
-
 /// Which authenticated route this event is, for the machine to come back to
 /// once the session has resolved.
 fn authenticated(event: &EventRouter) -> Option<Authenticated> {
@@ -319,13 +266,11 @@ enum State {
 pub struct StateServer {
     state: State,
 
-    /// Where sign-in codes and session tokens come from, seeded by
-    /// [`EventProcess::Seeded`](crate::EventProcess). `Some` whenever the
-    /// machine is [`State::Started`].
-    ///
-    /// ChaCha20 rather than a fast PRNG: a generator whose state can be
-    /// recovered from its outputs hands an attacker every code after them.
-    rng: Option<ChaCha20Rng>,
+    /// Signing somebody in: the generator, and the session sweep.
+    signin: StateSignIn,
+
+    /// The Link sessions in flight, and who is waiting on each.
+    link: StateLink,
 
     /// What Plaid will let us send. A fact about this process's last minute,
     /// which is why it cannot be read back from the store.
@@ -362,30 +307,12 @@ pub struct StateServer {
     /// [`WATCHERS_AT_MOST`].
     watchers: HashMap<ConnId, Uuid>,
 
-    /// What each Link session came to, for a route that has not asked yet,
-    /// keyed by the `link_token` that `SESSION_FINISHED` carries. Always empty
-    /// under `PLAID_COLLECT=poll`, where the close causes the collection.
-    outcomes: HashMap<String, Settled>,
-
-    /// The other order: a route that asked before Plaid said anything.
-    /// [`outcomes`](Self::outcomes) is the half that arrived first.
-    watching: HashMap<String, Watching>,
-
-    /// Which channel collects the result of a Link session, read out of the
-    /// environment on [`EventProcess::Started`]. `None` is a machine that has
-    /// not been told the process is up.
-    collect: Option<PlaidCollect>,
-
     /// When the current batch is being handled.
     now: Timestamp,
 
     /// What is known about each webhook signing key, by the `kid` a token
     /// named. Swept on the tick: these names come from strangers.
     keys: HashMap<String, CachedKey>,
-
-    /// When the store's expired sessions were last swept. The first tick
-    /// starts the clock rather than sweeping, so a restart brings none on.
-    swept: Option<Timestamp>,
 }
 
 impl StateServer {
@@ -487,29 +414,23 @@ impl StateServer {
             }
 
             EventRouter::CodeRequested { email } => {
-                // Answered as though it had been taken: the route says the
-                // same thing whether or not an address has an account, and
-                // the shape of the string must not say otherwise.
-                if !email_address::plausible(email) {
-                    tracing::warn!("a sign-in was asked for with something that is not an address",);
+                let minted = match self.signin.ask(email, self.now) {
+                    Asked::Minted(minted) => minted,
 
-                    self.answer(request_id, ActionRouter::Accepted, actions);
+                    // Nothing was drawn, and the route says what it says to an
+                    // address that has no account: that it has been taken.
+                    Asked::Implausible => {
+                        self.answer(request_id, ActionRouter::Accepted, actions);
 
-                    return;
-                }
+                        return;
+                    }
 
-                let Some(rng) = self.minting() else {
-                    tracing::error!("asked for a sign-in code by a machine that mints none");
+                    Asked::Unavailable => {
+                        self.answer(request_id, ActionRouter::Unavailable, actions);
 
-                    self.answer(request_id, ActionRouter::Unavailable, actions);
-
-                    return;
+                        return;
+                    }
                 };
-
-                let code = login_code::generate(rng);
-
-                let expires_at =
-                    Timestamp::from_secs(self.now.as_secs() + login_code::GOOD_FOR.as_secs());
 
                 // Two actions because they go to different places, and only
                 // one of them may ever hold the plaintext.
@@ -517,15 +438,15 @@ impl StateServer {
                     action: ActionStore::SaveCode {
                         call_id: self.calling(request_id),
                         email: email.clone(),
-                        code_sha256: login_code::hash(&code),
-                        expires_at,
+                        code_sha256: login_code::hash(&minted.code),
+                        expires_at: minted.expires_at,
                     },
                 });
 
                 actions.push(Action::ToEmail {
                     action: ActionEmail::SendCode {
                         email: email.clone(),
-                        code,
+                        code: minted.code,
                     },
                 });
 
@@ -762,7 +683,7 @@ impl StateServer {
     ) {
         // Collection already happens unprompted, so this route asks rather
         // than triggers: Plaid would charge a call for a token already gone.
-        if self.collects_by_webhook() {
+        if self.link.collects_by_webhook() {
             self.handle_link_closed_by_webhook(request_id, link_tokens, actions);
 
             return;
@@ -783,9 +704,8 @@ impl StateServer {
         });
     }
 
-    /// Check a code against what the store held, and sign somebody in or not.
-    /// A turn later than the submission, which is why the machine kept what
-    /// they typed.
+    /// Sign somebody in, or not, now that the store has said what it held
+    /// against their address.
     fn verify_code(
         &mut self,
         request_id: RequestId,
@@ -794,61 +714,43 @@ impl StateServer {
         stored: Option<&StoredCode>,
         actions: &mut Vec<Action>,
     ) {
-        // No code standing against this address, and a rejection like any
-        // other: telling them apart says which addresses have one in flight.
-        let Some(stored) = stored else {
-            self.answer(request_id, ActionRouter::Rejected, actions);
+        match self.signin.check(email, code, stored, self.now) {
+            Checked::Ignored => self.answer(request_id, ActionRouter::Rejected, actions),
 
-            return;
-        };
+            Checked::Refused => {
+                // Counted whatever the reason, expiry included: resetting the
+                // cap by waiting would give unlimited guesses at the next code.
+                actions.push(Action::ToStore {
+                    action: ActionStore::RecordAttempt {
+                        call_id: self.calling(request_id),
+                        email: email.to_string(),
+                    },
+                });
 
-        let verdict = login_code::verify(stored, code, self.now);
+                self.answer(request_id, ActionRouter::Rejected, actions);
+            }
 
-        if verdict != login_code::Verdict::Accepted {
-            // Counted whatever the reason, expiry included: resetting the cap
-            // by waiting would give unlimited guesses at the next code.
-            actions.push(Action::ToStore {
-                action: ActionStore::RecordAttempt {
-                    call_id: self.calling(request_id),
-                    email: email.to_string(),
-                },
-            });
+            Checked::In { token, expires_at } => {
+                actions.push(Action::ToStore {
+                    action: ActionStore::CreateSession {
+                        call_id: self.calling(request_id),
+                        email: email.to_string(),
+                        token_sha256: session_token::hash(&token),
+                        expires_at,
+                    },
+                });
 
-            tracing::warn!(email, ?verdict, "a sign-in code was rejected");
+                // Single use, and spent only once it has bought something.
+                actions.push(Action::ToStore {
+                    action: ActionStore::DeleteCode {
+                        call_id: self.calling(request_id),
+                        email: email.to_string(),
+                    },
+                });
 
-            self.answer(request_id, ActionRouter::Rejected, actions);
-
-            return;
+                self.answer(request_id, ActionRouter::SignedIn { token }, actions);
+            }
         }
-
-        let Some(rng) = self.minting() else {
-            tracing::error!("a code was accepted by a machine that mints none");
-
-            self.answer(request_id, ActionRouter::Rejected, actions);
-
-            return;
-        };
-
-        let token = login_code::generate_token(rng);
-
-        actions.push(Action::ToStore {
-            action: ActionStore::CreateSession {
-                call_id: self.calling(request_id),
-                email: email.to_string(),
-                token_sha256: session_token::hash(&token),
-                expires_at: Timestamp::from_secs(self.now.as_secs() + SESSION_GOOD_FOR_SECS),
-            },
-        });
-
-        // Single use, and spent only once it has bought something.
-        actions.push(Action::ToStore {
-            action: ActionStore::DeleteCode {
-                call_id: self.calling(request_id),
-                email: email.to_string(),
-            },
-        });
-
-        self.answer(request_id, ActionRouter::SignedIn { token }, actions);
     }
 
     /// A sheet closed, on a server Plaid calls.
@@ -862,55 +764,20 @@ impl StateServer {
         pending: &[String],
         actions: &mut Vec<Action>,
     ) {
-        // Looked for before anybody is parked, because the POST usually wins
-        // the race and waiting first would make it sit until it timed out.
-        if let Some((link_token, outcome)) = self.collected(pending) {
-            self.report(request_id, &link_token, outcome, actions);
+        match self.link.closed(request_id, pending, self.now) {
+            Closed::Came {
+                link_token,
+                outcome,
+            } => self.report(request_id, &link_token, outcome, actions),
 
-            return;
-        }
+            Closed::Nothing => self.answer(request_id, ActionRouter::LinkAbandoned, actions),
 
-        // Nothing open and nothing recorded: `Pending` would promise nothing.
-        if pending.is_empty() {
-            self.answer(request_id, ActionRouter::LinkAbandoned, actions);
-
-            return;
-        }
-
-        // Parked on every session the caller has open. The first to report
-        // answers, and `handle_timeouts` is what stops this being forever.
-        for link_token in pending {
-            let displaced = self.watching.insert(
-                link_token.clone(),
-                Watching {
-                    request_id,
-                    since: self.now,
-                },
-            );
-
-            // Two calls about the same session: the older is let go rather
-            // than parked on a key it does not own, which nothing answers.
-            if let Some(displaced) = displaced
-                && displaced.request_id != request_id
-            {
-                self.answer(displaced.request_id, ActionRouter::LinkPending, actions);
+            Closed::Parked { displaced } => {
+                for request_id in displaced {
+                    self.answer(request_id, ActionRouter::LinkPending, actions);
+                }
             }
         }
-    }
-
-    /// The recorded outcome for one of these sessions, taken as it is read. A
-    /// bank attached wins over one that was not: somebody who backed out of
-    /// their first bank and connected a second has two sessions.
-    fn collected(&mut self, pending: &[String]) -> Option<(String, LinkOutcome)> {
-        let found = pending
-            .iter()
-            .filter_map(|link_token| Some((link_token, self.outcomes.get(link_token)?.outcome)))
-            .max_by_key(|(_, outcome)| *outcome == LinkOutcome::Linked)
-            .map(|(link_token, outcome)| (link_token.clone(), outcome))?;
-
-        self.outcomes.remove(&found.0);
-
-        Some(found)
     }
 
     /// Tell one route what a session came to, and close the session.
@@ -924,9 +791,7 @@ impl StateServer {
         outcome: LinkOutcome,
         actions: &mut Vec<Action>,
     ) {
-        // An entry left behind sends the next settlement to a dead request.
-        self.watching
-            .retain(|_, watching| watching.request_id != request_id);
+        self.link.reported(request_id);
 
         actions.push(Action::ToStore {
             action: ActionStore::CollectLink {
@@ -942,29 +807,11 @@ impl StateServer {
     /// Either a route is parked on it or one will ask, and this is the one
     /// place that does not care which.
     fn settled(&mut self, link_token: &str, outcome: LinkOutcome, actions: &mut Vec<Action>) {
-        // No token means `/link/start` failed before there was one.
-        if link_token.is_empty() {
-            return;
-        }
-
-        let Some(watching) = self.watching.remove(link_token) else {
-            self.outcomes.insert(
-                link_token.to_string(),
-                Settled {
-                    outcome,
-                    at: self.now,
-                },
-            );
-
+        let Some(request_id) = self.link.settled(link_token, outcome, self.now) else {
             return;
         };
 
-        self.report(watching.request_id, link_token, outcome, actions);
-    }
-
-    /// Whether Plaid calls us with the result of a Link session.
-    fn collects_by_webhook(&self) -> bool {
-        self.collect == Some(PlaidCollect::Webhook)
+        self.report(request_id, link_token, outcome, actions);
     }
 
     /// Whether this really is Plaid, and if so what it said.
@@ -1527,7 +1374,7 @@ impl StateServer {
 
                 // A webhook arrives unprompted, so the session has to stand
                 // until `/link/finish` reports it.
-                if !self.collects_by_webhook() {
+                if !self.link.collects_by_webhook() {
                     actions.push(Action::ToStore {
                         action: ActionStore::CollectLink {
                             call_id: self.calling(request_id),
@@ -1538,7 +1385,7 @@ impl StateServer {
 
                 // Plaid's POST caused this and is owed nothing beyond
                 // "taken": the outcome goes to `/link/finish`.
-                if self.collects_by_webhook() {
+                if self.link.collects_by_webhook() {
                     self.answer(request_id, ActionRouter::Accepted, actions);
 
                     self.settled(link_token, LinkOutcome::Linked, actions);
@@ -1559,7 +1406,7 @@ impl StateServer {
 
                 // An exchange that failed, on a session Plaid told us about:
                 // nothing came of it, and somebody is waiting to hear that.
-                if self.collects_by_webhook() && !link_token.is_empty() {
+                if self.link.collects_by_webhook() && !link_token.is_empty() {
                     self.answer(request_id, ActionRouter::Accepted, actions);
 
                     self.settled(link_token, LinkOutcome::Nothing, actions);
@@ -1627,7 +1474,7 @@ impl StateServer {
         match event {
             // Nothing is pulled into memory at boot: the store is read per
             // request, which is what makes a second server process possible.
-            EventProcess::Started { collect } => self.collect = Some(*collect),
+            EventProcess::Started { collect } => self.link.started(*collect),
 
             EventProcess::Seeded { seed } => {
                 // A seed on the way out is dropped: taking it would put a
@@ -1636,7 +1483,7 @@ impl StateServer {
                     return;
                 }
 
-                self.rng = Some(ChaCha20Rng::from_seed(*seed));
+                self.signin.seed(seed);
             }
 
             EventProcess::Tick { now } => {
@@ -1823,6 +1670,10 @@ impl StateServer {
                 tracing::info!("shutting down");
 
                 self.state = State::Stopping;
+
+                // Nothing more is minted from here: a sign-in code drawn by a
+                // process that is about to exit is one nobody can use.
+                self.signin.stopping();
 
                 actions.push(Action::ToProcess {
                     action: ActionProcess::Shutdown,
@@ -2057,18 +1908,9 @@ impl StateServer {
             return;
         }
 
-        // Nothing is owed a sweep at boot: expired rows are already inert.
-        let Some(swept) = self.swept else {
-            self.swept = Some(self.now);
-
-            return;
-        };
-
-        if self.now.since(swept).as_secs() < SWEEP_SESSIONS_EVERY_SECS {
+        if !self.signin.sweep_due(self.now) {
             return;
         }
-
-        self.swept = Some(self.now);
 
         actions.push(Action::ToStore {
             action: ActionStore::SweepSessions {
@@ -2135,26 +1977,7 @@ impl StateServer {
     /// yet: the screen that follows it polls `/sync/status`, so a bank landing
     /// a moment later still shows up.
     fn handle_link_timeouts(&mut self, actions: &mut Vec<Action>) {
-        let now = self.now;
-
-        self.outcomes
-            .retain(|_, settled| now.since(settled.at).as_secs() < OUTCOME_GOOD_FOR_SECS);
-
-        let mut waited_out: Vec<RequestId> = self
-            .watching
-            .values()
-            .filter(|watching| now.since(watching.since).as_secs() >= LINK_ANSWER_GOOD_FOR_SECS)
-            .map(|watching| watching.request_id)
-            .collect();
-
-        // One route parked on two sessions times out twice, owed one answer.
-        waited_out.sort_unstable();
-        waited_out.dedup();
-
-        for request_id in waited_out {
-            self.watching
-                .retain(|_, watching| watching.request_id != request_id);
-
+        for request_id in self.link.timed_out(self.now) {
             tracing::info!(
                 request_id,
                 "plaid has not said what a link session came to yet",
@@ -2207,20 +2030,6 @@ impl StateServer {
         })
     }
 
-    /// Whether the machine is on its way out, drained or not.
-    /// The generator, when the machine may draw a credential from it.
-    ///
-    /// Two conditions in one place: entropy has arrived, and we are not on the
-    /// way out. A predictable sign-in code is a way into somebody's bank, and
-    /// one minted by a process that is about to exit is a code nobody can use.
-    fn minting(&mut self) -> Option<&mut ChaCha20Rng> {
-        if self.shutting_down() {
-            return None;
-        }
-
-        self.rng.as_mut()
-    }
-
     /// How much the machine is holding. See [`CensusServer`].
     ///
     /// The one thing about this machine no action reports, and so the only way
@@ -2232,8 +2041,8 @@ impl StateServer {
             pending: self.pending.len(),
             syncing: self.syncing.len(),
             watchers: self.watchers.len(),
-            outcomes: self.outcomes.len(),
-            watching: self.watching.len(),
+            outcomes: self.link.outcomes(),
+            watching: self.link.watching(),
             keys: self.keys.len(),
             request_windows: self.requests.kept(),
             plaid_windows: self.limiter.kept(),
@@ -2260,7 +2069,7 @@ impl StateServer {
         let outstanding = !self.waiting.is_empty()
             || !self.pending.is_empty()
             || !self.held.is_empty()
-            || !self.watching.is_empty();
+            || self.link.parked();
 
         if outstanding {
             return;
