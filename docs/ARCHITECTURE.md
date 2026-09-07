@@ -134,11 +134,14 @@ program — follows all of them.
    is provably impossible, `Result` for anything depending on input or IO. See
    [STYLE.md](STYLE.md).
 
-6. **Split by ownership, not by screen.** A sub-machine (`StateLedger`) is
-   worth it when a screen owns state nothing else reads. Shared data stays on
-   the parent — two copies of the ledger are two copies that can disagree — and
-   sub-machines never handle events themselves; the parent routes to them, so
-   `handle_events` remains the only way anything changes.
+6. **Split a machine by process.** A sub-machine (`StateSignup`) owns a
+   process end to end: its state, its rules, and the events that drive it. The
+   parent's `handle_events` still routes — it is the only way anything changes
+   — but what a signup event means is decided in the signup machine, not in
+   the parent with the signup's fields spread across it.
+
+   Shared data stays on the parent: two copies of the ledger are two copies
+   that can disagree.
 
 7. **Anything that is a *rule* belongs in the machine, even if it looks like
    IO's business.** Rate limiting is the example, in both directions. "May I

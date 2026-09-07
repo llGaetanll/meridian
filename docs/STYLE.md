@@ -101,22 +101,25 @@ layout that goes with it.
 The prefix goes first in both the type and the file name so that a directory
 listing sorts by kind and says what it is at a glance.
 
-**One event or action per file.** A file per variant group scales; a single
-`events.rs` does not.
+**One type per file**, and one event or action per file with it. A machine's
+file holds the machine. Its supporting types — what it is waiting on, what a
+call came to, where it is in its own life — are each their own file, because a
+reader looking for the machine should find the machine. One that several crates
+need goes to `api-common` instead.
 
 **Fields are private.** State changes only through `handle_events`. A `pub`
 field is a way to mutate state without an event, which is the one thing the
 whole design is trying to prevent.
 
-**Split a machine when a screen owns state nothing else reads**, and not
-before. `StateLedger` exists because the filter belongs to the Ledger alone;
-the entries, connections, streams and mask stayed on `StateApp` because more
-than one screen reads each of them and Home reads all four. A sub-machine owns
-a screen's *choices*, never its data — two copies of the ledger are two copies
-that can disagree.
+**Split a machine by process.** `StateSignup` owns signing up: the code, the
+session, the bank sign-in, and the events that drive them. `StateLedger` owns
+the Ledger's filter. Both own the *handling* of what is theirs — the parent
+routes to them and `handle_events` is still the only way anything changes, but
+the deciding happens where the state is, not in a parent holding fields it
+never reads.
 
-Sub-machines do not handle events themselves. The app's `handle_events` routes
-the ones that are theirs, so there is still exactly one way anything changes.
+Shared data stays on the parent: two copies of the ledger are two copies that
+can disagree.
 
 **A comment on a type says what the type is, not what is done with it.** A
 field's doc is what the field holds; a variant's is what the variant means.
