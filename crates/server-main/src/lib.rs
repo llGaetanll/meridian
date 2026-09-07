@@ -34,6 +34,7 @@ mod item_facts;
 mod lifecycle;
 mod link_outcome;
 mod link_poll;
+mod link_session;
 mod login_code;
 mod oauth_redirect;
 mod owed;
@@ -49,13 +50,11 @@ mod runtime_plaid;
 mod runtime_router;
 mod runtime_server;
 mod session_token;
-mod settled;
 mod source_pool;
 mod state_server;
 mod state_signup;
 mod syncing;
 mod waiting;
-mod watching;
 mod web_origins;
 mod webhook_facts;
 
@@ -85,6 +84,7 @@ pub use item_facts::ItemFacts;
 pub use lifecycle::Lifecycle;
 pub use link_outcome::LinkOutcome;
 pub use link_poll::LinkPoll;
+pub use link_session::LinkSession;
 pub use login_code::StoredCode;
 pub use login_code::Verdict;
 /// Reachable so the machine's tests can build a stored code to submit against.
@@ -101,7 +101,6 @@ pub use runtime_server::RuntimeServer;
 pub use server_wire::WireSnapshot;
 /// Reachable so the machine's tests can build the token hash a request carries.
 pub use session_token::hash as hash_token;
-pub use settled::Settled;
 pub use state_server::FRESH_FOR_SECS;
 pub use state_server::StateServer;
 pub use state_server::WATCHERS_AT_MOST;
@@ -114,7 +113,6 @@ pub use state_signup::SWEEP_SESSIONS_EVERY_SECS;
 pub use state_signup::StateSignup;
 pub use syncing::Syncing;
 pub use waiting::Waiting;
-pub use watching::Watching;
 pub use web_origins::WebOrigins;
 pub use webhook_facts::WebhookFacts;
 

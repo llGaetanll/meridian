@@ -156,6 +156,25 @@ program — follows all of them.
    actions they do not produce, which is not a thing you can write about a
    limiter living in a middleware.
 
+8. **A process with more than one step is one entry in one table, and the
+   entry's variant is the step.** A route in flight is a `Pending`, keyed by
+   its request: parked on the session read, parked on a Link session, decided
+   and waiting for its writes to land. A Link session in its race is a
+   `LinkSession`, keyed by its token: reported and not yet asked about, or
+   asked about and not yet reported. The parent holds the table and the id;
+   which step an entry is at is the entry's own business.
+
+   What this buys is that the table *is* the list of what is in flight. An
+   entry that is still there after its answer went out is a leak by
+   definition, which is what `census()` counts and `state_leaks.rs` asserts.
+   Three tables keyed three ways — a call, a request, a token — were three
+   places one route could be forgotten in.
+
+   The one table keyed by something other than the process it describes is
+   `Waiting`, by call: an answer names the call it is for and not the route,
+   so that is the index from one to the other, and the list the tick gives up
+   on.
+
 ### Waiting without sleeping
 
 A machine often needs to wait: back off before retrying, give up on a call that

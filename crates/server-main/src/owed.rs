@@ -4,7 +4,8 @@ use uuid::Uuid;
 
 use crate::ActionRouter;
 
-/// An answer a route is owed, held until nothing it started is still out.
+/// An answer a route has decided on, held until nothing it started is still
+/// out.
 ///
 /// Two shapes, because a snapshot is not decided until it is read: the read
 /// for it must not go out until the writes it would race are done.

@@ -28,12 +28,12 @@ use server_main::*;
 /// webhook, the close that collects it, ten minutes of nothing, and a ledger
 /// served from a bank gone stale.
 ///
-/// Six of the machine's maps are filled and emptied along the way — the calls
-/// in flight, the answers held, the requests parked on a read, the outcome
-/// Plaid reported before anybody asked, the fetch that was running, the
-/// windows both callers were metered in — and the claim is that all of it is
-/// given back. The signing key is the one thing deliberately kept, and it is
-/// the one thing this assertion excuses.
+/// Five of the machine's tables are filled and emptied along the way — the
+/// calls in flight, the routes in flight at whatever step they reached, the
+/// outcome Plaid reported before anybody asked, the fetch that was running,
+/// the windows both callers were metered in — and the claim is that all of it
+/// is given back. The signing key is the one thing deliberately kept, and it
+/// is the one thing this assertion excuses.
 #[test]
 fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
     let mut state = state_collecting_by_webhook();
@@ -178,4 +178,36 @@ fn a_call_that_is_given_up_on_takes_what_it_was_doing_with_it() {
     );
 
     assert_eq!(state.census(), before, "the request left nothing behind");
+}
+
+/// A route parked on a Link session Plaid never reports on is let go of whole:
+/// the session it watched, and the step it was parked at.
+///
+/// The one step a route can be at with no call out, so the tick that gives up
+/// on calls never reaches it; the tick that gives up on sessions has to take
+/// both halves with it.
+#[test]
+fn a_route_parked_on_a_session_nobody_reports_on_is_let_go_of_whole() {
+    let mut state = state_collecting_by_webhook();
+
+    let before = state.census();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        // Nothing recorded, so this parks: no call is out, and no answer.
+        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
+
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS) } },
+        > @r#"ToRouter { request_id: 1, action: LinkPending }"#,
+
+        // And a minute in which the window it was metered in goes idle.
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS + 62) } },
+    );
+
+    assert_eq!(state.census(), before, "the route left nothing behind");
 }

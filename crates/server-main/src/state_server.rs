@@ -171,10 +171,8 @@ impl StateServer {
                 unreachable!("a variant carrying a token names what it is waiting for")
             };
 
-            let call_id = self.signup.calling(request_id, self.now);
-
             self.signup.waits_on(
-                call_id,
+                request_id,
                 Pending::Authenticating {
                     ip: client.ip.clone(),
                     event: authenticated,
@@ -183,7 +181,7 @@ impl StateServer {
 
             actions.push(Action::ToStore {
                 action: ActionStore::LoadSession {
-                    call_id,
+                    call_id: self.signup.calling(request_id, self.now),
                     token_sha256: token_sha256.to_vec(),
                     now: self.now,
                 },
@@ -300,10 +298,8 @@ impl StateServer {
             // The rows this route decides from, scoped to the caller: two
             // users share a process and share no cursors.
             Authenticated::SnapshotRequested => {
-                let call_id = self.signup.calling(request_id, self.now);
-
                 self.signup.waits_on(
-                    call_id,
+                    request_id,
                     Pending::Loading {
                         user_id,
                         event: *event,
@@ -311,7 +307,10 @@ impl StateServer {
                 );
 
                 actions.push(Action::ToStore {
-                    action: ActionStore::LoadItems { call_id, user_id },
+                    action: ActionStore::LoadItems {
+                        call_id: self.signup.calling(request_id, self.now),
+                        user_id,
+                    },
                 });
             }
         }
@@ -498,10 +497,8 @@ impl StateServer {
             return;
         }
 
-        let call_id = self.signup.calling(request_id, self.now);
-
         self.signup.waits_on(
-            call_id,
+            request_id,
             Pending::WebhookKey {
                 jwt: jwt.to_string(),
                 body: body.to_vec(),
@@ -510,7 +507,7 @@ impl StateServer {
 
         actions.push(Action::ToSource {
             action: ActionSource::FetchWebhookKey {
-                call_id,
+                call_id: self.signup.calling(request_id, self.now),
                 kid: kid.to_string(),
             },
         });
@@ -565,17 +562,18 @@ impl StateServer {
 
             // The one kind that needs a read: it names a bank, not a person.
             PlaidWebhookKind::SyncUpdatesAvailable { item_id } => {
-                let call_id = self.signup.calling(request_id, self.now);
-
                 self.signup.waits_on(
-                    call_id,
+                    request_id,
                     Pending::WebhookItem {
                         item_id: item_id.clone(),
                     },
                 );
 
                 actions.push(Action::ToStore {
-                    action: ActionStore::LoadItem { call_id, item_id },
+                    action: ActionStore::LoadItem {
+                        call_id: self.signup.calling(request_id, self.now),
+                        item_id,
+                    },
                 });
 
                 return;
@@ -725,13 +723,14 @@ impl StateServer {
                     },
                 );
 
-                let Some(Pending::WebhookKey { jwt, body }) = self.signup.resumed(*call_id) else {
-                    tracing::error!(call_id, "a key answered a webhook nobody is waiting on");
-
+                let Some(request_id) = self.signup.answered(*call_id) else {
                     return;
                 };
 
-                let Some(request_id) = self.signup.answered(*call_id) else {
+                let Some(Pending::WebhookKey { jwt, body }) = self.signup.resumed(request_id)
+                else {
+                    tracing::error!(call_id, "a key answered a webhook nobody is waiting on");
+
                     return;
                 };
 
@@ -904,6 +903,13 @@ impl StateServer {
                     return;
                 };
 
+                let step = self.signup.resumed(request_id);
+
+                debug_assert!(
+                    matches!(step, Some(Pending::Opening)),
+                    "the route asked for a session"
+                );
+
                 self.signup.link_opened(
                     request_id,
                     *user_id,
@@ -918,6 +924,13 @@ impl StateServer {
                 let Some(request_id) = self.signup.answered(*call_id) else {
                     return;
                 };
+
+                let step = self.signup.resumed(request_id);
+
+                debug_assert!(
+                    matches!(step, Some(Pending::Polling)),
+                    "the route asked for a poll"
+                );
 
                 self.signup
                     .links_polled(request_id, polls, self.now, actions);
@@ -1051,13 +1064,14 @@ impl StateServer {
     ) {
         match event {
             EventStore::CodeLoaded { stored } => {
-                let Some(Pending::Submitted { email, code }) = self.signup.resumed(call_id) else {
-                    tracing::error!(call_id, "the store answered a sign-in nobody submitted");
-
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
-                let Some(request_id) = self.signup.answered(call_id) else {
+                let Some(Pending::Submitted { email, code }) = self.signup.resumed(request_id)
+                else {
+                    tracing::error!(call_id, "the store answered a sign-in nobody submitted");
+
                     return;
                 };
 
@@ -1072,13 +1086,13 @@ impl StateServer {
             }
 
             EventStore::ItemLoaded { item } => {
-                let Some(Pending::WebhookItem { item_id }) = self.signup.resumed(call_id) else {
-                    tracing::error!(call_id, "the store answered a bank nobody asked about");
-
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
-                let Some(request_id) = self.signup.answered(call_id) else {
+                let Some(Pending::WebhookItem { item_id }) = self.signup.resumed(request_id) else {
+                    tracing::error!(call_id, "the store answered a bank nobody asked about");
+
                     return;
                 };
 
@@ -1108,13 +1122,14 @@ impl StateServer {
             }
 
             EventStore::ItemsLoaded { items } => {
-                let Some(Pending::Loading { user_id, event }) = self.signup.resumed(call_id) else {
-                    tracing::error!(call_id, "the store answered banks nobody asked about");
-
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
-                let Some(request_id) = self.signup.answered(call_id) else {
+                let Some(Pending::Loading { user_id, event }) = self.signup.resumed(request_id)
+                else {
+                    tracing::error!(call_id, "the store answered banks nobody asked about");
+
                     return;
                 };
 
@@ -1128,13 +1143,13 @@ impl StateServer {
             }
 
             EventStore::PendingLinksLoaded { link_tokens } => {
-                let Some(Pending::Loading { .. }) = self.signup.resumed(call_id) else {
-                    tracing::error!(call_id, "the store answered sessions nobody asked about");
-
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
-                let Some(request_id) = self.signup.answered(call_id) else {
+                let Some(Pending::Loading { .. }) = self.signup.resumed(request_id) else {
+                    tracing::error!(call_id, "the store answered sessions nobody asked about");
+
                     return;
                 };
 
@@ -1147,6 +1162,13 @@ impl StateServer {
                     return;
                 };
 
+                let step = self.signup.resumed(request_id);
+
+                debug_assert!(
+                    matches!(step, Some(Pending::Reading)),
+                    "the route asked for its ledger"
+                );
+
                 self.signup.answer(
                     request_id,
                     ActionRouter::Serve {
@@ -1158,14 +1180,14 @@ impl StateServer {
             }
 
             EventStore::SessionResolved { user_id } => {
-                let Some(Pending::Authenticating { ip, event }) = self.signup.resumed(call_id)
-                else {
-                    tracing::error!(call_id, "the store answered a session nobody asked about");
-
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
-                let Some(request_id) = self.signup.answered(call_id) else {
+                let Some(Pending::Authenticating { ip, event }) = self.signup.resumed(request_id)
+                else {
+                    tracing::error!(call_id, "the store answered a session nobody asked about");
+
                     return;
                 };
 
@@ -1177,11 +1199,13 @@ impl StateServer {
             EventStore::ReadError { message } => {
                 tracing::error!(message, "could not read the store");
 
-                self.signup.resumed(call_id);
-
                 let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
+
+                // Whatever the route was doing, it cannot do it without the
+                // read.
+                self.signup.resumed(request_id);
 
                 self.signup
                     .answer(request_id, ActionRouter::Unavailable, self.now, actions);
@@ -1340,12 +1364,10 @@ impl StateServer {
     pub fn census(&self) -> CensusServer {
         CensusServer {
             waiting: self.signup.waiting(),
-            held: self.signup.held(),
-            pending: self.signup.pending(),
+            requests: self.signup.requests(),
             syncing: self.syncing.len(),
             watchers: self.watchers.len(),
-            outcomes: self.signup.outcomes(),
-            watching: self.signup.watching(),
+            sessions: self.signup.sessions(),
             keys: self.keys.len(),
             request_windows: self.requests.kept(),
             plaid_windows: self.limiter.kept(),

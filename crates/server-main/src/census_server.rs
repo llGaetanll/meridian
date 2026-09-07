@@ -21,13 +21,9 @@ pub struct CensusServer {
     /// answers land, and by the tick that gives up on the ones that do not.
     pub waiting: usize,
 
-    /// Answers decided but not yet sent, because something the request
-    /// started is still out.
-    pub held: usize,
-
-    /// What each request was doing while a read it needs is out. Emptied by
-    /// the store's answer.
-    pub pending: usize,
+    /// Routes in flight, each at the step it has reached. Emptied by the
+    /// answer going out, whichever turn that is.
+    pub requests: usize,
 
     /// Banks with a fetch running, or with one whose result nothing has read
     /// yet.
@@ -38,13 +34,10 @@ pub struct CensusServer {
     /// [`WATCHERS_AT_MOST`](crate::WATCHERS_AT_MOST).
     pub watchers: usize,
 
-    /// Link sessions Plaid has reported on that nobody has come back for.
-    /// Swept once they are older than the sheet that opened them.
-    pub outcomes: usize,
-
-    /// Routes parked on a Link session Plaid has not reported on. Emptied by
-    /// the report, or by the tick that stops waiting for one.
-    pub watching: usize,
+    /// Link sessions with one half of the race in: reported and not asked
+    /// about, or asked about and not reported. Emptied by the other half, or
+    /// by the tick that stops waiting for it.
+    pub sessions: usize,
 
     /// Webhook signing keys remembered, misses included. A key is kept for
     /// the life of the process — Plaid gives a rotated one a new id — so this

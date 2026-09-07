@@ -11,12 +11,14 @@
 //! Plaid's POST saying what the session came to. Either can arrive first, so
 //! whichever it is waits for the other.
 //!
-//! The calls in flight live here too. Nearly all of them are this machine's —
-//! a code to save, a session to read, a token to exchange — and a handler that
-//! could not start a call or send an answer would have to hand both back to
-//! its parent to do. The few that are not signing up (a snapshot, a sync, a
-//! webhook) draw their ids from the same counter, so an event log still
-//! replays to the same numbers.
+//! The routes in flight live here too, one entry each at the step it has
+//! reached ([`Pending`]), and the calls they are waiting on, one entry each
+//! ([`Waiting`]). Nearly all of them are this machine's — a code to save, a
+//! session to read, a token to exchange — and a handler that could not start
+//! a call or send an answer would have to hand both back to its parent to do.
+//! The few that are not signing up (a snapshot, a sync, a webhook) draw their
+//! ids from the same counter, so an event log still replays to the same
+//! numbers.
 
 use std::collections::HashMap;
 
@@ -34,14 +36,13 @@ use crate::Authenticated;
 use crate::CallId;
 use crate::LinkOutcome;
 use crate::LinkPoll;
+use crate::LinkSession;
 use crate::Owed;
 use crate::Pending;
 use crate::PlaidCollect;
 use crate::RequestId;
-use crate::Settled;
 use crate::StoredCode;
 use crate::Waiting;
-use crate::Watching;
 use crate::email_address;
 use crate::login_code;
 use crate::session_token;
@@ -88,14 +89,11 @@ pub struct StateSignup {
     /// is a machine that has not been told the process is up.
     collect: Option<PlaidCollect>,
 
-    /// What each Link session came to, for a route that has not asked yet,
-    /// keyed by the `link_token` that `SESSION_FINISHED` carries. Always empty
-    /// under `PLAID_COLLECT=poll`, where the close causes the collection.
-    outcomes: HashMap<String, Settled>,
-
-    /// The other order: a route that asked before Plaid said anything.
-    /// [`outcomes`](Self::outcomes) is the half that arrived first.
-    watching: HashMap<String, Watching>,
+    /// Each Link session with one half of its race in, keyed by the
+    /// `link_token` that `SESSION_FINISHED` carries. Always empty under
+    /// `PLAID_COLLECT=poll`, where the close causes the collection and nothing
+    /// races.
+    sessions: HashMap<String, LinkSession>,
 
     /// The next [`CallId`] to hand out. A counter rather than anything drawn,
     /// so the same log replays to the same numbers.
@@ -105,14 +103,10 @@ pub struct StateSignup {
     /// An absent entry is a call nobody is waiting on — a sync on a timer.
     waiting: HashMap<CallId, Waiting>,
 
-    /// Answers that are decided but not yet owed. A route reads the store the
-    /// moment it is told to, so one released while a write is in flight serves
-    /// the rows that write was about to replace.
-    held: HashMap<RequestId, Owed>,
-
-    /// Requests waiting on a read, by the call that asked for it: what a
-    /// request was has to outlive the turn it arrived in.
-    pending: HashMap<CallId, Pending>,
+    /// Every route in flight, at the step it has reached. Entered on the turn
+    /// a request arrives and left on the turn it is answered, so what a
+    /// request was doing outlives the turn it arrived in.
+    requests: HashMap<RequestId, Pending>,
 }
 
 impl StateSignup {
@@ -195,10 +189,8 @@ impl StateSignup {
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) {
-        let call_id = self.calling(request_id, now);
-
-        self.pending.insert(
-            call_id,
+        self.waits_on(
+            request_id,
             Pending::Submitted {
                 email: email.to_string(),
                 code: code.to_string(),
@@ -207,7 +199,7 @@ impl StateSignup {
 
         actions.push(Action::ToStore {
             action: ActionStore::LoadCode {
-                call_id,
+                call_id: self.calling(request_id, now),
                 email: email.to_string(),
             },
         });
@@ -291,6 +283,8 @@ impl StateSignup {
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) {
+        self.waits_on(request_id, Pending::Opening);
+
         actions.push(Action::ToSource {
             action: ActionSource::OpenLink {
                 call_id: self.calling(request_id, now),
@@ -308,10 +302,8 @@ impl StateSignup {
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) {
-        let call_id = self.calling(request_id, now);
-
-        self.pending.insert(
-            call_id,
+        self.waits_on(
+            request_id,
             Pending::Loading {
                 user_id,
                 event: Authenticated::LinkClosed,
@@ -319,7 +311,10 @@ impl StateSignup {
         );
 
         actions.push(Action::ToStore {
-            action: ActionStore::LoadPendingLinks { call_id, user_id },
+            action: ActionStore::LoadPendingLinks {
+                call_id: self.calling(request_id, now),
+                user_id,
+            },
         });
     }
 
@@ -345,6 +340,8 @@ impl StateSignup {
 
             return;
         }
+
+        self.waits_on(request_id, Pending::Polling);
 
         actions.push(Action::ToSource {
             action: ActionSource::PollLinks {
@@ -384,9 +381,9 @@ impl StateSignup {
         // Parked on every session the caller has open. The first to report
         // answers, and the timeout is what stops this being forever.
         for link_token in pending {
-            let displaced = self.watching.insert(
+            let displaced = self.sessions.insert(
                 link_token.clone(),
-                Watching {
+                LinkSession::Watched {
                     request_id,
                     since: now,
                 },
@@ -394,17 +391,17 @@ impl StateSignup {
 
             // Two calls about the same session: the older is let go rather
             // than parked on a key it does not own, which nothing answers.
-            if let Some(displaced) = displaced
-                && displaced.request_id != request_id
+            if let Some(LinkSession::Watched {
+                request_id: displaced,
+                ..
+            }) = displaced
+                && displaced != request_id
             {
-                self.answer(
-                    displaced.request_id,
-                    ActionRouter::LinkPending,
-                    now,
-                    actions,
-                );
+                self.answer(displaced, ActionRouter::LinkPending, now, actions);
             }
         }
+
+        self.waits_on(request_id, Pending::Watching);
     }
 
     /// The recorded outcome for one of these sessions, taken as it is read. A
@@ -413,11 +410,14 @@ impl StateSignup {
     fn collected(&mut self, pending: &[String]) -> Option<(String, LinkOutcome)> {
         let found = pending
             .iter()
-            .filter_map(|link_token| Some((link_token, self.outcomes.get(link_token)?.outcome)))
+            .filter_map(|link_token| match self.sessions.get(link_token) {
+                Some(LinkSession::Settled { outcome, .. }) => Some((link_token, *outcome)),
+                _ => None,
+            })
             .max_by_key(|(_, outcome)| *outcome == LinkOutcome::Linked)
             .map(|(link_token, outcome)| (link_token.clone(), outcome))?;
 
-        self.outcomes.remove(&found.0);
+        self.sessions.remove(&found.0);
 
         Some(found)
     }
@@ -435,8 +435,7 @@ impl StateSignup {
         actions: &mut Vec<Action>,
     ) {
         // An entry left behind sends the next settlement to a dead request.
-        self.watching
-            .retain(|_, watching| watching.request_id != request_id);
+        self.unwatch(request_id);
 
         actions.push(Action::ToStore {
             action: ActionStore::CollectLink {
@@ -463,14 +462,16 @@ impl StateSignup {
             return;
         }
 
-        let Some(watching) = self.watching.remove(link_token) else {
-            self.outcomes
-                .insert(link_token.to_string(), Settled { outcome, at: now });
+        let Some(LinkSession::Watched { request_id, .. }) = self.sessions.remove(link_token) else {
+            self.sessions.insert(
+                link_token.to_string(),
+                LinkSession::Settled { outcome, at: now },
+            );
 
             return;
         };
 
-        self.report(watching.request_id, link_token, outcome, now, actions);
+        self.report(request_id, link_token, outcome, now, actions);
     }
 
     /// Whether Plaid calls us with the result of a Link session.
@@ -525,6 +526,8 @@ impl StateSignup {
             .find_map(|poll| Some((poll.link_token.clone(), poll.public_tokens.first()?.clone())));
 
         if let Some((link_token, public_token)) = exchangeable {
+            self.waits_on(request_id, Pending::Exchanging);
+
             actions.push(Action::ToSource {
                 action: ActionSource::ExchangePublicToken {
                     call_id: self.calling(request_id, now),
@@ -667,8 +670,8 @@ impl StateSignup {
     /// because one `/link/finish` can attach two banks, turns apart; the count
     /// rides on the held answer rather than a tally that outlives it.
     fn linked_one(&mut self, request_id: RequestId, now: Timestamp, actions: &mut Vec<Action>) {
-        let count = match self.held.get(&request_id) {
-            Some(Owed::Answer(ActionRouter::Linked { count })) => *count,
+        let count = match self.requests.get(&request_id) {
+            Some(Pending::Owed(Owed::Answer(ActionRouter::Linked { count }))) => *count,
             _ => 0,
         };
 
@@ -687,14 +690,22 @@ impl StateSignup {
     /// yet: the screen that follows it polls `/sync/status`, so a bank landing
     /// a moment later still shows up.
     pub fn link_timed_out(&mut self, now: Timestamp, actions: &mut Vec<Action>) {
-        self.outcomes
-            .retain(|_, settled| now.since(settled.at).as_secs() < OUTCOME_GOOD_FOR_SECS);
+        self.sessions.retain(|_, session| match session {
+            LinkSession::Settled { at, .. } => now.since(*at).as_secs() < OUTCOME_GOOD_FOR_SECS,
+            LinkSession::Watched { .. } => true,
+        });
 
         let mut waited_out: Vec<RequestId> = self
-            .watching
+            .sessions
             .values()
-            .filter(|watching| now.since(watching.since).as_secs() >= LINK_ANSWER_GOOD_FOR_SECS)
-            .map(|watching| watching.request_id)
+            .filter_map(|session| match session {
+                LinkSession::Watched { request_id, since }
+                    if now.since(*since).as_secs() >= LINK_ANSWER_GOOD_FOR_SECS =>
+                {
+                    Some(*request_id)
+                }
+                _ => None,
+            })
             .collect();
 
         // One route parked on two sessions times out twice, owed one answer.
@@ -702,8 +713,7 @@ impl StateSignup {
         waited_out.dedup();
 
         for request_id in waited_out {
-            self.watching
-                .retain(|_, watching| watching.request_id != request_id);
+            self.unwatch(request_id);
 
             tracing::info!(
                 request_id,
@@ -797,15 +807,22 @@ impl StateSignup {
         Some(request_id)
     }
 
-    /// Note what a request will do with the answer to the read it just asked
-    /// for.
-    pub fn waits_on(&mut self, call_id: CallId, pending: Pending) {
-        self.pending.insert(call_id, pending);
+    /// Let a route go from every session it is parked on.
+    fn unwatch(&mut self, request_id: RequestId) {
+        self.sessions.retain(|_, session| {
+            !matches!(session, LinkSession::Watched { request_id: parked, .. } if *parked == request_id)
+        });
     }
 
-    /// What the request waiting on this read was doing.
-    pub fn resumed(&mut self, call_id: CallId) -> Option<Pending> {
-        self.pending.remove(&call_id)
+    /// Note the step a request has reached, replacing the one it was at.
+    pub fn waits_on(&mut self, request_id: RequestId, step: Pending) {
+        self.requests.insert(request_id, step);
+    }
+
+    /// The step a request was at, now that what it was waiting for has
+    /// arrived. Absent is a route that was already answered and let go of.
+    pub fn resumed(&mut self, request_id: RequestId) -> Option<Pending> {
+        self.requests.remove(&request_id)
     }
 
     /// What a route is owed, sent the moment nothing it started is still out.
@@ -821,6 +838,8 @@ impl StateSignup {
     }
 
     /// Hold what a request is owed until everything it started has landed.
+    ///
+    /// Whatever step the route was at is over: deciding is the last one.
     pub fn owe(
         &mut self,
         request_id: RequestId,
@@ -829,10 +848,12 @@ impl StateSignup {
         actions: &mut Vec<Action>,
     ) {
         if self.outstanding(request_id) {
-            self.held.insert(request_id, owed);
+            self.requests.insert(request_id, Pending::Owed(owed));
 
             return;
         }
+
+        self.requests.remove(&request_id);
 
         self.release(request_id, owed, now, actions);
     }
@@ -851,10 +872,13 @@ impl StateSignup {
             Owed::Answer(action) => actions.push(Action::ToRouter { request_id, action }),
 
             Owed::Snapshot { user_id } => {
-                let call_id = self.calling(request_id, now);
+                self.waits_on(request_id, Pending::Reading);
 
                 actions.push(Action::ToStore {
-                    action: ActionStore::LoadSnapshot { call_id, user_id },
+                    action: ActionStore::LoadSnapshot {
+                        call_id: self.calling(request_id, now),
+                        user_id,
+                    },
                 });
             }
         }
@@ -873,11 +897,24 @@ impl StateSignup {
             return;
         }
 
-        let Some(owed) = self.held.remove(&request_id) else {
+        let Some(owed) = self.decided(request_id) else {
             return;
         };
 
         self.release(request_id, owed, now, actions);
+    }
+
+    /// Take what a request decided, if it has. A request at any other step is
+    /// left there: what it is waiting for is not a call landing.
+    fn decided(&mut self, request_id: RequestId) -> Option<Owed> {
+        if !matches!(self.requests.get(&request_id), Some(Pending::Owed(_))) {
+            return None;
+        }
+
+        match self.requests.remove(&request_id) {
+            Some(Pending::Owed(owed)) => Some(owed),
+            _ => unreachable!("looked at on the line above"),
+        }
     }
 
     /// Whether this route started anything that has not come back.
@@ -912,34 +949,28 @@ impl StateSignup {
                 "a call took too long and was given up on"
             );
 
-            // What the request was doing goes with the call it was waiting on.
-            // Nothing else ever removes this: an answer is what does, and
-            // giving up is deciding there will not be one.
-            self.pending.remove(&call_id);
-
             // Another of this route's calls may still answer and release it.
             if self.outstanding(request_id) {
                 continue;
             }
 
-            // A snapshot still reads and still serves: a call that never
+            // Whatever step the route was at goes with the call it was
+            // waiting on: giving up is deciding there will not be an answer.
+            // A snapshot still reads and still serves — a call that never
             // answered costs the fresher rows, not the ledger already there.
-            let owed = self
-                .held
-                .remove(&request_id)
-                .unwrap_or(Owed::Answer(ActionRouter::Unavailable));
+            let owed = match self.requests.remove(&request_id) {
+                Some(Pending::Owed(owed)) => owed,
+                _ => Owed::Answer(ActionRouter::Unavailable),
+            };
 
             self.release(request_id, owed, now, actions);
         }
     }
 
-    /// Whether nothing is out, held, parked on a read or parked on a session.
-    /// The machine cannot come to a stop before this is true.
+    /// Whether nothing is out and no route is in flight. The machine cannot
+    /// come to a stop before this is true.
     pub fn quiet(&self) -> bool {
-        self.waiting.is_empty()
-            && self.held.is_empty()
-            && self.pending.is_empty()
-            && self.watching.is_empty()
+        self.waiting.is_empty() && self.requests.is_empty()
     }
 
     /// How many calls are out. See [`CensusServer`](crate::CensusServer).
@@ -947,23 +978,13 @@ impl StateSignup {
         self.waiting.len()
     }
 
-    /// How many answers are being held.
-    pub fn held(&self) -> usize {
-        self.held.len()
+    /// How many routes are in flight.
+    pub fn requests(&self) -> usize {
+        self.requests.len()
     }
 
-    /// How many requests are parked on a read.
-    pub fn pending(&self) -> usize {
-        self.pending.len()
-    }
-
-    /// How many outcomes are being kept for a route that has not asked.
-    pub fn outcomes(&self) -> usize {
-        self.outcomes.len()
-    }
-
-    /// How many routes are parked on a session.
-    pub fn watching(&self) -> usize {
-        self.watching.len()
+    /// How many Link sessions have one half of their race in.
+    pub fn sessions(&self) -> usize {
+        self.sessions.len()
     }
 }
