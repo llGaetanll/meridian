@@ -952,29 +952,24 @@ impl StateServer {
                     .links_polled(request_id, polls, &mut self.limiter, self.now, actions);
             }
 
+            // Named by the call rather than by the route it was made for: an
+            // exchange outlives the request that asked for it, and what it
+            // says has to be acted on either way.
             EventSource::ItemLinked {
                 call_id,
                 link_token,
                 item_id,
             } => {
-                let Some(request_id) = self.signup.answered(*call_id) else {
-                    return;
-                };
-
                 self.signup
-                    .item_linked(request_id, link_token, item_id, self.now, actions);
+                    .item_linked(*call_id, link_token, item_id, self.now, actions);
             }
 
             EventSource::LinkAbandoned {
                 call_id,
                 link_token,
             } => {
-                let Some(request_id) = self.signup.answered(*call_id) else {
-                    return;
-                };
-
                 self.signup
-                    .link_abandoned(request_id, link_token, self.now, actions);
+                    .link_abandoned(*call_id, link_token, self.now, actions);
             }
 
             EventSource::PlaidFailed {
@@ -1407,6 +1402,7 @@ impl StateServer {
             syncing: self.syncing.len(),
             watchers: self.watchers.len(),
             sessions: self.signup.sessions(),
+            exchanging: self.signup.exchanging(),
             attaching: self.signup.attaching(),
             keys: self.keys.len(),
             request_windows: self.requests.kept(),

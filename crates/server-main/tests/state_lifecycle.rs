@@ -249,7 +249,6 @@ fn a_draining_machine_mints_nothing() {
 }
 
 #[test]
-#[ignore = "#78: the behaviour proposed"]
 fn a_drain_does_not_give_up_on_the_exchange() {
     let mut state = state();
 
@@ -280,12 +279,12 @@ fn a_drain_does_not_give_up_on_the_exchange() {
         // is done. `stopped()` is what ends the process, not this.
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
-        // Thirty seconds of silence from Plaid, which is somebody typing their
-        // password rather than a fault.
+        // Thirty seconds of silence from Plaid.
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
         // The route is let go of, because it cannot be held forever. The call
-        // is not: an exchange that has not answered may have created an Item,
-        // and that is the one call "assume it failed" cannot be said about.
+        // is not: a slow or lost response says nothing about whether Plaid
+        // made the Item, and its answer carries the only access token there
+        // will ever be.
         > @r#"ToRouter { request_id: 1, action: LinkPending }"#,
     );
 

@@ -15,7 +15,9 @@
 
 mod fixtures;
 
+use api_common::Timestamp;
 use api_eval::eval;
+use fixtures::T0;
 use fixtures::state;
 
 use server_main::*;
@@ -371,5 +373,45 @@ fn a_bank_the_store_would_not_write_is_answered_an_error() {
         // bank: this bank is live at Plaid and nothing here owns it. No
         // `FetchBalances` either, because there is no row to sync.
         > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
+    );
+}
+
+#[test]
+fn a_slow_exchange_still_attaches_its_bank() {
+    let mut state = state();
+
+    eval!(&mut state,
+        // The sheet closed.
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        // Who is asking.
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        // Them.
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        // What they have open.
+        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+
+        // One session.
+        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
+        // Ask Plaid what it came to.
+        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+
+        // A token to trade.
+        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
+        // The call that spends the slot.
+        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 4, .. } },
+
+        // Thirty seconds of silence from Plaid.
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
+        // The route is answered and let go of. Nobody is waiting on call 4
+        // now, and call 4 is still out.
+        > @r#"ToRouter { request_id: 1, action: LinkPending }"#,
+
+        // Late, with no route left to tell. It is still the bank somebody
+        // connected, and writing it down is the only thing that makes the
+        // spent slot worth anything.
+        < Event::FromSource { event: EventSource::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        > Action::ToStore { action: ActionStore::SaveItem { call_id: 5, .. } },
+        > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
     );
 }

@@ -86,6 +86,17 @@ pub const ATTACH_ATTEMPTS: u32 = 5;
 /// but the point past which a call has almost certainly gone quiet.
 pub const CALL_GOOD_FOR_SECS: u64 = 30;
 
+/// How long an exchange is kept out after the route that asked for it has been
+/// let go of.
+///
+/// Far longer than [`CALL_GOOD_FOR_SECS`], because giving up on this call is
+/// not giving up on a request. A slow or lost response says nothing about
+/// whether Plaid created the Item, and the answer carries the only copy of the
+/// access token there will ever be: forgetting it early is how a slot is spent
+/// on a bank nothing can reach. It has a ceiling at all so that a Plaid that
+/// never answers is not a process that never exits.
+pub const EXCHANGE_GOOD_FOR_SECS: u64 = 5 * 60;
+
 /// Signing up, from the first code to the first bank.
 #[derive(Debug, Default)]
 pub struct StateSignup {
@@ -123,6 +134,14 @@ pub struct StateSignup {
     /// a request arrives and left on the turn it is answered, so what a
     /// request was doing outlives the turn it arrived in.
     requests: HashMap<RequestId, Pending>,
+
+    /// The exchanges out, and when each went out.
+    ///
+    /// Kept apart from the wait because the two have different lifetimes: the
+    /// route asking can be let go of and this call cannot. Every entry is an
+    /// Item slot that may already be spent, and an access token nothing else
+    /// holds a copy of.
+    exchanging: HashMap<CallId, Timestamp>,
 
     /// Each bank whose write is in flight, keyed by the call it is out on.
     /// Its own table rather than a [`Pending`] step, because the route that
@@ -604,7 +623,7 @@ impl StateSignup {
 
             actions.push(Action::ToSource {
                 action: ActionSource::ExchangePublicToken {
-                    call_id: self.calling(request_id, now),
+                    call_id: self.exchanges(request_id, now),
                     link_token,
                     public_token,
                 },
@@ -643,16 +662,21 @@ impl StateSignup {
     /// reach.
     pub fn item_linked(
         &mut self,
-        request_id: RequestId,
+        call_id: CallId,
         link_token: &str,
         item_id: &str,
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) {
-        let call_id = self.calling(request_id, now);
+        self.exchanged(call_id);
+
+        // Named by the call and not by a route, because there may no longer be
+        // one: an exchange outlives the request that asked for it, and the
+        // bank it produced is written down either way.
+        let write = self.passing(call_id, now);
 
         self.attaches(
-            call_id,
+            write,
             Attaching {
                 item_id: item_id.to_string(),
                 link_token: link_token.to_string(),
@@ -666,7 +690,7 @@ impl StateSignup {
         if !self.collects_by_webhook() {
             actions.push(Action::ToStore {
                 action: ActionStore::CollectLink {
-                    call_id: self.calling(request_id, now),
+                    call_id: self.alongside(write, now),
                     link_token: link_token.to_string(),
                 },
             });
@@ -788,32 +812,43 @@ impl StateSignup {
         self.landed(call_id, now, actions);
     }
 
-    /// An exchange came to nothing.
+    /// An exchange came to nothing, which is also the one ending in which no
+    /// Item slot was spent: Plaid refused.
     pub fn link_abandoned(
         &mut self,
-        request_id: RequestId,
+        call_id: CallId,
         link_token: &str,
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) {
+        self.exchanged(call_id);
+
         // An exchange that failed, on a session Plaid told us about: nothing
         // came of it, and somebody is waiting to hear that.
         if self.collects_by_webhook() && !link_token.is_empty() {
-            self.answer(request_id, ActionRouter::Accepted, now, actions);
+            if let Some(request_id) = self.waiter(call_id) {
+                self.answer(request_id, ActionRouter::Accepted, now, actions);
+            }
+
+            self.landed(call_id, now, actions);
 
             self.settled(link_token, LinkOutcome::Nothing, now, actions);
 
             return;
         }
 
+        let collect = self.passing(call_id, now);
+
         actions.push(Action::ToStore {
             action: ActionStore::CollectLink {
-                call_id: self.calling(request_id, now),
+                call_id: collect,
                 link_token: link_token.to_string(),
             },
         });
 
-        self.answer(request_id, ActionRouter::LinkAbandoned, now, actions);
+        if let Some(request_id) = self.waiter(collect) {
+            self.answer(request_id, ActionRouter::LinkAbandoned, now, actions);
+        }
     }
 
     /// Plaid says a Link session is over, and hands us what it produced.
@@ -850,7 +885,7 @@ impl StateSignup {
 
             actions.push(Action::ToSource {
                 action: ActionSource::ExchangePublicToken {
-                    call_id: self.calling(request_id, now),
+                    call_id: self.exchanges(request_id, now),
                     link_token: link_token.to_string(),
                     public_token: public_token.clone(),
                 },
@@ -964,6 +999,22 @@ impl StateSignup {
         self.next_call += 1;
 
         self.next_call
+    }
+
+    /// A fresh [`CallId`] for the one call that cannot be taken back, noted
+    /// apart from the wait so that letting the route go does not lose it.
+    fn exchanges(&mut self, request_id: RequestId, now: Timestamp) -> CallId {
+        let call_id = self.calling(request_id, now);
+
+        self.exchanging.insert(call_id, now);
+
+        call_id
+    }
+
+    /// The exchange answered, whichever way. Silent on a call that was not
+    /// one: a link Plaid would not open reports the same event.
+    fn exchanged(&mut self, call_id: CallId) {
+        self.exchanging.remove(&call_id);
     }
 
     /// A fresh [`CallId`] owed to the same route as `call_id`, which keeps its
@@ -1145,6 +1196,36 @@ impl StateSignup {
                 unreachable!("the key came from the map")
             };
 
+            // Another of this route's calls may still answer and release it.
+            if self.outstanding(request_id) {
+                continue;
+            }
+
+            // The exchange is not given up on, only stopped being waited for.
+            // A response that is slow or lost says nothing about whether Plaid
+            // created the Item, and the answer carries the only access token
+            // there will ever be — so the route is let go of and the call
+            // stays out. `LinkPending` on both roads: the phone reads it as
+            // "not known yet", and Plaid reads it as a 503 and sends again.
+            if self.exchanging.contains_key(&call_id) {
+                tracing::warn!(
+                    call_id,
+                    request_id,
+                    "an exchange is taking a while; the route is let go of and the call is not",
+                );
+
+                self.requests.remove(&request_id);
+
+                self.release(
+                    request_id,
+                    Owed::Answer(ActionRouter::LinkPending),
+                    now,
+                    actions,
+                );
+
+                continue;
+            }
+
             tracing::warn!(
                 call_id,
                 request_id,
@@ -1160,11 +1241,6 @@ impl StateSignup {
                 );
             }
 
-            // Another of this route's calls may still answer and release it.
-            if self.outstanding(request_id) {
-                continue;
-            }
-
             // Whatever step the route was at goes with the call it was
             // waiting on: giving up is deciding there will not be an answer.
             // A snapshot still reads and still serves — a call that never
@@ -1176,12 +1252,43 @@ impl StateSignup {
 
             self.release(request_id, owed, now, actions);
         }
+
+        self.exchanges_given_up(now);
+    }
+
+    /// Stop holding the process open for an exchange that is never going to
+    /// answer. Nothing is recovered by this and nothing can be: the line is
+    /// the only record that a slot may have gone.
+    fn exchanges_given_up(&mut self, now: Timestamp) {
+        let quiet: Vec<CallId> = self
+            .exchanging
+            .iter()
+            .filter(|(_, since)| now.since(**since).as_secs() >= EXCHANGE_GOOD_FOR_SECS)
+            .map(|(call_id, _)| *call_id)
+            .collect();
+
+        for call_id in quiet {
+            self.exchanging.remove(&call_id);
+
+            tracing::error!(
+                call_id,
+                "an exchange never answered; if it made an Item, that slot is spent",
+            );
+        }
     }
 
     /// Whether nothing is out and no route is in flight. The machine cannot
     /// come to a stop before this is true.
+    ///
+    /// The two tables beyond the obvious ones are the halves of attaching a
+    /// bank, and each is a call the machine started that no route may still be
+    /// waiting on. Stopping with one of them full is stopping on a spent Item
+    /// slot.
     pub fn quiet(&self) -> bool {
-        self.waiting.is_empty() && self.requests.is_empty()
+        self.waiting.is_empty()
+            && self.requests.is_empty()
+            && self.exchanging.is_empty()
+            && self.attaching.is_empty()
     }
 
     /// How many calls are out. See [`CensusServer`](crate::CensusServer).
@@ -1197,6 +1304,11 @@ impl StateSignup {
     /// How many Link sessions have one half of their race in.
     pub fn sessions(&self) -> usize {
         self.sessions.len()
+    }
+
+    /// How many exchanges are out, each one an Item slot that may be spent.
+    pub fn exchanging(&self) -> usize {
+        self.exchanging.len()
     }
 
     /// How many banks are waiting on the write that attaches them.

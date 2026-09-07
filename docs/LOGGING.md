@@ -390,6 +390,14 @@ means adding, changing or removing its example here.
   — the route waiting on it is answered anyway and serves the rows we already
   had, because a request held for a write that failed is held forever. The
   cursor not having moved is what makes the next sync recover rather than skip.
+- `WARN server_main::state_signup an exchange is taking a while; the route is let go of and the call is not call_id=4 request_id=1`
+  — thirty seconds with no answer from Plaid. The caller hears "not known
+  yet", and the call stays out: a slow or lost response says nothing about
+  whether the Item was made, and its answer carries the only access token
+  there will ever be.
+- `ERROR server_main::state_signup an exchange never answered; if it made an Item, that slot is spent call_id=4`
+  — five minutes later. Nothing is recovered by this line and nothing can be;
+  it is here so the process can exit and so the loss is written down.
 - `WARN server_main::state_signup a linked bank was not written down; asking again item_id=8Pd5Zx… attempt=1`
   — the one write that is asked for again. The exchange in front of it spent
   an Item slot that cannot be spent twice, so a store that dropped a

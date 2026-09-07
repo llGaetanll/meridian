@@ -39,6 +39,11 @@ pub struct CensusServer {
     /// by the tick that stops waiting for it.
     pub sessions: usize,
 
+    /// Exchanges out, each one an Item slot that may already be spent.
+    /// Emptied by Plaid answering, and by the tick that stops holding the
+    /// process open for one that never does.
+    pub exchanging: usize,
+
     /// Banks waiting on the write that attaches them to somebody. Emptied by
     /// that write answering, however many attempts it takes, and by the tick
     /// that gives up on one that never does.

@@ -127,6 +127,7 @@ all.
 6. `phone` <- `server` - one of:
    a. `200 {"outcome":"linked","count":1}`: *A bank is attached and written down — said in the turn the row appears and in no other. The count, not a name: nothing knows what the bank is called yet.*
    b. `200 {"outcome":"abandoned"}`: *Nothing was collected. Today this is also what an unfinished session answers, so a bank Plaid has not stamped yet reads as one that was never connected.*
+   f. `200 {"outcome":"pending"}`: *The exchange has not come back. The route is let go of after thirty seconds and the call is not: a slow response says nothing about whether the Item was made, so the bank is still written down when the answer lands, on no request at all.*
    c. `401 Unauthorized`: *No bearer token, or one the server no longer honours.*
    d. `429 Too Many Requests`: *Too many closes from this caller, too many polls of `/link/token/get` for the account this minute, or a token that came back when the exchange budget was spent. The exchange has the narrowest budget of the three, because it is the request nothing can undo.*
    e. `500 Internal Server Error`: *This user's open sessions could not be read, the poll asking Plaid about them never came back, or the bank was exchanged and five writes of it were refused. Deliberately not "abandoned": that is a sentence about somebody's bank, and the last of those is a bank that is live at Plaid with nothing here owning it.*
