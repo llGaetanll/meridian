@@ -3,6 +3,8 @@
 //! Plain async functions over plain data, called by the runtime and by nothing
 //! that decides anything. Everything here needs the Plaid secret, which grants
 //! access to every Item on the account and so cannot ship inside an app.
+//!
+//! One call each, on the one [`client`] the process holds.
 
 use api_ledger::Connection;
 use api_ledger::Entry;
@@ -37,12 +39,10 @@ pub struct Page {
 /// The first place the institution's name exists: it is in neither the Link
 /// session nor the exchange.
 pub async fn fetch_balances(
-    credentials: &PlaidCredentials,
+    client: &PlaidClient,
     access_token: &str,
     now: api_common::Timestamp,
 ) -> Result<Connection, PlaidError> {
-    let client = client(credentials)?;
-
     let balances = src_plaid::fetch_balances(&client, access_token).await?;
 
     Ok(project::connection(&balances, now))
@@ -50,12 +50,10 @@ pub async fn fetch_balances(
 
 /// Everything that changed on one bank since `cursor`, one page of it.
 pub async fn sync_transactions(
-    credentials: &PlaidCredentials,
+    client: &PlaidClient,
     access_token: &str,
     cursor: Option<String>,
 ) -> Result<Page, PlaidError> {
-    let client = client(credentials)?;
-
     let sync = src_plaid::sync_transactions(&client, access_token, cursor).await?;
 
     Ok(Page {
@@ -76,11 +74,9 @@ pub async fn sync_transactions(
 /// Derived from transactions, so a freshly created Item has none until its
 /// history has landed.
 pub async fn fetch_recurring(
-    credentials: &PlaidCredentials,
+    client: &PlaidClient,
     access_token: &str,
 ) -> Result<Vec<Stream>, PlaidError> {
-    let client = client(credentials)?;
-
     let recurring = src_plaid::fetch_recurring(&client, access_token).await?;
 
     Ok(project::streams(&recurring))
@@ -94,12 +90,10 @@ pub async fn fetch_recurring(
 /// `webhook` is where Plaid should call when the session ends; `None` leaves
 /// polling to collect the result.
 pub async fn open_link(
-    credentials: &PlaidCredentials,
+    client: &PlaidClient,
     client_user_id: &str,
     webhook: Option<&str>,
 ) -> Result<(String, Option<String>), PlaidError> {
-    let client = client(credentials)?;
-
     // `is_mobile_app` is false because true needs a top-level `redirect_uri`
     // that is an https address registered in the dashboard. It costs nothing
     // in Sandbox, which has no OAuth banks, and has to be revisited before a
@@ -123,11 +117,9 @@ const COMPLETION_REDIRECT: &str = "meridian://linked";
 
 /// What became of a Link session: whether it has ended, and what it produced.
 pub async fn poll_link(
-    credentials: &PlaidCredentials,
+    client: &PlaidClient,
     link_token: &str,
 ) -> Result<(bool, Vec<String>), PlaidError> {
-    let client = client(credentials)?;
-
     let res = src_plaid::link_session(&client, link_token).await?;
 
     Ok((
@@ -142,31 +134,29 @@ pub async fn poll_link(
 /// that from becoming a way to make this server call Plaid at will is on the
 /// caller, which checks the algorithm first and caches the answer by `kid`.
 pub async fn webhook_key(
-    credentials: &PlaidCredentials,
+    client: &PlaidClient,
     key_id: &str,
 ) -> Result<src_plaid::PlaidJwk, PlaidError> {
-    let client = client(credentials)?;
-
     src_plaid::fetch_webhook_key(&client, key_id).await
 }
 
 /// Trade a `public_token` for the permanent one, and the Item it belongs to.
 pub async fn exchange(
-    credentials: &PlaidCredentials,
+    client: &PlaidClient,
     public_token: &str,
 ) -> Result<(String, String), PlaidError> {
-    let client = client(credentials)?;
-
     let res = src_plaid::exchange_public_token(&client, public_token).await?;
 
     Ok((res.item_id, res.access_token))
 }
 
-/// A client for these credentials, refusing anything but Sandbox.
+/// The one client every call in this module is made on.
 ///
-/// Every call to Plaid goes through here, so nothing can reach Production by
-/// accident.
-fn client(credentials: &PlaidCredentials) -> Result<PlaidClient, PlaidError> {
+/// Built once and shared, so a sync's calls reuse a connection rather than
+/// shaking hands three times, and the environment is decided in one place —
+/// nothing can reach Production by accident because there is nowhere else a
+/// client comes from.
+pub fn client(credentials: PlaidCredentials) -> Result<PlaidClient, PlaidError> {
     if credentials.env != PlaidEnv::Sandbox {
         tracing::error!(
             env = credentials.env.as_str(),
@@ -178,11 +168,7 @@ fn client(credentials: &PlaidCredentials) -> Result<PlaidClient, PlaidError> {
         ));
     }
 
-    PlaidClient::new(PlaidCredentials {
-        client_id: credentials.client_id.clone(),
-        secret: credentials.secret.clone(),
-        env: credentials.env,
-    })
+    PlaidClient::new(credentials)
 }
 
 /// A whole app's worth of data, as one value.
