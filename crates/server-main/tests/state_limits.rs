@@ -354,7 +354,7 @@ fn one_caller_over_its_budget_does_not_refuse_the_next() {
         // have to differ: the same inbox from a new address is the mailbomb
         // the test below is about. The `Accepted` that follows is held until
         // the write lands and belongs to `flow_a_signing_in.rs`.
-        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::CodeRequested { email: "sam@example.com".to_string() } },
+        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
         > Action::ToStore { action: ActionStore::SaveCode { .. } },
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
     );

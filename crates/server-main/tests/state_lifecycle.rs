@@ -142,7 +142,7 @@ fn a_signal_with_a_call_out_waits_for_it() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
         > Action::ToStore { action: ActionStore::SaveCode { call_id: 1, .. } },
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
 
@@ -175,7 +175,7 @@ fn a_shutdown_does_not_wait_forever_on_a_quiet_source() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
         > Action::ToStore { action: ActionStore::SaveCode { call_id: 1, .. } },
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
 
@@ -243,7 +243,7 @@ fn a_draining_machine_mints_nothing() {
         < Event::FromTerminal { event: EventTerminal::SigInt },
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "alex@example.com".to_string() } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
         > Action::ToRouter { action: ActionRouter::Unavailable, .. },
     );
 }

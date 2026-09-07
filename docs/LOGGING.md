@@ -354,6 +354,11 @@ means adding, changing or removing its example here.
   — nothing was stored and nothing was sent, and the route still answered 204.
   Saying otherwise would tell whoever asked which strings this server writes
   to, which is the leak the route's one answer exists to prevent.
+- `WARN server_main::state_server a sign-in was asked for by an address that may not sign up email=someone@example.com`
+  — the same 204 and the same nothing, for the address that is a real address
+  and is not the one allowed to have an account. One line per stranger who
+  found the server. It rations the ten Plaid Item slots rather than keeping
+  anybody out, and it goes when the plan stops rationing them — issue #76.
 - `INFO src_resend email sent id=… to=alex@example.com`
   — what a restart came back with, before anything is fetched. Zeroes are a
   first run, not a failure.

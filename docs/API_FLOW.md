@@ -66,7 +66,7 @@ server has stopped honouring the token it held.
 2. `server` -> `resend` - `POST /emails`: *Sends the code out, its SHA-256 and ten-minute expiry already written to Postgres.*
 3. `server` <- `resend` - `200 {"id"}`: *Accepted for delivery. The id is Resend's own id for that message, and the only thing tying a line in our log to a row in their dashboard.*
 4. `phone` <- `server` - one of:
-   a. `204 No Content`: *Taken, and deliberately the same answer whether or not that address has an account here.*
+   a. `204 No Content`: *Taken, and deliberately the same answer whether or not that address has an account here — and whether or not it is allowed one. One address may sign up while the Plaid plan rations Items to ten; every other address gets this answer and no mail. Issue #76.*
    b. `429 Too Many Requests`: *Too many asks from this caller, or too much mail already sent to that inbox.*
    c. `503 Service Unavailable`: *No entropy has reached the machine yet, and it will not mint a code it cannot make unpredictable.*
 5. `phone` -> `server` - `POST /auth/verify {"email","code"}`: *Trades the typed digits for a session.*
