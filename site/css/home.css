@@ -1,0 +1,204 @@
+/* The home page: the opening, the picture of the app under it, and the four
+   things the page has to say.
+
+   The picture is drawn with the app's own components rather than a screenshot.
+   A screenshot goes stale the week the app changes and cannot be read by
+   anything; these are the same rows, the same figures and the same greys, and
+   they stay right for as long as the design language does. */
+
+.hero { position: relative; padding: 74px 0 30px; }
+
+/* A wash of the accent behind the opening, wide and faint. The design language
+   keeps `--glow` for single controls; this is not that shadow at a larger size
+   but a different thing — light in the room rather than light under a button.
+   Anything strong enough to name would put a violet cast on the type. */
+/* Not clipped to the hero: the brightest part of a radial is its middle, and a
+   hero with `overflow: hidden` cuts that off in a straight line across the top
+   of the page. It reaches up behind the bar instead, which is translucent. */
+.hero-wash {
+  position: absolute; top: -180px; left: 0; right: 0; height: 720px;
+  pointer-events: none;
+  background: radial-gradient(
+    50% 50% at 50% 40%,
+    color-mix(in srgb, var(--violet-500) 17%, transparent),
+    transparent 72%
+  );
+}
+
+.hero .in { position: relative; }
+
+.hero h1 {
+  margin-top: 20px;
+  font-size: clamp(38px, 7vw, 62px);
+  font-weight: 700;
+  line-height: 1.04;
+  letter-spacing: -0.038em;
+  max-width: 22ch;
+}
+/* The third clause of the headline, one step back. The sentence has three
+   parallel parts and no punctuation strong enough to group them; the shade
+   does it instead. */
+.hero h1 .quiet { color: var(--text-muted); }
+
+.hero p {
+  margin-top: 22px;
+  max-width: 56ch;
+  font-size: 17px;
+  color: var(--text-muted);
+}
+.hero .cta { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 30px; }
+.hero .cta .note { font-size: 12.5px; color: var(--text-faint); }
+
+/* The panel.
+
+   The app's page inside a frame, floated a little off the ground. The corner is
+   `--r-lg`, which is the corner every card in the app has; nothing here invents
+   a bigger one because the thing is bigger. */
+.shot {
+  margin-top: 56px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  padding: 22px;
+  box-shadow: 0 30px 80px -50px #000;
+}
+.shot-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.shot-head .k {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+}
+/* Not the money face, though it is money: the app's own hero figure is set in
+   Inter at this size, and a site that draws it differently is drawing a
+   different app. */
+.shot-head .v {
+  margin-top: 6px;
+  font-size: clamp(30px, 5.5vw, 42px); font-weight: 700;
+  line-height: 1.05; letter-spacing: -0.035em;
+}
+/* In and out. The words stay grey and the figures carry the colour — the word
+   already says the direction, so colouring both says it twice. */
+.shot .diff { display: flex; gap: 18px; margin-top: 10px; font-size: 12.5px; color: var(--text-faint); }
+.shot .diff b { margin-right: 5px; font-weight: 600; }
+.shot .diff .in b { color: var(--up); }
+.shot .diff .out b { color: var(--down); }
+
+.shot-chart { display: block; width: 100%; height: 132px; margin: 22px 0 4px; }
+
+/* A ledger row at the site's width: a mark, a name that takes the slack, the
+   category, and the figure on the right edge. The app gives the account its
+   own column too; a page nobody is scanning down does not need it. */
+.shot-rows { margin-top: 8px; }
+.shot-row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 92px;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 0;
+}
+.shot-row + .shot-row { border-top: 1px solid var(--divider); }
+.shot-row .nm { display: block; min-width: 0; font-size: 14px; font-weight: 600; }
+.shot-row .ct { display: block; font-size: 12.5px; color: var(--text-faint); margin-top: 2px; }
+.shot-row .amt { text-align: right; font-size: 13.5px; }
+/* Which account it came out of. The app gives it a column of its own; here it
+   is the first thing a narrow screen gives up, because a row that has to choose
+   between the merchant and the account keeps the merchant. */
+.shot-row .acct { display: none; }
+
+@media (min-width: 780px) {
+  .hero { padding-top: 108px; }
+  .shot { padding: 30px 32px; }
+  .shot-row { grid-template-columns: 26px minmax(0, 1fr) 160px 100px; }
+  .shot-row .ct { margin-top: 2px; color: var(--text-muted); }
+  .shot-row .acct { display: block; margin-top: 0; color: var(--text-faint); }
+}
+
+/* What it does.
+
+   A hairline card each, never a filled tile: a grid of filled tiles reads as a
+   grid of buttons, which is the same reason the app's mark is an outline. */
+.cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 40px;
+}
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  padding: 24px;
+}
+.card > svg { width: 20px; height: 20px; color: var(--violet-300); stroke-width: 1.8; }
+.card h3 { margin-top: 16px; font-size: 16.5px; font-weight: 600; letter-spacing: -0.012em; }
+.card p { margin-top: 8px; font-size: 14px; color: var(--text-muted); }
+
+@media (min-width: 680px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1000px) { .cards { grid-template-columns: repeat(3, 1fr); } }
+
+/* One ledger.
+
+   Three things a bank would file in three places, set as the one event they
+   are. The figures are the money face, so the point is made by the column
+   lining up rather than by the sentence above it. */
+.trades { border-top: 1px solid var(--divider); }
+.split .trades { margin-top: 0; }
+.trades + .lede { margin-top: 26px; }
+.trade {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.trade .what { font-size: 14.5px; font-weight: 600; }
+.trade .sub { display: block; font-size: 12.5px; font-weight: 400; color: var(--text-faint); margin-top: 2px; }
+.trade .amt { font-size: 14px; white-space: nowrap; }
+
+/* A point with a rule over it: the design language's `.row`, minus the icon
+   slot, for a list that is read rather than aimed at. */
+.points { margin-top: 34px; display: grid; grid-template-columns: 1fr; gap: 0; }
+.points + .btn { margin-top: 28px; }
+.point { padding: 20px 0; border-top: 1px solid var(--divider); }
+.point h3 { font-size: 14.5px; font-weight: 600; }
+.point p { margin-top: 6px; font-size: 13.5px; color: var(--text-muted); max-width: 46ch; }
+
+@media (min-width: 780px) {
+  .points { grid-template-columns: repeat(2, 1fr); gap: 0 44px; }
+}
+
+/* The closing line, and the only place on the page the accent button appears
+   twice. It is the same action as the bar's, which is the point of it. */
+.close { padding: 96px 0 108px; text-align: center; }
+.close h2 {
+  font-size: clamp(28px, 4.6vw, 42px); font-weight: 700;
+  line-height: 1.08; letter-spacing: -0.033em;
+  max-width: 18ch; margin: 14px auto 0;
+}
+.close p { margin: 16px auto 0; max-width: 52ch; font-size: 16px; color: var(--text-muted); }
+.close .cta { display: flex; justify-content: center; flex-wrap: wrap; gap: 14px; margin-top: 30px; }
+
+/* The assistant, shown rather than described: the question in the app's own
+   field, and under it the shape of an answer — a sentence with the figure in
+   it, then the rows the figure is made of. The rows are the design language's
+   `.row.flat`, which is what the app uses for a name and a value read down a
+   column. */
+.ask {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  padding: 22px;
+}
+.ask .field { background: var(--bg); }
+.ask-a { margin-top: 20px; padding-top: 4px; }
+.ask-a p { font-size: 14.5px; color: var(--text-muted); }
+.ask-a p b { color: var(--text); font-weight: 600; }
+.ask-a .rows { margin-top: 14px; border-top: 1px solid var(--divider); }
+/* What the model was handed, said in the app's own words. Faint and last,
+   because it is a note about the answer rather than part of it. */
+.ask-note {
+  margin-top: 18px; padding-top: 14px;
+  border-top: 1px solid var(--divider);
+  font-size: 12.5px; color: var(--text-faint);
+}

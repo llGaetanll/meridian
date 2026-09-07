@@ -241,10 +241,11 @@ DATABASE_URL=postgres://meridian:<the same password>@db:5432/meridian
 # backup is scrap. docs/DATABASE.md has the reasoning.
 MERIDIAN_DB_KEY=…
 
-# Sandbox. Deliberately, and for as long as it takes — see docs/PLAID.md, and
-# note that the ten Production Item slots do not come back.
+# These two lines are the whole switch to real banks, and nothing in the server
+# second-guesses them any more — see docs/PLAID.md. The ten Production Item
+# slots do not come back, so `production` here is a decision, not a setting.
 PLAID_CLIENT_ID=…
-PLAID_SECRET=…            # the Sandbox one; the two environments differ
+PLAID_SECRET=…            # the one for this environment; the two differ
 PLAID_ENV=sandbox
 PLAID_COLLECT=poll        # `webhook` works now (#36); poll until it is chosen
 

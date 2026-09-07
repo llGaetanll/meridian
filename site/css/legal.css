@@ -1,0 +1,68 @@
+/* Terms and the privacy policy.
+
+   A legal page is the one page on a site somebody reads under pressure —
+   usually because something has gone wrong, or because they are deciding
+   whether to hand over their bank. So it is set at a reading measure, with
+   numbered sections that can be pointed at, and in the same greys as the rest
+   of the site rather than as black text on white in a box. */
+
+.legal { padding: 56px 0 96px; }
+
+.legal-head { padding-bottom: 34px; border-bottom: 1px solid var(--border-strong); }
+.legal-head h1 {
+  margin-top: 14px;
+  font-size: clamp(30px, 5vw, 42px); font-weight: 700;
+  line-height: 1.08; letter-spacing: -0.033em;
+}
+.legal-head .dates { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 12.5px; color: var(--text-faint); }
+.legal-head .summary {
+  margin-top: 24px;
+  padding-left: 14px;
+  border-left: 2px solid var(--border-strong);
+  font-size: 14.5px;
+  color: var(--text-muted);
+}
+
+/* The section number sits in the margin on a wide screen and inline on a
+   narrow one, so a reference like "section 7" is findable without the number
+   pushing the heading off the measure. */
+.legal section { padding-top: 44px; }
+.legal section h2 {
+  position: relative;
+  font-size: 19px; font-weight: 600; letter-spacing: -0.015em;
+}
+.legal section h2 .n {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 13px; font-weight: 600;
+  color: var(--text-faint);
+  margin-right: 10px;
+}
+
+.legal p { margin-top: 12px; color: var(--text-muted); }
+.legal ul { margin-top: 12px; padding-left: 0; list-style: none; }
+.legal li { position: relative; padding-left: 20px; margin-top: 9px; color: var(--text-muted); }
+/* An em dash rather than a bullet: the app's lists are rows separated by rules
+   and it owns no bullet glyph, so this is the nearest thing that is already
+   ours. */
+.legal li::before { content: "—"; position: absolute; left: 0; color: var(--text-faint); }
+.legal strong { color: var(--text); font-weight: 600; }
+.legal a { color: var(--violet-300); }
+.legal a:hover { text-decoration: underline; }
+
+.legal .rule { margin-top: 44px; border-top: 1px solid var(--divider); }
+
+/* What a table of contents is for on a page this long: getting to section 9
+   without reading eight. */
+.toc { margin-top: 26px; display: grid; grid-template-columns: 1fr; gap: 8px; }
+.toc a { font-size: 13.5px; color: var(--text-muted); }
+.toc a:hover { color: var(--text); }
+.toc .n {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 12px; color: var(--text-faint); margin-right: 9px;
+}
+
+@media (min-width: 680px) { .toc { grid-template-columns: repeat(2, 1fr); } }
+
+@media (min-width: 900px) {
+  .legal section h2 .n { position: absolute; left: -62px; top: 4px; margin: 0; }
+}

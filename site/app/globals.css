@@ -1,0 +1,20 @@
+/* The site's one stylesheet, assembled from the app's.
+
+   The theme and the components are read straight out of `sketches/shared`
+   rather than copied here, so the marketing page and the app cannot drift into
+   two violets and two buttons. Everything under those two files is scoped to
+   `.ui`, which is why the body carries that class.
+
+   Tailwind is here for layout and spacing on this site only. No colour, no
+   type scale and no radius comes from it — those are the theme's, and a
+   `bg-slate-900` on a page next to `var(--bg-panel)` is how a second design
+   language starts. */
+
+@import "tailwindcss";
+
+@import "../../sketches/shared/theme.css";
+@import "../../sketches/shared/components.css";
+
+@import "../css/site.css";
+@import "../css/home.css";
+@import "../css/legal.css";

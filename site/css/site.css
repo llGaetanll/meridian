@@ -1,0 +1,148 @@
+/* The frame every page sits in: the page itself, the bar at the top, the
+   footer, and the rhythm sections are set to.
+
+   The app's frame is a sidebar because the app is a place you are in. This one
+   is a bar and a footer, because a site is a page you read and then leave. */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-inter), Inter, ui-sans-serif, -apple-system, system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+
+/* The measure. `narrow` is for a page of prose, where a line running the full
+   width of a desk is a line the eye loses its place in. */
+.wrap { width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+.wrap.narrow { max-width: 720px; }
+
+/* The bar.
+
+   Translucent rather than solid so the page keeps moving under it — the one
+   piece of chrome that stays put, and the only place on the site a blur is
+   worth what it costs. */
+.site-head {
+  position: sticky; top: 0; z-index: 20;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 76%, transparent);
+  backdrop-filter: saturate(140%) blur(14px);
+  -webkit-backdrop-filter: saturate(140%) blur(14px);
+}
+.site-head .in { display: flex; align-items: center; gap: 26px; height: 62px; }
+
+/* The mark and the word, at the size the app's sidebar draws them minus the
+   five pixels a bar cannot spare. */
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 19px; font-weight: 600; line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--violet-300);
+}
+.brand-mark { display: block; width: 28px; height: 28px; flex: none; }
+
+.head-nav { display: none; align-items: center; gap: 22px; margin-left: 6px; }
+.head-nav a {
+  font-size: 13.5px; font-weight: 500;
+  color: var(--text-muted);
+}
+.head-nav a:hover { color: var(--text); }
+.head-right { display: flex; align-items: center; gap: 14px; margin-left: auto; }
+
+@media (min-width: 780px) { .head-nav { display: flex; } }
+
+/* Sections.
+
+   One rhythm for the whole site: a lot of air above and below, an uppercase
+   label saying what this is, then the sentence. The label is the `.sec-title`
+   the app draws over a list, at the same size and the same tracking. */
+.sec { padding: 90px 0; }
+.sec + .sec { border-top: 1px solid var(--border); }
+/* The bar is 62px and covers whatever an anchor scrolls to. */
+.sec, .hero { scroll-margin-top: 84px; }
+
+.eyebrow {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+}
+
+.sec h2 {
+  margin-top: 14px;
+  font-size: 30px; font-weight: 700;
+  line-height: 1.12; letter-spacing: -0.03em;
+  max-width: 24ch;
+}
+.sec .lede {
+  margin-top: 14px;
+  max-width: 62ch;
+  font-size: 16.5px;
+  color: var(--text-muted);
+}
+.sec .lede + .lede { margin-top: 16px; }
+
+@media (min-width: 780px) {
+  .sec { padding: 116px 0; }
+  .sec h2 { font-size: 38px; }
+}
+
+/* A section that has something to show beside what it says.
+
+   The words keep a reading measure on the left and the thing they are about
+   takes the rest, which is the only way a page this wide does not end up as a
+   column of text with a field of black next to it. Below the breakpoint they
+   stack, words first — the picture explains the sentence and not the other way
+   round. */
+.split { display: grid; grid-template-columns: 1fr; gap: 40px; }
+.split h2 { max-width: 18ch; }
+.split .lede { max-width: none; }
+
+@media (min-width: 980px) {
+  .split {
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+    gap: 64px;
+    align-items: start;
+  }
+}
+
+/* The footer.
+
+   A strong rule above it, because it is the end of the page and not the next
+   row of one. */
+.site-foot {
+  border-top: 1px solid var(--border-strong);
+  padding: 52px 0 64px;
+}
+.foot-cols {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 36px;
+}
+.foot-cols h3 {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+  margin-bottom: 12px;
+}
+.foot-links { display: flex; flex-direction: column; gap: 9px; }
+.foot-links a { font-size: 13.5px; color: var(--text-muted); width: fit-content; }
+.foot-links a:hover { color: var(--text); }
+.foot-note {
+  margin-top: 44px; padding-top: 22px;
+  border-top: 1px solid var(--border);
+  display: flex; flex-wrap: wrap; gap: 10px 20px;
+  font-size: 12.5px; color: var(--text-faint);
+}
+.foot-blurb { margin-top: 14px; max-width: 34ch; font-size: 13.5px; color: var(--text-faint); }
+
+@media (min-width: 780px) {
+  .foot-cols { grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 24px; }
+}
