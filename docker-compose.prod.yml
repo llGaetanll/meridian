@@ -81,11 +81,19 @@ services:
       - caddy-config:/config
 
     environment:
-      # No defaults. A box that has not said which name it answers to would get
-      # a certificate for nothing, and one that has not named an address would
-      # never hear that renewal is failing.
+      # No defaults for these two. A box that has not said which name it
+      # answers to would get a certificate for nothing, and one that has not
+      # named an address would never hear that renewal is failing.
       MERIDIAN_DOMAIN: ${MERIDIAN_DOMAIN:?}
       TLS_EMAIL: ${TLS_EMAIL:?}
+
+      # The Apple Developer team the phone app is signed by, which the
+      # Caddyfile puts in the file iOS reads to decide whether this domain
+      # vouches for that app. Unset is allowed and is what a box without an
+      # app-store account has: the file then names a team that owns nothing,
+      # no app claims the link, and nothing is sent there anyway because
+      # PLAID_REDIRECT_URI is unset alongside it.
+      MERIDIAN_TEAM_ID: ${MERIDIAN_TEAM_ID:-}
 
     depends_on:
       - server

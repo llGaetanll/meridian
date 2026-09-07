@@ -46,14 +46,26 @@ pub struct LinkTokenRequest {
     /// by polling. Those are two channels and they are independent.
     pub completion_redirect_uri: Option<String>,
 
-    /// Whether the session is being opened inside a native app.
+    /// Where **the bank's own app** hands control back, part way through.
     ///
-    /// **Setting this requires a top-level `redirect_uri` as well**, which
-    /// Plaid rejects the request without — and that one must be an https
-    /// address registered in the dashboard, unlike the custom scheme in
-    /// `completion_redirect_uri`. It changes how an OAuth bank hands control
-    /// back, so it is only needed once a real bank is linked from a phone.
-    pub is_mobile_app: bool,
+    /// Easy to read as another spelling of `completion_redirect_uri` and it is
+    /// not one. An OAuth bank does not take the sign-in on Plaid's page: it
+    /// hands off to the bank's own app, and when that app is finished the only
+    /// way it has of returning control is to open a URL. This is that URL, so
+    /// it is opened by a different app while the session is still going,
+    /// rather than by Plaid's page at the end of it.
+    ///
+    /// That difference is why it cannot be a custom scheme: anything can claim
+    /// one, so it has to be an https Universal Link on a domain that vouches
+    /// for the app, registered in the Plaid dashboard. `android_package_name`
+    /// cannot stand in for it either.
+    ///
+    /// Its presence is what sends `is_mobile_app`, and the two are one
+    /// decision rather than two. Saying a native app opened the session
+    /// without giving the bank an address that reaches that app is the worst
+    /// of the three: the user is stranded in their bank's app *after* signing
+    /// in.
+    pub redirect_uri: Option<String>,
 
     /// How long the hosted URL stays good for. Plaid's default is 30 minutes
     /// when it is not being delivered by SMS or email, which is the case here.
@@ -77,7 +89,7 @@ impl LinkTokenRequest {
             webhook: None,
             access_token: None,
             completion_redirect_uri: None,
-            is_mobile_app: false,
+            redirect_uri: None,
             url_lifetime_seconds: None,
         }
     }
@@ -97,11 +109,19 @@ impl LinkTokenRequest {
         }
     }
 
-    /// Where to send the browser when the flow ends, and whether a native app
-    /// is what opened it.
-    pub fn redirecting_to(mut self, uri: impl Into<String>, mobile: bool) -> Self {
+    /// Where to send the browser when the flow ends.
+    pub fn redirecting_to(mut self, uri: impl Into<String>) -> Self {
         self.completion_redirect_uri = Some(uri.into());
-        self.is_mobile_app = mobile;
+        self
+    }
+
+    /// Where the bank's own app hands control back to ours, and with it that a
+    /// native app is what opened the session.
+    ///
+    /// One method for both because they are one claim. There is no way through
+    /// this builder to say the second without the first.
+    pub fn handing_back_to(mut self, uri: impl Into<String>) -> Self {
+        self.redirect_uri = Some(uri.into());
         self
     }
 
@@ -124,7 +144,7 @@ impl PlaidRequest for LinkTokenRequest {
             hosted.insert("completion_redirect_uri".into(), Value::String(uri.clone()));
         }
 
-        if self.is_mobile_app {
+        if self.redirect_uri.is_some() {
             hosted.insert("is_mobile_app".into(), Value::Bool(true));
         }
 
@@ -156,6 +176,12 @@ impl PlaidRequest for LinkTokenRequest {
 
         if let Some(webhook) = &self.webhook {
             body["webhook"] = Value::String(webhook.clone());
+        }
+
+        // Top level rather than inside `hosted_link`, unlike its neighbour.
+        // The two are different parameters answering different moments.
+        if let Some(uri) = &self.redirect_uri {
+            body["redirect_uri"] = Value::String(uri.clone());
         }
 
         body
@@ -193,7 +219,7 @@ mod tests {
     #[test]
     fn a_phone_says_where_to_send_the_browser_back_to() {
         let body = LinkTokenRequest::hosted("user-1")
-            .redirecting_to("meridian://linked", true)
+            .redirecting_to("meridian://linked")
             .notifying("https://example.com/plaid/webhook")
             .body();
 
@@ -201,7 +227,32 @@ mod tests {
             body["hosted_link"]["completion_redirect_uri"],
             "meridian://linked"
         );
-        assert_eq!(body["hosted_link"]["is_mobile_app"], true);
         assert_eq!(body["webhook"], "https://example.com/plaid/webhook");
+    }
+
+    /// The pairing the flow depends on: a phone that cannot catch a handback
+    /// must not be announced to Plaid as one that can.
+    #[test]
+    fn is_mobile_app_is_sent_only_alongside_a_handback() {
+        let without = LinkTokenRequest::hosted("user-1")
+            .redirecting_to("meridian://linked")
+            .body();
+
+        assert!(
+            without["hosted_link"].get("is_mobile_app").is_none(),
+            "a completion redirect alone must not claim a native app: {without}",
+        );
+        assert!(without.get("redirect_uri").is_none());
+
+        let with = LinkTokenRequest::hosted("user-1")
+            .redirecting_to("meridian://linked")
+            .handing_back_to("https://api.meridiancash.io/link/oauth")
+            .body();
+
+        assert_eq!(with["hosted_link"]["is_mobile_app"], true);
+        assert_eq!(
+            with["redirect_uri"],
+            "https://api.meridiancash.io/link/oauth"
+        );
     }
 }

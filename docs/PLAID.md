@@ -66,13 +66,6 @@ It skips the middle of [the flow](#the-flow) — the part where a person signs
 into their bank on Plaid's page. Everything after that is the ordinary code
 path: the same `public_token`, the same exchange, the same Item.
 
-**`is_mobile_app` is false on the link token we create.** Plaid rejects the
-request otherwise unless a top-level `redirect_uri` is set too, and that one
-has to be an https address registered in the dashboard — unlike the custom
-scheme in `completion_redirect_uri`, which needs nothing. It changes how an
-OAuth bank hands control back, so it has to be revisited before a real bank is
-linked from a real phone.
-
 Sandbox generates transactions asynchronously, so a `/transactions/sync` in the
 first seconds after linking can answer empty or `PRODUCT_NOT_READY`. Ask again.
 Recurring streams are derived from transactions and stay thin until those land.
@@ -97,14 +90,16 @@ export PLAID_SECRET=…         # one per environment — Sandbox and Production
 export PLAID_ENV=sandbox      # required; `sandbox` or `production`, exactly
 export PLAID_COLLECT=poll     # required; `poll` or `webhook`
 export PUBLIC_URL=…           # required only when PLAID_COLLECT=webhook
+export PLAID_REDIRECT_URI=…   # optional; see The two redirects
 ```
 
 `DATABASE_URL` is required too, and for a reason that belongs here rather than
 in [DATABASE.md](DATABASE.md): **the access tokens live in Postgres**, one row
 per Item. A server without a database has no way to reach any bank.
 
-**Every variable is required and none has a default.** `server-main` starts
-with all of them or does not start. It used to fall back to captured fixtures
+**Every variable is required and none has a default**, bar
+`PLAID_REDIRECT_URI`, whose absence is an answer rather than a gap.
+`server-main` starts with all of them or does not start. It used to fall back to captured fixtures
 when the credentials were missing, which meant an empty screen had two
 explanations and the log said the same thing for both.
 
@@ -150,6 +145,45 @@ platform-specific has to be integrated to connect a bank.
 The `access_token` is permanent and the flow above is run once, ever. The
 `cursor` from `/transactions/sync` is what makes the next sync incremental, so
 it is saved beside the token and passed back on the following call.
+
+## The two redirects
+
+Plaid takes two addresses with similar names, and conflating them is why this
+looks solved when it is not. They answer different moments and only one of them
+can be a custom scheme.
+
+| | Who opens it | When | What it has to be |
+| --- | --- | --- | --- |
+| `hosted_link.completion_redirect_uri` | Plaid's page | The flow has ended | Anything. We send `meridian://linked` |
+| `redirect_uri`, top level | **The bank's own app** | Part way through, at an OAuth bank | An https Universal Link, registered in the dashboard |
+
+The second exists because an OAuth bank does not take the sign-in on Plaid's
+page. It hands off to its own app, and when that app is done the only way it
+has of returning control is to open a URL. A custom scheme cannot be that URL:
+iOS gives one to whichever app registered it first, so a bank handing back to
+`meridian://` is a bank handing a signed-in session to whatever else claimed
+the name. Plaid says the same of `android_package_name` — under Hosted Link it
+cannot stand in either.
+
+Sending `is_mobile_app` without that address is worse than sending neither. It
+tells Plaid a native app is what opened the session, and the user is then left
+in their bank's app *after* signing in, with nowhere to go back to. So the two
+travel together and there is no way through `LinkTokenRequest` to say one
+without the other: `PLAID_REDIRECT_URI` is what sets both, and unset means the
+link token is the one a browser gets, where an OAuth bank stays inside the web
+session.
+
+Three things have to be true before it can be set, and all three are about the
+phone rather than about Plaid:
+
+- the app is signed by a team holding the `associated-domains` entitlement
+- `MERIDIAN_TEAM_ID` names that team on the box, so Caddy serves an
+  `/.well-known/apple-app-site-association` that points at the app
+- the address is registered in the Plaid dashboard
+
+**It is testable without spending an Item.** Sandbox has OAuth institutions —
+`ins_127287` for plain OAuth and `ins_132241` for the app-to-app handback this
+is about. Any credentials are accepted, including none.
 
 ## Webhooks
 

@@ -2,7 +2,8 @@
 //!
 //! Every variable this server reads is required and matched exactly: a server
 //! that starts without credentials and serves something plausible instead is a
-//! server whose empty screen has two explanations.
+//! server whose empty screen has two explanations. The exception is
+//! [`OauthRedirect`], where absence is itself an answer and says so.
 //!
 //! Split the way every program in this workspace is: a state machine that
 //! decides ([`StateServer`]) and a runtime that acts ([`RuntimeServer`]).
@@ -30,6 +31,7 @@ mod event_terminal;
 mod item_facts;
 mod link_poll;
 mod login_code;
+mod oauth_redirect;
 mod plaid_collect;
 mod project;
 mod public_url;
@@ -72,6 +74,7 @@ pub use login_code::StoredCode;
 pub use login_code::Verdict;
 /// Reachable so the machine's tests can build a stored code to submit against.
 pub use login_code::hash as hash_code;
+pub use oauth_redirect::OauthRedirect;
 pub use plaid_collect::PlaidCollect;
 pub use public_url::PublicUrl;
 pub use public_url::WEBHOOK_PATH;

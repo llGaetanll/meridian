@@ -24,6 +24,7 @@ use crate::EventProcess;
 use crate::EventSource;
 use crate::EventStore;
 use crate::EventTerminal;
+use crate::OauthRedirect;
 use crate::PlaidCollect;
 use crate::PublicUrl;
 use crate::StateServer;
@@ -107,6 +108,10 @@ pub struct RuntimeServer {
     /// start.
     webhook: Option<String>,
 
+    /// Where an OAuth bank's app returns the user to ours, or `None` where
+    /// there is nowhere for it to return to yet.
+    handback: Option<OauthRedirect>,
+
     /// Every call to Plaid.
     plaid: SourcePool,
 
@@ -131,6 +136,11 @@ impl RuntimeServer {
             PlaidCollect::Webhook => Some(PublicUrl::from_env()?),
             PlaidCollect::Poll => None,
         };
+
+        // Optional, unlike everything else read here. A deployment whose app
+        // cannot claim a Universal Link has no address to give a bank, and the
+        // link token says so rather than claiming one.
+        let handback = OauthRedirect::from_env()?;
 
         let db = Self::open_store().await?;
 
@@ -163,6 +173,7 @@ impl RuntimeServer {
             webhook = webhook.as_deref().unwrap_or("none"),
             email = email_send.as_str(),
             origins = origins.as_str(),
+            handback = handback.as_ref().map_or("none", OauthRedirect::as_str),
             "serving live plaid data",
         );
 
@@ -191,6 +202,7 @@ impl RuntimeServer {
             resend,
             tokens: RwLock::new(HashMap::new()),
             webhook,
+            handback,
             db,
             db_key,
         });
@@ -456,6 +468,7 @@ impl RuntimeServer {
             &self.plaid_client,
             &user_id.to_string(),
             self.webhook.as_deref(),
+            self.handback.as_ref(),
         )
         .await
         {

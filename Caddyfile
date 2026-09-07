@@ -11,9 +11,9 @@
 # challenge fails — see docs/DEPLOY.md, where DNS comes before the first deploy
 # for this reason.
 #
-# The two variables come from the box's `.env` by way of
-# docker-compose.prod.yml. They are not written in here because a second box
-# would be this same file with a different name in it.
+# The variables come from the box's `.env` by way of docker-compose.prod.yml.
+# They are not written in here because a second box would be this same file
+# with a different name in it.
 {
 	# Where Let's Encrypt writes when renewal has been failing. It is the one
 	# warning that arrives *before* an outage rather than during it, so it is
@@ -22,9 +22,57 @@
 }
 
 {$MERIDIAN_DOMAIN} {
-	# `server` rather than an address: inside the compose network the server is
-	# a service name, the same way the database is `db`.
-	reverse_proxy server:8082
+	# What tells iOS that this domain vouches for the app, and so the whole of
+	# what makes the address below a Universal Link rather than an ordinary
+	# page. Served from here rather than by the server because it is a
+	# constant: it says which app, and the app is not something a request can
+	# vary. Apple fetches it over https with no redirect and expects
+	# `application/json`, and gets all three from a `respond`.
+	#
+	# `MERIDIAN_TEAM_ID` is the Apple Developer team, which does not exist
+	# until the account does. Unset, this serves a file naming a team that owns
+	# nothing, which is inert: no app claims the link, and
+	# `PLAID_REDIRECT_URI` is unset alongside it, so no bank is ever sent here.
+	handle /.well-known/apple-app-site-association {
+		header Content-Type application/json
+		respond `{
+    "applinks": {
+        "details": [
+            {
+                "appIDs": ["{$MERIDIAN_TEAM_ID:TEAMID}.com.meridian.phone"],
+                "components": [
+                    {
+                        "/": "/link/oauth",
+                        "comment": "Where an OAuth bank hands the sign-in back to the app."
+                    }
+                ]
+            }
+        ]
+    }
+}` 200
+	}
+
+	# The address an OAuth bank opens to return the user to the app, and it is
+	# reached over http only when that has already gone wrong: in the working
+	# case iOS claims the request and the app opens without a byte being
+	# fetched. So this is not a step in the flow — it is what somebody sees
+	# when the association failed, and it says which of the two ends is at
+	# fault rather than showing them a 404.
+	handle /link/oauth {
+		header Content-Type text/html
+		respond `<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridian</title>
+<p>Your bank sent you back to Meridian, but this device could not open the app.
+<p>Open Meridian and try linking again.` 200
+	}
+
+	handle {
+		# `server` rather than an address: inside the compose network the server
+		# is a service name, the same way the database is `db`.
+		reverse_proxy server:8082
+	}
 
 	header {
 		# Six months, and deliberately no `preload`. Every client of this host
