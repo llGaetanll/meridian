@@ -12,6 +12,10 @@ pub const PRODUCT_NOT_READY: &str = "PRODUCT_NOT_READY";
 /// a code to read — no network, a body that would not parse, a 429.
 pub const REQUEST_FAILED: &str = "REQUEST_FAILED";
 
+/// Ours as well: a bank we hold no access token for, so there was nothing to
+/// sign a call with.
+pub const NO_ACCESS_TOKEN: &str = "NO_ACCESS_TOKEN";
+
 /// What went wrong with one call to Plaid.
 ///
 /// A classification rather than a copy of Plaid's code list: a variant exists
@@ -28,6 +32,13 @@ pub enum PlaidFault {
     /// The Item is fine and what was asked for does not exist yet. The one
     /// fault where asking again is the answer.
     NotReady,
+
+    /// We hold no access token for this bank, so Plaid was never asked.
+    ///
+    /// Its own variant because it is not Plaid's answer at all: it means what
+    /// the runtime holds and what the store holds have drifted, and no amount
+    /// of asking Plaid settles that.
+    NoToken,
 
     /// Anything else, under the code it came with.
     Failed(String),
@@ -56,6 +67,7 @@ impl PlaidFault {
         match self {
             PlaidFault::LoginRequired => ITEM_LOGIN_REQUIRED,
             PlaidFault::NotReady => PRODUCT_NOT_READY,
+            PlaidFault::NoToken => NO_ACCESS_TOKEN,
             PlaidFault::Failed(code) => code,
         }
     }
@@ -94,5 +106,14 @@ mod tests {
         let fault = PlaidFault::of(&PlaidError::TooManyRequests);
 
         assert_eq!(fault.as_str(), REQUEST_FAILED);
+    }
+
+    /// The two faults that are ours have to stay apart: one is Plaid refusing
+    /// and the other is Plaid never being asked, and only the second says the
+    /// tokens we hold and the rows we hold disagree.
+    #[test]
+    fn a_bank_with_no_token_is_not_a_failed_call() {
+        assert_ne!(PlaidFault::NoToken.as_str(), REQUEST_FAILED);
+        assert_eq!(PlaidFault::NoToken.as_str(), NO_ACCESS_TOKEN);
     }
 }

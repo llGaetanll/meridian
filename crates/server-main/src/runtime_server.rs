@@ -40,6 +40,7 @@ use crate::runtime_router::RuntimeRouter;
 use crate::source_pool::SourcePool;
 use server_wire::SyncStage;
 use server_wire::WireSnapshot;
+use src_plaid::PlaidClient;
 use src_plaid::PlaidCredentials;
 use src_plaid::PlaidError;
 use src_plaid::PlaidFault;
@@ -80,8 +81,9 @@ pub struct RuntimeServer {
     /// Where an answer goes; the router is on another task.
     action_tx: ActionTx,
 
-    /// The Plaid account these calls are made on behalf of. One per process.
-    credentials: PlaidCredentials,
+    /// Every call to Plaid, made on the one client so they share a connection
+    /// pool. One per process, and the only place the environment is decided.
+    plaid_client: PlaidClient,
 
     /// How a sign-in code reaches the person asking for it.
     email_send: EmailSend,
@@ -120,7 +122,7 @@ impl RuntimeServer {
     /// Build the server, wire the signal handler, and serve until told to stop.
     pub async fn run() -> anyhow::Result<()> {
         // Read before anything is served, not on the first request.
-        let credentials = PlaidCredentials::from_env()?;
+        let plaid_client = runtime_plaid::client(PlaidCredentials::from_env()?)?;
         let collect = PlaidCollect::from_env()?;
 
         // Required in webhook mode and meaningless in poll mode. Read here so
@@ -156,7 +158,7 @@ impl RuntimeServer {
         let webhook = public_url.as_ref().map(PublicUrl::webhook);
 
         tracing::info!(
-            env = credentials.env.as_str(),
+            env = plaid_client.env().as_str(),
             collect = collect.as_str(),
             webhook = webhook.as_deref().unwrap_or("none"),
             email = email_send.as_str(),
@@ -184,7 +186,7 @@ impl RuntimeServer {
             email: SourcePool::new("email", EMAIL_AT_ONCE, event_tx.clone()),
             store: SourcePool::new("store", STORE_AT_ONCE, event_tx.clone()),
             action_tx,
-            credentials,
+            plaid_client,
             email_send,
             resend,
             tokens: RwLock::new(HashMap::new()),
@@ -383,9 +385,11 @@ impl RuntimeServer {
     /// Everything Plaid is asked for.
     async fn perform_action_source(&self, action: &ActionSource) -> Vec<Event> {
         match action {
-            ActionSource::FetchBalances { call_id, item_id } => {
-                self.fetch_balances(*call_id, item_id).await
-            }
+            ActionSource::FetchBalances {
+                call_id,
+                item_id,
+                now,
+            } => self.fetch_balances(*call_id, item_id, *now).await,
 
             ActionSource::SyncTransactions {
                 call_id,
@@ -427,7 +431,7 @@ impl RuntimeServer {
     /// A key that will not fetch is reported as absent: remembering that keeps
     /// an invented `kid` from costing a call every time it is sent.
     async fn fetch_webhook_key(&self, call_id: crate::CallId, kid: &str) -> Vec<Event> {
-        let key = match runtime_plaid::webhook_key(&self.credentials, kid).await {
+        let key = match runtime_plaid::webhook_key(&self.plaid_client, kid).await {
             Ok(key) => Some(key),
 
             Err(e) => {
@@ -449,7 +453,7 @@ impl RuntimeServer {
     /// Open a Link session and report the page that hosts it.
     async fn open_link(&self, call_id: crate::CallId, user_id: Uuid) -> Vec<Event> {
         let event = match runtime_plaid::open_link(
-            &self.credentials,
+            &self.plaid_client,
             &user_id.to_string(),
             self.webhook.as_deref(),
         )
@@ -492,7 +496,7 @@ impl RuntimeServer {
         let mut polls = Vec::with_capacity(link_tokens.len());
 
         for link_token in link_tokens {
-            let poll = match runtime_plaid::poll_link(&self.credentials, link_token).await {
+            let poll = match runtime_plaid::poll_link(&self.plaid_client, link_token).await {
                 Ok((finished, public_tokens)) => crate::LinkPoll {
                     link_token: link_token.clone(),
                     finished,
@@ -534,7 +538,7 @@ impl RuntimeServer {
         link_token: &str,
         public_token: &str,
     ) -> Vec<Event> {
-        let event = match runtime_plaid::exchange(&self.credentials, public_token).await {
+        let event = match runtime_plaid::exchange(&self.plaid_client, public_token).await {
             Ok((item_id, access_token)) => {
                 self.write_tokens().insert(item_id.clone(), access_token);
 
@@ -1016,14 +1020,18 @@ impl RuntimeServer {
     ///
     /// Nothing here inspects it, and nothing here decides what happens next;
     /// that is what makes the loop closed.
-    async fn fetch_balances(&self, call_id: crate::CallId, item_id: &str) -> Vec<Event> {
+    async fn fetch_balances(
+        &self,
+        call_id: crate::CallId,
+        item_id: &str,
+        now: Timestamp,
+    ) -> Vec<Event> {
         let Some(access_token) = self.token_for(item_id) else {
             return vec![no_token(call_id, item_id, SyncStage::Accounts)];
         };
 
         let event =
-            match runtime_plaid::fetch_balances(&self.credentials, &access_token, unix_now()).await
-            {
+            match runtime_plaid::fetch_balances(&self.plaid_client, &access_token, now).await {
                 Ok(connection) => EventSource::BalancesLoaded {
                     call_id,
                     item_id: item_id.to_string(),
@@ -1047,21 +1055,21 @@ impl RuntimeServer {
             return vec![no_token(call_id, item_id, SyncStage::Transactions)];
         };
 
-        let event = match runtime_plaid::sync_transactions(&self.credentials, &access_token, cursor)
-            .await
-        {
-            Ok(page) => EventSource::TransactionsLoaded {
-                call_id,
-                item_id: item_id.to_string(),
-                added: page.added,
-                modified: page.modified,
-                removed: page.removed,
-                cursor: page.cursor,
-                has_more: page.has_more,
-            },
+        let event =
+            match runtime_plaid::sync_transactions(&self.plaid_client, &access_token, cursor).await
+            {
+                Ok(page) => EventSource::TransactionsLoaded {
+                    call_id,
+                    item_id: item_id.to_string(),
+                    added: page.added,
+                    modified: page.modified,
+                    removed: page.removed,
+                    cursor: page.cursor,
+                    has_more: page.has_more,
+                },
 
-            Err(e) => failed(call_id, item_id, SyncStage::Transactions, &e),
-        };
+                Err(e) => failed(call_id, item_id, SyncStage::Transactions, &e),
+            };
 
         vec![Event::FromSource { event }]
     }
@@ -1072,7 +1080,7 @@ impl RuntimeServer {
             return vec![no_token(call_id, item_id, SyncStage::Streams)];
         };
 
-        let event = match runtime_plaid::fetch_recurring(&self.credentials, &access_token).await {
+        let event = match runtime_plaid::fetch_recurring(&self.plaid_client, &access_token).await {
             Ok(streams) => EventSource::RecurringLoaded {
                 call_id,
                 item_id: item_id.to_string(),
@@ -1191,7 +1199,7 @@ fn no_token(call_id: crate::CallId, item_id: &str, stage: SyncStage) -> Event {
             call_id,
             item_id: item_id.to_string(),
             stage,
-            fault: PlaidFault::Failed(String::from("NO_ACCESS_TOKEN")),
+            fault: PlaidFault::NoToken,
         },
     }
 }

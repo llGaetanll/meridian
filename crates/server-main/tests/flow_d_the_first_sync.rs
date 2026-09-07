@@ -48,7 +48,7 @@ fn a_first_sync_is_pushed_from_the_fetch_to_the_totals() {
         // C's last turn: the bank is written down, and the write says whose
         // it is. That is what D1 starts from, on a call nobody is parked on.
         < Event::FromStore { call_id: 99, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: AL, cursor: None, synced_at: None, login_required: false }) } },
-        > @r#"ToSource { action: FetchBalances { call_id: 1, item_id: "item-9" } }"#,
+        > @r#"ToSource { action: FetchBalances { call_id: 1, item_id: "item-9", now: Timestamp { t: 1787097600 } } }"#,
 
         // 3 and 4a. The stream opens on the news that a bank landed. Nothing
         // has been reported yet, so the counts are zero — but `finished` is
