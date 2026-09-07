@@ -242,6 +242,11 @@ PLAID_SECRET=…            # the Sandbox one; the two environments differ
 PLAID_ENV=sandbox
 PLAID_COLLECT=poll        # `webhook` works now (#36); poll until it is chosen
 
+# Where an OAuth bank's own app hands the user back. Empty, and it stays empty
+# until the phone can claim a Universal Link — see below.
+PLAID_REDIRECT_URI=
+MERIDIAN_TEAM_ID=
+
 # Real mail, from the verified domain. `log` writes the code to the server log
 # and sends nothing, which is the answer before Resend is set up.
 EMAIL_SEND=resend
@@ -311,6 +316,44 @@ and `ios-device.sh` the Mac's address on the LAN, each adding the exemption
 plain http then needs. `MERIDIAN_SERVER` names the address yourself, and
 setting it to an `https://` one is how either script points back at the box.
 
+## The handback an OAuth bank needs
+
+An OAuth bank — Citi and most of the large ones — does not take the sign-in on
+Plaid's page. It hands off to its own app, and the only way that app has of
+returning control is to open a URL. That URL is the link token's top-level
+`redirect_uri`, and it is not the `meridian://linked` that closes the sheet;
+[PLAID.md](PLAID.md) has why the two cannot be the same address.
+
+Caddy already serves both halves of it on this box:
+
+| | What it is |
+| --- | --- |
+| `/.well-known/apple-app-site-association` | What tells iOS this domain vouches for the app. Names `$MERIDIAN_TEAM_ID.com.meridian.phone` |
+| `/link/oauth` | The address itself. Only ever *rendered* when the association failed — in the working case iOS opens the app instead |
+
+Both are live right now and both are inert, because `MERIDIAN_TEAM_ID` names no
+team and `PLAID_REDIRECT_URI` is empty, so no link token points a bank here.
+That is the correct state: telling Plaid a native app opened the session
+without giving the bank a reachable address strands the user in their bank's
+app *after* they have signed in.
+
+Turning it on is four steps and needs a paid Apple Developer account first,
+since the entitlement that lets the app claim the link is not one a free
+profile grants:
+
+1. Tick **Associated Domains** on the `com.meridian.phone` App ID, and add
+   `applinks:api.meridiancash.io` to the app's entitlements
+2. Set `MERIDIAN_TEAM_ID` on the box and redeploy, then check the file:
+   `curl -sI https://api.meridiancash.io/.well-known/apple-app-site-association`
+   must answer 200 with `content-type: application/json` and no redirect
+3. Register `https://api.meridiancash.io/link/oauth` in the Plaid dashboard
+4. Set `PLAID_REDIRECT_URI` to that same address and restart the server. The
+   startup line's `handback=` says whether it took
+
+Then link `ins_132241` in Sandbox, which is Plaid's app-to-app test bank. It
+spends no Item, and it is the only way to see the hop actually happen before a
+real bank does it.
+
 ## Backups
 
 Droplet backups, enabled at create time above, are weekly snapshots of the
@@ -342,11 +385,15 @@ snapshot with extra steps.
 **It is on a laptop, which is not off-site from a laptop.** `pg_dump` on a
 timer to Spaces is still the shape.
 
-**`MERIDIAN_DB_KEY` is not backed up.** The key that opens the access token
-column lives in `/srv/meridian/.env` on the box and nowhere else, so a dump
-restored without it is a ledger with every bank unlinked — and the rest of that
-file, the Plaid secret and the Postgres password, exists in exactly one place
-too.
+**`MERIDIAN_DB_KEY` is escrowed, the backups are not.** The key that opens the
+access token column is in `/srv/meridian/.env` on the box and in a password
+manager, so a dump can actually be restored — without it the restore is a
+ledger with every bank unlinked. It is deliberately not *in* a backup: a dump
+that carried its own key would undo the sealing.
+
+**The other two secrets in that file are not escrowed.** The Plaid secret and
+the Postgres password exist on the box and nowhere else, so losing it loses
+both — #54.
 
 **No restore has been run.** A backup that has never been restored is a belief,
 not a backup.
@@ -441,4 +488,8 @@ What is specifically about facing the internet:
   server no longer talks to Postgres in plain text (#34); the section above has
   both.
 - **Backups are weekly whole-disk snapshots, plus a dump somebody remembers to
-  take** (#38). Neither is off-site, and neither carries `MERIDIAN_DB_KEY`.
+  take** (#38). Neither is off-site. `MERIDIAN_DB_KEY` is escrowed separately,
+  which is the right way round — see the backups section.
+- **An OAuth bank has nowhere to hand control back to.** The server half is
+  deployed and switched off; what is missing is the Apple Developer account
+  that lets the app claim the link. The section above has the four steps.

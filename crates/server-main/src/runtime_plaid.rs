@@ -14,6 +14,7 @@ use src_plaid::PlaidCredentials;
 use src_plaid::PlaidEnv;
 use src_plaid::PlaidError;
 
+use crate::OauthRedirect;
 use crate::project;
 
 /// One page of `/transactions/sync`, projected.
@@ -89,17 +90,24 @@ pub async fn fetch_recurring(
 ///
 /// `webhook` is where Plaid should call when the session ends; `None` leaves
 /// polling to collect the result.
+///
+/// `handback` is where an OAuth bank's own app returns the user to ours, and
+/// `None` is a deployment whose app cannot yet be reached that way. It is the
+/// difference between a bank that hands off to its app and one that keeps the
+/// sign-in inside the web session, so it is not a detail that can be defaulted.
 pub async fn open_link(
     client: &PlaidClient,
     client_user_id: &str,
     webhook: Option<&str>,
+    handback: Option<&OauthRedirect>,
 ) -> Result<(String, Option<String>), PlaidError> {
-    // `is_mobile_app` is false because true needs a top-level `redirect_uri`
-    // that is an https address registered in the dashboard. It costs nothing
-    // in Sandbox, which has no OAuth banks, and has to be revisited before a
-    // real bank is linked from a real phone.
-    let request = src_plaid::LinkTokenRequest::hosted(client_user_id)
-        .redirecting_to(COMPLETION_REDIRECT, false);
+    let request =
+        src_plaid::LinkTokenRequest::hosted(client_user_id).redirecting_to(COMPLETION_REDIRECT);
+
+    let request = match handback {
+        Some(handback) => request.handing_back_to(handback.as_str()),
+        None => request,
+    };
 
     let request = match webhook {
         Some(webhook) => request.notifying(webhook),
@@ -113,6 +121,10 @@ pub async fn open_link(
 
 /// Where Plaid sends the browser when the flow ends. It carries no token; the
 /// `public_token` arrives by webhook or by polling.
+///
+/// A custom scheme, and it is allowed to be one because Plaid's own page is
+/// what opens it, from inside the web session the app is already holding. The
+/// handback address is the other case and cannot be a scheme at all.
 const COMPLETION_REDIRECT: &str = "meridian://linked";
 
 /// What became of a Link session: whether it has ended, and what it produced.

@@ -257,11 +257,15 @@ means adding, changing or removing its example here.
   — once at startup, and again on every sign-in below. A server running this
   way in front of anyone real is a mistake, so it says so rather than being
   quiet about it.
-- `INFO server_main::runtime_server serving live plaid data env=sandbox collect=poll webhook=none email=log origins=http://127.0.0.1:8080`
+- `INFO server_main::runtime_server serving live plaid data env=sandbox collect=poll webhook=none email=log origins=http://127.0.0.1:8080 handback=none`
   — once at startup. There is no second form of this line any more: the server
   starts with credentials or it does not start. Only ever Sandbox; see
   [PLAID.md](PLAID.md). `webhook` is the address Plaid is told to call, and
   `none` is `PLAID_COLLECT=poll`, where there is nothing to tell it.
+  `handback` is where an OAuth bank's own app returns the user to ours, and
+  `none` there is a deployment whose app cannot be reached that way — which
+  changes what a link token says, so it is worth being able to read back off a
+  log rather than inferred from an environment nobody kept.
 - `INFO server_main::runtime_server server listening port=8082`
 - `INFO server_main::router_trace <- id=7 client=192.168.1.24 method=GET url="/snapshot"`
 - `INFO server_main::router_trace -> id=7 client=192.168.1.24 status=200 ms=41 bytes=91233`
