@@ -79,26 +79,6 @@ Recommending a security or predicting a market is not — and we were not going
 to do it anyway. See [issue #16](https://github.com/llGaetanll/meridian/issues/16)
 for the handling rules that come with holding this data at all.
 
-## Trades
-
-Everything above rests on there being one ledger rather than two. Spending apps
-and portfolio apps keep separate models — accounts and transactions on one
-side, holdings and cost basis on the other — and bolt a net worth number on
-top. Meridian keeps one.
-
-A trade is an exchange of `X A -> Y B` at a time `t`: 3 (X) apples (A) for 6
-(Y) dollars (B). A trade goes one way.
-
-This is the atomic unit underlying the entire app. A trade can be one sided:
-trading *in* 4000 dollars is a trade of 0 things to 4000 dollars, the user
-getting paid, money entering the system. A payment is a trade out of it. Money
-is not special here — it is just a unit, USD or euros or anything else.
-
-So a paycheck, a burrito, a share of AAPL and 0.1 BTC are the same kind of
-event, and a question that crosses between spending and investing is just a
-query over one list. This is an implementation choice, not a feature; it is
-what makes the tools above cheap to build instead of impossible.
-
 ## Sources
 
 The ledger is populated by connecting to the user's banks and brokerages —
