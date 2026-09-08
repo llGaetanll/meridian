@@ -273,6 +273,15 @@ The `DATABASE_URL` here says `db`, not `localhost`: docker-compose.yml
 overrides it for the server container anyway, but a copy that disagrees is a
 copy somebody will read and believe.
 
+**A change to this file needs `up`, not `restart`.** Compose reads `.env` when
+it *creates* a container and bakes the values into it; `restart` starts the
+same container again, with the same values, and the edit is never read. The
+failure has no error in it — the server comes up cleanly, logs the old value,
+and the only way to notice is to read the startup line. `up` recreates the
+container when the config has changed, which is what makes the edit take.
+
+The same is true of `certs --force`, for the same reason, further down.
+
 ## The first deploy
 
 From the laptop, with `MERIDIAN_HOST=meridian@api.meridiancash.io` in `.env`:

@@ -7,9 +7,9 @@
 #
 #     ./scripts/deploy.sh ship          build here, load it there, swap
 #     ./scripts/deploy.sh rollback SHA  run an image the box already has
-#     ./scripts/deploy.sh up            after a down
+#     ./scripts/deploy.sh up            after a down, or after editing .env
 #     ./scripts/deploy.sh down          stop and remove everything
-#     ./scripts/deploy.sh restart       restart, same image
+#     ./scripts/deploy.sh restart       restart, same image and same .env
 #     ./scripts/deploy.sh certs         the database's TLS certificate
 #     ./scripts/deploy.sh ps            what is actually running
 #     ./scripts/deploy.sh logs          the last few minutes, and return
