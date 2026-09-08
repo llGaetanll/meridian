@@ -353,17 +353,39 @@ That is the correct state: telling Plaid a native app opened the session
 without giving the bank a reachable address strands the user in their bank's
 app *after* they have signed in.
 
-Turning it on is four steps and needs a paid Apple Developer account first,
-since the entitlement that lets the app claim the link is not one a free
-profile grants:
+Turning it on needs a paid Apple Developer account first, since the entitlement
+that lets the app claim the link is not one a free profile grants — the failure
+is explicit, and it is worth knowing what it looks like because it is the check
+that the account is really active:
 
-1. Tick **Associated Domains** on the `com.meridian.phone` App ID, and add
-   `applinks:api.meridiancash.io` to the app's entitlements
-2. Set `MERIDIAN_TEAM_ID` on the box and redeploy, then check the file:
+```
+error: Cannot create a iOS App Development provisioning profile for
+"com.meridian.phone". Personal development teams do not support the
+Associated Domains capability.
+```
+
+`swift/Support/Meridian.entitlements` is what asks for it. Nothing signs with
+that file — `ios-device.sh` still takes the app's entitlements out of the
+profile, so the two cannot disagree — but `ios-provision.sh` builds its stub
+against it, and a capability Apple is never asked for is one the profile does
+not carry.
+
+Both scripts read `MERIDIAN_TEAM_ID` for the same reason the box does. Joining
+the Developer Program does not remove the free personal team, so from then on
+there are two of everything — two certificates both called "Apple Development",
+two profiles for this same bundle id — and the personal one grants nothing.
+Naming the team is what stops a build picking it.
+
+1. `export MERIDIAN_TEAM_ID=…` — the ten characters under Membership at
+   developer.apple.com/account — then `./scripts/ios-provision.sh`. It asks
+   Apple to enable **Associated Domains** and **Keychain Sharing** on the App
+   ID and comes back with a profile that grants both
+2. Set the same `MERIDIAN_TEAM_ID` on the box and redeploy — `up`, not
+   `restart` — then check the file:
    `curl -sI https://api.meridiancash.io/.well-known/apple-app-site-association`
    must answer 200 with `content-type: application/json` and no redirect
 3. Register `https://api.meridiancash.io/link/oauth` in the Plaid dashboard
-4. Set `PLAID_REDIRECT_URI` to that same address and restart the server. The
+4. Set `PLAID_REDIRECT_URI` to that same address and bring the server up. The
    startup line's `handback=` says whether it took
 
 Then link `ins_132241` in Sandbox, which is Plaid's app-to-app test bank. It

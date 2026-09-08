@@ -54,16 +54,53 @@ if [ -z "$IDENTITY" ]; then
     exit 1
 fi
 
-# The team the profile belongs to, read off the certificate rather than written
-# down here: it is a different ten characters for every person who checks this
-# out, and the certificate is already the thing that decides.
-TEAM=$(security find-certificate -c "$IDENTITY" -p \
-    | openssl x509 -noout -subject -nameopt multiline \
-    | awk '/organizationalUnitName/ { print $3 }')
+# The team the profile belongs to. Read off the certificate, because it is a
+# different ten characters for every person who checks this out and the
+# certificate already decides — but only while there is one team to find.
+#
+# An Apple ID that has joined the Developer Program belongs to two: the free
+# personal team it always had, and the paid one. Both issue a certificate
+# called "Apple Development", so the search above picks whichever the keychain
+# lists first, and the personal team is the older of the two and usually wins.
+# A profile from it grants no entitlement the app needs, and the failure comes
+# much later, on the phone, as "Unable to Install".
+#
+# So MERIDIAN_TEAM_ID names the team when it matters, and it is the same ten
+# characters the box sets for the apple-app-site-association — one team, named
+# once, at both ends. developer.apple.com/account has it under Membership.
+if [ -n "$MERIDIAN_TEAM_ID" ]; then
+    TEAM=$MERIDIAN_TEAM_ID
 
-if [ -z "$TEAM" ]; then
-    echo "could not read a team id off '$IDENTITY'." >&2
-    exit 1
+    # The certificate has to belong to that team too, or xcodebuild signs with
+    # one team's key against another team's profile.
+    IDENTITY=$(security find-identity -v -p codesigning \
+        | grep "Apple Development" \
+        | sed -e 's/.*"\(.*\)".*/\1/' \
+        | while read -r name; do
+            ou=$(security find-certificate -c "$name" -p \
+                | openssl x509 -noout -subject -nameopt multiline \
+                | awk '/organizationalUnitName/ { print $3 }')
+
+            [ "$ou" = "$TEAM" ] && printf '%s\n' "$name"
+        done \
+        | head -1)
+
+    if [ -z "$IDENTITY" ]; then
+        echo "no Apple Development certificate for team $MERIDIAN_TEAM_ID." >&2
+        echo "the keychain has one per team and none of them is that team's." >&2
+        echo "Xcode issues it when the account is added; until then this" >&2
+        echo "cannot build against that team." >&2
+        exit 1
+    fi
+else
+    TEAM=$(security find-certificate -c "$IDENTITY" -p \
+        | openssl x509 -noout -subject -nameopt multiline \
+        | awk '/organizationalUnitName/ { print $3 }')
+
+    if [ -z "$TEAM" ]; then
+        echo "could not read a team id off '$IDENTITY'." >&2
+        exit 1
+    fi
 fi
 
 # The stub. Static, because everything that differs between people — the team
@@ -84,6 +121,16 @@ UIApplicationMain(
     NSStringFromClass(AppDelegate.self)
 )
 SWIFT
+
+# The claims the profile has to carry. Apple grants a capability to an App ID
+# when it is asked for one, and the ask is an entitlements file on the build —
+# so a stub that claims nothing gets a profile that grants nothing, whatever
+# the account is paying for.
+#
+# The app's own file rather than a copy written here, because the whole point
+# is that the profile ends up agreeing with what the app needs; two lists that
+# have to match are one list.
+cp swift/Support/Meridian.entitlements $STUB/Stub.entitlements
 
 cat > $STUB/Stub.xcodeproj/project.pbxproj <<'PBXPROJ'
 // !$*UTF8*$!
@@ -131,7 +178,13 @@ fi
 # `-allowProvisioningUpdates` is the whole point: it is the flag that lets
 # xcodebuild register the bundle id and the phone with Apple and download what
 # comes back. Without it the build fails rather than asking for anything.
-xcodebuild \
+# CODE_SIGN_ENTITLEMENTS is relative to the project, which is why the file was
+# copied in beside it rather than pointed at where it lives.
+#
+# This is also where an account that cannot grant a capability says so: a free
+# team has no Associated Domains to give, and the build fails naming it rather
+# than quietly issuing a profile without it.
+if ! xcodebuild \
     -project $STUB/Stub.xcodeproj \
     -scheme Stub \
     -destination "id=$DEVICE" \
@@ -139,7 +192,17 @@ xcodebuild \
     DEVELOPMENT_TEAM="$TEAM" \
     PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
     IPHONEOS_DEPLOYMENT_TARGET="$DEPLOYMENT" \
-    build >/dev/null
+    CODE_SIGN_ENTITLEMENTS=Stub.entitlements \
+    build >$STUB/build.log 2>&1; then
+    echo "xcodebuild could not get a profile for team $TEAM." >&2
+    echo >&2
+    tail -20 $STUB/build.log >&2
+    echo >&2
+    echo "the whole log is in $STUB/build.log." >&2
+    echo "a team that cannot grant Associated Domains or Keychain Sharing is" >&2
+    echo "a free one — the paid membership may not have activated yet." >&2
+    exit 1
+fi
 
 PROFILE=$(scripts/ios-profile.sh "$BUNDLE_ID" || true)
 

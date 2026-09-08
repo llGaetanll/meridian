@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- What the app needs Apple to grant it, and the only reason this file
+     exists: ios-provision.sh builds a throwaway project against it, and a
+     capability Apple is never asked for is one the provisioning profile does
+     not carry.
+
+     It is not what the app is signed with. ios-device.sh takes the
+     entitlements straight out of the profile, because a signature claiming
+     anything the profile does not grant is an app killed at launch, and
+     reading them from the profile is what guarantees the two agree. So this
+     file is a request, and the profile is the answer. -->
+<plist version="1.0">
+<dict>
+    <!-- What lets the app claim https://api.meridiancash.io/link/oauth as a
+         Universal Link, which is the address an OAuth bank's own app opens to
+         hand the sign-in back. docs/PLAID.md has why that cannot be the
+         `meridian://` scheme that closes the web sheet.
+
+         The domain has to match what Caddy serves the
+         apple-app-site-association from, and the team in that file has to be
+         the team this profile belongs to, or iOS reads the file, finds an app
+         id that is not this app, and silently declines the link. -->
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+        <string>applinks:api.meridiancash.io</string>
+    </array>
+    <!-- The session token's home on a real phone. Session.swift picks this
+         over UserDefaults everywhere but the simulator, which cannot reach the
+         keychain at all. -->
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)com.meridian.phone</string>
+    </array>
+</dict>
+</plist>

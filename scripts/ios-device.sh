@@ -75,16 +75,45 @@ if [ -z "$MERIDIAN_SERVER" ]; then
 fi
 
 # The signing identity. A free Apple ID issues one called "Apple Development",
-# the same name a paid account gets, so the search is by name either way.
-IDENTITY=$(security find-identity -v -p codesigning \
-    | grep -m1 "Apple Development" \
-    | awk '{ print $2 }')
+# the same name a paid account gets, so the name cannot tell them apart — and
+# an Apple ID in the Developer Program has both, because joining does not take
+# the personal team away.
+#
+# Which matters here because the profile below belongs to one team, and a
+# signature made with the other team's key against it is an app the phone
+# refuses to install. MERIDIAN_TEAM_ID picks; unset, the first is taken, which
+# is right whenever there is only one.
+if [ -n "$MERIDIAN_TEAM_ID" ]; then
+    IDENTITY=$(security find-identity -v -p codesigning \
+        | grep "Apple Development" \
+        | while read -r line; do
+            hash=$(printf '%s' "$line" | awk '{ print $2 }')
+            name=$(printf '%s' "$line" | sed -e 's/.*"\(.*\)".*/\1/')
 
-if [ -z "$IDENTITY" ]; then
-    echo "no Apple Development certificate in the keychain." >&2
-    echo "docs/GETTING_STARTED.md explains how to get one — it is the one" >&2
-    echo "step that needs Xcode itself, and it is once per machine." >&2
-    exit 1
+            ou=$(security find-certificate -c "$name" -p \
+                | openssl x509 -noout -subject -nameopt multiline \
+                | awk '/organizationalUnitName/ { print $3 }')
+
+            [ "$ou" = "$MERIDIAN_TEAM_ID" ] && printf '%s\n' "$hash"
+        done \
+        | head -1)
+
+    if [ -z "$IDENTITY" ]; then
+        echo "no Apple Development certificate for team $MERIDIAN_TEAM_ID." >&2
+        echo "the keychain has one per team and none of them is that team's." >&2
+        exit 1
+    fi
+else
+    IDENTITY=$(security find-identity -v -p codesigning \
+        | grep -m1 "Apple Development" \
+        | awk '{ print $2 }')
+
+    if [ -z "$IDENTITY" ]; then
+        echo "no Apple Development certificate in the keychain." >&2
+        echo "docs/GETTING_STARTED.md explains how to get one — it is the one" >&2
+        echo "step that needs Xcode itself, and it is once per machine." >&2
+        exit 1
+    fi
 fi
 
 # The provisioning profile: which phones this build may run on, and which

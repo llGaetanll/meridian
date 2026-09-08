@@ -39,8 +39,13 @@ for candidate in "$PROFILES"/*.mobileprovision "$PROFILES_XCODE"/*.mobileprovisi
     id=$(security cms -D -i "$candidate" 2>/dev/null \
         | plutil -extract Entitlements.application-identifier raw - 2>/dev/null) || continue
 
+    # The identifier carries the team as its prefix, so naming the team here
+    # is the same match with the prefix pinned. It matters once the Apple ID
+    # is in the Developer Program: the personal team's profiles do not go
+    # away, they are for this same bundle id, and the newest of the two is
+    # whichever was issued last rather than the one that grants anything.
     case "$id" in
-        *".$BUNDLE_ID")
+        ${MERIDIAN_TEAM_ID:+$MERIDIAN_TEAM_ID}*".$BUNDLE_ID")
             if [ -z "$PROFILE" ] || [ "$candidate" -nt "$PROFILE" ]; then
                 PROFILE=$candidate
             fi
