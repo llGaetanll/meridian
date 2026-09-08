@@ -40,18 +40,9 @@ logs --since 2m server`. Never `-f`, which does not return.
 
 ## Style
 
-`docs/STYLE.md` holds the house rules a formatter cannot enforce: no banner
-comments, no panics in production code, how state machines are named and laid
-out, and how JSON is formatted. **Read it before writing code.** If you find
-yourself making a style decision it does not cover, add it there.
-
-**Commit messages are one title and at most two sentences.** STYLE.md has it.
-
-Two that catch people most often:
-
-- **No `assert!`/`unwrap()`/`expect()` in production paths.** `debug_assert!`
-  is encouraged in state machines instead.
-- **No banner comments** (`// ─── section ───`). Split the file instead.
+`docs/STYLE.md` is the house style. **Read it before writing code.** Don't make
+style decisions yourself. If you're unsure about a style rule, just ask the
+user.
 
 ## Design
 
@@ -64,35 +55,45 @@ every platform.
 
 If a screen needs a control the sheet does not have, add it to the sheet in the
 same pass — a component that exists only inside one screen is how three
-platforms end up with three design languages.
+platforms end up with three design languages. Be sure to alert the user when
+this happens.
 
 ## The database
 
-`docs/DATABASE.md` covers Postgres, the containers, and the one rule that
-matters: **a migration that has been applied anywhere is immutable** — fix a
-mistake with the next migration, never by editing the last one. All SQL lives
-in `src-postgres` and nowhere else.
+`docs/DATABASE.md` covers Postgres, the containers, and migrations. Read it
+before touching the schema or writing a query.
 
 `scripts/db-reset.sh` destroys the database. It is for a human who has decided;
 never run it yourself.
 
 ## Logging
 
-How logging works is in `docs/LOGGING.md`. It ends with a list of every log
-line the app writes, one example each. Whenever you add, change or remove a log
-line, add, change or remove its example in that list.
+How logging works is in `docs/LOGGING.md`.
 
 ## Issue tracking
 
 This project lives on GitHub at `llGaetanll/meridian`. Issues and features are
-tracked in the GitHub issues there. When you finish work on a feature, check it
-off in the corresponding issue. If we are working on a bigger issue, we may need
-to track our progress or the features we've implemented, or what we plan on
-doing in the future. The user will usually tell you this but it's your
-responsibility to jot that down in the issue.
+tracked in the GitHub issues there.
 
-You need to be very concise when writing anything in the GitHub issues, use
-simple language whenever possible, no need to make it complicated.
+**An issue describes a problem.** It is written in three parts, in this order:
+
+1. **One sentence saying what is wrong**, in the plainest words you can find.
+   A reader who knows nothing about this project should understand it.
+2. **A paragraph explaining it properly** — what happens, when, and what it
+   affects.
+3. **What is needed to resolve it**, as a checklist.
+
+When an issue is opened that third part is often not known yet, and that is
+fine — leave it out. **Never decide how to fix an issue without asking the
+user.** A plan nobody agreed to is context that misleads the next agent, and
+writing the problem down is the whole job.
+
+Be very concise and use simple language. When work lands, check the item off.
+
+**An issue is one message.** When something changes — work lands, a claim turns
+out to be wrong — edit the body. Never add a comment saying what the body now
+gets wrong, because that leaves a reader two accounts to reconcile and the
+stale one is on top.
 
 ## Plaid
 

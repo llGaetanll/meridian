@@ -3,10 +3,27 @@
 House rules that a formatter cannot enforce. `rustfmt` (nightly, run by the
 pre-commit hook) owns everything mechanical; this document owns the rest.
 
-Where a rule has a reason, the reason is given — a rule nobody understands is a
-rule that gets worked around.
-
 ## Comments
+
+**Comments in code are uncommon.** Most code needs none — the names and the
+shape say it. A comment earns its place where something is unusual: a
+constraint from outside, a trap, a line that looks wrong and is not.
+
+**Say what, not why.** A comment states what the code does or what holds here.
+Reasoning goes in the commit message, or in a document if it is a rule. In a
+file it goes stale and it crowds out the code around it.
+
+```rust
+// Absent rather than null. Plaid reads either as "from the beginning", and
+// only absent is documented.
+```
+
+**Say what is, not what changed.** A comment describes the code as it stands,
+never the edit that produced it — the reader has `git log` and `git blame`, and
+those stay right when the code moves on. The same goes for words that only mean
+anything next to a diff: *now*, *no longer*, *used to*, *replaced*, *instead
+of*, *moved*. If the old shape was a trap somebody could fall into again, say
+what the trap is.
 
 **No banner comments.** Not these:
 
@@ -14,43 +31,17 @@ rule that gets worked around.
 // ── the ledger ──────────────────────────────────────────────────────────────
 ```
 
-They add a maintenance burden (they have to be re-padded when renamed), they
-encourage files to grow past the point where they should have been split, and
-they carry no information a `mod` or a heading in the file's doc comment does
-not. If a file needs sections, it probably needs to be two files.
+They have to be re-padded when renamed, they encourage a file to grow past the
+point where it should have been split, and they carry nothing a `mod` does not.
+If a file needs sections, it needs to be two files.
 
-**Say why, not what.** The code already says what it does. A comment earns its
-place by explaining a decision, a constraint, or a trap:
+**No issue numbers.** Not `(#24)`, not `see #40`. Code outlives an issue, and a
+number is not a reason. If the issue explained something worth knowing, write
+the something down.
 
-```rust
-// Absent rather than null: Plaid reads a null cursor as "from the beginning",
-// which is the same thing, but only absent is documented.
-```
-
-**Say what is, not what changed.** A comment describes the code as it stands.
-It never describes the edit that produced it:
-
-```rust
-// This used to answer 204 before any event existed, which is why no test
-// could reach it.
-```
-
-The reader has `git log` and `git blame` for that, and those stay right when
-the code moves on. A comment about a past state goes stale the moment somebody
-changes it again, and it costs every future reader the work of deciding whether
-the old behaviour still matters. If the old shape was a *trap* somebody could
-fall into again, say what the trap is — not what we did about it.
-
-The same goes for words that only mean anything next to a diff: *now*,
-*no longer*, *used to*, *replaced*, *instead of*, *moved*.
-
-**No issue numbers.** Not `(#24)`, not `see #40`. An issue is a conversation
-with a beginning and an end; code outlives it, and a number is not a reason. If
-the issue explained something worth knowing, write the something down. If it did
-not, the reference was never carrying anything.
-
-**Doc comments on anything public**, and on private items whose purpose is not
-obvious from the name. Start with a one-line summary that reads as a sentence.
+**Doc comments on anything public**, and on private items whose purpose the
+name does not give. One line of summary that reads as a sentence, and a few
+lines at most after it.
 
 ## Panics
 
@@ -75,19 +66,17 @@ let Some(month) = months.last_mut() else {
 
 Better than `expect()`, which reads as "this might fail and I am choosing to
 die", and better than silently skipping, which hides a broken invariant behind
-a missing row. `unreachable!` says the case cannot happen and names the reason.
-Reserve it for what is provable from the lines just above; anything that
-depends on input or IO gets a `Result`.
+a missing row. Reserve it for what is provable from the lines just above;
+anything depending on input or IO gets a `Result`.
 
 **`debug_assert!` and `debug_assert_eq!` are encouraged**, especially in state
-machines. They document an invariant, they fail loudly in tests and in debug
-builds, and they compile away in release. If you are tempted to write
-`assert_eq!` to check state, write `debug_assert_eq!` instead.
+machines. They document an invariant, fail loudly in tests and debug builds,
+and compile away in release.
 
 ## State machines
 
-The shape is in [ARCHITECTURE.md](ARCHITECTURE.md); this is the naming and
-layout that goes with it.
+The rules a machine follows are in [ARCHITECTURE.md](ARCHITECTURE.md). This is
+the naming and layout that goes with them.
 
 | Thing | Type | File |
 | --- | --- | --- |
@@ -98,48 +87,14 @@ layout that goes with it.
 | View values | `ViewLedger`, `ViewTxRow` | `view_ledger.rs`, `view_tx_row.rs` |
 | Wire types | `WireEntry` | `wire_entry.rs` |
 
-The prefix goes first in both the type and the file name so that a directory
+The prefix goes first in both the type and the file name, so a directory
 listing sorts by kind and says what it is at a glance.
 
 **One type per file**, and one event or action per file with it. A machine's
-file holds the machine. Its supporting types — what it is waiting on, what a
+file holds the machine; its supporting types — what it is waiting on, what a
 call came to, where it is in its own life — are each their own file, because a
 reader looking for the machine should find the machine. One that several crates
 need goes to `api-common` instead.
-
-**Fields are private.** State changes only through `handle_events`. A `pub`
-field is a way to mutate state without an event, which is the one thing the
-whole design is trying to prevent.
-
-**Split a machine by process.** `StateSignup` owns signing up: the code, the
-session, the bank sign-in, and the events that drive them. `StateLedger` owns
-the Ledger's filter. Both own the *handling* of what is theirs — the parent
-routes to them and `handle_events` is still the only way anything changes, but
-the deciding happens where the state is, not in a parent holding fields it
-never reads.
-
-Shared data stays on the parent: two copies of the ledger are two copies that
-can disagree.
-
-**A comment on a type says what the type is, not what is done with it.** A
-field's doc is what the field holds; a variant's is what the variant means.
-Where it is sent, who reads it, what the machine decides when it arrives — that
-belongs where the deciding happens, and put on the type it goes stale the first
-time a second caller appears. Why the type is *shaped* the way it is does
-belong here: a `Box` around a large variant, a `u64` where a `Timestamp` cannot
-cross FFI.
-
-**Derive as little as possible on events and actions.** `Debug` is needed for
-logging and for failure messages. `Clone` only if something genuinely needs to own one — they are passed
-by reference all the way down. **`PartialEq` in particular is not needed**:
-`eval!` matches actions as patterns rather than comparing them, and a derive on
-a top-level enum spreads a bound through every type it touches.
-
-**No clock, no IO, no randomness inside the machine.** Time arrives as an
-event — a `Tick` the runtime sends once a second — rather than as an argument
-to `handle_events`, because an argument never appears in the event log and so
-cannot be replayed. This is what makes a log of events a recording of a
-session. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Tests
 
@@ -172,8 +127,7 @@ matter:
 ```
 
 The macro expands to `matches!`, which is why events and actions need no
-`PartialEq` — pattern matching requires no trait at all, and keeping that derive
-off them is what stops it spreading through every type they touch.
+`PartialEq`.
 
 **A `>` line that starts with `@` pins the whole action instead**, as a raw
 string compared against its `{:?}`:
@@ -183,49 +137,17 @@ string compared against its `{:?}`:
 ```
 
 A pattern cannot reach a value: it cannot compare a `String` to a sentence, or
-say that six boxes are red, or that a countdown reads `Resend in 0:18`. `@`
-can, because it compares text. Use it where a value is the claim, and a pattern
-where the shape is — the two sit side by side in one block, and most tests use
-both.
-
-Two things follow from it. The string is what the machine printed, so the enum
-names are unqualified — `ToSource { action: SendCode { … } }`, not
-`Action::ToSource { action: ActionSource::SendCode { … } }`. And a failure
-prints the expected and the actual on two lines in exactly that form, so the
-way to write one is to put in `@r#""#`, run the test, and paste back what it
-says it got — after reading it, since what it got may be the bug.
+say that six boxes are red, or that a countdown reads `Resend in 0:18`. Use `@`
+where a value is the claim and a pattern where the shape is; most tests use
+both. Debug prints variants unqualified, so the string reads `ToSource { … }`
+where the pattern would say `Action::ToSource { … }`. The way to write one is to
+put in `@r#""#`, run the test, and paste back what it says it got — after
+reading it, since what it got may be the bug.
 
 A screen that runs to hundreds of lines of `Debug` is not worth pinning this
 way; the Ledger's 48 rows stay `Render { .. }` and the assertions on them read
 the view. First run's screens are small, and `tests/state_onboarding.rs` pins
 every one of them whole.
-
-**Every event on a `<` line is written out in full.** No helper that builds one,
-no local holding one, no closure — the whole event, where it is sent:
-
-```rust
-eval!(&mut state,
-    < Event::FromRouter { request_id: 1, event: EventRouter::SnapshotRequested { force: false, items: vec![ItemFacts { item_id: "item-1".to_string(), cursor: None, synced_at: None, login_required: false }] } },
-    > Action::ToSource { action: ActionSource::FetchBalances { call_id: 1, .. } },
-
-    // Plaid says nothing. Time passes and nothing else arrives.
-    < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
-    > Action::ToRouter { action: ActionRouter::Serve, .. },
-);
-```
-
-The lines get long. That is the cheaper half of the trade: the point of these
-tests is to read a flow at a glance, and `requested(false, vec![facts(None,
-false)])` cannot be read at all without going to look up two definitions — which
-is worse the more of them a file has, and worst in exactly the test somebody is
-reading because it broke. A helper is fine *around* a test — the machine it
-starts from, the screen it reads back afterwards — but not on a `<` line.
-
-Time is not part of the syntax either: it is an event like any other, so a test
-that is *about* time sends one, as above. That is what makes "we waited long
-enough" a test rather than a stopwatch. Both machines work this way —
-`EventProcess::Tick` on the server, `EventRuntime::Tick` on the phone — and
-neither has a way to be told the time other than by being sent it.
 
 **A `>` line may bind and carry a block**, which runs when the action matches:
 
@@ -235,32 +157,64 @@ neither has a way to be told the time other than by being sent it.
 },
 ```
 
-This is what a screen too large to pin with `@` uses. The Ledger's render
-carries sixteen filter chips whether there are two transactions or none, and
-Recurring's carries a three-month calendar grid; `@` would make a test about
-two rows pin a thousand characters it has no claim about. The pattern takes out
-the one part the test is about, the block says the one thing, and the rest of
-the render is neither written down nor asserted.
+This is what a screen too large to pin uses. The pattern takes out the one part
+the test is about, the block says the one thing, and the rest of the render is
+neither written down nor asserted.
+
+**Every event on a `<` line is written out in full.** No helper that builds one,
+no local holding one, no closure — the whole event, where it is sent.
+`requested(false, vec![facts(None, false)])` cannot be read without going to
+look up two definitions, which is worst in exactly the test somebody is reading
+because it broke. A helper is fine *around* a test — the machine it starts from,
+the screen it reads back afterwards — but not on a `<` line.
+
+**A long event may be broken across lines.** Written out in full is the rule;
+one line is not. `eval!` parses tokens, so formatting is free:
+
+```rust
+eval!(&mut state,
+    < Event::FromRouter {
+        request_id: 1,
+        event: EventRouter::SnapshotRequested {
+            force: false,
+            items: vec![ItemFacts {
+                item_id: "item-1".to_string(),
+                cursor: None,
+                synced_at: None,
+                login_required: false,
+            }],
+        },
+    },
+    > Action::ToSource { action: ActionSource::FetchBalances { call_id: 1, .. } },
+);
+```
+
+Time is not part of the syntax either: it is an event like any other, so a test
+that is *about* time sends one.
+
+```rust
+< Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
+```
+
+That is what makes "we waited long enough" a test rather than a stopwatch.
+`EventProcess::Tick` on the server, `EventRuntime::Tick` on the phone, and
+neither machine has another way to be told the time.
 
 **Nothing searches the action list.** No `.iter().find(…)` for the render, no
 `.filter(…).count()` of the fetches, and no helper that hands back "the screen
 that came out" — a test that goes looking never says which action carried what
 it found, or how many others there were. The `>` lines are already every action
 in order, so "only the first turn fetches" is the list itself rather than a
-count of it, and the screen arrives through the line that drew it.
+count of it.
 
 **A test carries the smallest fixture that can make its claim.** Two
 transactions on one day is what "a day heading carries its net" is about; forty
 of them say the same thing while making the expected value something only the
 fixture knows. `assert_eq!(shown.len(), 9)` with a comment reading *nine food
-transactions in the captured feed* is not a claim about the machine at all — it
-is a fact about a file, and it breaks whenever that file is regenerated.
-
-The corollary is that a shared fixture is usually the wrong shape. The phone's
-tests used to load one captured Plaid feed — 48 transactions, 14 accounts, 8
-streams — into all of them; six calendar tests loaded it to assert that August
-2026 starts on a Saturday. Each test now writes the snapshot it needs, and a
-screen whose claim needs no records asks for none.
+transactions in the captured feed* is a fact about a file, not a claim about the
+machine, and it breaks whenever that file is regenerated. So a shared fixture is
+usually the wrong shape — each test writes the snapshot it needs, and a screen
+whose claim needs no records asks for none.
 
 **A test sends only the events its claim needs.** An event that changes nothing
 the test looks at is a reader's problem: they have to work out whether it
@@ -269,64 +223,42 @@ fetch goes out stops at the `>` line that says so, and what happens when the
 fetch lands is the next test's claim.
 
 **A bug is reproduced before it is fixed.** Write the test first, run it, and
-watch it fail for the reason you think it fails. Only then change the code. A
-test written after the fix proves the code does what it now does; a test written
-before it proves the bug was real and is gone.
+watch it fail for the reason you think it fails. A test written after the fix
+proves the code does what it now does; a test written before it proves the bug
+was real and is gone.
 
-This is not a discipline the architecture asks you to supply. Everything that
+The architecture supplies this rather than asking for it. Everything that
 decides anything lives in a state machine, and a state machine is events in and
-actions out with no clock and no IO — so every logical bug in this codebase is
-some sequence of events producing the wrong actions, and that sequence is an
-`eval!` test. If a bug seems not to be reproducible that way, the behaviour is
-in a runtime that should not be deciding it.
-
-The bug where the same transaction appeared three times was two
-`TransactionsLoaded` events carrying an entry the ledger already held:
-
-```rust
-eval!(&mut state,
-    < Event::FromSource { event: EventSource::TransactionsLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } }), Entry::from_tx("b".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: false } },
-    > Action::ToRouter { action: ActionRouter::Serve },
-
-    < Event::FromSource { event: EventSource::TransactionsLoaded { call_id: 1, item_id: "item-1".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: false } },
-    > Action::ToRouter { action: ActionRouter::Serve },
-);
-
-assert_eq!(state.entries().len(), 2, "a transaction must appear once");
-```
-
-Six lines, no fixture and no server — long ones, and the sequence is still the
-first thing you see. Reproducing it that small is also what located it: the
-phone's machine assigns a snapshot wholesale and could never have doubled
-anything, which left one caller of `Ledger::apply` to look at.
+actions out with no clock and no IO — so every logical bug here is some sequence
+of events producing the wrong actions, and that sequence is an `eval!` test. If
+a bug seems not to be reproducible that way, the behaviour is in a runtime that
+should not be deciding it. The bug where one transaction appeared three times
+was six lines: two `TransactionsLoaded` events carrying an entry the ledger
+already held, and `assert_eq!(state.entries().len(), 2)`.
 
 **`eval!` tests live in the crate's `tests/` directory**, not in a
 `#[cfg(test)] mod tests` at the foot of the file they test. A machine's tests
 grow with every event it learns to handle, and a state machine is a file people
-have to read end to end — the two do not belong in one file.
+read end to end.
 
 **A machine's tests are split by the flow they are about, not by the file they
-came from.** One file per machine works until the machine answers six routes,
-and then it is two thousand lines nobody reads in order. The split that works
-is the one a document already made: `docs/API_FLOW.md` letters the server's
-flows A to F, so `crates/server-main/tests/` has `flow_a_signing_in.rs`,
+came from.** `docs/API_FLOW.md` letters the server's flows A to F, so
+`crates/server-main/tests/` has `flow_a_signing_in.rs`,
 `flow_b_opening_a_bank_sign_in.rs` and the rest, each opening with the flow's
-happy path written out end to end and following it with that flow's lettered
-alternatives. `crates/phone-state/tests/state_onboarding.rs` is the same rule
-one file earlier: first run is a flow, so it is a file.
+happy path end to end and following it with that flow's lettered alternatives.
+`crates/phone-state/tests/state_onboarding.rs` is the same rule one file
+earlier: first run is a flow, so it is a file.
 
-What is left over is what belongs to no flow, named `state_*` after the thing
-it is about rather than a letter — the machine's own life (`state_lifecycle`),
-and the rules that guard every flow at once (`state_limits`,
-`state_webhook_trust`). A test goes in the flow file when a reader looking up
-that flow would want it there, and in a `state_*` file when they would not.
+What belongs to no flow is named `state_*` after the thing it is about — the
+machine's own life (`state_lifecycle`), and the rules that guard every flow at
+once (`state_limits`, `state_webhook_trust`). A test goes in the flow file when
+a reader looking up that flow would want it there.
 
-**Fixtures shared across those files live in `tests/fixtures/mod.rs`.** A
-directory module, so Cargo does not compile it as a test binary of its own, and
-it holds only what this document already calls a helper *around* a test: the
-machine a test starts from, the clock it is set to, a signature the machine will
-believe. Nothing in it builds an event — those are still written out where they
-are sent.
+**Fixtures shared across those files live in `tests/fixtures/mod.rs`** — a
+directory module, so Cargo does not compile it as a test binary of its own. It
+holds only what this document already calls a helper around a test: the machine
+a test starts from, the clock it is set to, a signature the machine will
+believe. Nothing in it builds an event.
 
 Unit tests on a value stay where they are, in a module beside the thing they
 test. The rule is about machines, whose tests are conversations rather than
@@ -334,14 +266,11 @@ assertions on a return value.
 
 **No snapshot testing.** Not inline, not in files, and no tool that writes the
 expected value for you or updates it when it changes. A snapshot is accepted
-rather than decided, and a suite of them is a suite nobody has read.
-
-`@` is a string comparison and is not that: it is written into the test by the
-person making the claim, one action at a time, next to the pattern lines that
-deliberately ignore everything else. It does cost what a snapshot costs — add a
-field to a view and every `@` carrying it fails — and that is the trade taken
-knowingly. When a change breaks a pile of them, read the new value before
-pasting it in; that reading is the whole difference.
+rather than decided, and a suite of them is a suite nobody has read. `@` is not
+that: it is written in by the person making the claim, one action at a time. It
+does cost what a snapshot costs — add a field to a view and every `@` carrying
+it fails — and that is the trade taken knowingly. When a change breaks a pile of
+them, read the new value before pasting it in; that reading is the difference.
 
 ## Logging
 
@@ -349,8 +278,7 @@ pasting it in; that reading is the whole difference.
 every line gets a level, a target, structured fields and the commit it came
 from. A print has none of those, and it is exactly the line missing from the log
 we are handed. The exception is a command whose output *is* the answer — an
-example, or a build script — which writes to stdout. What gets logged is in
-[LOGGING.md](LOGGING.md).
+example, or a build script — which writes to stdout. See [LOGGING.md](LOGGING.md).
 
 ## JSON
 
@@ -379,6 +307,9 @@ hand-written fixture instead.
 
 - `api-*` — shared types and pure logic. No IO, no program.
 - `src-*` — one external source each. IO only.
+- `util-*` — helpers shared across crates that belong nowhere else. None exist
+  yet, and it is not yet clear that any are needed; reach for `api-common`
+  first.
 - `server-*`, `phone-*`, `web-*` — programs. Each owns its state machine, its
   runtime, and its own wire types.
 - Spell words out. `server-main`, not `srv-main`.
@@ -409,9 +340,9 @@ noise in the next diff.
 
 `cargo sqlx prepare` regenerates `.sqlx`, the checked-query cache at the repo
 root. Every `sqlx::query!` is verified against the live schema at compile time,
-and that cache is what lets a clean checkout build with no database at all —
-so a query changed without regenerating it is a build that works on your
-machine and nowhere else. Only needed when the SQL or the schema moved.
+and that cache is what lets a clean checkout build with no database at all — so
+a query changed without regenerating it is a build that works on your machine
+and nowhere else.
 
 **No lints anywhere.** Not "no new lints" — none. A warning that is genuinely
 wrong gets `#[expect(lint, reason = "…")]` with the reason written out, so the

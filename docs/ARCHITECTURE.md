@@ -8,10 +8,10 @@ crates back all three, so the split between them is what keeps that possible.
 This is the rule everything else follows from. Three layers, and each one only
 ever knows about the one below it:
 
-- **IO** — `src-yahoo`, `src-coingecko`, and the `io` module of a front-end.
-  Plain async functions over plain data: fetch, parse, map onto the app's own
-  types. No signals, no resources, no components. Anything here can be called
-  from a test, a background job, or another platform's shell.
+- **IO** — the `src-*` crates and the `io` module of a front-end. Plain async
+  functions over plain data: fetch, parse, map onto the app's own types. No
+  signals, no resources, no components. Anything here can be called from a
+  test, a background job, or another platform's shell.
 - **State** — the `state` module of a front-end (and `web-state`). Signals and
   resources, and the rules for when to refetch. It calls into IO; it never
   builds a request itself.
@@ -23,10 +23,22 @@ The point is that a component can be dropped into a different page, an IO
 function can be run from a CLI, and a state object can be tested with a stub —
 because none of them are entangled with the other two.
 
+### The IO layer is thin
+
+**A method on an `src-*` client makes at most one request.** It matches an
+endpoint the remote API actually has, and its name says which one.
+`/transactions/sync` is a method; "sync, then fetch the balances" is not. A
+client may hold a base URL, credentials and a shared `reqwest` client, and that
+is the whole of what it owns.
+
+Two calls in a row are a decision — what the first answer means, what to do
+when it fails, whether the second is still wanted — so they go through the
+state machine as two actions and two events. A helper doing both would put that
+decision where no `eval!` test can reach it and no event log records it.
+
 ## Events in, actions out
 
-The layering above says where code lives. This says how it talks. It is the
-direction we are moving in, not what the code does everywhere today.
+The layering above says where code lives. This says how it talks.
 
 Nothing that decides anything is allowed to do IO. Instead:
 
@@ -79,8 +91,7 @@ recorded log read as a story rather than a flat list.
 
 ### The rules a machine follows
 
-These are settled. A new state machine — and there will be more, one per
-program — follows all of them.
+These are settled. A new state machine follows all of them.
 
 1. **`handle_events` is the only entry point, and the only way state changes.**
    The fields are private. A `pub` field is a way to mutate state without an
@@ -89,7 +100,7 @@ program — follows all of them.
 2. **Time is an event, not a call.** `EventProcess::Tick { now }` on the
    server and `EventRuntime::Tick { now }` on the phone, about once a second,
    read at the edge by the runtime. Nothing inside reads a clock, which is what
-   makes a replay land where it did the first time. The same goes for IO.
+   makes a replay land where it did the first time.
 
    A tick is also the only event that arrives when *nothing* has happened, and
    that turns out to be load-bearing: a source that goes quiet rather than
@@ -113,28 +124,42 @@ program — follows all of them.
    of OS entropy on `EventProcess::Seeded` and draws sign-in codes and session
    tokens from a ChaCha20 generator seeded with it. So generation is a decision
    like any other — reproducible from the log, reachable from `eval!` — while
-   staying unpredictable to anyone without the seed. Two things this asks for:
-   the generator must be cryptographic, and the machine must refuse to mint a
-   credential before it has been seeded rather than fall back to anything.
+   staying unpredictable to anyone without the seed. What this asks for is that
+   the generator be cryptographic; the seed itself is in place before anything
+   asks for a credential, because seeding happens in `Starting` (rule 3).
 
    It also buys the bigger prize: with the generator inside, a whole run is
    reproducible from one seed, which is what makes deterministic simulation
    testing possible later.
 
-3. **Nothing derived is stored.** Filtering, grouping and totals are computed
+3. **A machine's life is `Stopped`, `Starting`, `Started`, `Stopping`.**
+   Everything the machine needs in order to work — its seed, its
+   configuration, whatever a source had to be asked for first — is gathered in
+   `Starting`, and `Started` holds it outright. So nothing in `Started` checks
+   whether setup happened: the phase is the answer. A machine asking "have I
+   been seeded yet?" on a turn has spread its startup across its whole life,
+   and every branch of that question is a state nobody tested.
+
+4. **Nothing derived is stored.** Filtering, grouping and totals are computed
    on the way out. A field that could be recomputed is a field that can
    disagree with itself.
 
-4. **Derive as little as possible on events and actions.** `Debug` for logging
+5. **Every field is deterministic.** A `HashMap` iterates in an order that
+   changes from run to run, so a machine holding one can produce the same
+   actions in a different order from the same events — and a replay that
+   lands somewhere else is not a replay. `BTreeMap` where a table is keyed,
+   `Vec` where it is ordered.
+
+6. **Derive as little as possible on events and actions.** `Debug` for logging
    and for failure messages; `Clone` only where something must own one. Not
    `PartialEq` — tests match on patterns via `eval!`, and that derive spreads a
    bound through every type it touches.
 
-5. **No panics.** `debug_assert!` for invariants, `unreachable!` where a case
+7. **No panics.** `debug_assert!` for invariants, `unreachable!` where a case
    is provably impossible, `Result` for anything depending on input or IO. See
    [STYLE.md](STYLE.md).
 
-6. **Split a machine by process.** A sub-machine (`StateSignup`) owns a
+8. **Split a machine by process.** A sub-machine (`StateSignup`) owns a
    process end to end: its state, its rules, and the events that drive it. The
    parent's `handle_events` still routes — it is the only way anything changes
    — but what a signup event means is decided in the signup machine, not in
@@ -143,7 +168,7 @@ program — follows all of them.
    Shared data stays on the parent: two copies of the ledger are two copies
    that can disagree.
 
-7. **Anything that is a *rule* belongs in the machine, even if it looks like
+9. **Anything that is a *rule* belongs in the machine, even if it looks like
    IO's business.** Rate limiting is the example, in both directions. "May I
    send this?" is arithmetic over what we have already sent, and "may they ask
    this?" is arithmetic over what we have already answered; neither needs a
@@ -156,29 +181,29 @@ program — follows all of them.
    actions they do not produce, which is not a thing you can write about a
    limiter living in a middleware.
 
-8. **A process with more than one step is one entry in one table, and the
-   entry's variant is the step.** A route in flight is a `Pending`, keyed by
-   its request: parked on the session read, parked on a Link session, decided
-   and waiting for its writes to land. A Link session in its race is a
-   `LinkSession`, keyed by its token: reported and not yet asked about, or
-   asked about and not yet reported. The parent holds the table and the id;
-   which step an entry is at is the entry's own business.
+10. **A process with more than one step is one entry in one table, and the
+    entry's variant is the step.** A route in flight is a `Pending`, keyed by
+    its request: parked on the session read, parked on a Link session, decided
+    and waiting for its writes to land. A Link session in its race is a
+    `LinkSession`, keyed by its token: reported and not yet asked about, or
+    asked about and not yet reported. The parent holds the table and the id;
+    which step an entry is at is the entry's own business.
 
-   What this buys is that the table *is* the list of what is in flight. An
-   entry that is still there after its answer went out is a leak by
-   definition, which is what `census()` counts and `state_leaks.rs` asserts.
-   Three tables keyed three ways — a call, a request, a token — were three
-   places one route could be forgotten in.
+    What this buys is that the table *is* the list of what is in flight. An
+    entry that is still there after its answer went out is a leak by
+    definition, which is what `census()` counts and `state_leaks.rs` asserts.
+    Three tables keyed three ways — a call, a request, a token — were three
+    places one route could be forgotten in.
 
-   The one table keyed by something other than the process it describes is
-   `Waiting`, by call: an answer names the call it is for and not the route,
-   so that is the index from one to the other, and the list the tick gives up
-   on.
+    The one table keyed by something other than the process it describes is
+    `Waiting`, by call: an answer names the call it is for and not the route,
+    so that is the index from one to the other, and the list the tick gives up
+    on.
 
 ### Waiting without sleeping
 
 A machine often needs to wait: back off before retrying, give up on a call that
-has been out too long, do not ask Plaid again yet. That is a rule, so by rule 7
+has been out too long, do not ask Plaid again yet. That is a rule, so by rule 9
 it belongs in the machine — but sleeping is IO, and the machine cannot do IO.
 
 It does not need to. It holds the time the last tick brought, so every waiting
@@ -222,21 +247,15 @@ carrying out an action, so nothing can do IO without an action asking for it.
 **A runtime chooses *how* to carry out an action. It never chooses whether to,
 or what to report back.**
 
-Ordering five writes so the cursor lands last is *how* — it is the mechanics of
-one action, and the machine neither knows nor cares. Checking whether a
-database was configured and, if not, emitting a different event, is *whether*
-and *what*: it is behaviour, it lives outside the machine, no `eval!` test can
-reach it and no event log records it happening.
+Ordering five writes so the cursor lands last is *how* — the mechanics of one
+action, which the machine neither knows nor cares about. Checking whether a
+database was configured and, if not, emitting a different event is *whether*:
+behaviour that no `eval!` test can reach and no event log records.
 
-The fix is always the same, and it is worth recognising the shape: **the
-runtime reports a fact, the machine decides what to do about it.** Whether
-there is a store, whether credentials exist, what a source answered — those are
-facts, and they arrive as events. Everything downstream of a fact is a
-decision, and decisions live in one place.
-
-The symptom to watch for is a runtime reading its own state in order to pick an
-event to send. `if self.db.is_some()` is the tell. Nothing about that is
-visible in a log, and nothing about it can be replayed.
+The fix has one shape: **the runtime reports a fact, the machine decides what
+to do about it.** Whether there is a store, whether credentials exist, what a
+source answered — facts, arriving as events. The tell that it has gone wrong is
+a runtime reading its own state to pick an event to send: `if self.db.is_some()`.
 
 `server-main` writes this out as a real loop over requests;
 `swift/Sources/MeridianApp/RuntimeApp.swift` is the same thing driven by user
@@ -276,18 +295,8 @@ place. A test is a slice of events in, a `Vec<Action>` and a state to assert on
 out — no runtime, no await, no mocks.
 
 In practice a test is written with `eval!` (`crates/api-eval`), which is that
-shape with the boilerplate removed:
-
-```rust
-eval!(&mut state,
-    < EventRouter::SnapshotRequested { force: false },
-    > Action::ToSource { action: ActionSource::FetchBalances { item_id: "item-1" } },
-);
-```
-
-`<` is an event in, `>` is an action out, and adjacent events form one batch.
-The `>` lines are patterns, so the macro expands to `matches!` and the types
-need no `PartialEq`. See [STYLE.md](STYLE.md).
+shape with the boilerplate removed. Its syntax and the rules for using it are
+in [STYLE.md](STYLE.md).
 
 ### Where it lives
 

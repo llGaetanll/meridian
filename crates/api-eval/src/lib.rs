@@ -1,71 +1,18 @@
 //! `eval!` — the way state machines are tested.
 //!
 //! A state machine test is a conversation: events go in, actions come out, more
-//! events go in. Written by hand that is a wall of `Vec::new()`,
-//! `handle_events` and index arithmetic, and the shape of the conversation is
-//! the thing that gets lost.
+//! events go in. `<` is an event going in, `>` is an action expected out.
 //!
 //! ```ignore
 //! eval!(&mut state,
 //!     < Event::FromUi { event: EventUi::Started },
 //!     > Action::ToSource { action: ActionSource::LoadSnapshot },
 //!     > Action::ToUi { action: ActionUi::Render { .. } },
-//!
-//!     < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Ledger } },
-//!     < Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
-//!     > Action::ToUi { action: ActionUi::Render { .. } },
 //! );
 //! ```
 //!
-//! Every event is written out where it is sent — no `ui(…)`, no `toggle(…)`, no
-//! local holding one. A helper shortens the line and hides the flow, which is
-//! the one thing these tests exist to show; `docs/STYLE.md` has the rule.
-//!
-//! `<` is an event going in, `>` is an action expected out. A run of adjacent
-//! events goes into one `handle_events` call, and the `>` lines after them are
-//! exactly what that call must produce — in order, with nothing extra and
-//! nothing missing. A `>` line after an action starts the next batch.
-//!
-//! The `>` lines are **patterns**, not values, so `..` and `_` work wherever a
-//! part does not matter:
-//!
-//! ```ignore
-//! > Action::ToUi { action: ActionUi::Render { .. } }
-//! ```
-//!
-//! That is what keeps this honest without `PartialEq`: the macro expands to
-//! `matches!`, which is pattern matching and needs no trait at all. Keeping
-//! that derive off the events and actions is the point — it spreads through
-//! every type they touch.
-//!
-//! A pattern cannot reach a *value*, though — there is no way to say in one
-//! that a `String` is a particular sentence — so a `>` line may instead be `@`
-//! and a string, compared against the action's `{:?}`:
-//!
-//! ```ignore
-//! > @r#"ToSource { action: SendCode { email: "al@example.com" } }"#,
-//! ```
-//!
-//! Debug prints variants unqualified, so the string reads `ToSource { … }`
-//! where the pattern would say `Action::ToSource { … }`. A failure prints the
-//! expected and the actual in that same form, which is how one gets written:
-//! leave it empty, run the test, and paste back what it says it got — having
-//! read it first, because what it got may be the bug.
-//!
-//! Both forms sit in one block. Use `@` where a value is the claim and a
-//! pattern where the shape is; `docs/STYLE.md` has the rule and the reason.
-//!
-//! A pattern may also bind and carry a block, which runs when the action
-//! matches — for a screen too large to be worth writing out whole:
-//!
-//! ```ignore
-//! > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
-//!     assert_eq!(rows(ledger).len(), 2, "the Uber is filtered out");
-//! },
-//! ```
-//!
-//! The bindings are the point: the test asserts on what the action carried,
-//! where it arrived, rather than digging it back out of the batch afterwards.
+//! The syntax in full — batching, patterns, `@` for pinning a value, blocks
+//! that bind — and the rules for writing these tests are in `docs/STYLE.md`.
 
 use proc_macro::TokenStream;
 use quote::quote;
