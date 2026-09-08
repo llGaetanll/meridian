@@ -10,6 +10,8 @@
 - Never start the application yourself, the user is already running it. If the
   build is broken you can kill the user's instance and start it yourself, but
   otherwise you shouldn't need to.
+- **Never create a branch or a worktree unless the user explicitly asks for
+  one.** Work happens on `master`, and that is where a commit goes.
 
 ## Running the stack
 
