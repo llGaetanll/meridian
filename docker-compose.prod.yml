@@ -93,7 +93,12 @@ services:
       # app-store account has: the file then names a team that owns nothing,
       # no app claims the link, and nothing is sent there anyway because
       # PLAID_REDIRECT_URI is unset alongside it.
-      MERIDIAN_TEAM_ID: ${MERIDIAN_TEAM_ID:-}
+      #
+      # The default is spelled here rather than in the Caddyfile: a placeholder
+      # default fires only when a variable is unset, and compose defines this
+      # one either way. Empty, it would serve an appID of `.com.meridian.phone`
+      # — a 200 that looks right and vouches for nothing.
+      MERIDIAN_TEAM_ID: ${MERIDIAN_TEAM_ID:-TEAMID}
 
     depends_on:
       - server

@@ -347,8 +347,9 @@ Caddy already serves both halves of it on this box:
 | `/.well-known/apple-app-site-association` | What tells iOS this domain vouches for the app. Names `$MERIDIAN_TEAM_ID.com.meridian.phone` |
 | `/link/oauth` | The address itself. Only ever *rendered* when the association failed — in the working case iOS opens the app instead |
 
-Both are live right now and both are inert, because `MERIDIAN_TEAM_ID` names no
-team and `PLAID_REDIRECT_URI` is empty, so no link token points a bank here.
+Both are live right now and both are inert, because `MERIDIAN_TEAM_ID` is
+unset — the file then names the literal `TEAMID`, which owns nothing — and
+`PLAID_REDIRECT_URI` is empty, so no link token points a bank here.
 That is the correct state: telling Plaid a native app opened the session
 without giving the bank a reachable address strands the user in their bank's
 app *after* they have signed in.
@@ -381,9 +382,13 @@ Naming the team is what stops a build picking it.
    Apple to enable **Associated Domains** and **Keychain Sharing** on the App
    ID and comes back with a profile that grants both
 2. Set the same `MERIDIAN_TEAM_ID` on the box and redeploy — `up`, not
-   `restart` — then check the file:
-   `curl -sI https://api.meridiancash.io/.well-known/apple-app-site-association`
-   must answer 200 with `content-type: application/json` and no redirect
+   `restart` — then read the file, body and all:
+   `curl -s https://api.meridiancash.io/.well-known/apple-app-site-association`
+   must be `content-type: application/json` with no redirect, and its `appIDs`
+   must read `TEAMID.com.meridian.phone` with the real ten characters. A 200 is
+   not on its own evidence the team took: the file is served whether or not the
+   variable reached Caddy, and `TEAMID.com.meridian.phone` is what it says when
+   it did not
 3. Register `https://api.meridiancash.io/link/oauth` in the Plaid dashboard
 4. Set `PLAID_REDIRECT_URI` to that same address and bring the server up. The
    startup line's `handback=` says whether it took

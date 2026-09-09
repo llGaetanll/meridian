@@ -30,9 +30,11 @@
 	# `application/json`, and gets all three from a `respond`.
 	#
 	# `MERIDIAN_TEAM_ID` is the Apple Developer team, which does not exist
-	# until the account does. Unset, this serves a file naming a team that owns
-	# nothing, which is inert: no app claims the link, and
-	# `PLAID_REDIRECT_URI` is unset alongside it, so no bank is ever sent here.
+	# until the account does. Without one, compose sends `TEAMID` and this
+	# serves a file naming a team that owns nothing, which is inert: no app
+	# claims the link, and `PLAID_REDIRECT_URI` is unset alongside it, so no
+	# bank is ever sent here. The placeholder default below is a second line of
+	# defence only — compose always defines the variable, so it never fires.
 	handle /.well-known/apple-app-site-association {
 		header Content-Type application/json
 		respond `{
