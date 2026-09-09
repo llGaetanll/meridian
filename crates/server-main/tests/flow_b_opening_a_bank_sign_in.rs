@@ -13,6 +13,7 @@ mod fixtures;
 
 use api_eval::eval;
 use fixtures::state;
+use fixtures::state_subscribed;
 
 use server_main::*;
 
@@ -24,7 +25,7 @@ use server_main::*;
 /// collecting a bank another account connected.
 #[test]
 fn connecting_a_bank_opens_a_session_and_hands_over_its_page() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
@@ -71,7 +72,7 @@ fn a_token_that_names_nobody_opens_no_session() {
 /// anybody to, and `/link/start` renders anything that is not a URL as a 502.
 #[test]
 fn a_session_plaid_would_not_open_is_not_a_page() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },

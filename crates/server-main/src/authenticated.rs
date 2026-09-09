@@ -19,6 +19,13 @@ pub enum Authenticated {
     },
 
     SnapshotRequested,
+
+    /// Starting a subscription. One of the two routes an unpaid session may
+    /// reach — see [`Authenticated::needs_entitlement`].
+    SubscribeRequested,
+
+    /// Asking what the subscription is. The other one.
+    BillingStatusRequested,
 }
 
 impl Authenticated {
@@ -32,6 +39,10 @@ impl Authenticated {
                 Some(Authenticated::SyncWatchRequested { conn_id: *conn_id })
             }
             EventRouter::SnapshotRequested { .. } => Some(Authenticated::SnapshotRequested),
+            EventRouter::SubscribeRequested { .. } => Some(Authenticated::SubscribeRequested),
+            EventRouter::BillingStatusRequested { .. } => {
+                Some(Authenticated::BillingStatusRequested)
+            }
             _ => None,
         }
     }
@@ -43,6 +54,30 @@ impl Authenticated {
             Authenticated::LinkClosed => Route::LinkFinish,
             Authenticated::SyncWatchRequested { .. } => Route::SyncStatus,
             Authenticated::SnapshotRequested => Route::Snapshot,
+            Authenticated::SubscribeRequested => Route::BillingSubscribe,
+            Authenticated::BillingStatusRequested => Route::BillingStatus,
+        }
+    }
+
+    /// Whether this route is refused without a subscription.
+    ///
+    /// A method rather than a check at each call site, so adding a route
+    /// forces the decision: a new variant does not compile until this match
+    /// says which it is. There are no unpaid users, so the answer is `true`
+    /// for everything the app actually does.
+    ///
+    /// The two that answer `false` are the way out of that: a session that
+    /// has not paid can start a subscription and ask how it is going, and
+    /// nothing else. Refusing those would leave somebody signed in with no
+    /// route to becoming a customer.
+    pub fn needs_entitlement(&self) -> bool {
+        match self {
+            Authenticated::SubscribeRequested | Authenticated::BillingStatusRequested => false,
+
+            Authenticated::LinkRequested
+            | Authenticated::LinkClosed
+            | Authenticated::SyncWatchRequested { .. }
+            | Authenticated::SnapshotRequested => true,
         }
     }
 }

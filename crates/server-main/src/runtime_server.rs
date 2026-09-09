@@ -17,11 +17,13 @@ use crate::ActionEmail;
 use crate::ActionProcess;
 use crate::ActionSocket;
 use crate::ActionSourcePlaid;
+use crate::ActionSourceStripe;
 use crate::ActionStore;
 use crate::EmailSend;
 use crate::Event;
 use crate::EventProcess;
 use crate::EventSourcePlaid;
+use crate::EventSourceStripe;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::OauthRedirect;
@@ -38,6 +40,7 @@ use crate::runtime_router::Answer;
 use crate::runtime_router::EventRx;
 use crate::runtime_router::EventTx;
 use crate::runtime_router::RuntimeRouter;
+use crate::runtime_stripe;
 use crate::source_pool::SourcePool;
 use server_wire::SyncStage;
 use server_wire::WireSnapshot;
@@ -49,6 +52,8 @@ use src_postgres::Db;
 use src_postgres::DbKey;
 use src_resend::ResendClient;
 use src_resend::ResendCredentials;
+use src_stripe::StripeClient;
+use src_stripe::StripeCredentials;
 use uuid::Uuid;
 
 /// How often the machine is handed fresh entropy. Not about running out — it
@@ -61,6 +66,12 @@ const PLAID_AT_ONCE: usize = 4;
 
 /// How many sign-in emails may be in flight at once.
 const EMAIL_AT_ONCE: usize = 2;
+
+/// Calls to Stripe at once.
+///
+/// Small, because they only ever come from somebody at a card form: two calls
+/// per subscription, at whatever rate people sign up.
+const STRIPE_AT_ONCE: usize = 2;
 
 /// How often the machine is told what time it is. A second, far finer than the
 /// shortest window the machine measures.
@@ -85,6 +96,14 @@ pub struct RuntimeServer {
     /// Every call to Plaid, made on the one client so they share a connection
     /// pool. One per process, and the only place the environment is decided.
     plaid_client: PlaidClient,
+
+    /// Stripe, where the process was configured for it.
+    ///
+    /// Optional so that a server without Stripe still starts and still serves
+    /// everybody who is already entitled. What it cannot do is start a new
+    /// subscription, and the route says so rather than the process refusing to
+    /// come up.
+    stripe_client: Option<StripeClient>,
 
     /// How a sign-in code reaches the person asking for it.
     email_send: EmailSend,
@@ -115,6 +134,10 @@ pub struct RuntimeServer {
     /// Every call to Plaid.
     plaid: SourcePool,
 
+    /// Every call to Stripe. Its own pool for the same reason email has one:
+    /// a bank that has gone quiet must not use up the room a payment needs.
+    stripe: SourcePool,
+
     /// Every sign-in email. Its own pool so a slow bank cannot use up the room
     /// a sign-in needs.
     email: SourcePool,
@@ -128,6 +151,35 @@ impl RuntimeServer {
     pub async fn run() -> anyhow::Result<()> {
         // Read before anything is served, not on the first request.
         let plaid_client = runtime_plaid::client(PlaidCredentials::from_env()?)?;
+
+        // Read at startup like everything else, and not fatal: a key that is
+        // not one is a server that cannot sell, which is worth saying out loud
+        // rather than dying over.
+        // A fact from the edge, reported rather than acted on: whether a
+        // webhook can be believed is the machine's decision.
+        let stripe_webhook_secret = std::env::var("STRIPE_WEBHOOK_SECRET")
+            .ok()
+            .filter(|secret| !secret.is_empty());
+
+        if stripe_webhook_secret.is_none() {
+            tracing::warn!("no stripe webhook secret: every stripe webhook will be refused");
+        }
+
+        let stripe_client = match StripeCredentials::from_env() {
+            Ok(credentials) => match runtime_stripe::client(credentials) {
+                Ok(client) => Some(client),
+                Err(e) => {
+                    tracing::error!(error = %e, "stripe is configured and would not build");
+
+                    None
+                }
+            },
+            Err(e) => {
+                tracing::warn!(error = %e, "no stripe: nobody can start a subscription");
+
+                None
+            }
+        };
         let collect = PlaidCollect::from_env()?;
 
         // Required in webhook mode and meaningless in poll mode. Read here so
@@ -194,10 +246,12 @@ impl RuntimeServer {
 
         let runtime = Arc::new(Self {
             plaid: SourcePool::new("plaid", PLAID_AT_ONCE, event_tx.clone()),
+            stripe: SourcePool::new("stripe", STRIPE_AT_ONCE, event_tx.clone()),
             email: SourcePool::new("email", EMAIL_AT_ONCE, event_tx.clone()),
             store: SourcePool::new("store", STORE_AT_ONCE, event_tx.clone()),
             action_tx,
             plaid_client,
+            stripe_client,
             email_send,
             resend,
             tokens: RwLock::new(HashMap::new()),
@@ -222,7 +276,10 @@ impl RuntimeServer {
         // minted before the first tick would expire in 1970.
         for event in [
             EventProcess::Tick { now: unix_now() },
-            EventProcess::Started { collect },
+            EventProcess::Started {
+                collect,
+                stripe_webhook_secret: stripe_webhook_secret.clone(),
+            },
             EventProcess::Seeded { seed: fresh_seed() },
         ] {
             let _ = event_tx.send(Event::FromProcess { event });
@@ -312,6 +369,8 @@ impl RuntimeServer {
 
             Action::ToSourcePlaid { .. } => self.calling(&self.plaid, action),
 
+            Action::ToSourceStripe { .. } => self.calling(&self.stripe, action),
+
             Action::ToEmail { .. } => self.calling(&self.email, action),
 
             Action::ToStore { .. } => self.calling(&self.store, action),
@@ -352,6 +411,7 @@ impl RuntimeServer {
     async fn carry_out(&self, action: &Action) -> Vec<Event> {
         match action {
             Action::ToSourcePlaid { action } => return self.perform_action_source(action).await,
+            Action::ToSourceStripe { action } => return self.perform_action_stripe(action).await,
             Action::ToStore { action } => return self.perform_action_store(action).await,
             Action::ToEmail { action } => self.perform_action_email(action).await,
             Action::ToRouter { .. } | Action::ToSocket { .. } | Action::ToProcess { .. } => {
@@ -360,6 +420,73 @@ impl RuntimeServer {
         }
 
         Vec::new()
+    }
+
+    /// Carry out one call to Stripe, and report what came of it.
+    ///
+    /// The runtime chooses *how*, never whether: a process without Stripe
+    /// reports that as a failed call, and the machine decides what to tell the
+    /// caller. Reading `self.stripe_client` to pick a different event would be
+    /// behaviour no `eval!` test can reach.
+    async fn perform_action_stripe(&self, action: &ActionSourceStripe) -> Vec<Event> {
+        let (call_id, user_id) = match action {
+            ActionSourceStripe::CreateCustomer {
+                call_id, user_id, ..
+            }
+            | ActionSourceStripe::CreateSubscription {
+                call_id, user_id, ..
+            } => (*call_id, *user_id),
+        };
+
+        let Some(client) = self.stripe_client.as_ref() else {
+            return vec![Event::FromSourceStripe {
+                event: EventSourceStripe::StripeFailed {
+                    call_id,
+                    user_id,
+                    message: "this server has no stripe configured".to_string(),
+                },
+            }];
+        };
+
+        let event = match action {
+            ActionSourceStripe::CreateCustomer {
+                call_id,
+                user_id,
+                email,
+            } => match runtime_stripe::create_customer(client, *user_id, email).await {
+                Ok(customer_id) => EventSourceStripe::CustomerCreated {
+                    call_id: *call_id,
+                    user_id: *user_id,
+                    customer_id,
+                },
+                Err(e) => EventSourceStripe::StripeFailed {
+                    call_id: *call_id,
+                    user_id: *user_id,
+                    message: e.to_string(),
+                },
+            },
+
+            ActionSourceStripe::CreateSubscription {
+                call_id,
+                user_id,
+                customer_id,
+            } => match runtime_stripe::create_subscription(client, customer_id).await {
+                Ok(subscription) => EventSourceStripe::SubscriptionCreated {
+                    call_id: *call_id,
+                    user_id: *user_id,
+                    subscription_id: subscription.id,
+                    status: subscription.status,
+                    client_secret: subscription.client_secret,
+                },
+                Err(e) => EventSourceStripe::StripeFailed {
+                    call_id: *call_id,
+                    user_id: *user_id,
+                    message: e.to_string(),
+                },
+            },
+        };
+
+        vec![Event::FromSourceStripe { event }]
     }
 
     /// Get a sign-in code to a person, or say where it went instead.
@@ -610,6 +737,10 @@ impl RuntimeServer {
 
             ActionStore::LoadCode { email, .. } => self.load_code(email).await,
 
+            ActionStore::LoadSubscriptions { .. } => self.load_subscriptions().await,
+
+            ActionStore::LoadUser { user_id, .. } => self.load_user(*user_id).await,
+
             ActionStore::SaveItem {
                 item_id,
                 link_token,
@@ -670,6 +801,28 @@ impl RuntimeServer {
     }
 
     /// What code stands against an address, as the store holds it.
+    /// Every subscription, for the read at startup.
+    async fn load_subscriptions(&self) -> EventStore {
+        match src_postgres::load_subscriptions(&self.db).await {
+            Ok(subscriptions) => EventStore::SubscriptionsLoaded { subscriptions },
+
+            Err(e) => EventStore::ReadError {
+                message: e.to_string(),
+            },
+        }
+    }
+
+    /// The address a subscription's receipt goes to.
+    async fn load_user(&self, user_id: uuid::Uuid) -> EventStore {
+        match src_postgres::load_email(&self.db, user_id).await {
+            Ok(email) => EventStore::UserLoaded { email },
+
+            Err(e) => EventStore::ReadError {
+                message: e.to_string(),
+            },
+        }
+    }
+
     async fn load_code(&self, email: &str) -> EventStore {
         match src_postgres::load_code(&self.db, email).await {
             Ok(stored) => EventStore::CodeLoaded {
@@ -698,6 +851,58 @@ impl RuntimeServer {
                 expires_at,
             } => {
                 src_postgres::save_code(db, email, code_sha256, *expires_at).await?;
+            }
+
+            ActionStore::SaveCustomer {
+                call_id: _,
+                user_id,
+                provider,
+                customer_id,
+                subscription_id,
+                status,
+            } => {
+                src_postgres::save_customer(
+                    db,
+                    *user_id,
+                    *provider,
+                    customer_id,
+                    subscription_id.as_deref(),
+                    status,
+                )
+                .await?;
+            }
+
+            ActionStore::ApplySubscriptionEvent {
+                call_id: _,
+                subscription_id,
+                status,
+                current_period_end,
+                cancel_at_period_end,
+                event_id,
+                event_at,
+            } => {
+                // The query refuses a repeat or a delivery older than what is
+                // there, and says which it did. Reported rather than dropped:
+                // a webhook that changed nothing is worth seeing in a log next
+                // to the one that did.
+                let moved = src_postgres::apply_subscription_event(
+                    db,
+                    subscription_id,
+                    status,
+                    *current_period_end,
+                    *cancel_at_period_end,
+                    event_id,
+                    *event_at,
+                )
+                .await?;
+
+                if !moved {
+                    tracing::info!(
+                        subscription_id,
+                        event_id,
+                        "a webhook said nothing new about a subscription"
+                    );
+                }
             }
 
             ActionStore::RecordAttempt { call_id: _, email } => {
@@ -767,6 +972,8 @@ impl RuntimeServer {
             | ActionStore::LoadPendingLinks { .. }
             | ActionStore::LoadSnapshot { .. }
             | ActionStore::LoadCode { .. }
+            | ActionStore::LoadSubscriptions { .. }
+            | ActionStore::LoadUser { .. }
             | ActionStore::SaveItem { .. } => {
                 unreachable!("answered by `perform_action_store`, which says what it wrote")
             }
@@ -1014,7 +1221,11 @@ impl RuntimeServer {
             | ActionStore::SweepSessions { .. }
             | ActionStore::SaveLink { .. }
             | ActionStore::CollectLink { .. }
-            | ActionStore::SaveItem { .. } => {}
+            | ActionStore::SaveItem { .. }
+            | ActionStore::SaveCustomer { .. }
+            | ActionStore::ApplySubscriptionEvent { .. }
+            | ActionStore::LoadSubscriptions { .. }
+            | ActionStore::LoadUser { .. } => {}
         }
 
         Ok(())

@@ -40,6 +40,91 @@ pub fn state_collecting_by_webhook() -> StateServer {
     started(PlaidCollect::Webhook)
 }
 
+/// The machine, with [`SUBSCRIBER`] paid up well past the end of the suite.
+///
+/// Most flows are about somebody who already has an account, and an account is
+/// something you pay for — so without this every one of them is answered
+/// `PaymentRequired` and nothing else happens. Entitlement arrives the way it
+/// does at startup, as the store's rows, rather than by reaching into the
+/// machine: a test that set a private field would be testing a state the
+/// server cannot actually be in.
+pub fn state_subscribed() -> StateServer {
+    subscribed(state())
+}
+
+/// The same, collecting by webhook.
+pub fn state_subscribed_by_webhook() -> StateServer {
+    subscribed(state_collecting_by_webhook())
+}
+
+/// The user every flow test signs in as.
+pub const SUBSCRIBER: uuid::Uuid = uuid::Uuid::nil();
+
+/// Long past `T0`, so no test has to think about when the period ends. The
+/// ones that *are* about that set their own.
+pub const PAID_UNTIL: Timestamp = Timestamp::from_secs(T0.as_secs() + 365 * 24 * 60 * 60);
+
+/// The machine, with several users paid up.
+///
+/// For a test about two accounts, where both have to be able to reach the app
+/// before it can say anything about keeping them apart.
+pub fn state_subscribed_many(users: &[uuid::Uuid]) -> StateServer {
+    let mut state = state();
+
+    let subscriptions: Vec<_> = users
+        .iter()
+        .map(|user_id| subscription(*user_id, "active", Some(PAID_UNTIL)))
+        .collect();
+
+    state.handle_events(
+        &[Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded { subscriptions },
+        }],
+        &mut Vec::new(),
+    );
+
+    state
+}
+
+/// Hand the machine one paid-up subscription, as the startup read would.
+pub fn subscribed(mut state: StateServer) -> StateServer {
+    state.handle_events(
+        &[Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![subscription(SUBSCRIBER, "active", Some(PAID_UNTIL))],
+            },
+        }],
+        &mut Vec::new(),
+    );
+
+    state
+}
+
+/// What Stripe calls the subscription in these tests. Fixed rather than
+/// derived from the user, so a webhook body can name it in plain sight.
+pub const SUBSCRIPTION_ID: &str = "sub_1";
+
+/// One row, as the store holds it.
+pub fn subscription(
+    user_id: uuid::Uuid,
+    status: &str,
+    current_period_end: Option<Timestamp>,
+) -> src_postgres::StoredSubscription {
+    src_postgres::StoredSubscription {
+        user_id,
+        provider: src_postgres::BillingProvider::Stripe,
+        customer_id: format!("cus_{user_id}"),
+        subscription_id: Some(SUBSCRIPTION_ID.to_string()),
+        status: status.to_string(),
+        current_period_end,
+        cancel_at_period_end: false,
+        last_event_id: None,
+        last_event_at: None,
+    }
+}
+
 fn started(collect: PlaidCollect) -> StateServer {
     let mut state = StateServer::new();
 
@@ -49,7 +134,10 @@ fn started(collect: PlaidCollect) -> StateServer {
                 event: EventProcess::Tick { now: T0 },
             },
             Event::FromProcess {
-                event: EventProcess::Started { collect },
+                event: EventProcess::Started {
+                    collect,
+                    stripe_webhook_secret: Some(STRIPE_WEBHOOK_SECRET.to_string()),
+                },
             },
         ],
         &mut Vec::new(),
@@ -113,4 +201,51 @@ pub fn signed(body: &str, iat: u64) -> (String, Vec<u8>) {
         format!("{header}.{claims}.{}", b64(&signature.to_bytes())),
         body.as_bytes().to_vec(),
     )
+}
+
+/// The secret these tests pretend Stripe signs with. Fixed, so a run is a
+/// replay.
+pub const STRIPE_WEBHOOK_SECRET: &str = "whsec_test_fixture";
+
+/// A `Stripe-Signature` header for this body, as Stripe would write one.
+///
+/// The timestamp is inside what is signed, which is what stops a captured
+/// delivery being edited back into its window.
+pub fn stripe_signed(body: &[u8], at: Timestamp) -> String {
+    use hmac::Mac;
+
+    let mut mac =
+        <hmac::Hmac<sha2::Sha256> as hmac::Mac>::new_from_slice(STRIPE_WEBHOOK_SECRET.as_bytes())
+            .expect("hmac takes a key of any length");
+
+    mac.update(at.as_secs().to_string().as_bytes());
+    mac.update(b".");
+    mac.update(body);
+
+    let hex: String = mac
+        .finalize()
+        .into_bytes()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+
+    format!("t={},v1={hex}", at.as_secs())
+}
+
+/// A `customer.subscription.updated` body, as Stripe sends one.
+///
+/// `current_period_end` sits on the item rather than on the subscription,
+/// which is where Stripe actually puts it — a fixture with it at the top level
+/// would pass against a reader that looks in the wrong place.
+pub fn stripe_subscription_event(
+    event_id: &str,
+    created: u64,
+    subscription_id: &str,
+    status: &str,
+    current_period_end: u64,
+) -> Vec<u8> {
+    format!(
+        r#"{{"id":"{event_id}","type":"customer.subscription.updated","created":{created},"data":{{"object":{{"object":"subscription","id":"{subscription_id}","status":"{status}","customer":"cus_1","cancel_at_period_end":false,"items":{{"data":[{{"current_period_start":0,"current_period_end":{current_period_end}}}]}}}}}}}}"#
+    )
+    .into_bytes()
 }

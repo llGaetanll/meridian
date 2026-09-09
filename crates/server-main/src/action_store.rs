@@ -171,6 +171,42 @@ pub enum ActionStore {
         item_id: String,
         error_code: Option<String>,
     },
+
+    /// Remember that this user is this provider's customer.
+    ///
+    /// Written when the customer is created rather than when a payment lands,
+    /// because the webhook that says it landed names only the customer.
+    SaveCustomer {
+        call_id: CallId,
+        user_id: uuid::Uuid,
+        provider: src_postgres::BillingProvider,
+        customer_id: String,
+        subscription_id: Option<String>,
+        status: String,
+    },
+
+    /// Write what a webhook said about a subscription.
+    ///
+    /// The query refuses a delivery that is a repeat or older than what is
+    /// already there, so this is safe to send for every believed webhook.
+    ApplySubscriptionEvent {
+        call_id: CallId,
+        subscription_id: String,
+        status: String,
+        current_period_end: Option<api_common::Timestamp>,
+        cancel_at_period_end: bool,
+        event_id: String,
+        event_at: api_common::Timestamp,
+    },
+
+    /// Every subscription there is, for the read at startup.
+    LoadSubscriptions { call_id: CallId },
+
+    /// The address a user is written to, for Stripe's receipt.
+    LoadUser {
+        call_id: CallId,
+        user_id: uuid::Uuid,
+    },
 }
 
 impl ActionStore {
@@ -197,7 +233,11 @@ impl ActionStore {
             | Self::SaveTransactions { call_id, .. }
             | Self::SaveStreams { call_id, .. }
             | Self::SaveStatus { call_id, .. }
-            | Self::SweepSessions { call_id, .. } => *call_id,
+            | Self::SweepSessions { call_id, .. }
+            | Self::SaveCustomer { call_id, .. }
+            | Self::ApplySubscriptionEvent { call_id, .. }
+            | Self::LoadSubscriptions { call_id, .. }
+            | Self::LoadUser { call_id, .. } => *call_id,
         }
     }
 }

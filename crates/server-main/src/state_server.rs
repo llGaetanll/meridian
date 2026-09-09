@@ -14,6 +14,7 @@
 //! signed up — their ledger, their syncs, and the webhooks Plaid sends about
 //! them.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 use api_common::Timestamp;
@@ -44,11 +45,13 @@ use crate::CensusServer;
 use crate::Client;
 use crate::ClientIp;
 use crate::ConnId;
+use crate::Entitlement;
 use crate::Event;
 use crate::EventProcess;
 use crate::EventRouter;
 use crate::EventSocket;
 use crate::EventSourcePlaid;
+use crate::EventSourceStripe;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::ItemFacts;
@@ -56,6 +59,7 @@ use crate::Lifecycle;
 use crate::Owed;
 use crate::Pending;
 use crate::RequestId;
+use crate::StateBilling;
 use crate::StateSignup;
 use crate::Syncing;
 use crate::WebhookFacts;
@@ -98,6 +102,20 @@ pub struct StateServer {
     /// Signing somebody up, from the first code to the first bank. The calls
     /// in flight are its too — nearly all of them are its own.
     signup: StateSignup,
+
+    /// Starting subscriptions, and hearing what came of them. Its own
+    /// process, the way signing up is.
+    billing: StateBilling,
+
+    /// Who has paid, and until when. Held here rather than inside
+    /// [`StateBilling`] because it is not billing's process: a link request
+    /// and a snapshot both ask it, and two copies would be two copies that
+    /// can disagree about whether somebody has paid.
+    ///
+    /// `BTreeMap` rather than a hash, per the rule about determinism: this is
+    /// walked when the census counts it, and a walk in a different order is a
+    /// replay that lands somewhere else.
+    entitled: BTreeMap<Uuid, Entitlement>,
 
     /// What Plaid will let us send. A fact about this process's last minute,
     /// which is why it cannot be read back from the store.
@@ -149,6 +167,7 @@ impl StateServer {
                 event,
             } => self.handle_event_router(*request_id, client, event, actions),
             Event::FromSourcePlaid { event } => self.handle_event_source(event, actions),
+            Event::FromSourceStripe { event } => self.handle_event_stripe(event, actions),
             Event::FromSocket { event } => self.handle_event_socket(event),
             Event::FromStore { call_id, event } => {
                 self.handle_event_store(*call_id, event, actions)
@@ -236,10 +255,105 @@ impl StateServer {
                 self.believe(request_id, jwt, body, actions)
             }
 
-            EventRouter::SnapshotRequested { .. } => {
+            // The signature is the whole of what protects this: no session,
+            // and by `EventRouter::route` no rate limit either. Believed in
+            // the machine rather than at the edge, so which signature is
+            // acceptable and whether it is inside its window are both rules
+            // an `eval!` test can reach.
+            EventRouter::StripeWebhookReceived { signature, body } => {
+                self.believe_stripe(request_id, signature, body, actions)
+            }
+
+            EventRouter::SnapshotRequested { .. }
+            | EventRouter::SubscribeRequested { .. }
+            | EventRouter::BillingStatusRequested { .. } => {
                 unreachable!("a request carrying a token is resolved before it is decided")
             }
         }
+    }
+
+    /// Whether a POST to the Stripe webhook is really Stripe's, and what to do
+    /// about it if it is.
+    ///
+    /// **Answered in the same turn the signature checks out**, before the
+    /// write lands. Stripe retries anything it does not hear about in about
+    /// twenty seconds, so waiting for the store would turn one payment into a
+    /// pile of duplicate deliveries. What makes that safe is the ordering
+    /// guard on the write: a repeat or an out-of-order delivery cannot move
+    /// the row backwards.
+    fn believe_stripe(
+        &mut self,
+        request_id: RequestId,
+        signature: &str,
+        body: &[u8],
+        actions: &mut Vec<Action>,
+    ) {
+        if !self.billing.believes(body, signature, self.now) {
+            self.signup
+                .answer(request_id, ActionRouter::Unauthorized, self.now, actions);
+
+            return;
+        }
+
+        let Ok(event) = serde_json::from_slice::<src_stripe::StripeWebhookEvent>(body) else {
+            tracing::warn!("a believed webhook was not an event this build understands");
+
+            // Accepted rather than refused: the signature was ours, so this is
+            // an event we did not ask for or a shape we do not read, and
+            // refusing it only asks Stripe to send it again.
+            self.signup
+                .answer(request_id, ActionRouter::Accepted, self.now, actions);
+
+            return;
+        };
+
+        self.signup
+            .answer(request_id, ActionRouter::Accepted, self.now, actions);
+
+        let src_stripe::StripeWebhookObject::Subscription(subscription) = &event.data.object else {
+            // An invoice or anything else: it says nothing about entitlement
+            // that the subscription event beside it does not say better.
+            return;
+        };
+
+        let entitlement = StateBilling::entitlement_of(subscription);
+
+        // Held only for a user this process knows about. One it does not is a
+        // subscription created against another database — a test key pointed
+        // at a live server, or a customer from before this table existed.
+        match self.billing.user_for_subscription(&subscription.id) {
+            Some(user_id) => {
+                self.entitled.insert(user_id, entitlement);
+            }
+            None => {
+                tracing::warn!(
+                    subscription = subscription.id,
+                    "a webhook named a subscription this process does not know"
+                );
+            }
+        }
+
+        // Sent whatever the lookup said. The row may exist in the store even
+        // where this process has not got it in hand, and the query is keyed by
+        // the subscription rather than the user.
+        let call_id = self.signup.calling(request_id, self.now);
+
+        actions.push(Action::ToStore {
+            action: ActionStore::ApplySubscriptionEvent {
+                call_id,
+                subscription_id: subscription.id.clone(),
+                status: subscription.status.clone(),
+                current_period_end: subscription
+                    .current_period_end()
+                    .and_then(|secs| u64::try_from(secs).ok())
+                    .map(Timestamp::from_secs),
+                cancel_at_period_end: subscription.cancel_at_period_end,
+                event_id: event.id.clone(),
+                event_at: u64::try_from(event.created)
+                    .map(Timestamp::from_secs)
+                    .unwrap_or(self.now),
+            },
+        });
     }
 
     /// Carry on with a request now that the store has said who is asking.
@@ -274,6 +388,19 @@ impl StateServer {
 
             self.signup
                 .answer(request_id, ActionRouter::TooMany, self.now, actions);
+
+            return;
+        }
+
+        // There are no unpaid users. Refused here rather than at the edge, so
+        // it is a rule an `eval!` test can reach — and so the two routes that
+        // lead *to* paying are the only ones a session without a subscription
+        // can use.
+        if event.needs_entitlement() && !self.allows(user_id) {
+            tracing::info!(%user_id, route = route.as_str(), "a route was asked for without a subscription");
+
+            self.signup
+                .answer(request_id, ActionRouter::PaymentRequired, self.now, actions);
 
             return;
         }
@@ -316,7 +443,61 @@ impl StateServer {
                     },
                 });
             }
+
+            // The address is what Stripe emails a receipt to, and the machine
+            // does not hold one: nothing it keeps says who a user is besides
+            // their id. So the store is asked, and the conversation with
+            // Stripe starts a turn later.
+            Authenticated::SubscribeRequested => {
+                self.signup.waits_on(
+                    request_id,
+                    Pending::Loading {
+                        user_id,
+                        event: *event,
+                    },
+                );
+
+                actions.push(Action::ToStore {
+                    action: ActionStore::LoadUser {
+                        call_id: self.signup.calling(request_id, self.now),
+                        user_id,
+                    },
+                });
+            }
+
+            // Answered from what the machine holds. Nothing to read: the
+            // entitlement is already here, and asking the store would be a
+            // second copy that can disagree with it.
+            Authenticated::BillingStatusRequested => {
+                let entitlement = self.entitled.get(&user_id);
+
+                self.signup.answer(
+                    request_id,
+                    ActionRouter::BillingStatus {
+                        entitled: self.allows(user_id),
+                        status: entitlement.map(|e| e.status.clone()),
+                        good_until: entitlement
+                            .and_then(|e| e.good_until)
+                            .map(|until| until.as_secs()),
+                        cancel_at_period_end: entitlement.is_some_and(|e| e.cancel_at_period_end),
+                    },
+                    self.now,
+                    actions,
+                );
+            }
         }
+    }
+
+    /// Whether this user may use the app, as of this batch's clock.
+    ///
+    /// The date against the tick and nothing else — see
+    /// [`Entitlement::allows`]. No sweep and no timer: entitlement lapses
+    /// because `now` moved past a date, which is the same shape as every
+    /// other waiting rule in this machine.
+    fn allows(&self, user_id: Uuid) -> bool {
+        self.entitled
+            .get(&user_id)
+            .is_some_and(|entitlement| entitlement.allows(self.now))
     }
 
     /// Somebody asked for their ledger. Which banks are worth going back to
@@ -726,6 +907,143 @@ impl StateServer {
         }
     }
 
+    /// Stripe answered.
+    ///
+    /// Two calls in a row make one subscription, so the first answer decides
+    /// whether the second is still wanted — which is why they are two events
+    /// and not one helper.
+    fn handle_event_stripe(&mut self, event: &EventSourceStripe, actions: &mut Vec<Action>) {
+        match event {
+            EventSourceStripe::CustomerCreated {
+                call_id,
+                user_id,
+                customer_id,
+            } => {
+                let Some(request_id) = self.signup.answered(*call_id) else {
+                    return;
+                };
+
+                let Some(Pending::Subscribing { user_id: waiting }) =
+                    self.signup.resumed(request_id)
+                else {
+                    tracing::error!(
+                        call_id,
+                        "a customer answered a request nobody is waiting on"
+                    );
+
+                    return;
+                };
+
+                debug_assert_eq!(
+                    waiting, *user_id,
+                    "a customer answered another user's request"
+                );
+
+                self.signup.waits_on(
+                    request_id,
+                    Pending::SubscribingTo {
+                        user_id: *user_id,
+                        customer_id: customer_id.clone(),
+                    },
+                );
+
+                let call_id = self.signup.calling(request_id, self.now);
+
+                self.billing
+                    .customer_ready(*user_id, customer_id, call_id, actions);
+            }
+
+            EventSourceStripe::SubscriptionCreated {
+                call_id,
+                user_id,
+                subscription_id,
+                status,
+                client_secret,
+            } => {
+                let Some(request_id) = self.signup.answered(*call_id) else {
+                    return;
+                };
+
+                let Some(Pending::SubscribingTo {
+                    user_id: waiting,
+                    customer_id,
+                }) = self.signup.resumed(request_id)
+                else {
+                    tracing::error!(
+                        call_id,
+                        "a subscription answered a request nobody is waiting on"
+                    );
+
+                    return;
+                };
+
+                debug_assert_eq!(
+                    waiting, *user_id,
+                    "a subscription answered another user's request"
+                );
+
+                // Written whatever happens next, because the webhook that says
+                // this was paid for names only the subscription: without the
+                // row there is nothing to look the user up by.
+                let write = self.signup.calling(request_id, self.now);
+
+                self.billing.subscription_ready(
+                    *user_id,
+                    &customer_id,
+                    subscription_id,
+                    status,
+                    write,
+                    actions,
+                );
+
+                // No secret is a subscription with nothing to pay, which on a
+                // freshly created one means Stripe answered in a shape this
+                // build did not expect. Nothing to hand a card form, so the
+                // caller is told it is unavailable rather than given a secret
+                // that is not one.
+                let Some(client_secret) = client_secret else {
+                    tracing::error!(
+                        subscription_id,
+                        "stripe created a subscription with nothing to confirm against"
+                    );
+
+                    self.signup
+                        .answer(request_id, ActionRouter::Unavailable, self.now, actions);
+
+                    return;
+                };
+
+                self.signup.answer(
+                    request_id,
+                    ActionRouter::Subscribing {
+                        client_secret: client_secret.clone(),
+                    },
+                    self.now,
+                    actions,
+                );
+            }
+
+            EventSourceStripe::StripeFailed {
+                call_id,
+                user_id,
+                message,
+            } => {
+                let Some(request_id) = self.signup.answered(*call_id) else {
+                    return;
+                };
+
+                // Dropped whichever step it was at: neither has anything to
+                // resume from, and the caller can ask again.
+                let _ = self.signup.resumed(request_id);
+
+                tracing::error!(%user_id, message, "stripe would not start a subscription");
+
+                self.signup
+                    .answer(request_id, ActionRouter::Unavailable, self.now, actions);
+            }
+        }
+    }
+
     fn handle_event_source(&mut self, event: &EventSourcePlaid, actions: &mut Vec<Action>) {
         match event {
             EventSourcePlaid::WebhookKeyLoaded { call_id, kid, key } => {
@@ -1022,7 +1340,13 @@ impl StateServer {
         match event {
             // Nothing is pulled into memory at boot: the store is read per
             // request, which is what makes a second server process possible.
-            EventProcess::Started { collect } => self.signup.started(*collect),
+            EventProcess::Started {
+                collect,
+                stripe_webhook_secret,
+            } => {
+                self.signup.started(*collect);
+                self.billing.started(stripe_webhook_secret.clone());
+            }
 
             EventProcess::Seeded { seed } => {
                 // A seed on the way out is dropped: taking it would put a
@@ -1074,6 +1398,60 @@ impl StateServer {
         actions: &mut Vec<Action>,
     ) {
         match event {
+            // The startup read. Both the entitlement each user has and the
+            // index from a subscription to its user come from these rows, so
+            // they are filled from one place and cannot disagree.
+            EventStore::SubscriptionsLoaded { subscriptions } => {
+                self.billing.loaded(subscriptions);
+
+                for stored in subscriptions {
+                    self.entitled.insert(
+                        stored.user_id,
+                        Entitlement {
+                            provider: stored.provider,
+                            status: stored.status.clone(),
+                            good_until: stored.current_period_end,
+                            cancel_at_period_end: stored.cancel_at_period_end,
+                        },
+                    );
+                }
+
+                tracing::info!(count = subscriptions.len(), "subscriptions loaded");
+            }
+
+            // The address a subscription's receipt goes to, which is the last
+            // thing needed before Stripe can be asked for anything.
+            EventStore::UserLoaded { email } => {
+                let Some(request_id) = self.signup.answered(call_id) else {
+                    return;
+                };
+
+                let Some(Pending::Loading { user_id, .. }) = self.signup.resumed(request_id) else {
+                    tracing::error!(call_id, "the store answered a subscribe nobody asked for");
+
+                    return;
+                };
+
+                // A live session naming a user the store does not have should
+                // not happen: sessions are ON DELETE CASCADE from users.
+                let Some(email) = email else {
+                    tracing::error!(%user_id, "a session names a user the store does not have");
+
+                    self.signup
+                        .answer(request_id, ActionRouter::Unauthorized, self.now, actions);
+
+                    return;
+                };
+
+                self.signup
+                    .waits_on(request_id, Pending::Subscribing { user_id });
+
+                let call_id = self.signup.calling(request_id, self.now);
+
+                self.billing
+                    .subscribe_requested(user_id, email, call_id, actions);
+            }
+
             EventStore::CodeLoaded { stored } => {
                 let Some(request_id) = self.signup.answered(call_id) else {
                     return;

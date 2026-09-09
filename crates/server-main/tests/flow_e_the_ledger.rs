@@ -18,7 +18,8 @@ use api_common::Timestamp;
 use api_eval::eval;
 use api_ledger::Connection;
 use fixtures::T0;
-use fixtures::state;
+use fixtures::state_subscribed;
+use fixtures::state_subscribed_many;
 
 use server_main::*;
 
@@ -29,7 +30,7 @@ use server_main::*;
 /// this route: the expensive version is every other test in this file.
 #[test]
 fn a_launch_is_served_the_ledger_without_asking_plaid() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
@@ -54,7 +55,7 @@ fn a_launch_is_served_the_ledger_without_asking_plaid() {
 /// that carries a token.
 #[test]
 fn a_token_that_names_nobody_is_served_nothing() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("stale") } },
@@ -68,7 +69,7 @@ fn a_token_that_names_nobody_is_served_nothing() {
 /// A bank that has never synced is asked about immediately.
 #[test]
 fn a_bank_that_has_never_synced_is_fetched() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
@@ -87,7 +88,7 @@ fn a_bank_that_has_never_synced_is_fetched() {
 /// leave.
 #[test]
 fn a_user_with_no_banks_is_just_served() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
@@ -108,7 +109,7 @@ fn a_user_with_no_banks_is_just_served() {
 /// reads — which is what makes this a test rather than a wait.
 #[test]
 fn a_stale_bank_is_refetched_from_its_cursor() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
@@ -135,7 +136,7 @@ fn a_stale_bank_is_refetched_from_its_cursor() {
 /// account-wide Plaid budget.
 #[test]
 fn asking_twice_over_does_not_refetch_a_fresh_bank() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
@@ -167,7 +168,7 @@ fn asking_twice_over_does_not_refetch_a_fresh_bank() {
 /// Retrying a login-required Item cannot help, and Plaid counts the call.
 #[test]
 fn a_login_required_bank_is_not_retried_however_stale() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
@@ -188,7 +189,7 @@ fn a_login_required_bank_is_not_retried_however_stale() {
 /// not stop the others syncing.
 #[test]
 fn each_bank_is_decided_about_on_its_own() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
@@ -207,7 +208,7 @@ fn each_bank_is_decided_about_on_its_own() {
 /// would serve the very rows the sync was about to replace.
 #[test]
 fn a_snapshot_is_answered_after_its_last_bank() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
@@ -236,7 +237,7 @@ fn a_snapshot_is_answered_after_its_last_bank() {
 /// better one than a request that never returns.
 #[test]
 fn a_failed_write_still_answers_the_route() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
@@ -279,7 +280,8 @@ fn a_failed_write_still_answers_the_route() {
 /// session token.
 #[test]
 fn two_routes_asking_at_once_get_their_own_answers() {
-    let mut state = state();
+    // Both pay: what is under test is that two answers do not cross.
+    let mut state = state_subscribed_many(&[uuid::Uuid::nil(), uuid::Uuid::from_u128(9)]);
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-7") } },

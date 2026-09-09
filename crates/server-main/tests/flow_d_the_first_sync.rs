@@ -26,7 +26,8 @@ use api_ledger::Entry;
 use api_ledger::Position;
 use api_ledger::Tx;
 use fixtures::T0;
-use fixtures::state;
+use fixtures::state_subscribed;
+use fixtures::state_subscribed_many;
 
 use server_main::*;
 
@@ -42,7 +43,7 @@ const AL: uuid::Uuid = uuid::Uuid::nil();
 /// decided the sync was over before Plaid had been called.
 #[test]
 fn a_first_sync_is_pushed_from_the_fetch_to_the_totals() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         // C's last turn: the bank is written down, and the write says whose
@@ -91,7 +92,7 @@ fn a_first_sync_is_pushed_from_the_fetch_to_the_totals() {
 /// the counts on the screen would be the last page rather than all of them.
 #[test]
 fn a_history_that_pages_is_asked_for_one_page_at_a_time() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromStore { call_id: 99, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: AL, cursor: None, synced_at: None, login_required: false }) } },
@@ -133,7 +134,7 @@ fn a_history_that_pages_is_asked_for_one_page_at_a_time() {
 /// charges costs one screen rather than all of them.
 #[test]
 fn a_failed_recurring_call_leaves_the_sync_finished() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromStore { call_id: 99, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: AL, cursor: None, synced_at: None, login_required: false }) } },
@@ -167,7 +168,7 @@ fn a_failed_recurring_call_leaves_the_sync_finished() {
 /// bank landing a moment later is exactly what they are waiting for.
 #[test]
 fn a_user_with_nothing_syncing_is_told_so_and_kept() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncWatchRequested { conn_id: 1, token_sha256: hash_token("session-1") } },
@@ -189,9 +190,11 @@ fn a_user_with_nothing_syncing_is_told_so_and_kept() {
 /// fetch rather than being looked up when there is somebody to tell.
 #[test]
 fn a_sync_reaches_only_the_user_whose_bank_it_is() {
-    let mut state = state();
-
     let mia = uuid::Uuid::from_u128(2);
+
+    // Both pay. What is under test is whose sync reaches whom, and an
+    // unsubscribed Mia would be kept out for the wrong reason.
+    let mut state = state_subscribed_many(&[AL, mia]);
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncWatchRequested { conn_id: 1, token_sha256: hash_token("session-mia") } },
@@ -215,7 +218,7 @@ fn a_sync_reaches_only_the_user_whose_bank_it_is() {
 /// on a fetch that failed would otherwise sit on its last stage for good.
 #[test]
 fn a_failed_sync_stops_being_something_to_watch() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromStore { call_id: 99, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: AL, cursor: None, synced_at: None, login_required: false }) } },
@@ -237,7 +240,7 @@ fn a_failed_sync_stops_being_something_to_watch() {
 /// eventually refused for the connections it already dropped.
 #[test]
 fn a_closed_stream_stops_being_written_to() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncWatchRequested { conn_id: 1, token_sha256: hash_token("session-1") } },
@@ -258,7 +261,7 @@ fn a_closed_stream_stops_being_written_to() {
 /// whose oldest connection is the one still working.
 #[test]
 fn an_eleventh_stream_is_refused() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     // The ten it is allowed, opened the ordinary way. Not the claim, so they
     // are reached rather than written out.
@@ -312,7 +315,7 @@ fn an_eleventh_stream_is_refused() {
 /// Reconnect button reads.
 #[test]
 fn an_expired_login_is_reported_and_written_down() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromSourcePlaid { event: EventSourcePlaid::PlaidFailed { call_id: 1, item_id: "item-1".to_string(), stage: server_wire::SyncStage::Accounts, fault: src_plaid::PlaidFault::LoginRequired } },
@@ -325,7 +328,7 @@ fn an_expired_login_is_reported_and_written_down() {
 /// request will try again.
 #[test]
 fn an_ordinary_failure_writes_nothing() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromSourcePlaid { event: EventSourcePlaid::PlaidFailed { call_id: 1, item_id: "item-1".to_string(), stage: server_wire::SyncStage::Accounts, fault: src_plaid::PlaidFault::Failed("INTERNAL_SERVER_ERROR".to_string()) } },

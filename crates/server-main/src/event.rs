@@ -6,6 +6,7 @@ use crate::EventProcess;
 use crate::EventRouter;
 use crate::EventSocket;
 use crate::EventSourcePlaid;
+use crate::EventSourceStripe;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::RequestId;
@@ -26,6 +27,9 @@ pub enum Event {
 
     /// Plaid answered, or failed to.
     FromSourcePlaid { event: EventSourcePlaid },
+
+    /// Stripe answered, or failed to.
+    FromSourceStripe { event: EventSourceStripe },
 
     /// A stream the server writes to changed, without being asked anything.
     FromSocket { event: EventSocket },

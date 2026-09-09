@@ -45,6 +45,16 @@ use crate::session_token;
 use server_wire::WireSnapshot;
 use server_wire::WireSyncStatus;
 
+/// The route Stripe is told to call.
+///
+/// Beside the route rather than in `public_url`, unlike Plaid's: nothing here
+/// advertises this address. It is typed into Stripe's dashboard once, and
+/// #88 is where that is written down.
+pub const STRIPE_WEBHOOK_PATH: &str = "/stripe/webhook";
+
+/// The header Stripe signs a webhook with.
+const STRIPE_SIGNATURE_HEADER: &str = "Stripe-Signature";
+
 /// Every route, over one channel.
 pub(crate) fn router(to_loop: ToLoop, origins: &WebOrigins) -> Router {
     Router::new()
@@ -54,6 +64,9 @@ pub(crate) fn router(to_loop: ToLoop, origins: &WebOrigins) -> Router {
         .route("/link/start", post(link_start))
         .route("/link/finish", post(link_finish))
         .route("/sync/status", get(sync_status))
+        .route("/billing/subscribe", post(billing_subscribe))
+        .route("/billing/status", get(billing_status))
+        .route(STRIPE_WEBHOOK_PATH, post(stripe_webhook))
         .route(WEBHOOK_PATH, post(plaid_webhook))
         // Inside the CORS layer, so a browser's preflight `OPTIONS` is answered
         // above this and never logged.
@@ -102,12 +115,140 @@ async fn snapshot(
     )
     .await;
 
-    too_many(&answer)?;
+    refused(&answer)?;
 
     match answer {
         Some(ActionRouter::Serve { snapshot }) => Ok(Json(snapshot)),
         Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
         _ => Err(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+/// `POST /billing/subscribe`
+///
+/// Starts a subscription for whoever the bearer token signs in, and answers
+/// with the secret the card form confirms against.
+///
+/// **It takes nothing.** The price is the server's, not the caller's: a body
+/// naming an amount is a body somebody can edit.
+async fn billing_subscribe(
+    State(to_loop): State<ToLoop>,
+    Extension(ip): Extension<ClientIp>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<SubscribeAnswer>, StatusCode> {
+    let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let answer = runtime_router::dispatch(
+        &to_loop,
+        Client::anonymous(ip),
+        EventRouter::SubscribeRequested { token_sha256 },
+    )
+    .await;
+
+    refused(&answer)?;
+
+    match answer {
+        Some(ActionRouter::Subscribing { client_secret }) => {
+            Ok(Json(SubscribeAnswer { client_secret }))
+        }
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+/// What `POST /billing/subscribe` answers with.
+#[derive(Debug, serde::Serialize)]
+struct SubscribeAnswer {
+    /// What the card form confirms against. Not a credential of ours: it is
+    /// scoped to one payment and is meant to reach a browser.
+    client_secret: String,
+}
+
+/// `GET /billing/status`
+///
+/// What this user's subscription is. One of the two routes a session without
+/// one may reach — the other is the one above.
+async fn billing_status(
+    State(to_loop): State<ToLoop>,
+    Extension(ip): Extension<ClientIp>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<BillingAnswer>, StatusCode> {
+    let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let answer = runtime_router::dispatch(
+        &to_loop,
+        Client::anonymous(ip),
+        EventRouter::BillingStatusRequested { token_sha256 },
+    )
+    .await;
+
+    refused(&answer)?;
+
+    match answer {
+        Some(ActionRouter::BillingStatus {
+            entitled,
+            status,
+            good_until,
+            cancel_at_period_end,
+        }) => Ok(Json(BillingAnswer {
+            entitled,
+            status,
+            good_until,
+            cancel_at_period_end,
+        })),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE),
+    }
+}
+
+/// What `GET /billing/status` answers with.
+#[derive(Debug, serde::Serialize)]
+struct BillingAnswer {
+    entitled: bool,
+    status: Option<String>,
+    good_until: Option<u64>,
+    cancel_at_period_end: bool,
+}
+
+/// `POST /stripe/webhook`
+///
+/// What Stripe says about a subscription. No session and no rate limit: the
+/// signature is the whole of what protects it, and it is checked in the
+/// machine rather than here.
+///
+/// The body is taken as raw [`Bytes`] because that is what the signature is
+/// over. Anything that parsed it first would hand the machine a body whose
+/// signature no longer matches.
+async fn stripe_webhook(
+    State(to_loop): State<ToLoop>,
+    Extension(ip): Extension<ClientIp>,
+    headers: axum::http::HeaderMap,
+    body: Bytes,
+) -> StatusCode {
+    let Some(signature) = headers
+        .get(STRIPE_SIGNATURE_HEADER)
+        .and_then(|value| value.to_str().ok())
+    else {
+        return StatusCode::UNAUTHORIZED;
+    };
+
+    match runtime_router::dispatch(
+        &to_loop,
+        Client::anonymous(ip),
+        EventRouter::StripeWebhookReceived {
+            signature: signature.to_string(),
+            body: body.to_vec(),
+        },
+    )
+    .await
+    {
+        Some(ActionRouter::Accepted) => StatusCode::NO_CONTENT,
+        Some(ActionRouter::Unauthorized) => StatusCode::UNAUTHORIZED,
+
+        // Anything else is a webhook we could not act on. Told to Stripe as a
+        // failure so it retries: dropping one silently is a subscription
+        // nobody is entitled by.
+        _ => StatusCode::SERVICE_UNAVAILABLE,
     }
 }
 
@@ -181,7 +322,7 @@ async fn auth_verify(
     )
     .await;
 
-    too_many(&answer)?;
+    refused(&answer)?;
 
     match answer {
         Some(ActionRouter::SignedIn { token }) => Ok(Json(AuthVerified { token })),
@@ -222,7 +363,7 @@ async fn link_start(
     )
     .await;
 
-    too_many(&answer)?;
+    refused(&answer)?;
 
     match answer {
         Some(ActionRouter::LinkOpened { url }) => Ok(Json(LinkStarted { url })),
@@ -284,7 +425,7 @@ async fn link_finish(
     )
     .await;
 
-    too_many(&answer)?;
+    refused(&answer)?;
 
     match answer {
         Some(ActionRouter::Linked { count }) => Ok(Json(LinkFinished::Linked { count })),
@@ -394,6 +535,10 @@ async fn sync_status(
             return Err(StatusCode::UNAUTHORIZED);
         }
 
+        Watched::Refused(Some(ActionRouter::PaymentRequired)) => {
+            return Err(StatusCode::PAYMENT_REQUIRED);
+        }
+
         Watched::Refused(Some(ActionRouter::TooMany)) => {
             return Err(StatusCode::TOO_MANY_REQUESTS);
         }
@@ -462,13 +607,22 @@ fn normalize(email: &str) -> String {
     email.trim().to_lowercase()
 }
 
-/// Stop here if the machine refused this request for being one too many.
+/// Stop here if the machine refused this request outright — for being one too
+/// many, or for coming from somebody who has not paid.
 ///
-/// It carries no `Retry-After` — see
+/// Both here rather than in each route's `match`, so a route added later
+/// cannot answer a refusal with a 503 by forgetting to name it. `TooMany`
+/// carries no `Retry-After` — see
 /// [`ActionRouter::TooMany`](crate::ActionRouter::TooMany).
-fn too_many(answer: &Option<ActionRouter>) -> Result<(), StatusCode> {
+fn refused(answer: &Option<ActionRouter>) -> Result<(), StatusCode> {
     match answer {
         Some(ActionRouter::TooMany) => Err(StatusCode::TOO_MANY_REQUESTS),
+
+        // Signed in, and has not paid. Told apart from a 401 on purpose: the
+        // session is good, and what the client needs is a card form rather
+        // than a sign-in screen.
+        Some(ActionRouter::PaymentRequired) => Err(StatusCode::PAYMENT_REQUIRED),
+
         _ => Ok(()),
     }
 }
@@ -476,6 +630,27 @@ fn too_many(answer: &Option<ActionRouter>) -> Result<(), StatusCode> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The codes a refusal turns into, which are a wire contract with every
+    /// client: 402 is a card form and 401 is a sign-in screen, and a client
+    /// that conflated them would sign somebody out for not having paid.
+    #[test]
+    fn a_refusal_is_told_apart_from_a_failure() {
+        assert_eq!(
+            refused(&Some(ActionRouter::PaymentRequired)),
+            Err(StatusCode::PAYMENT_REQUIRED),
+        );
+
+        assert_eq!(
+            refused(&Some(ActionRouter::TooMany)),
+            Err(StatusCode::TOO_MANY_REQUESTS),
+        );
+
+        // Everything else is the route's own business, and passes through.
+        assert_eq!(refused(&Some(ActionRouter::Unauthorized)), Ok(()));
+        assert_eq!(refused(&Some(ActionRouter::Accepted)), Ok(()));
+        assert_eq!(refused(&None), Ok(()));
+    }
 
     /// The three words the phone switches on. They are a wire contract with
     /// `RuntimeIo.finishLink`, so a rename here is a rename there — and a

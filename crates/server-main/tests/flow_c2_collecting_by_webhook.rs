@@ -8,7 +8,7 @@
 //! and usually 2 wins; both orders have a test here, and they are the first
 //! two.
 //!
-//! Every machine in this file is `state_collecting_by_webhook()`. What makes a
+//! Every machine in this file is `state_subscribed_by_webhook()`. What makes a
 //! webhook believed at all — the algorithm, the key, the replay window, the
 //! body hash — is `state_webhook_trust.rs`, which is C2's steps 3, 4 and 7b.
 
@@ -18,7 +18,7 @@ use api_common::Timestamp;
 use api_eval::eval;
 use fixtures::T0;
 use fixtures::signed;
-use fixtures::state_collecting_by_webhook;
+use fixtures::state_subscribed_by_webhook;
 use fixtures::webhook_jwk;
 
 use server_main::*;
@@ -31,7 +31,7 @@ use server_main::*;
 /// The doc's 2 through 7a, then 1 and 8a.
 #[test]
 fn an_outcome_that_arrives_first_is_waiting_when_the_phone_asks() {
-    let mut state = state_collecting_by_webhook();
+    let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}", T0.as_secs()).1 } },
@@ -74,7 +74,7 @@ fn an_outcome_that_arrives_first_is_waiting_when_the_phone_asks() {
 /// before Plaid has said anything, and is parked rather than guessed at.
 #[test]
 fn a_close_that_arrives_first_waits_for_the_outcome() {
-    let mut state = state_collecting_by_webhook();
+    let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
         // Nothing at all comes back. Not an empty answer — no answer yet.
@@ -115,7 +115,7 @@ fn a_close_that_arrives_first_waits_for_the_outcome() {
 /// which is the difference from C1.
 #[test]
 fn every_token_a_session_produced_is_exchanged() {
-    let mut state = state_collecting_by_webhook();
+    let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\", \"public-2\"]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\", \"public-2\"]}", T0.as_secs()).1 } },
@@ -131,7 +131,7 @@ fn every_token_a_session_produced_is_exchanged() {
 /// change: "no bank" used to be inferred from a poll that came back empty.
 #[test]
 fn a_session_that_ends_with_nothing_is_said_rather_than_inferred() {
-    let mut state = state_collecting_by_webhook();
+    let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
@@ -158,7 +158,7 @@ fn a_session_that_ends_with_nothing_is_said_rather_than_inferred() {
 /// waiting hears that rather than waiting out the clock.
 #[test]
 fn an_exchange_that_fails_settles_the_session_too() {
-    let mut state = state_collecting_by_webhook();
+    let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
@@ -192,7 +192,7 @@ fn an_exchange_that_fails_settles_the_session_too() {
 /// response, so a second session timing out must not produce a second.
 #[test]
 fn a_session_nobody_reports_on_is_answered_pending_exactly_once() {
-    let mut state = state_collecting_by_webhook();
+    let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
@@ -213,7 +213,7 @@ fn a_session_nobody_reports_on_is_answered_pending_exactly_once() {
 /// staying for the life of the process.
 #[test]
 fn an_outcome_nobody_comes_back_for_expires() {
-    let mut state = state_collecting_by_webhook();
+    let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}", T0.as_secs()).1 } },
@@ -243,7 +243,7 @@ fn an_outcome_nobody_comes_back_for_expires() {
 /// session to hear about, so `Pending` would be a promise nothing can keep.
 #[test]
 fn a_close_with_no_session_open_is_answered_at_once() {
-    let mut state = state_collecting_by_webhook();
+    let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
@@ -261,7 +261,7 @@ fn a_close_with_no_session_open_is_answered_at_once() {
 /// sessions, and the one that worked is the answer to give.
 #[test]
 fn the_session_that_attached_a_bank_is_the_one_reported() {
-    let mut state = state_collecting_by_webhook();
+    let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}", T0.as_secs()).1 } },
@@ -296,7 +296,7 @@ fn the_session_that_attached_a_bank_is_the_one_reported() {
 
 #[test]
 fn a_bank_the_store_would_not_write_is_not_taken_from_plaid() {
-    let mut state = state_collecting_by_webhook();
+    let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
         // Plaid says the session is finished, with a token on it.

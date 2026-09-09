@@ -39,6 +39,14 @@ const CALLS_PER_MINUTE: u32 = 20;
 /// hundred an hour at one address.
 const EMAILS_PER_QUARTER_HOUR: u32 = 5;
 
+/// Subscriptions started per caller per minute.
+///
+/// Tighter than everything else, because each one creates a customer and a
+/// subscription at Stripe that no later call removes. A repeated request is
+/// somebody stuck on a card form, and the second attempt is worth allowing;
+/// the twentieth is a dashboard full of abandoned objects.
+const SUBSCRIBES_PER_MINUTE: u32 = 3;
+
 const MINUTE: u64 = 60;
 
 const QUARTER_HOUR: u64 = 15 * 60;
@@ -66,6 +74,12 @@ pub enum Route {
 
     /// `GET /sync/status` — the stream the phone watches a sync on.
     SyncStatus,
+
+    /// `POST /billing/subscribe`
+    BillingSubscribe,
+
+    /// `GET /billing/status`
+    BillingStatus,
 }
 
 impl Route {
@@ -79,6 +93,8 @@ impl Route {
             Route::LinkStart => "/link/start",
             Route::LinkFinish => "/link/finish",
             Route::SyncStatus => "/sync/status",
+            Route::BillingSubscribe => "/billing/subscribe",
+            Route::BillingStatus => "/billing/status",
         }
     }
 
@@ -88,9 +104,13 @@ impl Route {
             Route::SyncStatus => (WATCHES_PER_MINUTE, MINUTE),
             Route::AuthRequest => (EMAILS_PER_QUARTER_HOUR, QUARTER_HOUR),
 
-            Route::Snapshot | Route::AuthVerify | Route::LinkStart | Route::LinkFinish => {
-                (CALLS_PER_MINUTE, MINUTE)
-            }
+            Route::BillingSubscribe => (SUBSCRIBES_PER_MINUTE, MINUTE),
+
+            Route::Snapshot
+            | Route::AuthVerify
+            | Route::LinkStart
+            | Route::LinkFinish
+            | Route::BillingStatus => (CALLS_PER_MINUTE, MINUTE),
         }
     }
 }

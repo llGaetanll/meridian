@@ -23,8 +23,9 @@ use api_eval::eval;
 use api_ledger::Connection;
 use fixtures::T0;
 use fixtures::signed;
-use fixtures::state;
-use fixtures::state_collecting_by_webhook;
+use fixtures::state_subscribed;
+use fixtures::state_subscribed_by_webhook;
+use fixtures::state_subscribed_many;
 use fixtures::webhook_jwk;
 use src_plaid::PlaidEndpoint;
 
@@ -190,7 +191,7 @@ fn deliver(state: &mut StateServer, request_id: u64, body: &str) {
 /// every time, so nothing but the limit can be what stops it.
 #[test]
 fn a_burst_of_refreshes_is_rate_limited() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     let stale = [ItemFacts {
         user_id: uuid::Uuid::nil(),
@@ -225,7 +226,7 @@ fn a_burst_of_refreshes_is_rate_limited() {
 /// one spent its allowance.
 #[test]
 fn the_rate_limit_is_per_bank() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     let stale = [ItemFacts {
         user_id: uuid::Uuid::nil(),
@@ -257,7 +258,7 @@ fn the_rate_limit_is_per_bank() {
 /// not being served costs one lookup and a 429.
 #[test]
 fn a_caller_past_its_budget_is_refused() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     // Twenty a minute on `/snapshot`, spent.
     for request_id in 1..=20 {
@@ -277,7 +278,7 @@ fn a_caller_past_its_budget_is_refused() {
 /// Time is the only thing that opens it, and time is an event.
 #[test]
 fn the_budget_returns_when_the_window_passes() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     for request_id in 1..=20 {
         spend(&mut state, request_id, &[]);
@@ -312,7 +313,7 @@ fn the_budget_returns_when_the_window_passes() {
 /// machine is seeded, so nothing but the limit can be what stops it.
 #[test]
 fn a_refused_request_starts_nothing() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     state.handle_events(
         &[Event::FromProcess {
@@ -334,7 +335,7 @@ fn a_refused_request_starts_nothing() {
 /// One caller running out must not touch another's budget.
 #[test]
 fn one_caller_over_its_budget_does_not_refuse_the_next() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     state.handle_events(
         &[Event::FromProcess {
@@ -367,7 +368,7 @@ fn one_caller_over_its_budget_does_not_refuse_the_next() {
 /// caller.
 #[test]
 fn a_botnet_cannot_mailbomb_one_inbox() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     state.handle_events(
         &[Event::FromProcess {
@@ -401,7 +402,7 @@ fn a_botnet_cannot_mailbomb_one_inbox() {
 /// this one, and `flow_a_signing_in.rs` is where that is pinned.
 #[test]
 fn a_caller_working_through_codes_runs_out_of_tries() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     state.handle_events(
         &[Event::FromProcess {
@@ -438,7 +439,7 @@ fn a_caller_working_through_codes_runs_out_of_tries() {
 /// route with no bucket. A hundred of them in a turn are all acted on.
 #[test]
 fn webhooks_are_not_rate_limited() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     for request_id in 1..=100 {
         deliver(
@@ -463,7 +464,7 @@ fn webhooks_are_not_rate_limited() {
 /// next sync picks up exactly where the budget ran out.
 #[test]
 fn a_history_pages_only_as_far_as_the_budget_allows() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     let mut actions = Vec::new();
 
@@ -557,7 +558,7 @@ fn spend_the_exchanges(state: &mut StateServer) {
 /// retry inside the minute is refused the same way.
 #[test]
 fn the_exchange_past_the_budget_produces_no_action() {
-    let mut state = state_collecting_by_webhook();
+    let mut state = state_subscribed_by_webhook();
 
     spend_the_exchanges(&mut state);
 
@@ -573,7 +574,14 @@ fn the_exchange_past_the_budget_produces_no_action() {
 /// being spent, and the thirty-first is refused by it.
 #[test]
 fn opening_bank_sign_ins_faster_than_the_budget_allows_is_refused() {
-    let mut state = state();
+    // Thirty different people, and the one after them. All paying: what is
+    // under test is Plaid's budget, and an unsubscribed caller would be
+    // refused before ever reaching it.
+    let payers: Vec<_> = (1..=PlaidEndpoint::LinkTokenCreate.per_minute() as u128 + 1)
+        .map(uuid::Uuid::from_u128)
+        .collect();
+
+    let mut state = state_subscribed_many(&payers);
 
     for n in 1..=PlaidEndpoint::LinkTokenCreate.per_minute() as u64 {
         open_a_sign_in(&mut state, n);
@@ -704,7 +712,7 @@ fn link_by_polling(state: &mut StateServer, request_id: u64, n: u32) {
 /// like any other over its budget.
 #[test]
 fn a_token_polled_back_past_the_budget_is_not_exchanged() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     for n in 0..PlaidEndpoint::PublicTokenExchange.per_minute() {
         link_by_polling(&mut state, 1000 + n as u64, n);

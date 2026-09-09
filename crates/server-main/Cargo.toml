@@ -9,6 +9,7 @@ api-ledger = { path = "../api-ledger" }
 api-trace = { path = "../api-trace" }
 server-wire = { path = "../server-wire" }
 src-plaid = { path = "../src-plaid" }
+src-stripe = { path = "../src-stripe" }
 src-resend = { path = "../src-resend" }
 src-postgres = { path = "../src-postgres" }
 
@@ -27,9 +28,12 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
-# The machine verifies webhook signatures now, so its tests have to make one.
+# The machine verifies webhook signatures, so its tests have to make one:
+# ECDSA for Plaid's, HMAC for Stripe's.
 base64 = "0.22.1"
+hmac = "0.12"
 p256 = { version = "0.13", features = ["ecdsa"] }
+sha2 = "0.10"
 tower = { version = "0.5", features = ["util"] }
 uuid = { workspace = true }
 api-common = { path = "../api-common" }

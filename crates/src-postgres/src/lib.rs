@@ -69,4 +69,5 @@ pub use postgres_subscription::load_subscriptions;
 pub use postgres_subscription::name_subscription;
 pub use postgres_subscription::save_customer;
 pub use postgres_subscription::user_for_customer;
+pub use postgres_user::load_email;
 pub use postgres_user::upsert_user;

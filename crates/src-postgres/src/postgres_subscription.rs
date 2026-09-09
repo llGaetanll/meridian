@@ -1,13 +1,17 @@
 //! Who is paying, and until when.
 
 use api_common::Timestamp;
-use chrono::DateTime;
-use chrono::Utc;
 use uuid::Uuid;
 
 use crate::Db;
 use crate::PostgresError;
 use crate::postgres_ledger::seconds;
+
+/// A [`Timestamp`] as Postgres takes it. The inverse of
+/// [`seconds`](crate::postgres_ledger::seconds), which reads one back.
+fn utc(at: Timestamp) -> chrono::DateTime<chrono::Utc> {
+    chrono::DateTime::from_timestamp(at.as_secs() as i64, 0).unwrap_or_default()
+}
 
 /// Which rail proved a payment.
 ///
@@ -191,11 +195,14 @@ pub async fn apply_subscription_event(
     db: &Db,
     subscription_id: &str,
     status: &str,
-    current_period_end: Option<DateTime<Utc>>,
+    current_period_end: Option<Timestamp>,
     cancel_at_period_end: bool,
     event_id: &str,
-    event_at: DateTime<Utc>,
+    event_at: Timestamp,
 ) -> Result<bool, PostgresError> {
+    let current_period_end = current_period_end.map(utc);
+    let event_at = utc(event_at);
+
     let result = sqlx::query!(
         r#"UPDATE subscriptions SET
                status               = $2,

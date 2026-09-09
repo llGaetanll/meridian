@@ -15,7 +15,15 @@ pub enum EventProcess {
     /// `collect` is a fact the runtime observed off the environment, not a
     /// decision: a runtime that inspects its own configuration to decide what
     /// happens has behaviour no `eval!` test can reach.
-    Started { collect: PlaidCollect },
+    Started {
+        collect: PlaidCollect,
+
+        /// What webhooks from Stripe are checked against, where the process
+        /// was configured for it. `None` refuses every one of them, which is
+        /// the safe direction: an unverified webhook is somebody claiming a
+        /// subscription was paid for.
+        stripe_webhook_secret: Option<String>,
+    },
 
     /// Fresh entropy for the machine's own generator.
     ///

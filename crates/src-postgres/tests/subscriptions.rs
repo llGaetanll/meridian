@@ -7,9 +7,7 @@
 //! correctly and then locks them out, which is the failure nobody reports
 //! because they have already left.
 
-use chrono::DateTime;
-use chrono::TimeZone;
-use chrono::Utc;
+use api_common::Timestamp;
 use sqlx::PgPool;
 use src_postgres::BillingProvider;
 use uuid::Uuid;
@@ -18,10 +16,8 @@ const CUSTOMER: &str = "cus_test";
 const SUBSCRIPTION: &str = "sub_test";
 
 /// A moment to hang the events off.
-fn at(secs: i64) -> DateTime<Utc> {
-    Utc.timestamp_opt(secs, 0)
-        .single()
-        .expect("a valid timestamp")
+fn at(secs: u64) -> Timestamp {
+    Timestamp::from_secs(secs)
 }
 
 /// A user to own the subscription, since the row is keyed by one.

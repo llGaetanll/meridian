@@ -2922,6 +2922,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "dotenvy",
+ "hmac 0.12.1",
  "p256",
  "rand 0.9.5",
  "rand_chacha",
@@ -2932,6 +2933,7 @@ dependencies = [
  "src-plaid",
  "src-postgres",
  "src-resend",
+ "src-stripe",
  "tokio",
  "tokio-stream",
  "tower",
@@ -3380,6 +3382,23 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "src-stripe"
+version = "0.1.0"
+dependencies = [
+ "api-trace",
+ "dotenvy",
+ "hmac 0.12.1",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "sha2 0.10.9",
+ "subtle",
+ "tokio",
  "tracing",
 ]
 

@@ -59,3 +59,15 @@ pub async fn upsert_user(db: &Db, email: &str) -> Result<Uuid, PostgresError> {
 
     Ok(user_id)
 }
+
+/// The address a user is written to.
+///
+/// What Stripe emails a receipt to. Nothing the state machine holds says who a
+/// user is besides their id, so this is the read that answers it.
+pub async fn load_email(db: &Db, user_id: Uuid) -> Result<Option<String>, PostgresError> {
+    let row = sqlx::query!("SELECT email FROM users WHERE user_id = $1", user_id)
+        .fetch_optional(db)
+        .await?;
+
+    Ok(row.map(|row| row.email))
+}

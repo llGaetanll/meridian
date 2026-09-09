@@ -52,6 +52,12 @@ pub enum Pending {
     /// Waiting on the ledger it is about to be answered with.
     Reading,
 
+    /// Waiting on Stripe to create the customer a subscription hangs off.
+    Subscribing { user_id: Uuid },
+
+    /// Waiting on Stripe to create the subscription itself.
+    SubscribingTo { user_id: Uuid, customer_id: String },
+
     /// Decided. Held until nothing the request started is still out, because
     /// a route reads the store the moment it is answered.
     Owed(Owed),

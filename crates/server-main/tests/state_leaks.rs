@@ -19,7 +19,7 @@ use api_ledger::Position;
 use api_ledger::Tx;
 use fixtures::T0;
 use fixtures::signed;
-use fixtures::state_collecting_by_webhook;
+use fixtures::state_subscribed_by_webhook;
 use fixtures::webhook_jwk;
 
 use server_main::*;
@@ -36,7 +36,7 @@ use server_main::*;
 /// is the one thing this assertion excuses.
 #[test]
 fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
-    let mut state = state_collecting_by_webhook();
+    let mut state = state_subscribed_by_webhook();
 
     let before = state.census();
 
@@ -160,7 +160,7 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
 /// on the webhook route it is a stranger's body being parked there.
 #[test]
 fn a_call_that_is_given_up_on_takes_what_it_was_doing_with_it() {
-    let mut state = state_collecting_by_webhook();
+    let mut state = state_subscribed_by_webhook();
 
     let before = state.census();
 
@@ -188,7 +188,7 @@ fn a_call_that_is_given_up_on_takes_what_it_was_doing_with_it() {
 /// both halves with it.
 #[test]
 fn a_route_parked_on_a_session_nobody_reports_on_is_let_go_of_whole() {
-    let mut state = state_collecting_by_webhook();
+    let mut state = state_subscribed_by_webhook();
 
     let before = state.census();
 
@@ -207,6 +207,71 @@ fn a_route_parked_on_a_session_nobody_reports_on_is_let_go_of_whole() {
 
         // And a minute in which the window it was metered in goes idle.
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS + 62) } },
+    );
+
+    assert_eq!(state.census(), before, "the route left nothing behind");
+}
+
+/// A subscription started end to end leaves nothing behind.
+///
+/// Four steps and two sources: the session, the address, Stripe twice, and a
+/// write. Each one replaces the step before it, so the table of routes in
+/// flight has to be empty again when the secret goes out.
+#[test]
+fn starting_a_subscription_leaves_nothing_behind() {
+    let mut state = fixtures::state();
+
+    let before = state.census();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadUser { call_id: 2, .. } },
+
+        < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
+        > Action::ToSourceStripe { action: ActionSourceStripe::CreateCustomer { call_id: 3, .. } },
+
+        < Event::FromSourceStripe { event: EventSourceStripe::CustomerCreated { call_id: 3, user_id: uuid::Uuid::nil(), customer_id: "cus_1".to_string() } },
+        > Action::ToSourceStripe { action: ActionSourceStripe::CreateSubscription { call_id: 4, .. } },
+
+        < Event::FromSourceStripe { event: EventSourceStripe::SubscriptionCreated { call_id: 4, user_id: uuid::Uuid::nil(), subscription_id: "sub_1".to_string(), status: "incomplete".to_string(), client_secret: Some("pi_1_secret".to_string()) } },
+        > Action::ToStore { action: ActionStore::SaveCustomer { call_id: 5, .. } },
+
+        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+        > @r#"ToRouter { request_id: 1, action: Subscribing { client_secret: "pi_1_secret" } }"#,
+
+        // And a minute in which the window it was metered in goes idle.
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 62) } },
+    );
+
+    assert_eq!(state.census(), before, "the route left nothing behind");
+}
+
+/// A Stripe that will not answer leaves nothing behind either. The route is
+/// dropped at whichever step it had reached, and neither of them has anything
+/// to resume from.
+#[test]
+fn a_stripe_that_refuses_leaves_nothing_behind() {
+    let mut state = fixtures::state();
+
+    let before = state.census();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore { action: ActionStore::LoadUser { call_id: 2, .. } },
+
+        < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
+        > Action::ToSourceStripe { action: ActionSourceStripe::CreateCustomer { call_id: 3, .. } },
+
+        < Event::FromSourceStripe { event: EventSourceStripe::StripeFailed { call_id: 3, user_id: uuid::Uuid::nil(), message: "stripe said no".to_string() } },
+        > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
+
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 62) } },
     );
 
     assert_eq!(state.census(), before, "the route left nothing behind");

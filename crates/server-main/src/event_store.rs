@@ -47,4 +47,13 @@ pub enum EventStore {
     /// The write did not land, and why. Recoverable because the cursor did not
     /// move: the next sync re-reads the same range.
     WriteError { message: String },
+
+    /// Every subscription the store holds, at startup.
+    SubscriptionsLoaded {
+        subscriptions: Vec<src_postgres::StoredSubscription>,
+    },
+
+    /// The address a user is written to. `None` is a user that is not there,
+    /// which a live session should make impossible.
+    UserLoaded { email: Option<String> },
 }

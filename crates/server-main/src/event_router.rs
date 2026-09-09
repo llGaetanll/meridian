@@ -44,6 +44,20 @@ pub enum EventRouter {
     /// wire, so a body through a JSON extractor and printed again hashes to
     /// something else.
     WebhookReceived { jwt: String, body: Vec<u8> },
+
+    /// `POST /billing/subscribe` — start a subscription for whoever this token
+    /// signs in.
+    SubscribeRequested { token_sha256: Vec<u8> },
+
+    /// `GET /billing/status` — what this user's subscription is.
+    BillingStatusRequested { token_sha256: Vec<u8> },
+
+    /// `POST /stripe/webhook`.
+    ///
+    /// The body is raw bytes because that is what the signature is over: a
+    /// body round-tripped through a parser is a body whose signature no
+    /// longer matches.
+    StripeWebhookReceived { signature: String, body: Vec<u8> },
 }
 
 impl EventRouter {
@@ -58,11 +72,14 @@ impl EventRouter {
             EventRouter::LinkRequested { token_sha256 }
             | EventRouter::LinkClosed { token_sha256 }
             | EventRouter::SyncWatchRequested { token_sha256, .. }
-            | EventRouter::SnapshotRequested { token_sha256 } => Some(token_sha256),
+            | EventRouter::SnapshotRequested { token_sha256 }
+            | EventRouter::SubscribeRequested { token_sha256 }
+            | EventRouter::BillingStatusRequested { token_sha256 } => Some(token_sha256),
 
             EventRouter::CodeRequested { .. }
             | EventRouter::CodeSubmitted { .. }
-            | EventRouter::WebhookReceived { .. } => None,
+            | EventRouter::WebhookReceived { .. }
+            | EventRouter::StripeWebhookReceived { .. } => None,
         }
     }
 
@@ -82,7 +99,10 @@ impl EventRouter {
             EventRouter::LinkRequested { .. } => Some(Route::LinkStart),
             EventRouter::LinkClosed { .. } => Some(Route::LinkFinish),
             EventRouter::SyncWatchRequested { .. } => Some(Route::SyncStatus),
-            EventRouter::WebhookReceived { .. } => None,
+            EventRouter::SubscribeRequested { .. } => Some(Route::BillingSubscribe),
+            EventRouter::BillingStatusRequested { .. } => Some(Route::BillingStatus),
+
+            EventRouter::WebhookReceived { .. } | EventRouter::StripeWebhookReceived { .. } => None,
         }
     }
 
@@ -100,7 +120,10 @@ impl EventRouter {
             | EventRouter::LinkRequested { .. }
             | EventRouter::LinkClosed { .. }
             | EventRouter::SyncWatchRequested { .. }
-            | EventRouter::WebhookReceived { .. } => None,
+            | EventRouter::WebhookReceived { .. }
+            | EventRouter::SubscribeRequested { .. }
+            | EventRouter::BillingStatusRequested { .. }
+            | EventRouter::StripeWebhookReceived { .. } => None,
         }
     }
 }

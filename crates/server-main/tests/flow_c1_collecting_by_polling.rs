@@ -6,7 +6,7 @@
 //! collects, so that request is what goes and asks Plaid, and a sheet the user
 //! dismissed never gets here at all.
 //!
-//! Every machine in this file is `state()`, which is the polling one. The same
+//! Every machine in this file is `state_subscribed()`, which is the polling one. The same
 //! close on a machine Plaid calls is `flow_c2_collecting_by_webhook.rs`, and
 //! the two are independent: the last test here is the one that says so.
 //!
@@ -18,7 +18,7 @@ mod fixtures;
 use api_common::Timestamp;
 use api_eval::eval;
 use fixtures::T0;
-use fixtures::state;
+use fixtures::state_subscribed;
 
 use server_main::*;
 
@@ -31,7 +31,7 @@ use server_main::*;
 /// release the route while it is still outstanding.
 #[test]
 fn a_closed_sheet_attaches_the_bank_and_starts_its_sync() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
@@ -74,7 +74,7 @@ fn a_closed_sheet_attaches_the_bank_and_starts_its_sync() {
 /// already.
 #[test]
 fn a_public_token_is_exchanged_even_before_the_session_finishes() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
@@ -102,7 +102,7 @@ fn a_public_token_is_exchanged_even_before_the_session_finishes() {
 /// out — a bank somebody connected and does not get.
 #[test]
 fn a_second_bank_in_one_session_has_its_token_dropped() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
@@ -130,7 +130,7 @@ fn a_second_bank_in_one_session_has_its_token_dropped() {
 /// a failure, and the session is marked done so it is not polled forever.
 #[test]
 fn a_session_that_ends_with_nothing_is_collected_and_reported() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
@@ -156,7 +156,7 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
 /// of polling and the reason C2 exists.
 #[test]
 fn an_open_session_is_left_pending() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
@@ -178,7 +178,7 @@ fn an_open_session_is_left_pending() {
 /// to collect, so there is no call worth making.
 #[test]
 fn closing_a_sheet_with_no_session_open_asks_nothing() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
@@ -199,7 +199,7 @@ fn closing_a_sheet_with_no_session_open_asks_nothing() {
 /// route can only send one response.
 #[test]
 fn every_open_session_is_polled_and_the_route_still_answers_once() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
@@ -229,7 +229,7 @@ fn every_open_session_is_polled_and_the_route_still_answers_once() {
 /// poll and nothing true to say about the sheet they just closed.
 #[test]
 fn sessions_that_cannot_be_read_cannot_be_collected() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
@@ -248,7 +248,7 @@ fn sessions_that_cannot_be_read_cannot_be_collected() {
 /// Plaid rather than reading an outcome that will never be written.
 #[test]
 fn a_closed_sheet_still_polls_when_we_collect_by_polling() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
@@ -264,7 +264,7 @@ fn a_closed_sheet_still_polls_when_we_collect_by_polling() {
 
 #[test]
 fn a_bank_the_store_refused_is_written_on_the_retry() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         // The sheet closed.
@@ -315,7 +315,7 @@ fn a_bank_the_store_refused_is_written_on_the_retry() {
 
 #[test]
 fn a_bank_the_store_would_not_write_is_answered_an_error() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         // The sheet closed.
@@ -378,7 +378,7 @@ fn a_bank_the_store_would_not_write_is_answered_an_error() {
 
 #[test]
 fn a_slow_exchange_still_attaches_its_bank() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         // The sheet closed.

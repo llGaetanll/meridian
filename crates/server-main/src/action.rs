@@ -5,6 +5,7 @@ use crate::ActionProcess;
 use crate::ActionRouter;
 use crate::ActionSocket;
 use crate::ActionSourcePlaid;
+use crate::ActionSourceStripe;
 use crate::ActionStore;
 use crate::RequestId;
 
@@ -19,6 +20,9 @@ pub enum Action {
     },
     ToSourcePlaid {
         action: ActionSourcePlaid,
+    },
+    ToSourceStripe {
+        action: ActionSourceStripe,
     },
     ToSocket {
         action: ActionSocket,

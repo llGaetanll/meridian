@@ -67,4 +67,32 @@ pub enum ActionRouter {
     /// The code was not good. Deliberately carries no reason: wrong, expired
     /// and exhausted are logged and are not told apart to the caller.
     Rejected,
+
+    /// Signed in, and has not paid. **402.**
+    ///
+    /// Told apart from [`Unauthorized`](ActionRouter::Unauthorized) on
+    /// purpose: the session is good and the answer is a paywall, not a sign-in
+    /// screen. A client that conflated them would sign somebody out for not
+    /// having paid.
+    PaymentRequired,
+
+    /// A subscription has been started, and this is what the card form
+    /// confirms against.
+    ///
+    /// Nothing has been charged yet. Entitlement arrives by webhook, or never.
+    Subscribing { client_secret: String },
+
+    /// What this user's subscription is, for the screen that draws it.
+    BillingStatus {
+        /// Whether the app may be used right now.
+        entitled: bool,
+
+        /// The provider's word for it, absent if they have never subscribed.
+        status: Option<String>,
+
+        /// The end of the period paid for, in seconds.
+        good_until: Option<u64>,
+
+        cancel_at_period_end: bool,
+    },
 }

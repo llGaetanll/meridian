@@ -14,7 +14,7 @@ mod fixtures;
 use api_common::Timestamp;
 use api_eval::eval;
 use fixtures::T0;
-use fixtures::state;
+use fixtures::state_subscribed;
 
 use server_main::*;
 
@@ -22,7 +22,7 @@ use server_main::*;
 /// server goes through here, so it had better be free.
 #[test]
 fn a_tick_on_a_quiet_server_does_nothing() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 1) } },
@@ -34,7 +34,7 @@ fn a_tick_on_a_quiet_server_does_nothing() {
 /// it is the machine that asks, so the same log replays the same sweeps (#24).
 #[test]
 fn expired_sessions_are_swept_on_the_hour() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         // Not yet. The clock is what decides, and a second short is short.
@@ -56,7 +56,7 @@ fn expired_sessions_are_swept_on_the_hour() {
 /// to stop grows by nothing.
 #[test]
 fn a_stopping_server_does_not_sweep() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromTerminal { event: EventTerminal::SigInt },
@@ -71,7 +71,7 @@ fn a_stopping_server_does_not_sweep() {
 /// gets it there.
 #[test]
 fn a_call_that_never_answers_is_given_up_on() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
@@ -99,7 +99,7 @@ fn a_call_that_never_answers_is_given_up_on() {
 /// is nothing held to release.
 #[test]
 fn a_route_with_nothing_decided_is_told_it_cannot_be_answered() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
@@ -120,7 +120,7 @@ fn a_route_with_nothing_decided_is_told_it_cannot_be_answered() {
 /// watching for.
 #[test]
 fn a_signal_on_an_idle_server_stops_it_at_once() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromTerminal { event: EventTerminal::SigInt },
@@ -137,7 +137,7 @@ fn a_signal_on_an_idle_server_stops_it_at_once() {
 /// drop a write that had already been asked for.
 #[test]
 fn a_signal_with_a_call_out_waits_for_it() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
@@ -170,7 +170,7 @@ fn a_signal_with_a_call_out_waits_for_it() {
 /// process that never exits.
 #[test]
 fn a_shutdown_does_not_wait_forever_on_a_quiet_source() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
@@ -194,7 +194,7 @@ fn a_shutdown_does_not_wait_forever_on_a_quiet_source() {
 /// shutdown.
 #[test]
 fn a_second_signal_is_ignored() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromTerminal { event: EventTerminal::SigInt },
@@ -208,7 +208,7 @@ fn a_second_signal_is_ignored() {
 /// — and no fetch goes out for the bank that has never synced.
 #[test]
 fn shutting_down_stops_new_work() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromTerminal { event: EventTerminal::SigInt },
@@ -236,7 +236,7 @@ fn shutting_down_stops_new_work() {
 /// away — the same rule that stops a fetch.
 #[test]
 fn a_draining_machine_mints_nothing() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
@@ -250,7 +250,7 @@ fn a_draining_machine_mints_nothing() {
 
 #[test]
 fn a_drain_does_not_give_up_on_the_exchange() {
-    let mut state = state();
+    let mut state = state_subscribed();
 
     eval!(&mut state,
         // The sheet closed.

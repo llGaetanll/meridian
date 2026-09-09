@@ -14,6 +14,7 @@ mod action_process;
 mod action_router;
 mod action_socket;
 mod action_source_plaid;
+mod action_source_stripe;
 mod action_store;
 mod attaching;
 mod authenticated;
@@ -24,11 +25,13 @@ mod client;
 mod conn_id;
 mod email_address;
 mod email_send;
+mod entitlement;
 mod event;
 mod event_process;
 mod event_router;
 mod event_socket;
 mod event_source_plaid;
+mod event_source_stripe;
 mod event_store;
 mod event_terminal;
 mod item_facts;
@@ -50,8 +53,10 @@ mod router_trace;
 mod runtime_plaid;
 mod runtime_router;
 mod runtime_server;
+mod runtime_stripe;
 mod session_token;
 mod source_pool;
+mod state_billing;
 mod state_server;
 mod state_signup;
 mod syncing;
@@ -59,12 +64,17 @@ mod waiting;
 mod web_origins;
 mod webhook_facts;
 
+/// Reachable so that `examples/snapshot.rs` can generate the fixture the app's
+/// Reachable so the machine's tests can build a stored code to submit against.
+/// Reachable so the machine's tests can build the token hash a request carries.
+/// tests read.
 pub use action::Action;
 pub use action_email::ActionEmail;
 pub use action_process::ActionProcess;
 pub use action_router::ActionRouter;
 pub use action_socket::ActionSocket;
 pub use action_source_plaid::ActionSourcePlaid;
+pub use action_source_stripe::ActionSourceStripe;
 pub use action_store::ActionStore;
 pub use attaching::Attaching;
 pub use authenticated::Authenticated;
@@ -75,11 +85,13 @@ pub use client::Client;
 pub use client::ClientIp;
 pub use conn_id::ConnId;
 pub use email_send::EmailSend;
+pub use entitlement::Entitlement;
 pub use event::Event;
 pub use event_process::EventProcess;
 pub use event_router::EventRouter;
 pub use event_socket::EventSocket;
 pub use event_source_plaid::EventSourcePlaid;
+pub use event_source_stripe::EventSourceStripe;
 pub use event_store::EventStore;
 pub use event_terminal::EventTerminal;
 pub use item_facts::ItemFacts;
@@ -89,7 +101,6 @@ pub use link_poll::LinkPoll;
 pub use link_session::LinkSession;
 pub use login_code::StoredCode;
 pub use login_code::Verdict;
-/// Reachable so the machine's tests can build a stored code to submit against.
 pub use login_code::hash as hash_code;
 pub use oauth_redirect::OauthRedirect;
 pub use owed::Owed;
@@ -99,10 +110,12 @@ pub use public_url::PublicUrl;
 pub use public_url::WEBHOOK_PATH;
 pub use rate_limit::Route;
 pub use request_id::RequestId;
+pub use runtime_plaid::Fetched;
+pub use runtime_plaid::fetch_fixtures;
 pub use runtime_server::RuntimeServer;
 pub use server_wire::WireSnapshot;
-/// Reachable so the machine's tests can build the token hash a request carries.
 pub use session_token::hash as hash_token;
+pub use state_billing::StateBilling;
 pub use state_server::FRESH_FOR_SECS;
 pub use state_server::StateServer;
 pub use state_server::WATCHERS_AT_MOST;
@@ -119,8 +132,3 @@ pub use syncing::Syncing;
 pub use waiting::Waiting;
 pub use web_origins::WebOrigins;
 pub use webhook_facts::WebhookFacts;
-
-/// Reachable so that `examples/snapshot.rs` can generate the fixture the app's
-/// tests read.
-pub use runtime_plaid::Fetched;
-pub use runtime_plaid::fetch_fixtures;
