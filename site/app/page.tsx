@@ -1,13 +1,9 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { Icon, type IconKind } from "@/components/icon";
+import { Institution } from "@/components/institution";
 import { site } from "@/lib/site";
-
-/// The line in the panel at the top: four years of a net worth that goes up
-/// through a drawdown it recovers from. A path rather than an image, so it is
-/// sharp at any size and costs nothing to load.
-const LINE =
-  "M 0 104.2 L 15.7 100 L 31.4 84.5 L 47.1 89.4 L 62.7 85.7 L 78.4 79.9 L 94.1 78.5 L 109.8 82.4 L 125.5 96 L 141.2 87.6 L 156.9 84.4 L 172.5 92 L 188.2 80.5 L 203.9 89.3 L 219.6 71.1 L 235.3 66 L 251 69.8 L 266.7 44.9 L 282.4 47.6 L 298 33.8 L 313.7 33.1 L 329.4 36.4 L 345.1 44 L 360.8 43.3 L 376.5 49.8 L 392.2 60.4 L 407.8 71.1 L 423.5 86.1 L 439.2 98.1 L 454.9 97 L 470.6 109.6 L 486.3 119.6 L 502 124 L 517.6 120 L 533.3 102.7 L 549 96.2 L 564.7 98.3 L 580.4 91.6 L 596.1 82 L 611.8 58.5 L 627.5 52.8 L 643.1 48.7 L 658.8 41.9 L 674.5 41.2 L 690.2 31 L 705.9 31.4 L 721.6 35 L 737.3 32.5 L 752.9 23.3 L 768.6 26.4 L 784.3 11.9 L 800 10";
 
 const CARDS: { icon: IconKind; title: string; body: string }[] = [
   {
@@ -49,6 +45,35 @@ const TRADES = [
   { what: "Bought bitcoin", trade: "3,204.00 USD → 0.0312 BTC", amt: "−$3,204.00", dir: "out" },
 ] as const;
 
+/// The institutions the marquee names. Set as wordmarks in the site's own type
+/// rather than as logo files: these are other companies' trademarks, and a page
+/// that reproduces them is making a claim about them. The names say the same
+/// thing and are ours to write.
+///
+/// Chosen to be recognisable across the kinds of account a connection reaches —
+/// the national banks, the card issuers, the brokerages, the newer accounts —
+/// so the row reads as "all of it" rather than as a list of four banks.
+const INSTITUTIONS = [
+  "Chase",
+  "Bank of America",
+  "Wells Fargo",
+  "American Express",
+  "Discover",
+  "Citi",
+  "Capital One",
+  "Fidelity",
+  "Charles Schwab",
+  "Robinhood",
+  "Vanguard",
+  "U.S. Bank",
+  "PNC",
+  "Truist",
+  "Ally",
+  "SoFi",
+  "Navy Federal",
+  "E*TRADE",
+];
+
 const POINTS = [
   {
     title: "Connections are read-only",
@@ -79,24 +104,47 @@ export default function Home() {
             Everything you own, everything you owe,{" "}
             <span className="quiet">everything you spend.</span>
           </h1>
-          <p>
-            Meridian keeps one ledger for your accounts, your holdings and your
-            spending, with the tools to explore what any of it means. It shows
-            you your money. It does not tell you what to do with it.
-          </p>
+        </div>
 
+        {/* Pulled up so the top of the lid crosses the last line of the
+            headline. The machine is the description — the page says what the
+            app is by showing it, which is why there is no paragraph here. */}
+        <div className="hero-shot">
+          <Image
+            src="/shots/laptop-markets.avif"
+            width={2200}
+            height={1350}
+            alt="Meridian on a laptop, showing the markets page for SPY: the price chart, the position across three portfolios, and the trade composer."
+            priority
+          />
+        </div>
+
+        <div className="wrap">
           <div className="cta">
             <a className="btn primary lg" href={site.app}>
               Open the app
-              <Icon kind="arrowRight" />
             </a>
-            <a className="btn plain" href="#what">
-              See what it does
+            <a className="btn plain" href="#coverage">
+              Learn more
             </a>
           </div>
-
-          <Shot />
         </div>
+      </section>
+
+      <section className="sec" id="coverage">
+        <div className="wrap">
+          <div className="eyebrow">Coverage</div>
+          <h2>We support your bank.</h2>
+          <p className="lede">
+            Meridian connects through Plaid, the same service your other
+            financial apps use. Every institution Plaid supports, Meridian
+            supports — every national bank, every regional one, the credit
+            unions, the card issuers and the brokerages. We keep no shorter list
+            of our own.
+          </p>
+        </div>
+
+        <Marquee />
       </section>
 
       <section className="sec" id="what">
@@ -159,16 +207,19 @@ export default function Home() {
         <div className="wrap split">
           <div>
             <div className="eyebrow">The assistant</div>
-            <h2>Ask a question. The model never does the math.</h2>
+            <h2>Ask in plain English, never do the math again.</h2>
             <p className="lede">
-              Ask why last month looked different, what the fees add up to, how
-              a scenario turns out. The question becomes a query, the engine
-              computes the answer, and the model explains the result — so every
-              number is deterministic, reproducible and testable.
+              Why was August so expensive? What are my fees actually costing me?
+              What happens if I put another $500 a month in? Ask it the way you
+              would ask a friend who happens to be good with money — and get an
+              answer that is right, every time.
             </p>
             <p className="lede">
-              It also means what leaves the machine is a structured query and a
-              structured answer, never a dump of your transactions.
+              Because the model never does the arithmetic. Your question becomes
+              a query, the engine computes the answer from your own ledger, and
+              the model just writes the sentence around it. No hallucinated
+              figures, no plausible-looking nonsense — and your transactions
+              never leave the machine.
             </p>
           </div>
 
@@ -266,105 +317,28 @@ function Ask() {
   );
 }
 
-/// The app's home screen, built from the app's own components: the figure, what
-/// came in and went out, the line, and the last few rows of the ledger.
-function Shot() {
+/// The institutions, sliding right to left, forever.
+///
+/// The row is written out twice and the track is translated by exactly half its
+/// width, so the second copy is where the first was when the animation restarts
+/// and the loop has no seam. `aria-hidden` on the duplicate keeps a screen
+/// reader from hearing the list twice; the marquee stops for anybody who has
+/// asked their machine for less motion.
+function Marquee() {
   return (
-    <div className="shot" aria-hidden="true">
-      <div className="shot-head">
-        <div>
-          <div className="k">Net worth</div>
-          <div className="v">$412,908</div>
-          <div className="diff">
-            <span className="in">
-              <b>+$14,204</b> in
-            </span>
-            <span className="out">
-              <b>−$6,118</b> out
-            </span>
-            <span>this month</span>
-          </div>
+    <div className="marquee">
+      <div className="marquee-track">
+        <div className="marquee-row">
+          {INSTITUTIONS.map((name) => (
+            <Institution key={name} name={name} />
+          ))}
         </div>
-        <div className="btn-group">
-          <button className="btn sm" type="button">1M</button>
-          <button className="btn sm" type="button">6M</button>
-          <button className="btn sm on" type="button">4Y</button>
+        <div className="marquee-row" aria-hidden="true">
+          {INSTITUTIONS.map((name) => (
+            <Institution key={name} name={name} />
+          ))}
         </div>
       </div>
-
-      <svg className="shot-chart" viewBox="0 0 800 132" preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="shot-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--violet-400)" stopOpacity="0.26" />
-            <stop offset="100%" stopColor="var(--violet-400)" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <path d={`${LINE} L 800 132 L 0 132 Z`} fill="url(#shot-fill)" />
-        <path
-          d={LINE}
-          fill="none"
-          stroke="var(--violet-400)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
-
-      <div className="shot-rows">
-        <ShotRow
-          mark="AC"
-          name="Acme, Inc."
-          cat="Payroll"
-          acct="Checking · 4491"
-          amt="+$4,206.55"
-          dir="in"
-        />
-        <ShotRow
-          mark="VG"
-          name="Vanguard"
-          cat="Bought 4.021 VTI"
-          acct="Brokerage · 8820"
-          amt="−$1,180.44"
-          dir="out"
-        />
-        <ShotRow
-          mark="WF"
-          name="Whole Foods Market"
-          cat="Groceries"
-          acct="Credit · 1174"
-          amt="−$84.12"
-          dir="out"
-        />
-      </div>
-    </div>
-  );
-}
-
-function ShotRow({
-  mark,
-  name,
-  cat,
-  acct,
-  amt,
-  dir,
-}: {
-  mark: string;
-  name: string;
-  cat: string;
-  acct: string;
-  amt: string;
-  dir: "in" | "out";
-}) {
-  return (
-    <div className="shot-row">
-      <span className="mark">{mark}</span>
-      <span>
-        <span className="nm">{name}</span>
-        <span className="ct">{cat}</span>
-      </span>
-      <span className="ct acct">{acct}</span>
-      <span className={`amt money ${dir}`}>{amt}</span>
     </div>
   );
 }

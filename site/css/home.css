@@ -6,7 +6,7 @@
    anything; these are the same rows, the same figures and the same greys, and
    they stay right for as long as the design language does. */
 
-.hero { position: relative; padding: 74px 0 30px; }
+.hero { position: relative; padding: 74px 0 4px; overflow: hidden; }
 
 /* A wash of the accent behind the opening, wide and faint. The design language
    keeps `--glow` for single controls; this is not that shadow at a larger size
@@ -35,6 +35,12 @@
   letter-spacing: -0.038em;
   max-width: 22ch;
 }
+
+/* Centred, because the composition is one column: the label, the sentence, the
+   machine, the action. Off to the left it would be a headline with a picture
+   beside it, which is a different page. */
+.hero .in { text-align: center; }
+.hero h1 { margin-left: auto; margin-right: auto; }
 /* The third clause of the headline, one step back. The sentence has three
    parallel parts and no punctuation strong enough to group them; the shade
    does it instead. */
@@ -46,71 +52,90 @@
   font-size: 17px;
   color: var(--text-muted);
 }
-.hero .cta { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 30px; }
+/* Under the machine rather than beside the words: the eye arrives at the
+   action having already seen what it is opening. */
+/* Pulled up into the foot of the render. The bottom of the image is the
+   machine's shadow fading out over a transparent band, so the button can sit in
+   it without touching anything. */
+.hero .cta {
+  display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+  gap: 14px; margin-top: 8px;
+}
 .hero .cta .note { font-size: 12.5px; color: var(--text-faint); }
 
-/* The panel.
+/* The machine.
 
-   The app's page inside a frame, floated a little off the ground. The corner is
-   `--r-lg`, which is the corner every card in the app has; nothing here invents
-   a bigger one because the thing is bigger. */
-.shot {
-  margin-top: 56px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  background: var(--bg-panel);
-  padding: 22px;
-  box-shadow: 0 30px 80px -50px #000;
-}
-.shot-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
-.shot-head .k {
-  font-size: 11px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.09em;
-  color: var(--text-faint);
-}
-/* Not the money face, though it is money: the app's own hero figure is set in
-   Inter at this size, and a site that draws it differently is drawing a
-   different app. */
-.shot-head .v {
-  margin-top: 6px;
-  font-size: clamp(30px, 5.5vw, 42px); font-weight: 700;
-  line-height: 1.05; letter-spacing: -0.035em;
-}
-/* In and out. The words stay grey and the figures carry the colour — the word
-   already says the direction, so colouring both says it twice. */
-.shot .diff { display: flex; gap: 18px; margin-top: 10px; font-size: 12.5px; color: var(--text-faint); }
-.shot .diff b { margin-right: 5px; font-weight: 600; }
-.shot .diff .in b { color: var(--up); }
-.shot .diff .out b { color: var(--down); }
+   Rendered in Blender out of a picture of the app taken from the sketches, on a
+   transparent background and lit from one side. It gets no frame, no card and
+   no shadow of its own: the page is the room it is standing in, and a border
+   drawn round it would be a second device around the first.
 
-.shot-chart { display: block; width: 100%; height: 132px; margin: 22px 0 4px; }
-
-/* A ledger row at the site's width: a mark, a name that takes the slack, the
-   category, and the figure on the right edge. The app gives the account its
-   own column too; a page nobody is scanning down does not need it. */
-.shot-rows { margin-top: 8px; }
-.shot-row {
-  display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) 92px;
-  align-items: center;
-  gap: 12px;
-  padding: 11px 0;
+   Centred under the headline and pulled up so the top of the lid crosses the
+   last line of it. The machine is the description — the opening says what the
+   app is by showing it — so it is the largest thing on the page and everything
+   else is arranged around it. */
+.hero-shot {
+  position: relative;
+  /* Above the headline in the stacking order, so the lid crosses in front of
+     the type rather than being covered by it. */
+  z-index: 1;
+  margin: -14px calc(50% - 50vw) 0;
+  pointer-events: none;
 }
-.shot-row + .shot-row { border-top: 1px solid var(--divider); }
-.shot-row .nm { display: block; min-width: 0; font-size: 14px; font-weight: 600; }
-.shot-row .ct { display: block; font-size: 12.5px; color: var(--text-faint); margin-top: 2px; }
-.shot-row .amt { text-align: right; font-size: 13.5px; }
-/* Which account it came out of. The app gives it a column of its own; here it
-   is the first thing a narrow screen gives up, because a row that has to choose
-   between the merchant and the account keeps the merchant. */
-.shot-row .acct { display: none; }
+.hero-shot img {
+  display: block;
+  width: 100%;
+  /* Narrower than the headline, so the ends of the sentence stay clear of it
+     and only the middle is crossed. A machine wider than the type covers the
+     line instead of clipping it. */
+  max-width: 1240px;
+  height: auto;
+  margin: 0 auto;
+}
 
-@media (min-width: 780px) {
-  .hero { padding-top: 108px; }
-  .shot { padding: 30px 32px; }
-  .shot-row { grid-template-columns: 26px minmax(0, 1fr) 160px 100px; }
-  .shot-row .ct { margin-top: 2px; color: var(--text-muted); }
-  .shot-row .acct { display: block; margin-top: 0; color: var(--text-faint); }
+/* The overlap.
+
+   Two separate things added together, which is the only way it stays put as the
+   window changes.
+
+   `--lid-margin` clears the empty band the render carries above the lid: 394 of
+   the image's 1350 rows, which in a box this wide is that share of
+   `width * 1350 / 2200`. It is a share of the image and scales with it.
+
+   `--clip` is the overlap you can actually see, and it is a share of the
+   *headline* rather than of the image — half a line, so the lid cuts through
+   the middle of the last line. Stated as a percentage of the container, as it
+   was before, the clip drifted with the window: the type is `clamp()`-scaled
+   and stops growing at 62px while a percentage keeps going, so the same rule
+   grazed the text on a narrow screen and swallowed a line on a wide one. */
+.hero-shot {
+  /* ┌─────────────────────────────────────────────────────────────────────┐
+     │  HOW FAR THE LAPTOP CLIPS THE HEADLINE. Tweak this one number.      │
+     │                                                                     │
+     │  It is measured in lines of the headline:                           │
+     │    0     the lid just touches the top of the last line              │
+     │    0.5   the lid cuts through the middle of it   ← where we are     │
+     │    1     the lid covers the last line completely                    │
+     │                                                                     │
+     │  Nothing else needs changing when you move it.                      │
+     └─────────────────────────────────────────────────────────────────────┘ */
+  --clip-lines: 0.1;
+
+  /* The image's own width, which is the viewport until it hits its cap. A
+     percentage here would be a percentage of the bled container instead, and
+     that keeps growing after the image has stopped — which is exactly how the
+     clip ran away on a wide screen. */
+  --shot-w: min(100vw, 1240px);
+  --lid-margin: calc(var(--shot-w) * (1350 / 2200) * 0.2919);
+  --clip: calc(var(--clip-lines) * 1.04 * clamp(38px, 7vw, 62px));
+  margin-top: calc(-1 * var(--lid-margin));
+}
+
+/* The clip is a wide-screen effect. Narrow, the headline wraps to four or five
+   lines and the lid lands in the middle of a word instead of along a line, so
+   the machine simply sits under the sentence there. */
+@media (min-width: 900px) {
+  .hero-shot { margin-top: calc(-1 * (var(--lid-margin) + var(--clip))); }
 }
 
 /* What it does.
@@ -155,6 +180,63 @@
 .trade .what { font-size: 14.5px; font-weight: 600; }
 .trade .sub { display: block; font-size: 12.5px; font-weight: 400; color: var(--text-faint); margin-top: 2px; }
 .trade .amt { font-size: 14px; white-space: nowrap; }
+
+/* The institutions, sliding right to left.
+
+   Full-bleed rather than inside the wrap: a marquee that stops at a margin
+   reads as a list that ends, and the point of this one is that it does not. It
+   fades out at both edges instead, so names arrive and leave rather than
+   appearing and vanishing at a hard line. */
+.marquee {
+  margin-top: 40px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 9%, #000 91%, transparent);
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 64s linear infinite;
+}
+.marquee-row { display: flex; align-items: center; }
+
+/* One institution: its mark and its name, or its name alone where no open
+   artwork for the mark exists.
+
+   Monochrome throughout. A row of brand palettes is six companies shouting at
+   each other; one grey makes it a list of the banks we reach, which is the
+   thing the section is actually saying. */
+.inst {
+  display: flex; align-items: center; gap: 11px;
+  padding: 0 30px;
+  font-size: 19px; font-weight: 600;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  color: var(--text-faint);
+}
+/* Sized against the cap height of the name beside it rather than its full em,
+   so the mark and the word look the same weight instead of measuring the
+   same. */
+.inst > svg { width: 23px; height: 23px; flex: none; }
+
+/* A name with no mark carries a little more weight, so it holds the row on its
+   own where a logo would otherwise have been doing that work. */
+.inst-word { font-weight: 650; }
+
+/* Exactly half the track, which is one full copy of the row. Anything else and
+   the loop visibly jumps. */
+@keyframes marquee {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track { animation: none; }
+}
+
+@media (min-width: 780px) {
+  .inst { padding: 0 40px; font-size: 22px; }
+}
 
 /* A point with a rule over it: the design language's `.row`, minus the icon
    slot, for a list that is read rather than aimed at. */
