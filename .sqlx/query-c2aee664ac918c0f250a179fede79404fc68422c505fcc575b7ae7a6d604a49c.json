@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE subscriptions\n           SET subscription_id = $3, updated_at = now()\n           WHERE provider = $1 AND customer_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "billing_provider",
+            "kind": {
+              "Enum": [
+                "stripe",
+                "apple"
+              ]
+            }
+          }
+        },
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c2aee664ac918c0f250a179fede79404fc68422c505fcc575b7ae7a6d604a49c"
+}

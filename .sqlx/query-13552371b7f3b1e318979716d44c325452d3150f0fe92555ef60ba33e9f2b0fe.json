@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE subscriptions SET\n               status               = $2,\n               current_period_end   = $3,\n               cancel_at_period_end = $4,\n               last_event_id        = $5,\n               last_event_at        = $6,\n               updated_at           = now()\n           WHERE subscription_id = $1\n             AND (last_event_id IS DISTINCT FROM $5)\n             AND (last_event_at IS NULL OR last_event_at <= $6)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Bool",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "13552371b7f3b1e318979716d44c325452d3150f0fe92555ef60ba33e9f2b0fe"
+}

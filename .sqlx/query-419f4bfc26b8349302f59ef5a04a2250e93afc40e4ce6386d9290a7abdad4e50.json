@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO subscriptions\n               (user_id, provider, customer_id, subscription_id, status)\n           VALUES ($1, $2, $3, $4, $5)\n           ON CONFLICT (user_id) DO UPDATE SET\n               provider        = EXCLUDED.provider,\n               customer_id     = EXCLUDED.customer_id,\n               subscription_id = EXCLUDED.subscription_id,\n               status          = EXCLUDED.status,\n               updated_at      = now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        {
+          "Custom": {
+            "name": "billing_provider",
+            "kind": {
+              "Enum": [
+                "stripe",
+                "apple"
+              ]
+            }
+          }
+        },
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "419f4bfc26b8349302f59ef5a04a2250e93afc40e4ce6386d9290a7abdad4e50"
+}
