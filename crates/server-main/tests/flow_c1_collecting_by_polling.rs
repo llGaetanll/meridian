@@ -43,16 +43,16 @@ fn a_closed_sheet_attaches_the_bank_and_starts_its_sync() {
         // 2. One call for every session this user has open, because the
         // request does not say which one closed.
         < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } },
 
         // 3a and 4. The irreversible call: in Production this spends an Item
         // slot that removing the Item does not give back.
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
-        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 4, .. } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::ExchangePublicToken { call_id: 4, .. } },
 
         // 5. The bank is written down and the session is closed in the same
         // turn.
-        < Event::FromSource { event: EventSource::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 5, .. } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
 
@@ -60,7 +60,7 @@ fn a_closed_sheet_attaches_the_bank_and_starts_its_sync() {
         // resolves whose bank it is — and on a call nobody is parked on, or
         // this route stays open for the whole of the first sync.
         < Event::FromStore { call_id: 5, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
-        > @r#"ToSource { action: FetchBalances { call_id: 7, item_id: "item-9", now: Timestamp { t: 1787097600 } } }"#,
+        > @r#"ToSourcePlaid { action: FetchBalances { call_id: 7, item_id: "item-9", now: Timestamp { t: 1787097600 } } }"#,
 
         // 6a. Both writes down, and the fetch still out. The count, not a
         // name: nothing knows what the bank is called yet.
@@ -84,10 +84,10 @@ fn a_public_token_is_exchanged_even_before_the_session_finishes() {
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } },
 
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
-        > Action::ToSource { action: ActionSource::ExchangePublicToken { .. } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::ExchangePublicToken { .. } },
     );
 }
 
@@ -112,17 +112,17 @@ fn a_second_bank_in_one_session_has_its_token_dropped() {
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } },
 
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string(), "public-2".to_string()] }] } },
-        > @r#"ToSource { action: ExchangePublicToken { call_id: 4, link_token: "link-1", public_token: "public-1" } }"#,
+        < Event::FromSourcePlaid { event: EventSourcePlaid::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string(), "public-2".to_string()] }] } },
+        > @r#"ToSourcePlaid { action: ExchangePublicToken { call_id: 4, link_token: "link-1", public_token: "public-1" } }"#,
 
-        < Event::FromSource { event: EventSource::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 5, .. } },
         > @r#"ToStore { action: CollectLink { call_id: 6, link_token: "link-1" } }"#,
 
         < Event::FromStore { call_id: 5, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 7, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { call_id: 7, .. } },
     );
 }
 
@@ -140,9 +140,9 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } },
 
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }] } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }] } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
 
         < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
@@ -166,10 +166,10 @@ fn an_open_session_is_left_pending() {
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } },
 
         // No `CollectLink`: an unfinished session stays standing.
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec![] }] } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec![] }] } },
         > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
@@ -209,9 +209,9 @@ fn every_open_session_is_polled_and_the_route_still_answers_once() {
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string(), "link-2".to_string(), "link-3".to_string()] } },
-        > @r#"ToSource { action: PollLinks { call_id: 3, link_tokens: ["link-1", "link-2", "link-3"] } }"#,
+        > @r#"ToSourcePlaid { action: PollLinks { call_id: 3, link_tokens: ["link-1", "link-2", "link-3"] } }"#,
 
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-2".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-3".to_string(), finished: true, public_tokens: vec![] }] } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-2".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-3".to_string(), finished: true, public_tokens: vec![] }] } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 4, .. } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 5, .. } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
@@ -258,7 +258,7 @@ fn a_closed_sheet_still_polls_when_we_collect_by_polling() {
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } },
     );
 }
 
@@ -280,15 +280,15 @@ fn a_bank_the_store_refused_is_written_on_the_retry() {
         // One session.
         < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
         // Ask Plaid what it came to.
-        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } },
 
         // A token to trade.
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
         // The call that spends the slot.
-        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 4, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::ExchangePublicToken { call_id: 4, .. } },
 
         // The bank exists at Plaid from here on.
-        < Event::FromSource { event: EventSource::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         // Write it down.
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 5, .. } },
         // And close the session.
@@ -307,7 +307,7 @@ fn a_bank_the_store_refused_is_written_on_the_retry() {
         // The row exists.
         < Event::FromStore { call_id: 7, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
         // Start its first sync.
-        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 8, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { call_id: 8, .. } },
         // And say the one sentence that is now true.
         > @r#"ToRouter { request_id: 1, action: Linked { count: 1 } }"#,
     );
@@ -331,15 +331,15 @@ fn a_bank_the_store_would_not_write_is_answered_an_error() {
         // One session.
         < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
         // Ask Plaid what it came to.
-        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } },
 
         // A token to trade.
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
         // The call that spends the slot.
-        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 4, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::ExchangePublicToken { call_id: 4, .. } },
 
         // The bank exists at Plaid from here on.
-        < Event::FromSource { event: EventSource::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         // Write it down.
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 5, .. } },
         // And close the session.
@@ -394,12 +394,12 @@ fn a_slow_exchange_still_attaches_its_bank() {
         // One session.
         < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
         // Ask Plaid what it came to.
-        > Action::ToSource { action: ActionSource::PollLinks { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } },
 
         // A token to trade.
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
         // The call that spends the slot.
-        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 4, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::ExchangePublicToken { call_id: 4, .. } },
 
         // Thirty seconds of silence from Plaid.
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
@@ -410,7 +410,7 @@ fn a_slow_exchange_still_attaches_its_bank() {
         // Late, with no route left to tell. It is still the bank somebody
         // connected, and writing it down is the only thing that makes the
         // spent slot worth anything.
-        < Event::FromSource { event: EventSource::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::ItemLinked { call_id: 4, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         > Action::ToStore { action: ActionStore::SaveItem { call_id: 5, .. } },
         > Action::ToStore { action: ActionStore::CollectLink { call_id: 6, .. } },
     );

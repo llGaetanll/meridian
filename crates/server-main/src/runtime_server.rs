@@ -16,12 +16,12 @@ use crate::Action;
 use crate::ActionEmail;
 use crate::ActionProcess;
 use crate::ActionSocket;
-use crate::ActionSource;
+use crate::ActionSourcePlaid;
 use crate::ActionStore;
 use crate::EmailSend;
 use crate::Event;
 use crate::EventProcess;
-use crate::EventSource;
+use crate::EventSourcePlaid;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::OauthRedirect;
@@ -310,7 +310,7 @@ impl RuntimeServer {
                 }
             }
 
-            Action::ToSource { .. } => self.calling(&self.plaid, action),
+            Action::ToSourcePlaid { .. } => self.calling(&self.plaid, action),
 
             Action::ToEmail { .. } => self.calling(&self.email, action),
 
@@ -351,7 +351,7 @@ impl RuntimeServer {
     /// to do about an answer is the machine's job.
     async fn carry_out(&self, action: &Action) -> Vec<Event> {
         match action {
-            Action::ToSource { action } => return self.perform_action_source(action).await,
+            Action::ToSourcePlaid { action } => return self.perform_action_source(action).await,
             Action::ToStore { action } => return self.perform_action_store(action).await,
             Action::ToEmail { action } => self.perform_action_email(action).await,
             Action::ToRouter { .. } | Action::ToSocket { .. } | Action::ToProcess { .. } => {
@@ -395,15 +395,15 @@ impl RuntimeServer {
     }
 
     /// Everything Plaid is asked for.
-    async fn perform_action_source(&self, action: &ActionSource) -> Vec<Event> {
+    async fn perform_action_source(&self, action: &ActionSourcePlaid) -> Vec<Event> {
         match action {
-            ActionSource::FetchBalances {
+            ActionSourcePlaid::FetchBalances {
                 call_id,
                 item_id,
                 now,
             } => self.fetch_balances(*call_id, item_id, *now).await,
 
-            ActionSource::SyncTransactions {
+            ActionSourcePlaid::SyncTransactions {
                 call_id,
                 item_id,
                 cursor,
@@ -412,22 +412,24 @@ impl RuntimeServer {
                     .await
             }
 
-            ActionSource::FetchRecurring { call_id, item_id } => {
+            ActionSourcePlaid::FetchRecurring { call_id, item_id } => {
                 self.fetch_recurring(*call_id, item_id).await
             }
 
-            ActionSource::FetchWebhookKey { call_id, kid } => {
+            ActionSourcePlaid::FetchWebhookKey { call_id, kid } => {
                 self.fetch_webhook_key(*call_id, kid).await
             }
 
-            ActionSource::OpenLink { call_id, user_id } => self.open_link(*call_id, *user_id).await,
+            ActionSourcePlaid::OpenLink { call_id, user_id } => {
+                self.open_link(*call_id, *user_id).await
+            }
 
-            ActionSource::PollLinks {
+            ActionSourcePlaid::PollLinks {
                 call_id,
                 link_tokens,
             } => self.poll_links(*call_id, link_tokens).await,
 
-            ActionSource::ExchangePublicToken {
+            ActionSourcePlaid::ExchangePublicToken {
                 call_id,
                 link_token,
                 public_token,
@@ -453,8 +455,8 @@ impl RuntimeServer {
             }
         };
 
-        vec![Event::FromSource {
-            event: EventSource::WebhookKeyLoaded {
+        vec![Event::FromSourcePlaid {
+            event: EventSourcePlaid::WebhookKeyLoaded {
                 call_id,
                 kid: kid.to_string(),
                 key,
@@ -472,7 +474,7 @@ impl RuntimeServer {
         )
         .await
         {
-            Ok((link_token, Some(hosted_link_url))) => EventSource::LinkOpened {
+            Ok((link_token, Some(hosted_link_url))) => EventSourcePlaid::LinkOpened {
                 call_id,
                 user_id,
                 link_token,
@@ -484,7 +486,7 @@ impl RuntimeServer {
             Ok((link_token, None)) => {
                 tracing::error!("plaid answered a link token with no hosted url");
 
-                EventSource::LinkAbandoned {
+                EventSourcePlaid::LinkAbandoned {
                     call_id,
                     link_token,
                 }
@@ -493,14 +495,14 @@ impl RuntimeServer {
             Err(e) => {
                 tracing::warn!(error = %e, "could not open a link session");
 
-                EventSource::LinkAbandoned {
+                EventSourcePlaid::LinkAbandoned {
                     call_id,
                     link_token: String::new(),
                 }
             }
         };
 
-        vec![Event::FromSource { event }]
+        vec![Event::FromSourcePlaid { event }]
     }
 
     /// Ask what became of every Link session the machine named: one call each,
@@ -532,8 +534,8 @@ impl RuntimeServer {
             polls.push(poll);
         }
 
-        vec![Event::FromSource {
-            event: EventSource::LinksPolled { call_id, polls },
+        vec![Event::FromSourcePlaid {
+            event: EventSourcePlaid::LinksPolled { call_id, polls },
         }]
     }
 
@@ -556,7 +558,7 @@ impl RuntimeServer {
             Ok((item_id, access_token)) => {
                 self.write_tokens().insert(item_id.clone(), access_token);
 
-                EventSource::ItemLinked {
+                EventSourcePlaid::ItemLinked {
                     call_id,
                     link_token: link_token.to_string(),
                     item_id,
@@ -566,14 +568,14 @@ impl RuntimeServer {
             Err(e) => {
                 tracing::warn!(error = %e, "could not exchange a public token");
 
-                EventSource::LinkAbandoned {
+                EventSourcePlaid::LinkAbandoned {
                     call_id,
                     link_token: link_token.to_string(),
                 }
             }
         };
 
-        vec![Event::FromSource { event }]
+        vec![Event::FromSourcePlaid { event }]
     }
 
     /// Everything the store is asked for, as the event that says what came of it.
@@ -1046,7 +1048,7 @@ impl RuntimeServer {
 
         let event =
             match runtime_plaid::fetch_balances(&self.plaid_client, &access_token, now).await {
-                Ok(connection) => EventSource::BalancesLoaded {
+                Ok(connection) => EventSourcePlaid::BalancesLoaded {
                     call_id,
                     item_id: item_id.to_string(),
                     connection,
@@ -1055,7 +1057,7 @@ impl RuntimeServer {
                 Err(e) => failed(call_id, item_id, SyncStage::Accounts, &e),
             };
 
-        vec![Event::FromSource { event }]
+        vec![Event::FromSourcePlaid { event }]
     }
 
     /// Ask Plaid for one page of what has changed on a bank.
@@ -1072,7 +1074,7 @@ impl RuntimeServer {
         let event =
             match runtime_plaid::sync_transactions(&self.plaid_client, &access_token, cursor).await
             {
-                Ok(page) => EventSource::TransactionsLoaded {
+                Ok(page) => EventSourcePlaid::TransactionsLoaded {
                     call_id,
                     item_id: item_id.to_string(),
                     added: page.added,
@@ -1085,7 +1087,7 @@ impl RuntimeServer {
                 Err(e) => failed(call_id, item_id, SyncStage::Transactions, &e),
             };
 
-        vec![Event::FromSource { event }]
+        vec![Event::FromSourcePlaid { event }]
     }
 
     /// Ask Plaid which charges on a bank come back.
@@ -1095,7 +1097,7 @@ impl RuntimeServer {
         };
 
         let event = match runtime_plaid::fetch_recurring(&self.plaid_client, &access_token).await {
-            Ok(streams) => EventSource::RecurringLoaded {
+            Ok(streams) => EventSourcePlaid::RecurringLoaded {
                 call_id,
                 item_id: item_id.to_string(),
                 streams,
@@ -1104,7 +1106,7 @@ impl RuntimeServer {
             Err(e) => failed(call_id, item_id, SyncStage::Streams, &e),
         };
 
-        vec![Event::FromSource { event }]
+        vec![Event::FromSourcePlaid { event }]
     }
 
     /// Everything one user knows, as of now, read from the store.
@@ -1208,8 +1210,8 @@ fn unix_now() -> Timestamp {
 fn no_token(call_id: crate::CallId, item_id: &str, stage: SyncStage) -> Event {
     tracing::error!(item_id, "asked to call plaid about an item with no token");
 
-    Event::FromSource {
-        event: EventSource::PlaidFailed {
+    Event::FromSourcePlaid {
+        event: EventSourcePlaid::PlaidFailed {
             call_id,
             item_id: item_id.to_string(),
             stage,
@@ -1224,7 +1226,7 @@ fn failed(
     item_id: &str,
     stage: SyncStage,
     error: &PlaidError,
-) -> EventSource {
+) -> EventSourcePlaid {
     let fault = PlaidFault::of(error);
 
     tracing::warn!(
@@ -1235,7 +1237,7 @@ fn failed(
         "a plaid call failed",
     );
 
-    EventSource::PlaidFailed {
+    EventSourcePlaid::PlaidFailed {
         call_id,
         item_id: item_id.to_string(),
         stage,

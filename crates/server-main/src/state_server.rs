@@ -35,7 +35,7 @@ use crate::Action;
 use crate::ActionProcess;
 use crate::ActionRouter;
 use crate::ActionSocket;
-use crate::ActionSource;
+use crate::ActionSourcePlaid;
 use crate::ActionStore;
 use crate::Authenticated;
 use crate::CachedKey;
@@ -48,7 +48,7 @@ use crate::Event;
 use crate::EventProcess;
 use crate::EventRouter;
 use crate::EventSocket;
-use crate::EventSource;
+use crate::EventSourcePlaid;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::ItemFacts;
@@ -148,7 +148,7 @@ impl StateServer {
                 client,
                 event,
             } => self.handle_event_router(*request_id, client, event, actions),
-            Event::FromSource { event } => self.handle_event_source(event, actions),
+            Event::FromSourcePlaid { event } => self.handle_event_source(event, actions),
             Event::FromSocket { event } => self.handle_event_socket(event),
             Event::FromStore { call_id, event } => {
                 self.handle_event_store(*call_id, event, actions)
@@ -520,8 +520,8 @@ impl StateServer {
             },
         );
 
-        actions.push(Action::ToSource {
-            action: ActionSource::FetchWebhookKey {
+        actions.push(Action::ToSourcePlaid {
+            action: ActionSourcePlaid::FetchWebhookKey {
                 call_id: self.signup.calling(request_id, self.now),
                 kid: kid.to_string(),
             },
@@ -726,9 +726,9 @@ impl StateServer {
         }
     }
 
-    fn handle_event_source(&mut self, event: &EventSource, actions: &mut Vec<Action>) {
+    fn handle_event_source(&mut self, event: &EventSourcePlaid, actions: &mut Vec<Action>) {
         match event {
-            EventSource::WebhookKeyLoaded { call_id, kid, key } => {
+            EventSourcePlaid::WebhookKeyLoaded { call_id, kid, key } => {
                 // A miss that is not written down is a call to Plaid for
                 // every POST naming an id nobody has.
                 self.keys.insert(
@@ -768,7 +768,7 @@ impl StateServer {
                 self.verified(request_id, &parsed, key, &body, actions);
             }
 
-            EventSource::BalancesLoaded {
+            EventSourcePlaid::BalancesLoaded {
                 call_id,
                 item_id,
                 connection,
@@ -803,8 +803,8 @@ impl StateServer {
                     return;
                 };
 
-                actions.push(Action::ToSource {
-                    action: ActionSource::SyncTransactions {
+                actions.push(Action::ToSourcePlaid {
+                    action: ActionSourcePlaid::SyncTransactions {
                         call_id: self.signup.passing(*call_id, self.now),
                         item_id: item_id.clone(),
                         cursor,
@@ -813,7 +813,7 @@ impl StateServer {
             }
 
             // The lists are a **diff** handed straight to the store.
-            EventSource::TransactionsLoaded {
+            EventSourcePlaid::TransactionsLoaded {
                 call_id,
                 item_id,
                 added,
@@ -875,19 +875,19 @@ impl StateServer {
                 let item_id = item_id.clone();
 
                 let action = if another_page {
-                    ActionSource::SyncTransactions {
+                    ActionSourcePlaid::SyncTransactions {
                         call_id,
                         item_id,
                         cursor,
                     }
                 } else {
-                    ActionSource::FetchRecurring { call_id, item_id }
+                    ActionSourcePlaid::FetchRecurring { call_id, item_id }
                 };
 
-                actions.push(Action::ToSource { action });
+                actions.push(Action::ToSourcePlaid { action });
             }
 
-            EventSource::RecurringLoaded {
+            EventSourcePlaid::RecurringLoaded {
                 call_id,
                 item_id,
                 streams,
@@ -909,7 +909,7 @@ impl StateServer {
                 });
             }
 
-            EventSource::LinkOpened {
+            EventSourcePlaid::LinkOpened {
                 call_id,
                 user_id,
                 link_token,
@@ -936,7 +936,7 @@ impl StateServer {
                 );
             }
 
-            EventSource::LinksPolled { call_id, polls } => {
+            EventSourcePlaid::LinksPolled { call_id, polls } => {
                 let Some(request_id) = self.signup.answered(*call_id) else {
                     return;
                 };
@@ -955,7 +955,7 @@ impl StateServer {
             // Named by the call rather than by the route it was made for: an
             // exchange outlives the request that asked for it, and what it
             // says has to be acted on either way.
-            EventSource::ItemLinked {
+            EventSourcePlaid::ItemLinked {
                 call_id,
                 link_token,
                 item_id,
@@ -964,7 +964,7 @@ impl StateServer {
                     .item_linked(*call_id, link_token, item_id, self.now, actions);
             }
 
-            EventSource::LinkAbandoned {
+            EventSourcePlaid::LinkAbandoned {
                 call_id,
                 link_token,
             } => {
@@ -972,7 +972,7 @@ impl StateServer {
                     .link_abandoned(*call_id, link_token, self.now, actions);
             }
 
-            EventSource::PlaidFailed {
+            EventSourcePlaid::PlaidFailed {
                 call_id,
                 item_id,
                 stage,
@@ -1292,8 +1292,8 @@ impl StateServer {
         // nothing was running is told that something now is.
         self.push_status(user_id, actions);
 
-        actions.push(Action::ToSource {
-            action: ActionSource::FetchBalances {
+        actions.push(Action::ToSourcePlaid {
+            action: ActionSourcePlaid::FetchBalances {
                 call_id,
                 item_id,
                 now: self.now,

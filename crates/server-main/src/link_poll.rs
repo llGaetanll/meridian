@@ -1,6 +1,6 @@
 //! What one Link session came to, as a poll found it.
 
-/// One session's answer inside an [`EventSource::LinksPolled`](crate::EventSource).
+/// One session's answer inside an [`EventSourcePlaid::LinksPolled`](crate::EventSourcePlaid).
 ///
 /// `finished` and `public_tokens` are separate facts. A session with no token
 /// that has not finished is somebody still typing their password; a session

@@ -81,7 +81,7 @@ fn a_call_that_never_answers_is_given_up_on() {
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 3, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { call_id: 3, .. } },
 
         // Plaid says nothing. Time passes and nothing else arrives.
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 1) } },
@@ -106,7 +106,7 @@ fn a_route_with_nothing_decided_is_told_it_cannot_be_answered() {
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToSource { action: ActionSource::OpenLink { call_id: 2, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::OpenLink { call_id: 2, .. } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
         > Action::ToRouter { action: ActionRouter::Unavailable, .. },
@@ -266,12 +266,12 @@ fn a_drain_does_not_give_up_on_the_exchange() {
         // One session.
         < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
         // Ask Plaid what it came to.
-        > Action::ToSource { action: ActionSource::PollLinks { call_id: 3, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { call_id: 3, .. } },
 
         // A token to trade.
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
         // The call that spends the slot, now out.
-        > Action::ToSource { action: ActionSource::ExchangePublicToken { call_id: 4, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::ExchangePublicToken { call_id: 4, .. } },
 
         // ^C.
         < Event::FromTerminal { event: EventTerminal::SigInt },

@@ -78,7 +78,7 @@ fn a_bank_that_has_never_synced_is_fetched() {
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToSource { action: ActionSource::FetchBalances { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { .. } },
     );
 }
 
@@ -118,14 +118,14 @@ fn a_stale_bank_is_refetched_from_its_cursor() {
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
-        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 3, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { call_id: 3, .. } },
 
         // The cursor is not on the call that starts a sync: the balances go
         // first, because they are the only place the bank's name exists. It
         // rides on the call it is for, one answer later.
-        < Event::FromSource { event: EventSource::BalancesLoaded { call_id: 3, item_id: "item-1".to_string(), connection: Connection { id: "item-1".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![] } } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::BalancesLoaded { call_id: 3, item_id: "item-1".to_string(), connection: Connection { id: "item-1".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![] } } },
         > Action::ToStore { action: ActionStore::SaveAccounts { call_id: 4, .. } },
-        > @r#"ToSource { action: SyncTransactions { call_id: 5, item_id: "item-1", cursor: Some("cursor-1") } }"#,
+        > @r#"ToSourcePlaid { action: SyncTransactions { call_id: 5, item_id: "item-1", cursor: Some("cursor-1") } }"#,
     );
 }
 
@@ -198,7 +198,7 @@ fn each_bank_is_decided_about_on_its_own() {
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: true }] } },
-        > Action::ToSource { action: ActionSource::FetchBalances { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { .. } },
     );
 }
 
@@ -217,13 +217,13 @@ fn a_snapshot_is_answered_after_its_last_bank() {
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }, ItemFacts { item_id: "item-2".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 3, .. } },
-        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 4, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { call_id: 3, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { call_id: 4, .. } },
 
         // One bank in. Still nothing to say: the other is outstanding.
-        < Event::FromSource { event: EventSource::PlaidFailed { call_id: 3, item_id: "item-1".to_string(), stage: server_wire::SyncStage::Accounts, fault: src_plaid::PlaidFault::Failed("REQUEST_FAILED".to_string()) } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::PlaidFailed { call_id: 3, item_id: "item-1".to_string(), stage: server_wire::SyncStage::Accounts, fault: src_plaid::PlaidFault::Failed("REQUEST_FAILED".to_string()) } },
 
-        < Event::FromSource { event: EventSource::PlaidFailed { call_id: 4, item_id: "item-2".to_string(), stage: server_wire::SyncStage::Accounts, fault: src_plaid::PlaidFault::Failed("REQUEST_FAILED".to_string()) } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::PlaidFailed { call_id: 4, item_id: "item-2".to_string(), stage: server_wire::SyncStage::Accounts, fault: src_plaid::PlaidFault::Failed("REQUEST_FAILED".to_string()) } },
         > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 5, .. } },
 
         < Event::FromStore { call_id: 5, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
@@ -246,17 +246,17 @@ fn a_failed_write_still_answers_the_route() {
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToSource { action: ActionSource::FetchBalances { call_id: 3, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { call_id: 3, .. } },
 
-        < Event::FromSource { event: EventSource::BalancesLoaded { call_id: 3, item_id: "item-1".to_string(), connection: Connection { id: "item-1".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![] } } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::BalancesLoaded { call_id: 3, item_id: "item-1".to_string(), connection: Connection { id: "item-1".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![] } } },
         > Action::ToStore { action: ActionStore::SaveAccounts { call_id: 4, .. } },
-        > Action::ToSource { action: ActionSource::SyncTransactions { call_id: 5, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::SyncTransactions { call_id: 5, .. } },
 
-        < Event::FromSource { event: EventSource::TransactionsLoaded { call_id: 5, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: false } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::TransactionsLoaded { call_id: 5, item_id: "item-1".to_string(), added: vec![], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: false } },
         > Action::ToStore { action: ActionStore::SaveTransactions { call_id: 6, .. } },
-        > Action::ToSource { action: ActionSource::FetchRecurring { call_id: 7, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchRecurring { call_id: 7, .. } },
 
-        < Event::FromSource { event: EventSource::RecurringLoaded { call_id: 7, item_id: "item-1".to_string(), streams: vec![] } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::RecurringLoaded { call_id: 7, item_id: "item-1".to_string(), streams: vec![] } },
         > Action::ToStore { action: ActionStore::SaveStreams { call_id: 8, .. } },
 
         // Two of the three writes worked and the third did not, and the wait

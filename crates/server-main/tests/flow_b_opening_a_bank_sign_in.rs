@@ -33,10 +33,10 @@ fn connecting_a_bank_opens_a_session_and_hands_over_its_page() {
         // 2. Nothing is read for it: the id the session resolved to is the
         // whole of what opening a Link session needs.
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToSource { action: ActionSource::OpenLink { call_id: 2, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::OpenLink { call_id: 2, .. } },
 
         // 3 and 4a, in that order and never the other.
-        < Event::FromSource { event: EventSource::LinkOpened { call_id: 2, user_id: uuid::Uuid::nil(), link_token: "link-1".to_string(), hosted_link_url: "https://secure.plaid.com/hl/link-1".to_string() } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::LinkOpened { call_id: 2, user_id: uuid::Uuid::nil(), link_token: "link-1".to_string(), hosted_link_url: "https://secure.plaid.com/hl/link-1".to_string() } },
         > Action::ToStore { action: ActionStore::SaveLink { call_id: 3, .. } },
 
         // The URL is handed over only once the row is down. Holding it until
@@ -78,9 +78,9 @@ fn a_session_plaid_would_not_open_is_not_a_page() {
         > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToSource { action: ActionSource::OpenLink { call_id: 2, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::OpenLink { call_id: 2, .. } },
 
-        < Event::FromSource { event: EventSource::LinkAbandoned { call_id: 2, link_token: String::new() } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::LinkAbandoned { call_id: 2, link_token: String::new() } },
         > @r#"ToStore { action: CollectLink { call_id: 3, link_token: "" } }"#,
 
         < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },

@@ -1,4 +1,4 @@
-//! A source answered, or failed to.
+//! Plaid answered, or failed to.
 
 use api_ledger::Connection;
 use api_ledger::Entry;
@@ -8,7 +8,7 @@ use crate::CallId;
 use crate::LinkPoll;
 
 #[derive(Debug)]
-pub enum EventSource {
+pub enum EventSourcePlaid {
     /// What Plaid says about one signing key. `None` is an id it would not
     /// answer for — invented, or a real one we failed to fetch.
     WebhookKeyLoaded {

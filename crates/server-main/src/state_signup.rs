@@ -35,7 +35,7 @@ use src_plaid::PlaidRateLimiter;
 use crate::Action;
 use crate::ActionEmail;
 use crate::ActionRouter;
-use crate::ActionSource;
+use crate::ActionSourcePlaid;
 use crate::ActionStore;
 use crate::Attaching;
 use crate::Authenticated;
@@ -354,8 +354,8 @@ impl StateSignup {
 
         self.waits_on(request_id, Pending::Opening);
 
-        actions.push(Action::ToSource {
-            action: ActionSource::OpenLink {
+        actions.push(Action::ToSourcePlaid {
+            action: ActionSourcePlaid::OpenLink {
                 call_id: self.calling(request_id, now),
                 user_id,
             },
@@ -423,8 +423,8 @@ impl StateSignup {
 
         self.waits_on(request_id, Pending::Polling);
 
-        actions.push(Action::ToSource {
-            action: ActionSource::PollLinks {
+        actions.push(Action::ToSourcePlaid {
+            action: ActionSourcePlaid::PollLinks {
                 call_id: self.calling(request_id, now),
                 link_tokens: link_tokens.to_vec(),
             },
@@ -621,8 +621,8 @@ impl StateSignup {
 
             self.waits_on(request_id, Pending::Exchanging);
 
-            actions.push(Action::ToSource {
-                action: ActionSource::ExchangePublicToken {
+            actions.push(Action::ToSourcePlaid {
+                action: ActionSourcePlaid::ExchangePublicToken {
                     call_id: self.exchanges(request_id, now),
                     link_token,
                     public_token,
@@ -883,8 +883,8 @@ impl StateSignup {
                 break;
             }
 
-            actions.push(Action::ToSource {
-                action: ActionSource::ExchangePublicToken {
+            actions.push(Action::ToSourcePlaid {
+                action: ActionSourcePlaid::ExchangePublicToken {
                     call_id: self.exchanges(request_id, now),
                     link_token: link_token.to_string(),
                     public_token: public_token.clone(),

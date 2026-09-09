@@ -1,9 +1,9 @@
-//! Something for a source to do.
+//! Something for Plaid to do.
 
 use crate::CallId;
 
 #[derive(Debug)]
-pub enum ActionSource {
+pub enum ActionSourcePlaid {
     /// Fetch the key a webhook says it was signed with.
     ///
     /// The one call an unauthenticated request can cause.

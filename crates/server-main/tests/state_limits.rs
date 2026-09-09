@@ -73,8 +73,8 @@ fn another_page(state: &mut StateServer, call_id: u64, page: u32) -> Option<u64>
     let mut actions = Vec::new();
 
     state.handle_events(
-        &[Event::FromSource {
-            event: EventSource::TransactionsLoaded {
+        &[Event::FromSourcePlaid {
+            event: EventSourcePlaid::TransactionsLoaded {
                 call_id,
                 item_id: "item-1".to_string(),
                 added: Vec::new(),
@@ -88,8 +88,8 @@ fn another_page(state: &mut StateServer, call_id: u64, page: u32) -> Option<u64>
     );
 
     actions.iter().find_map(|action| match action {
-        Action::ToSource {
-            action: ActionSource::SyncTransactions { call_id, .. },
+        Action::ToSourcePlaid {
+            action: ActionSourcePlaid::SyncTransactions { call_id, .. },
         } => Some(*call_id),
 
         _ => None,
@@ -162,10 +162,10 @@ fn deliver(state: &mut StateServer, request_id: u64, body: &str) {
     let keys: Vec<Event> = actions
         .iter()
         .filter_map(|action| match action {
-            Action::ToSource {
-                action: ActionSource::FetchWebhookKey { call_id, kid },
-            } => Some(Event::FromSource {
-                event: EventSource::WebhookKeyLoaded {
+            Action::ToSourcePlaid {
+                action: ActionSourcePlaid::FetchWebhookKey { call_id, kid },
+            } => Some(Event::FromSourcePlaid {
+                event: EventSourcePlaid::WebhookKeyLoaded {
                     call_id: *call_id,
                     kid: kid.clone(),
                     key: Some(webhook_jwk()),
@@ -247,7 +247,7 @@ fn the_rate_limit_is_per_bank() {
         > Action::ToStore { action: ActionStore::LoadItems { call_id: 32, .. } },
 
         < Event::FromStore { call_id: 32, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-2".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToSource { action: ActionSource::FetchBalances { .. }, .. },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { .. }, .. },
     );
 }
 
@@ -499,8 +499,8 @@ fn a_history_pages_only_as_far_as_the_budget_allows() {
                     }],
                 },
             },
-            Event::FromSource {
-                event: EventSource::BalancesLoaded {
+            Event::FromSourcePlaid {
+                event: EventSourcePlaid::BalancesLoaded {
                     call_id: 3,
                     item_id: "item-1".to_string(),
                     connection: Connection {
@@ -673,10 +673,10 @@ fn link_by_polling(state: &mut StateServer, request_id: u64, n: u32) {
                     },
                 }),
 
-                Action::ToSource {
-                    action: ActionSource::PollLinks { call_id, .. },
-                } => Some(Event::FromSource {
-                    event: EventSource::LinksPolled {
+                Action::ToSourcePlaid {
+                    action: ActionSourcePlaid::PollLinks { call_id, .. },
+                } => Some(Event::FromSourcePlaid {
+                    event: EventSourcePlaid::LinksPolled {
                         call_id: *call_id,
                         polls: vec![LinkPoll {
                             link_token: format!("link-{n}"),
@@ -718,9 +718,9 @@ fn a_token_polled_back_past_the_budget_is_not_exchanged() {
         > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 22, .. } },
 
         < Event::FromStore { call_id: 22, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-11".to_string()] } },
-        > Action::ToSource { action: ActionSource::PollLinks { call_id: 23, .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { call_id: 23, .. } },
 
-        < Event::FromSource { event: EventSource::LinksPolled { call_id: 23, polls: vec![LinkPoll { link_token: "link-11".to_string(), public_tokens: vec!["public-11".to_string()], finished: true }] } },
+        < Event::FromSourcePlaid { event: EventSourcePlaid::LinksPolled { call_id: 23, polls: vec![LinkPoll { link_token: "link-11".to_string(), public_tokens: vec!["public-11".to_string()], finished: true }] } },
         > @r#"ToRouter { request_id: 1, action: TooMany }"#,
     );
 }
