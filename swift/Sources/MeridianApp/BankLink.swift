@@ -62,12 +62,54 @@ enum BankLink {
             // A fresh session each time. The alternative shares Safari's
             // cookies, which is convenient right up until somebody is signed
             // into their bank on a phone they have handed to someone else.
+            //
+            // Untested against an OAuth bank: whether an ephemeral session
+            // survives the trip out to the bank's own app and back is not
+            // documented either way. If the handback lands on a session that
+            // has lost its cookies, this is the line to suspect.
             session.prefersEphemeralWebBrowserSession = true
 
             if !session.start() {
                 continuation.resume(returning: false)
+
+                return
             }
+
+            // After `start`, because a session that refused to open is not one
+            // a handback should be given to.
+            waiting = session
         }
+    }
+
+    /// The session currently waiting, if one is.
+    ///
+    /// An OAuth bank leaves for its own app part way through the sign-in and
+    /// returns by opening the Universal Link. That arrives at the *app*, while
+    /// the session above is still suspended waiting for its callback — so
+    /// something has to carry the handback from `MeridianApp` back to the
+    /// session that is waiting for it, and this is that.
+    ///
+    /// Weak, so a session that ends by any other route is not kept alive by
+    /// being remembered here.
+    private(set) static weak var waiting: ASWebAuthenticationSession?
+
+    /// Hand an OAuth bank's handback to the session waiting for it.
+    ///
+    /// `true` when a session took it. `false` means the link arrived with
+    /// nothing waiting — a stale one opened from elsewhere, which is not this
+    /// flow and has nothing to resume.
+    ///
+    /// The URL is not inspected. Its path is the only thing that identified it
+    /// as ours, `MeridianApp` has already checked that, and what the session
+    /// does with the query is Plaid's business rather than ours.
+    @discardableResult
+    static func resume(_ url: URL) -> Bool {
+        guard let session = waiting else { return false }
+
+        // `resume` is the API's own word for this: the session goes back to
+        // the page it left, on the far side of the bank's app, and finishes
+        // there. It is not a second session and not a redirect we perform.
+        return session.resume(with: url)
     }
 
     /// Which window the sheet hangs off. Held rather than made per call, since

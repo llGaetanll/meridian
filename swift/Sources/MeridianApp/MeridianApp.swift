@@ -6,6 +6,29 @@
 
 import SwiftUI
 
+/// The path an OAuth bank hands the sign-in back on.
+///
+/// The whole of what makes a link ours: iOS delivers every https link for
+/// `api.meridiancash.io` this app claims, and the association file names this
+/// one path. Checking it again here is what keeps a link the file may some day
+/// also claim from being handed to a bank session that is not waiting for it.
+private let handbackPath = "/link/oauth"
+
+/// Give an OAuth bank's handback to the Link session waiting for it.
+///
+/// A link that is not the handback, or one that arrives with no session
+/// waiting, is dropped. Neither is an error worth showing: the first is not
+/// this flow, and the second is a stale link opened long after the sheet it
+/// belonged to closed.
+@MainActor
+private func handback(_ url: URL) {
+    guard url.path == handbackPath else { return }
+
+    if !BankLink.resume(url) {
+        NSLog("MERIDIAN handback with no Link session waiting")
+    }
+}
+
 @main
 struct MeridianApp: App {
     @StateObject private var runtime = RuntimeApp()
@@ -17,6 +40,11 @@ struct MeridianApp: App {
                 .task {
                     runtime.start()
                     HitProbe.run()
+                }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    guard let url = activity.webpageURL else { return }
+
+                    handback(url)
                 }
         }
     }
