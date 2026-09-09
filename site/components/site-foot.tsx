@@ -22,10 +22,10 @@ export function SiteFoot() {
           <div>
             <h3>Product</h3>
             <div className="foot-links">
-              <Link href="/#what">What it does</Link>
-              <Link href="/#ledger">One ledger</Link>
+              <Link href="/#coverage">Coverage</Link>
+              <Link href="/#tools">Tooling</Link>
+              <Link href="/#assistant">Assistant</Link>
               <Link href="/#data">Your data</Link>
-              <a href={site.app}>Open the app</a>
             </div>
           </div>
 

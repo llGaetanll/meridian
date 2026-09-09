@@ -53,6 +53,62 @@ def find_screen(objects, name):
     raise SystemExit(f"no screen matching {name!r} in {[o.name for o in objects]}")
 
 
+def split_lid(objects, hinge, direction, name="LidHinge"):
+    """
+    Cut a laptop model's lid away from its base and hang it off an empty.
+
+    The MacBook arrives as a single machine in the open position: no armature,
+    no hinge, and three of its meshes — the shell, the two palette bodies —
+    carry base and lid geometry in one mesh each. So the split is geometric. A
+    vertex belongs to the lid when it lies past `hinge` along `direction`, which
+    for this model separates cleanly: the base tops out just under the plane and
+    the lid starts just over it.
+
+    Returns the empty, placed at the hinge with the lid parented to it, so that
+    rotating it about X opens and closes the machine.
+    """
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+    lid = []
+    for obj in list(objects):
+        if obj.type != "MESH":
+            continue
+        world = obj.matrix_world
+        over = [v.index for v in obj.data.vertices
+                if (world @ v.co - hinge).dot(direction) > 0.0]
+        if not over:
+            continue
+
+        if len(over) == len(obj.data.vertices):
+            lid.append(obj)
+            continue
+
+        # A mesh straddling the hinge is separated in edit mode. `separate`
+        # leaves the new object selected and the original active, which is the
+        # only way to tell which of the two came out.
+        for v in obj.data.vertices:
+            v.select = v.index in set(over)
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.separate(type="SELECTED")
+        bpy.ops.object.mode_set(mode="OBJECT")
+        for part in bpy.context.selected_objects:
+            if part is not obj:
+                lid.append(part)
+        bpy.ops.object.select_all(action="DESELECT")
+
+    bpy.ops.object.empty_add(type="PLAIN_AXES", location=hinge)
+    empty = bpy.context.active_object
+    empty.name = name
+    for obj in lid:
+        obj.parent = empty
+        obj.matrix_parent_inverse = empty.matrix_world.inverted()
+    bpy.context.view_layer.update()
+    return empty, lid
+
+
 def unit_scale(objects, target_height, axis=2):
     """
     Scale a model so its longest run along `axis` measures `target_height`.

@@ -1,58 +1,47 @@
 import Image from "next/image";
 import Link from "next/link";
 
+import { AppStore } from "@/components/app-store";
 import { Icon, type IconKind } from "@/components/icon";
 import { Institution } from "@/components/institution";
-import { site } from "@/lib/site";
 
-const CARDS: { icon: IconKind; title: string; body: string }[] = [
+/// What the markets side of the app actually gives you. Written as capability
+/// rather than as feature names: "a charting engine" is a phrase, and "chart
+/// any metric you can define over your own ledger" is a thing you can picture
+/// doing.
+const TOOLS: { icon: IconKind; title: string; body: string }[] = [
   {
-    icon: "search",
-    title: "Surface what is there",
-    body: "Where the cash is sitting and what it earns, what the funds charge, where positions overlap, how much of the year's gains are short-term. Facts you would otherwise go looking for across five websites.",
+    icon: "markets",
+    title: "Charts that go deep",
+    body: "Price and volume history on every asset you hold, drawn from real market data. Zoom from a day to a decade, overlay what you want to compare, and read it on the phone as well as the desktop.",
   },
   {
     icon: "portfolio",
-    title: "Make equity comp legible",
-    body: "Vest schedules, how much of the total sits in one employer, what a sale would realize. The part most people do in a spreadsheet a coworker sent them.",
-  },
-  {
-    icon: "markets",
-    title: "Report real return",
-    body: "Time-weighted and contribution-adjusted, across every account at once. The 401k included, which is the one nobody can see.",
-  },
-  {
-    icon: "settings",
-    title: "Run the scenario you build",
-    body: "Assemble a portfolio, set a contribution, pick the assumptions, and see how it plays out. You choose what to try; the app does the arithmetic.",
+    title: "Build a portfolio, then test it",
+    body: "Assemble a portfolio out of anything the market offers, set a contribution, choose your assumptions, and watch how it would have played out. Run it against the one you actually hold.",
   },
   {
     icon: "ledger",
-    title: "Chart anything derived",
-    body: "Any metric over the ledger, defined by you, plotted. For the questions a product cannot anticipate.",
+    title: "Chart anything you can define",
+    body: "Define a metric over your own ledger and plot it — fees as a share of returns, exposure to one employer, cash drag over the year. For the questions a finance app cannot anticipate.",
+  },
+  {
+    icon: "search",
+    title: "Know your real return",
+    body: "Time-weighted and contribution-adjusted, across every account at once, including the retirement accounts no brokerage dashboard can see. The number your statements never quite give you.",
+  },
+  {
+    icon: "settings",
+    title: "Costs, in the open",
+    body: "What your funds charge, where your positions overlap, how much of this year's gains would be taxed as short-term. The facts that quietly decide what you keep.",
   },
   {
     icon: "connections",
     title: "Export it, or call the API",
-    body: "Your ledger leaves in a format something else can read. Nothing here is trying to keep you in.",
+    body: "Your ledger leaves in a format another program can read, and the same data is available over an API. Nothing here is designed to keep you from leaving.",
   },
 ];
 
-const TRADES = [
-  { what: "Paycheck", trade: "nothing → 4,206.55 USD", amt: "+$4,206.55", dir: "in" },
-  { what: "Lunch", trade: "14.20 USD → 1 burrito", amt: "−$14.20", dir: "out" },
-  { what: "Bought VTI", trade: "1,180.44 USD → 4.021 VTI", amt: "−$1,180.44", dir: "out" },
-  { what: "Bought bitcoin", trade: "3,204.00 USD → 0.0312 BTC", amt: "−$3,204.00", dir: "out" },
-] as const;
-
-/// The institutions the marquee names. Set as wordmarks in the site's own type
-/// rather than as logo files: these are other companies' trademarks, and a page
-/// that reproduces them is making a claim about them. The names say the same
-/// thing and are ours to write.
-///
-/// Chosen to be recognisable across the kinds of account a connection reaches —
-/// the national banks, the card issuers, the brokerages, the newer accounts —
-/// so the row reads as "all of it" rather than as a list of four banks.
 const INSTITUTIONS = [
   "Chase",
   "Bank of America",
@@ -76,20 +65,20 @@ const INSTITUTIONS = [
 
 const POINTS = [
   {
-    title: "Connections are read-only",
-    body: "Banks and brokerages connect through Plaid. Meridian reads balances, transactions and holdings. It cannot move money, and it is not asking for the ability to.",
+    title: "No ads, ever.",
+    body: "Meridian is paid for by the people who use it. There is no second business here that your ledger would be the raw material for, and nothing about you is for sale.",
   },
   {
-    title: "Your bank credentials never reach us",
-    body: "You sign into your bank on your bank's own page, inside Plaid. Meridian is handed a token for reading, and never sees what you typed.",
+    title: "We don't store your credentials.",
+    body: "You sign in to your bank on your bank's own page, inside Plaid. Meridian is handed a token that reads and nothing more — it never sees what you typed, and it cannot move money.",
   },
   {
-    title: "Remove a bank and its history goes with it",
-    body: "Disconnecting a bank deletes the accounts, transactions and holdings that came through it. Closing your account deletes the rest.",
+    title: "One tap, and it's gone.",
+    body: "Disconnecting an institution deletes the accounts, transactions and holdings that came through it. Closing your account deletes the rest. No email, no retention period, no talking you out of it.",
   },
   {
-    title: "Nothing is sold, and there are no ads",
-    body: "Meridian is paid for by the people who use it. There is no second business here that your ledger is the raw material for.",
+    title: "Encrypted at the source.",
+    body: "Your data is encrypted in transit and at rest, and the connection to your bank is encrypted end to end by Plaid before it ever reaches us.",
   },
 ];
 
@@ -99,7 +88,7 @@ export default function Home() {
       <section className="hero">
         <div className="hero-wash" />
         <div className="wrap in">
-          <div className="eyebrow">Money, in one place</div>
+          <div className="eyebrow">The all in one you&rsquo;re glad to see</div>
           <h1>
             Everything you own, everything you owe,{" "}
             <span className="quiet">everything you spend.</span>
@@ -121,9 +110,11 @@ export default function Home() {
 
         <div className="wrap">
           <div className="cta">
-            <a className="btn primary lg" href={site.app}>
-              Open the app
-            </a>
+            {/* Where the button will go. The app does not exist yet, and a
+                live-looking action that opens nothing is the one thing a
+                landing page must not do. */}
+            <span className="soon">Coming soon</span>
+            <AppStore />
             <a className="btn plain" href="#coverage">
               Learn more
             </a>
@@ -147,56 +138,71 @@ export default function Home() {
         <Marquee />
       </section>
 
-      <section className="sec" id="what">
-        <div className="wrap">
-          <div className="eyebrow">What it does</div>
-          <h2>Facts about your money, stated plainly.</h2>
-          <p className="lede">
-            The budgeting apps answer whether you are spending too much. Meridian
-            answers where you actually stand, and what would happen if you
-            changed something. Every one of these ends in a number on screen,
-            not a suggestion.
-          </p>
-
-          <div className="cards">
-            {CARDS.map((card) => (
-              <div className="card" key={card.title}>
-                <Icon kind={card.icon} />
-                <h3>{card.title}</h3>
-                <p>{card.body}</p>
-              </div>
-            ))}
+      <section className="sec" id="recurring">
+        <div className="wrap split">
+          <div>
+            <div className="eyebrow">The full picture</div>
+            <h2>Getting the full picture has never been so easy.</h2>
+            <p className="lede">
+              Every subscription, every bill, every standing order — found for
+              you, totalled, and laid out on the month they land on. No
+              spreadsheet, no combing through a year of statements, no
+              discovering in March that you have been paying for something since
+              June.
+            </p>
+            <p className="lede">
+              It is the question almost nobody can answer about their own money:
+              what leaves the account every month without being decided again.
+              Meridian answers it on the first screen.
+            </p>
           </div>
+
+          <Device
+            src="/shots/phone-recurring.avif"
+            width={1500}
+            height={2000}
+            alt="Meridian on a phone, showing recurring expenses: the month's total, a breakdown by category, and a calendar of the days charges land on."
+            className="phone-shot"
+          />
         </div>
       </section>
 
       <section className="sec" id="ledger">
-        <div className="wrap split">
-          <div>
-            <div className="eyebrow">One ledger</div>
-            <h2>A paycheck and a share of VTI are the same kind of event.</h2>
-            <p className="lede">
-              Spending apps and portfolio apps keep two models and bolt a net
-              worth number on top. Meridian keeps one. Everything in it is a
-              trade — some amount of one thing for some amount of another, at a
-              time — and money is not special, just a unit.
-            </p>
-            <p className="lede">
-              So a question that crosses between spending and investing is just
-              a query over one list. That is an implementation choice rather
-              than a feature, and it is what makes everything above cheap to
-              build instead of impossible.
-            </p>
-          </div>
+        <div className="wrap">
+          <div className="eyebrow">One ledger</div>
+          <h2>One ledger to rule them all.</h2>
+          <p className="lede">
+            Two banks, a credit card, the brokerage, the old 401k, the app your
+            rent goes through. Six logins, six apps, six different ideas of what
+            a month looks like — and no single place that adds them up. Working
+            out where you actually stand means checking all of them and doing
+            the arithmetic yourself.
+          </p>
+          <p className="lede">
+            Connect them once and Meridian keeps them together from then on.
+            Your spending sits next to your holdings, your debts next to what
+            you own, and a question that crosses between them is one question
+            rather than six.
+          </p>
+        </div>
+      </section>
 
-          <div className="trades">
-            {TRADES.map((trade) => (
-              <div className="trade" key={trade.what}>
-                <div>
-                  <span className="what">{trade.what}</span>
-                  <span className="sub money">{trade.trade}</span>
-                </div>
-                <span className={`amt money ${trade.dir}`}>{trade.amt}</span>
+      <section className="sec" id="tools">
+        <div className="wrap">
+          <div className="eyebrow">Pro tooling</div>
+          <h2>Pro tooling, for everyone.</h2>
+          <p className="lede">
+            The market data and charting a terminal gives a professional, in an
+            app you already have open. Real prices, real history, and the tools
+            to do something with them.
+          </p>
+
+          <div className="cards">
+            {TOOLS.map((tool) => (
+              <div className="card" key={tool.title}>
+                <Icon kind={tool.icon} />
+                <h3>{tool.title}</h3>
+                <p>{tool.body}</p>
               </div>
             ))}
           </div>
@@ -209,17 +215,16 @@ export default function Home() {
             <div className="eyebrow">The assistant</div>
             <h2>Ask in plain English, never do the math again.</h2>
             <p className="lede">
-              Why was August so expensive? What are my fees actually costing me?
-              What happens if I put another $500 a month in? Ask it the way you
-              would ask a friend who happens to be good with money — and get an
-              answer that is right, every time.
+              Meridian comes with a built-in assistant to help you answer a
+              question, build a projection, or find ways to save. It pulls
+              directly from the data in the app, so what it tells you is what
+              your accounts actually say today.
             </p>
             <p className="lede">
-              Because the model never does the arithmetic. Your question becomes
-              a query, the engine computes the answer from your own ledger, and
-              the model just writes the sentence around it. No hallucinated
-              figures, no plausible-looking nonsense — and your transactions
-              never leave the machine.
+              And the model never does the arithmetic. Your question becomes a
+              query, the engine computes the answer from your own ledger, and
+              the model writes the sentence around it — so the figures are real
+              rather than plausible.
             </p>
           </div>
 
@@ -232,8 +237,10 @@ export default function Home() {
           <div className="eyebrow">Your data</div>
           <h2>Read-only, and yours to remove.</h2>
           <p className="lede">
-            Connecting a bank is the largest thing this app asks of anybody, so
-            here is exactly what it means.
+            We reach your bank through Plaid, the connection trusted by major
+            institutions and thousands of the apps you already use. Connecting
+            an account is the largest thing Meridian asks of anybody, so here is
+            exactly what it means.
           </p>
 
           <div className="points">
@@ -245,10 +252,12 @@ export default function Home() {
             ))}
           </div>
 
-          <Link className="btn" href="/privacy">
-            <Icon kind="lock" />
-            Read the privacy policy
-          </Link>
+          <div className="points-cta">
+            <Link className="btn plain" href="/privacy">
+              <Icon kind="lock" />
+              Read the privacy policy
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -261,10 +270,8 @@ export default function Home() {
             no data sold, and no advice you did not ask for.
           </p>
           <div className="cta">
-            <a className="btn primary lg" href={site.app}>
-              Open the app
-              <Icon kind="arrowRight" />
-            </a>
+            <span className="soon">Coming soon</span>
+            <AppStore />
             <Link className="btn plain" href="/terms">
               Read the terms
             </Link>
@@ -340,5 +347,35 @@ function Marquee() {
         </div>
       </div>
     </div>
+  );
+}
+
+/// A product shot: the app on a device, rendered in Blender out of a picture of
+/// the screen taken from the sketches. `render/render.sh` makes them.
+///
+/// The renders have a transparent background and are lit from one side, so this
+/// gives them no frame and no ground — the page is the room they are standing
+/// in, and a card drawn round one would be a second device around the first.
+function Device({
+  src,
+  width,
+  height,
+  alt,
+  className,
+}: {
+  src: string;
+  width: number;
+  height: number;
+  alt: string;
+  className?: string;
+}) {
+  return (
+    <Image
+      className={`device${className ? ` ${className}` : ""}`}
+      src={src}
+      width={width}
+      height={height}
+      alt={alt}
+    />
   );
 }

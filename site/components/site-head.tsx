@@ -15,15 +15,15 @@ export function SiteHead() {
         </Link>
 
         <nav className="head-nav">
-          <Link href="/#what">What it does</Link>
-          <Link href="/#ledger">One ledger</Link>
+          <Link href="/#coverage">Coverage</Link>
+          <Link href="/#tools">Tooling</Link>
           <Link href="/#data">Your data</Link>
         </nav>
 
         <div className="head-right">
-          <a className="btn primary" href={site.app}>
-            Open the app
-          </a>
+          {/* No action yet. The app does not exist, and a bar that offers to
+              open it is the first thing a visitor would find untrue. */}
+          <span className="soon">Coming soon</span>
         </div>
       </div>
     </header>

@@ -8,7 +8,7 @@ Options:
     --samples N    render samples (default 256)
     --res F        resolution multiplier (default 1)
     --turn F       degrees the machine is turned to the left (default 0, head on)
-    --env F        environment light strength (default 0.30)
+    --env F        environment light strength (default 0.52)
     --rotate F     degrees the screen image is turned on the display
     --flip-u       mirror the screen image left to right
     --flip-v       mirror the screen image top to bottom
@@ -37,7 +37,7 @@ parser.add_argument("--model", default=os.path.join(HERE, "models/macbook.glb"))
 parser.add_argument("--samples", type=int, default=256)
 parser.add_argument("--res", type=float, default=1.0)
 parser.add_argument("--turn", type=float, default=0.0)
-parser.add_argument("--env", type=float, default=0.65)
+parser.add_argument("--env", type=float, default=0.52)
 parser.add_argument("--rotate", type=float, default=0.0)
 parser.add_argument("--flip-u", dest="flip_u", action="store_true")
 parser.add_argument("--flip-v", dest="flip_v", action="store_true")
@@ -98,7 +98,7 @@ if args.bg:
 else:
     lib.create_shadow_catcher(size=6.0)
 
-lib.setup_lighting(rig, key=26.0, fill=7.0, rim=30.0, size=1.2)
+lib.setup_lighting(rig, key=21.0, fill=5.5, rim=24.0, size=1.2)
 
 RES_X = int(2200 * args.res) // 2 * 2
 RES_Y = int(1500 * args.res) // 2 * 2

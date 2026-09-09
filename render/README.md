@@ -1,8 +1,8 @@
 # The device renders
 
-Product shots of the app on a phone and a laptop, rendered in Blender. Still
-images: the output is a PNG with a transparent background, and nothing here runs
-in a browser.
+Product shots of the app on a phone and a laptop, rendered in Blender. The
+stills come out as PNGs with a transparent background; the one animation comes
+out as a WebM with an alpha channel. Nothing here runs in a browser.
 
 ```sh
 ./fetch-assets.sh      # once, after cloning — pulls the models and the HDRI
@@ -27,7 +27,7 @@ Two steps.
    stands comes back with the app's own scroller empty.
 
 2. **The Blender scenes** put that picture on a device and render it.
-   `scene_phone.py` and `scene_laptop.py` are the two scenes; `lib.py` holds the
+   `scene_phone.py` and `scene_laptop.py` are the two stills; `lib.py` holds the
    importing, the screen material, the lighting and the Cycles setup.
 
 The screens come from `sketches/`, not from the running app. A screenshot of the
@@ -64,3 +64,25 @@ where the correction for that is written down.
 **Look at the render before using it.** The failure modes here are visual and
 silent — an image mapped upside down, a body that reads as plastic, a screen
 washed grey by a reflection — and none of them make Blender complain.
+
+## The laptop opening
+
+`scene_laptop_anim.py` is the laptop's still as two seconds of video: the lid
+rises from closed and the screen comes on behind it.
+
+```sh
+blender --background --python scene_laptop_anim.py -- \
+  screens/desktop-markets.png out/laptop-open.webm --samples 256
+```
+
+The last frame is `scene_laptop.py`'s still — same lid angle, same camera, same
+lighting — so a page can play the video and leave the PNG standing at the end of
+it. `--still N` renders one frame as a PNG instead, which is how to check the
+motion without waiting for an encode.
+
+The model has no hinge: it is a MacBook frozen in the open position, and three
+of its meshes carry base and lid geometry in one mesh each. `lib.split_lid` cuts
+the lid off along a plane at the hinge line and hangs it on an empty, which is
+the thing that then rotates. The plane works because this model leaves a gap
+there — the base stops just under it and the lid starts just over it — so a
+different laptop would need the plane found again.

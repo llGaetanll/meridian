@@ -52,6 +52,35 @@
   font-size: 17px;
   color: var(--text-muted);
 }
+/* The App Store badge, drawn rather than served as Apple's bitmap so it takes
+   the page's own greys. Dead until the app ships. */
+.store {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 9px 16px 9px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  color: var(--text);
+  line-height: 1.1;
+}
+.store > svg { width: 22px; height: 26px; flex: none; }
+.store span { display: flex; flex-direction: column; gap: 1px; font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
+.store small { font-size: 10px; font-weight: 500; letter-spacing: 0.02em; color: var(--text-faint); }
+.store.dead { cursor: default; opacity: 0.5; }
+.store:not(.dead):hover { border-color: var(--bars); background: var(--bg-raised); }
+
+/* Where the action will be. A chip rather than a button, because the whole
+   point is that there is nothing to press yet. */
+.soon {
+  display: inline-flex; align-items: center;
+  padding: 8px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-pill);
+  font-size: 12.5px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+
 /* Under the machine rather than beside the words: the eye arrives at the
    action having already seen what it is opening. */
 /* Pulled up into the foot of the render. The bottom of the image is the
@@ -161,26 +190,6 @@
 @media (min-width: 680px) { .cards { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 1000px) { .cards { grid-template-columns: repeat(3, 1fr); } }
 
-/* One ledger.
-
-   Three things a bank would file in three places, set as the one event they
-   are. The figures are the money face, so the point is made by the column
-   lining up rather than by the sentence above it. */
-.trades { border-top: 1px solid var(--divider); }
-.split .trades { margin-top: 0; }
-.trades + .lede { margin-top: 26px; }
-.trade {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 16px;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--divider);
-}
-.trade .what { font-size: 14.5px; font-weight: 600; }
-.trade .sub { display: block; font-size: 12.5px; font-weight: 400; color: var(--text-faint); margin-top: 2px; }
-.trade .amt { font-size: 14px; white-space: nowrap; }
-
 /* The institutions, sliding right to left.
 
    Full-bleed rather than inside the wrap: a marquee that stops at a margin
@@ -238,10 +247,19 @@
   .inst { padding: 0 40px; font-size: 22px; }
 }
 
+/* A phone beside the words about it. It stacks under them on a narrow screen
+   and caps at a width that keeps the screen legible — a phone drawn larger than
+   this is a phone whose type is bigger than the page's. */
+.phone-shot { width: 100%; max-width: 340px; margin: 8px auto 0; }
+
+@media (min-width: 980px) {
+  .phone-shot { max-width: 400px; margin: 0 auto; }
+}
+
 /* A point with a rule over it: the design language's `.row`, minus the icon
    slot, for a list that is read rather than aimed at. */
 .points { margin-top: 34px; display: grid; grid-template-columns: 1fr; gap: 0; }
-.points + .btn { margin-top: 28px; }
+.points-cta { margin-top: 30px; display: flex; justify-content: center; }
 .point { padding: 20px 0; border-top: 1px solid var(--divider); }
 .point h3 { font-size: 14.5px; font-weight: 600; }
 .point p { margin-top: 6px; font-size: 13.5px; color: var(--text-muted); max-width: 46ch; }
