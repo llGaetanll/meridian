@@ -39,6 +39,9 @@ pub enum PlaidEndpoint {
     /// `/webhook_verification_key/get` — the only request an unauthenticated
     /// POST can cause, which is why it is metered rather than merely cached.
     WebhookKeyGet,
+
+    /// `/item/remove`
+    ItemRemove,
 }
 
 impl PlaidEndpoint {
@@ -60,6 +63,10 @@ impl PlaidEndpoint {
             // Cached per `kid`, hits and misses both, so a minute that needs
             // ten of these is one where Plaid rotated every key it has.
             PlaidEndpoint::WebhookKeyGet => 10,
+            // One per bank, on an account being deleted, and somebody has one
+            // or two. Deliberately not stingy: a removal that a limit refuses
+            // is a bank we keep paying for.
+            PlaidEndpoint::ItemRemove => 30,
         }
     }
 }

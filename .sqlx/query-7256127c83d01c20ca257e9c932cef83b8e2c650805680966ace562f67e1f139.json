@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM login_codes\n         WHERE email IN (SELECT lower(email) FROM users WHERE user_id = $1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7256127c83d01c20ca257e9c932cef83b8e2c650805680966ace562f67e1f139"
+}

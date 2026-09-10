@@ -32,6 +32,7 @@ mod plaid_request_exchange;
 mod plaid_request_link_session;
 mod plaid_request_link_token;
 mod plaid_request_recurring;
+mod plaid_request_remove;
 mod plaid_request_sandbox_public_token;
 mod plaid_request_sync;
 mod plaid_request_webhook_key;
@@ -40,6 +41,7 @@ mod plaid_response_exchange;
 mod plaid_response_link_session;
 mod plaid_response_link_token;
 mod plaid_response_recurring;
+mod plaid_response_remove;
 mod plaid_response_sandbox_public_token;
 mod plaid_response_sync;
 mod plaid_response_webhook_key;
@@ -60,6 +62,7 @@ pub use plaid_request_exchange::*;
 pub use plaid_request_link_session::*;
 pub use plaid_request_link_token::*;
 pub use plaid_request_recurring::*;
+pub use plaid_request_remove::*;
 pub use plaid_request_sandbox_public_token::*;
 pub use plaid_request_sync::*;
 pub use plaid_request_webhook_key::*;
@@ -68,6 +71,7 @@ pub use plaid_response_exchange::*;
 pub use plaid_response_link_session::*;
 pub use plaid_response_link_token::*;
 pub use plaid_response_recurring::*;
+pub use plaid_response_remove::*;
 pub use plaid_response_sandbox_public_token::*;
 pub use plaid_response_sync::*;
 pub use plaid_response_webhook_key::*;
@@ -221,6 +225,25 @@ pub async fn fetch_balances(
     client
         .send_request(&BalancesRequest::new(access_token))
         .await
+}
+
+/// Remove the Item, which is the only way its monthly bill stops.
+///
+/// **Not reversible.** The access token stops working, and the Production
+/// Item slot it spent does not come back — see [`RemoveRequest`]. The caller
+/// has decided; this makes the call.
+pub async fn remove_item(
+    client: &PlaidClient,
+    access_token: &str,
+) -> Result<RemoveResponse, PlaidError> {
+    let res = client.send_request(&RemoveRequest::new(access_token)).await;
+
+    match &res {
+        Ok(_) => tracing::info!("item removed; its plaid subscription stops"),
+        Err(e) => tracing::error!(error = %e, "an item was not removed, and is still billing"),
+    }
+
+    res
 }
 
 /// The recurring streams Plaid has detected on this Item.
