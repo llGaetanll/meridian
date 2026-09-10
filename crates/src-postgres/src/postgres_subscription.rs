@@ -185,6 +185,12 @@ pub async fn save_customer(
 /// event only if it is new (`last_event_id` differs) and not older than what
 /// is already there.
 ///
+/// **`<=` and not `<` on the timestamp**, because Stripe records an event's
+/// `created` in whole seconds and documents that distinct events can share
+/// one. A strict comparison would drop the second of a pair that arrived
+/// together, and an update dropped for sharing a second with its neighbour is
+/// a period that never moved. What tells a repeat from a new fact is the id.
+///
 /// Answers whether the row moved, so a caller can tell a fact from a repeat.
 pub async fn apply_subscription_event(
     db: &Db,

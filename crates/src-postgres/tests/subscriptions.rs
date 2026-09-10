@@ -382,3 +382,61 @@ async fn deleting_a_user_takes_their_subscription(db: PgPool) {
 
     assert!(stored.is_none());
 }
+
+/// Two different events in the same second both land.
+///
+/// Stripe records `created` in whole seconds and says outright that distinct
+/// events can share one, so a guard using `<` rather than `<=` would drop the
+/// second of a pair that arrived together — and a `customer.subscription.updated`
+/// dropped for sharing a second with its neighbour is a period that never
+/// moved. What tells a repeat from a new fact is the event id, not the clock.
+#[sqlx::test(migrator = "src_postgres::MIGRATOR")]
+async fn two_events_in_the_same_second_both_land(db: PgPool) {
+    let user_id = a_user(&db).await;
+
+    src_postgres::save_customer(
+        &db,
+        user_id,
+        BillingProvider::Stripe,
+        CUSTOMER,
+        Some(SUBSCRIPTION),
+        "incomplete",
+    )
+    .await
+    .expect("the customer is written");
+
+    let first = src_postgres::apply_subscription_event(
+        &db,
+        SUBSCRIPTION,
+        "active",
+        Some(at(2_000)),
+        false,
+        "evt_1",
+        at(1_000),
+    )
+    .await
+    .expect("the write works");
+
+    // The same second, a different event.
+    let second = src_postgres::apply_subscription_event(
+        &db,
+        SUBSCRIPTION,
+        "past_due",
+        Some(at(2_000)),
+        false,
+        "evt_2",
+        at(1_000),
+    )
+    .await
+    .expect("the write works");
+
+    assert!(first);
+    assert!(second, "a second event in the same second is not a repeat");
+
+    let stored = src_postgres::load_subscription(&db, user_id)
+        .await
+        .expect("the read works")
+        .expect("there is a row");
+
+    assert_eq!(stored.status, "past_due");
+}
