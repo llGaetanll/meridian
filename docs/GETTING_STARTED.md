@@ -1,5 +1,23 @@
 # Getting started
 
+## The toolchain
+
+`rust-toolchain.toml` pins it, and rustup installs that version on the first
+cargo command — so there is nothing to do and nothing to choose. A version
+rather than `stable`, because `stable` is whatever a machine last updated to,
+and a build that works here failing on a laptop nobody has touched in a month
+is the thing the pin exists to stop.
+
+Formatting is the exception. Two options in `rustfmt.toml` are nightly-only,
+so `cargo +nightly fmt` is asked for by name — by the pre-commit hook and by
+[STYLE.md](STYLE.md) — and a nightly has to be installed for it:
+
+```
+rustup toolchain install nightly
+```
+
+## The web app
+
 You will need the tailwindcss cli. If you want to install it without going
 through npm, you can do so as follows:
 ```
