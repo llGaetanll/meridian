@@ -98,6 +98,15 @@ impl Route {
         }
     }
 
+    /// How many of these a caller may send inside the window.
+    ///
+    /// Exposed so a test asserts against the constant rather than a number
+    /// copied beside it: a limit lowered in one place and not the other is a
+    /// test that passes while claiming the wrong thing.
+    pub fn per_window(self) -> u32 {
+        self.limit().0
+    }
+
     /// How much of it, over how long.
     fn limit(self) -> (u32, u64) {
         match self {

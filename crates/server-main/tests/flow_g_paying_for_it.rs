@@ -506,3 +506,211 @@ fn a_deleted_subscription_closes_the_app_at_once() {
         > @r#"ToRouter { request_id: 3, action: PaymentRequired }"#,
     );
 }
+
+/// A session naming a user the store does not have.
+///
+/// It should not happen — `sessions` is `ON DELETE CASCADE` from `users`, so a
+/// live session cannot outlive its user. What matters is that the impossible
+/// case answers rather than hanging: the route is let go of, and no customer
+/// is created at Stripe for somebody who is not there.
+#[test]
+fn a_session_whose_user_is_gone_starts_nothing_at_stripe() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore { action: ActionStore::LoadUser { call_id: 2, .. } },
+
+        // No such user. The claim is the `ToSourceStripe` that does not come.
+        < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: None } },
+        > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
+    );
+}
+
+/// Stripe answering with a subscription that has nothing to confirm against.
+///
+/// It should not happen either: a freshly created subscription with
+/// `payment_behavior=default_incomplete` always has an invoice waiting. If it
+/// ever does, the caller is told the machine cannot answer rather than handed
+/// a secret that is not one — but the row is still written, because the
+/// subscription exists at Stripe whatever we were told about it.
+#[test]
+fn a_subscription_with_no_secret_is_still_written_down() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore { action: ActionStore::LoadUser { call_id: 2, .. } },
+
+        < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
+        > Action::ToSourceStripe { action: ActionSourceStripe::CreateCustomer { call_id: 3, .. } },
+
+        < Event::FromSourceStripe { event: EventSourceStripe::CustomerCreated { call_id: 3, user_id: SUBSCRIBER, customer_id: "cus_1".to_string() } },
+        > Action::ToSourceStripe { action: ActionSourceStripe::CreateSubscription { call_id: 4, .. } },
+
+        < Event::FromSourceStripe { event: EventSourceStripe::SubscriptionCreated { call_id: 4, user_id: SUBSCRIBER, subscription_id: "sub_1".to_string(), status: "incomplete".to_string(), client_secret: None } },
+        > Action::ToStore { action: ActionStore::SaveCustomer { call_id: 5, .. } },
+
+        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+        > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
+    );
+}
+
+/// Stripe refusing the *second* call, after the customer exists.
+///
+/// The first call cost something that the failure does not undo: there is a
+/// customer at Stripe with no subscription against it. The route is answered
+/// and dropped, and asking again is what the caller does — which is why
+/// `save_customer` upserts on the user rather than inserting.
+#[test]
+fn a_stripe_that_refuses_the_subscription_still_answers() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore { action: ActionStore::LoadUser { call_id: 2, .. } },
+
+        < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
+        > Action::ToSourceStripe { action: ActionSourceStripe::CreateCustomer { call_id: 3, .. } },
+
+        < Event::FromSourceStripe { event: EventSourceStripe::CustomerCreated { call_id: 3, user_id: SUBSCRIBER, customer_id: "cus_1".to_string() } },
+        > Action::ToSourceStripe { action: ActionSourceStripe::CreateSubscription { call_id: 4, .. } },
+
+        < Event::FromSourceStripe { event: EventSourceStripe::StripeFailed { call_id: 4, user_id: SUBSCRIBER, message: "stripe said no".to_string() } },
+        > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
+    );
+}
+
+/// A believed webhook whose body is not an event this build reads.
+///
+/// **Accepted, not refused.** The signature was ours, so this is an event
+/// nobody asked for or a shape we do not parse, and a refusal only asks Stripe
+/// to send it again — for three days, with backoff. The claim is the store
+/// write that does not happen.
+#[test]
+fn a_believed_body_that_is_not_an_event_is_taken_and_dropped() {
+    let mut state = state();
+
+    let body = br#"{"this":"is signed, and is not an event"}"#.to_vec();
+    let signature = stripe_signed(&body, T0);
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+        > @r#"ToRouter { request_id: 1, action: Accepted }"#,
+    );
+}
+
+/// `past_due` keeps the app open, and that is a decision rather than an
+/// oversight.
+///
+/// Stripe is still retrying, the period was paid for, and the ordinary cause
+/// is an expired card on somebody who will replace it. Revoking here takes the
+/// app from a paying customer over something a smart retry fixes within the
+/// hour. `unpaid` is where access stops — see the next test.
+#[test]
+fn a_past_due_subscription_still_opens_the_app() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "past_due", Some(PAID_UNTIL))] } },
+
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+    );
+}
+
+/// The one Stripe is explicit about: revoke on `unpaid`, because the retries
+/// are already exhausted.
+///
+/// It arrives as an ordinary `customer.subscription.updated` with no
+/// `ended_at` — nothing ended — and a period that may even have rolled
+/// forward, because invoices keep being generated while nobody pays them.
+#[test]
+fn an_unpaid_subscription_closes_the_app() {
+    let mut state = state();
+
+    let body = stripe_subscription_event(
+        "evt_1",
+        T0.as_secs(),
+        "sub_1",
+        "unpaid",
+        // A month out, and worth nothing.
+        T0.as_secs() + 30 * 24 * 60 * 60,
+    );
+
+    let signature = stripe_signed(&body, T0);
+
+    eval!(&mut state,
+        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "active", Some(PAID_UNTIL))] } },
+
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+        > @r#"ToRouter { request_id: 1, action: Accepted }"#,
+        > Action::ToStore { action: ActionStore::ApplySubscriptionEvent { call_id: 1, .. } },
+
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 2, .. } },
+
+        < Event::FromStore { call_id: 2, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > @r#"ToRouter { request_id: 2, action: PaymentRequired }"#,
+    );
+}
+
+/// A renewal moves the date the app is open until.
+///
+/// The month rolls over, Stripe sends the new period, and the same session
+/// keeps working — which is the whole ordinary life of a subscription and was
+/// otherwise only tested going wrong.
+#[test]
+fn a_renewal_moves_the_period_forward() {
+    let mut state = state();
+
+    let first_end = Timestamp::from_secs(T0.as_secs() + 60);
+    let renewed_end = Timestamp::from_secs(first_end.as_secs() + 30 * 24 * 60 * 60);
+
+    let body = stripe_subscription_event(
+        "evt_renewal",
+        first_end.as_secs(),
+        "sub_1",
+        "active",
+        renewed_end.as_secs(),
+    );
+
+    let signature = stripe_signed(&body, first_end);
+
+    eval!(&mut state,
+        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "active", Some(first_end))] } },
+
+        // A minute on, and the period has run out.
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(first_end.as_secs() + 1) } },
+
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > @r#"ToRouter { request_id: 1, action: PaymentRequired }"#,
+
+        // The renewal lands.
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+        > @r#"ToRouter { request_id: 2, action: Accepted }"#,
+        > Action::ToStore { action: ActionStore::ApplySubscriptionEvent { call_id: 2, .. } },
+
+        // And the app is open again, on the same session.
+        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 3, .. } },
+
+        < Event::FromStore { call_id: 3, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 4, .. } },
+    );
+}

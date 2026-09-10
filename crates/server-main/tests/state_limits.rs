@@ -732,3 +732,109 @@ fn a_token_polled_back_past_the_budget_is_not_exchanged() {
         > @r#"ToRouter { request_id: 1, action: TooMany }"#,
     );
 }
+
+/// `/billing/subscribe` is limited tighter than everything else, and this is
+/// where the number is asserted.
+///
+/// Each call creates a customer and a subscription at Stripe that no later
+/// call removes, so a caller stuck on a card form should be allowed to try
+/// again and not to fill a dashboard with abandoned objects. The limit is read
+/// off the route rather than written out here, so lowering it in one place
+/// cannot leave a test claiming the other.
+#[test]
+fn starting_subscriptions_faster_than_the_budget_allows_is_refused() {
+    let mut state = fixtures::state();
+
+    // Asserted, not read and then obeyed: a test that spends exactly whatever
+    // the limit says can never fail, however wrong the limit becomes. Three,
+    // because a card form is worth a second and a third try and not a
+    // thirtieth — and tighter than the twenty every other route gets.
+    let allowed = 3;
+
+    assert_eq!(
+        Route::BillingSubscribe.per_window(),
+        allowed as u32,
+        "the subscribe budget moved; decide whether it should have",
+    );
+
+    assert!(
+        allowed < Route::Snapshot.per_window() as u64,
+        "subscribing must be tighter than an ordinary read: each one leaves an \
+         object at Stripe that nothing removes",
+    );
+
+    for request_id in 1..=allowed {
+        start_a_subscription(&mut state, request_id);
+    }
+
+    // The next one is refused, and starts nothing: the claim is the
+    // `LoadUser` that does not come after the session resolves.
+    let next = allowed + 1;
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: next, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { .. } },
+    );
+
+    let mut actions = Vec::new();
+
+    state.handle_events(
+        &[Event::FromStore {
+            call_id: allowed * 2 + 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        }],
+        &mut actions,
+    );
+
+    assert!(
+        matches!(
+            actions.as_slice(),
+            [Action::ToRouter {
+                action: ActionRouter::TooMany,
+                ..
+            }]
+        ),
+        "the call past the budget is refused and starts nothing: {actions:?}",
+    );
+}
+
+/// Ask for one subscription and drop what comes of it, as the `n`th caller to
+/// do so. Only the session is answered — the point is that the budget was
+/// spent, not what Stripe would have said.
+fn start_a_subscription(state: &mut StateServer, request_id: u64) {
+    let mut actions = Vec::new();
+
+    state.handle_events(
+        &[Event::FromRouter {
+            request_id,
+            client: Client {
+                ip: ClientIp::new("203.0.113.7"),
+                user: None,
+            },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        }],
+        &mut actions,
+    );
+
+    let answers: Vec<Event> = actions
+        .iter()
+        .filter_map(|action| match action {
+            Action::ToStore {
+                action: ActionStore::LoadSession { call_id, .. },
+            } => Some(Event::FromStore {
+                call_id: *call_id,
+                event: EventStore::SessionResolved {
+                    user_id: Some(uuid::Uuid::nil()),
+                },
+            }),
+
+            _ => None,
+        })
+        .collect();
+
+    state.handle_events(&answers, &mut Vec::new());
+}
