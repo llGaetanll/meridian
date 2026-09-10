@@ -95,4 +95,8 @@ pub enum ActionRouter {
 
         cancel_at_period_end: bool,
     },
+
+    /// The account is gone. Answered once the rows are actually deleted, so a
+    /// client that hears this can forget its session without wondering.
+    Deleted,
 }

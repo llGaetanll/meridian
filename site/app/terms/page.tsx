@@ -143,8 +143,16 @@ const SECTIONS: LegalSection[] = [
         </p>
         <ul>
           <li>
-            <strong>Cancel any time.</strong> Cancelling stops the next renewal;
-            your subscription runs to the end of the period you have paid for.
+            <strong>Cancel any time, and cancelling closes the account.</strong>{" "}
+            Cancelling stops the next renewal and deletes your account: we
+            disconnect your institutions and remove your data. There is no
+            paused state, and no undo. If you come back, you sign up again and
+            reconnect your accounts.
+          </li>
+          <li>
+            You can cancel through the app at any point, including while a
+            payment has failed or after a subscription has lapsed. We never
+            require a subscription in order to let you leave.
           </li>
           <li>
             Payments are handled by our payment processor. We do not receive or

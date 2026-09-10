@@ -32,4 +32,14 @@ pub enum EventSourceStripe {
         user_id: Uuid,
         message: String,
     },
+
+    /// The subscription will not renew.
+    SubscriptionCancelled {
+        call_id: CallId,
+        user_id: Uuid,
+
+        /// When the period already paid for runs out, which is when access
+        /// actually stops.
+        good_until: Option<u64>,
+    },
 }

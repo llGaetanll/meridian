@@ -58,6 +58,10 @@ pub enum EventRouter {
     /// body round-tripped through a parser is a body whose signature no
     /// longer matches.
     StripeWebhookReceived { signature: String, body: Vec<u8> },
+
+    /// `POST /account/delete` — cancel the subscription, stop the banks, and
+    /// delete everything.
+    DeleteRequested { token_sha256: Vec<u8> },
 }
 
 impl EventRouter {
@@ -74,7 +78,8 @@ impl EventRouter {
             | EventRouter::SyncWatchRequested { token_sha256, .. }
             | EventRouter::SnapshotRequested { token_sha256 }
             | EventRouter::SubscribeRequested { token_sha256 }
-            | EventRouter::BillingStatusRequested { token_sha256 } => Some(token_sha256),
+            | EventRouter::BillingStatusRequested { token_sha256 }
+            | EventRouter::DeleteRequested { token_sha256 } => Some(token_sha256),
 
             EventRouter::CodeRequested { .. }
             | EventRouter::CodeSubmitted { .. }
@@ -101,6 +106,7 @@ impl EventRouter {
             EventRouter::SyncWatchRequested { .. } => Some(Route::SyncStatus),
             EventRouter::SubscribeRequested { .. } => Some(Route::BillingSubscribe),
             EventRouter::BillingStatusRequested { .. } => Some(Route::BillingStatus),
+            EventRouter::DeleteRequested { .. } => Some(Route::AccountDelete),
 
             EventRouter::WebhookReceived { .. } | EventRouter::StripeWebhookReceived { .. } => None,
         }
@@ -123,6 +129,7 @@ impl EventRouter {
             | EventRouter::WebhookReceived { .. }
             | EventRouter::SubscribeRequested { .. }
             | EventRouter::BillingStatusRequested { .. }
+            | EventRouter::DeleteRequested { .. }
             | EventRouter::StripeWebhookReceived { .. } => None,
         }
     }

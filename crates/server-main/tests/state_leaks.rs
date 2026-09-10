@@ -276,3 +276,45 @@ fn a_stripe_that_refuses_leaves_nothing_behind() {
 
     assert_eq!(state.census(), before, "the route left nothing behind");
 }
+
+/// Leaving leaves nothing behind — including the entitlement and the billing
+/// indexes, which live outside the tables the census counts.
+///
+/// Four steps and three sources, each replacing the step before it. What this
+/// asserts beyond the census is that a deleted account is forgotten by name:
+/// a webhook arriving afterwards must not find a user id that no longer means
+/// anything.
+#[test]
+fn leaving_leaves_nothing_behind() {
+    let mut state = fixtures::state();
+
+    let before = state.census();
+
+    eval!(&mut state,
+        // A subscriber with one bank, arriving the way startup brings them.
+        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(uuid::Uuid::nil(), "active", Some(fixtures::PAID_UNTIL))] } },
+
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::DeleteRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToSourceStripe { action: ActionSourceStripe::CancelSubscription { call_id: 2, .. } },
+
+        < Event::FromSourceStripe { event: EventSourceStripe::SubscriptionCancelled { call_id: 2, user_id: uuid::Uuid::nil(), good_until: Some(1818633600) } },
+        > Action::ToStore { action: ActionStore::LoadAccessTokens { call_id: 3, .. } },
+
+        < Event::FromStore { call_id: 3, event: EventStore::AccessTokensLoaded { tokens: vec![("item-1".to_string(), "token-1".to_string())] } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::RemoveItem { call_id: 4, .. } },
+
+        < Event::FromSourcePlaid { event: EventSourcePlaid::ItemRemoved { call_id: 4, item_id: "item-1".to_string(), removed: true } },
+        > Action::ToStore { action: ActionStore::DeleteUser { call_id: 5, .. } },
+
+        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+        > @r#"ToRouter { request_id: 1, action: Deleted }"#,
+
+        // And a minute in which the windows it was metered in go idle.
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 62) } },
+    );
+
+    assert_eq!(state.census(), before, "the deletion left nothing behind");
+}

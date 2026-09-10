@@ -56,3 +56,16 @@ pub struct Subscription {
     /// shape this build did not expect.
     pub client_secret: Option<String>,
 }
+
+/// Stop the subscription at the end of the period already paid for.
+///
+/// Answers when that is, which is when access actually stops.
+pub async fn cancel_subscription(
+    client: &StripeClient,
+    subscription_id: &str,
+    now: i64,
+) -> Result<Option<i64>, StripeError> {
+    let subscription = src_stripe::cancel_subscription(client, subscription_id).await?;
+
+    Ok(subscription.good_until(now))
+}

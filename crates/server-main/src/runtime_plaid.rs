@@ -249,3 +249,13 @@ mod tests {
         assert!(!fetched.cursor.is_empty());
     }
 }
+
+/// Remove one bank at Plaid, which is the only way its bill stops.
+///
+/// Answers nothing: there is nothing to say about an Item that no longer
+/// exists, and whether it went is the `Result`.
+pub async fn remove_item(client: &PlaidClient, access_token: &str) -> Result<(), PlaidError> {
+    src_plaid::remove_item(client, access_token).await?;
+
+    Ok(())
+}

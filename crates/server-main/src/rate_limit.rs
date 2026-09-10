@@ -80,6 +80,9 @@ pub enum Route {
 
     /// `GET /billing/status`
     BillingStatus,
+
+    /// `POST /account/delete`
+    AccountDelete,
 }
 
 impl Route {
@@ -95,6 +98,7 @@ impl Route {
             Route::SyncStatus => "/sync/status",
             Route::BillingSubscribe => "/billing/subscribe",
             Route::BillingStatus => "/billing/status",
+            Route::AccountDelete => "/account/delete",
         }
     }
 
@@ -114,6 +118,10 @@ impl Route {
             Route::AuthRequest => (EMAILS_PER_QUARTER_HOUR, QUARTER_HOUR),
 
             Route::BillingSubscribe => (SUBSCRIBES_PER_MINUTE, MINUTE),
+
+            // As tight as subscribing, and for the mirror-image reason: each
+            // one makes calls to Plaid that cannot be undone.
+            Route::AccountDelete => (SUBSCRIBES_PER_MINUTE, MINUTE),
 
             Route::Snapshot
             | Route::AuthVerify

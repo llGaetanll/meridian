@@ -435,6 +435,9 @@ impl RuntimeServer {
             }
             | ActionSourceStripe::CreateSubscription {
                 call_id, user_id, ..
+            }
+            | ActionSourceStripe::CancelSubscription {
+                call_id, user_id, ..
             } => (*call_id, *user_id),
         };
 
@@ -458,6 +461,30 @@ impl RuntimeServer {
                     call_id: *call_id,
                     user_id: *user_id,
                     customer_id,
+                },
+                Err(e) => EventSourceStripe::StripeFailed {
+                    call_id: *call_id,
+                    user_id: *user_id,
+                    message: e.to_string(),
+                },
+            },
+
+            ActionSourceStripe::CancelSubscription {
+                call_id,
+                user_id,
+                subscription_id,
+                now,
+            } => match runtime_stripe::cancel_subscription(
+                client,
+                subscription_id,
+                now.as_secs() as i64,
+            )
+            .await
+            {
+                Ok(good_until) => EventSourceStripe::SubscriptionCancelled {
+                    call_id: *call_id,
+                    user_id: *user_id,
+                    good_until: good_until.and_then(|secs| u64::try_from(secs).ok()),
                 },
                 Err(e) => EventSourceStripe::StripeFailed {
                     call_id: *call_id,
@@ -542,6 +569,12 @@ impl RuntimeServer {
             ActionSourcePlaid::FetchRecurring { call_id, item_id } => {
                 self.fetch_recurring(*call_id, item_id).await
             }
+
+            ActionSourcePlaid::RemoveItem {
+                call_id,
+                item_id,
+                access_token,
+            } => self.remove_item(*call_id, item_id, access_token).await,
 
             ActionSourcePlaid::FetchWebhookKey { call_id, kid } => {
                 self.fetch_webhook_key(*call_id, kid).await
@@ -741,6 +774,10 @@ impl RuntimeServer {
 
             ActionStore::LoadUser { user_id, .. } => self.load_user(*user_id).await,
 
+            ActionStore::LoadAccessTokens { user_id, .. } => {
+                self.load_access_tokens(*user_id).await
+            }
+
             ActionStore::SaveItem {
                 item_id,
                 link_token,
@@ -805,6 +842,20 @@ impl RuntimeServer {
     async fn load_subscriptions(&self) -> EventStore {
         match src_postgres::load_subscriptions(&self.db).await {
             Ok(subscriptions) => EventStore::SubscriptionsLoaded { subscriptions },
+
+            Err(e) => EventStore::ReadError {
+                message: e.to_string(),
+            },
+        }
+    }
+
+    /// Every access token this user's banks were reached with, opened.
+    ///
+    /// The read that has to happen before anything is deleted: `items` goes
+    /// with the user, and a token nobody holds is a bank that bills forever.
+    async fn load_access_tokens(&self, user_id: uuid::Uuid) -> EventStore {
+        match src_postgres::load_access_tokens(&self.db, user_id, &self.db_key).await {
+            Ok(tokens) => EventStore::AccessTokensLoaded { tokens },
 
             Err(e) => EventStore::ReadError {
                 message: e.to_string(),
@@ -905,6 +956,13 @@ impl RuntimeServer {
                 }
             }
 
+            ActionStore::DeleteUser {
+                call_id: _,
+                user_id,
+            } => {
+                src_postgres::delete_user(db, *user_id).await?;
+            }
+
             ActionStore::RecordAttempt { call_id: _, email } => {
                 src_postgres::record_attempt(db, email).await?;
             }
@@ -974,6 +1032,7 @@ impl RuntimeServer {
             | ActionStore::LoadCode { .. }
             | ActionStore::LoadSubscriptions { .. }
             | ActionStore::LoadUser { .. }
+            | ActionStore::LoadAccessTokens { .. }
             | ActionStore::SaveItem { .. } => {
                 unreachable!("answered by `perform_action_store`, which says what it wrote")
             }
@@ -1225,7 +1284,9 @@ impl RuntimeServer {
             | ActionStore::SaveCustomer { .. }
             | ActionStore::ApplySubscriptionEvent { .. }
             | ActionStore::LoadSubscriptions { .. }
-            | ActionStore::LoadUser { .. } => {}
+            | ActionStore::LoadUser { .. }
+            | ActionStore::LoadAccessTokens { .. }
+            | ActionStore::DeleteUser { .. } => {}
         }
 
         Ok(())
@@ -1241,6 +1302,39 @@ impl RuntimeServer {
                 "a connection needs the user to sign in again; syncs will fail until they do",
             ),
         }
+    }
+
+    /// Stop one bank at Plaid, and say whether it stopped.
+    ///
+    /// A failure is reported rather than retried: what to do about a bank that
+    /// is still billing is the machine's decision, and the log line is what
+    /// says to go and look.
+    async fn remove_item(
+        &self,
+        call_id: crate::CallId,
+        item_id: &str,
+        access_token: &str,
+    ) -> Vec<Event> {
+        let removed = match runtime_plaid::remove_item(&self.plaid_client, access_token).await {
+            Ok(()) => true,
+            Err(e) => {
+                tracing::error!(
+                    item_id,
+                    error = %e,
+                    "an item was not removed at plaid, and is still billing",
+                );
+
+                false
+            }
+        };
+
+        vec![Event::FromSourcePlaid {
+            event: EventSourcePlaid::ItemRemoved {
+                call_id,
+                item_id: item_id.to_string(),
+                removed,
+            },
+        }]
     }
 
     /// Ask Plaid what one bank's accounts hold, and feed the answer back in.

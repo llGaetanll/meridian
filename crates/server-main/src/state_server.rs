@@ -37,6 +37,7 @@ use crate::ActionProcess;
 use crate::ActionRouter;
 use crate::ActionSocket;
 use crate::ActionSourcePlaid;
+use crate::ActionSourceStripe;
 use crate::ActionStore;
 use crate::Authenticated;
 use crate::CachedKey;
@@ -266,7 +267,8 @@ impl StateServer {
 
             EventRouter::SnapshotRequested { .. }
             | EventRouter::SubscribeRequested { .. }
-            | EventRouter::BillingStatusRequested { .. } => {
+            | EventRouter::BillingStatusRequested { .. }
+            | EventRouter::DeleteRequested { .. } => {
                 unreachable!("a request carrying a token is resolved before it is decided")
             }
         }
@@ -471,6 +473,14 @@ impl StateServer {
             // Answered from what the machine holds. Nothing to read: the
             // entitlement is already here, and asking the store would be a
             // second copy that can disagree with it.
+            // Cancelling and deleting are one action, because a paused
+            // account is one we keep paying Plaid for: an Item bills for as
+            // long as it exists, so there is no state where somebody stops
+            // paying us and we stop paying for them. Out is out.
+            Authenticated::DeleteRequested => {
+                self.delete_requested(request_id, user_id, actions);
+            }
+
             Authenticated::BillingStatusRequested => {
                 let entitlement = self.entitled.get(&user_id);
 
@@ -489,6 +499,127 @@ impl StateServer {
                 );
             }
         }
+    }
+
+    /// Cancel the subscription, stop the banks, and delete everything.
+    ///
+    /// Four steps, in an order chosen by what is worst if the process dies
+    /// half way:
+    ///
+    /// 1. **Stripe first.** A card still being charged for an app that is gone
+    ///    is the failure a person notices and the one that is hardest to undo
+    ///    trust over. Everything else can be finished by hand from a log line.
+    /// 2. **Read the tokens**, before anything is deleted: `items` goes with
+    ///    the user, and a token nobody holds is a bank that bills forever.
+    /// 3. **Remove the banks** at Plaid, which is the only way those bills
+    ///    stop.
+    /// 4. **Delete the rows**, once no removal is still out.
+    ///
+    /// A user with no subscription — never paid, or already cancelled — skips
+    /// straight to step 2. Deleting an account is not something to refuse
+    /// because there is nothing to cancel.
+    fn delete_requested(
+        &mut self,
+        request_id: RequestId,
+        user_id: Uuid,
+        actions: &mut Vec<Action>,
+    ) {
+        // Asked of billing rather than of `entitled`: the question is whether
+        // Stripe has something to cancel, not whether the app is open. A
+        // subscription whose period has run out is still one Stripe would
+        // renew, and skipping it because access had lapsed is how somebody
+        // keeps being charged for an account that is gone.
+        let Some(subscription_id) = self.billing.subscription_for_user(user_id) else {
+            self.read_tokens_to_delete(request_id, user_id, actions);
+
+            return;
+        };
+
+        self.signup
+            .waits_on(request_id, Pending::Deleting { user_id });
+
+        actions.push(Action::ToSourceStripe {
+            action: ActionSourceStripe::CancelSubscription {
+                call_id: self.signup.calling(request_id, self.now),
+                user_id,
+                subscription_id,
+                now: self.now,
+            },
+        });
+    }
+
+    /// Step 2: the tokens the bank removals need.
+    fn read_tokens_to_delete(
+        &mut self,
+        request_id: RequestId,
+        user_id: Uuid,
+        actions: &mut Vec<Action>,
+    ) {
+        self.signup
+            .waits_on(request_id, Pending::DeletingReadingTokens { user_id });
+
+        actions.push(Action::ToStore {
+            action: ActionStore::LoadAccessTokens {
+                call_id: self.signup.calling(request_id, self.now),
+                user_id,
+            },
+        });
+    }
+
+    /// Step 3: stop every bank, or go straight to the rows if there are none.
+    fn remove_banks_to_delete(
+        &mut self,
+        request_id: RequestId,
+        user_id: Uuid,
+        tokens: &[(String, String)],
+        actions: &mut Vec<Action>,
+    ) {
+        if tokens.is_empty() {
+            self.delete_the_rows(request_id, user_id, actions);
+
+            return;
+        }
+
+        self.signup.waits_on(
+            request_id,
+            Pending::DeletingBanks {
+                user_id,
+                left: tokens.len() as u32,
+            },
+        );
+
+        for (item_id, access_token) in tokens {
+            actions.push(Action::ToSourcePlaid {
+                action: ActionSourcePlaid::RemoveItem {
+                    call_id: self.signup.calling(request_id, self.now),
+                    item_id: item_id.clone(),
+                    access_token: access_token.clone(),
+                },
+            });
+        }
+    }
+
+    /// Step 4: the rows, and the answer.
+    ///
+    /// Entitlement goes here rather than when the subscription was cancelled:
+    /// until this lands the account still exists, and a half-deleted account
+    /// that has been locked out is worse than one that still works.
+    fn delete_the_rows(&mut self, request_id: RequestId, user_id: Uuid, actions: &mut Vec<Action>) {
+        self.entitled.remove(&user_id);
+        self.billing.forget(user_id);
+
+        actions.push(Action::ToStore {
+            action: ActionStore::DeleteUser {
+                call_id: self.signup.calling(request_id, self.now),
+                user_id,
+            },
+        });
+
+        // Owed, so it goes out once the delete has actually landed: a client
+        // told its account is gone while the rows are still there would be
+        // told a thing that is not yet true.
+        self.signup
+            .answer(request_id, ActionRouter::Deleted, self.now, actions);
     }
 
     /// Whether this user may use the app, as of this batch's clock.
@@ -1026,6 +1157,39 @@ impl StateServer {
                 );
             }
 
+            EventSourceStripe::SubscriptionCancelled {
+                call_id,
+                user_id,
+                good_until,
+            } => {
+                let Some(request_id) = self.signup.answered(*call_id) else {
+                    return;
+                };
+
+                let Some(Pending::Deleting { user_id: waiting }) = self.signup.resumed(request_id)
+                else {
+                    tracing::error!(
+                        call_id,
+                        "a cancellation answered a request nobody is waiting on"
+                    );
+
+                    return;
+                };
+
+                debug_assert_eq!(
+                    waiting, *user_id,
+                    "a cancellation answered another user's request"
+                );
+
+                tracing::info!(
+                    %user_id,
+                    good_until = good_until.unwrap_or_default(),
+                    "subscription cancelled; deleting the account it belonged to",
+                );
+
+                self.read_tokens_to_delete(request_id, *user_id, actions);
+            }
+
             EventSourceStripe::StripeFailed {
                 call_id,
                 user_id,
@@ -1049,6 +1213,51 @@ impl StateServer {
 
     fn handle_event_source(&mut self, event: &EventSourcePlaid, actions: &mut Vec<Action>) {
         match event {
+            // One bank stopped, or did not. Either way it is no longer
+            // outstanding: a removal that failed is logged and does not hold
+            // the deletion up, because the alternative is an account nobody
+            // can delete over a bank they cannot see.
+            EventSourcePlaid::ItemRemoved {
+                call_id,
+                item_id,
+                removed,
+            } => {
+                let Some(request_id) = self.signup.answered(*call_id) else {
+                    return;
+                };
+
+                let Some(Pending::DeletingBanks { user_id, left }) =
+                    self.signup.resumed(request_id)
+                else {
+                    tracing::error!(
+                        call_id,
+                        item_id,
+                        "a removal answered a request nobody is waiting on"
+                    );
+
+                    return;
+                };
+
+                if !removed {
+                    tracing::error!(
+                        item_id,
+                        %user_id,
+                        "a bank was not removed and is still billing; remove it by hand",
+                    );
+                }
+
+                let left = left.saturating_sub(1);
+
+                if left > 0 {
+                    self.signup
+                        .waits_on(request_id, Pending::DeletingBanks { user_id, left });
+
+                    return;
+                }
+
+                self.delete_the_rows(request_id, user_id, actions);
+            }
+
             EventSourcePlaid::WebhookKeyLoaded { call_id, kid, key } => {
                 // A miss that is not written down is a call to Plaid for
                 // every POST naming an id nobody has.
@@ -1453,6 +1662,22 @@ impl StateServer {
 
                 self.billing
                     .subscribe_requested(user_id, email, call_id, actions);
+            }
+
+            EventStore::AccessTokensLoaded { tokens } => {
+                let Some(request_id) = self.signup.answered(call_id) else {
+                    return;
+                };
+
+                let Some(Pending::DeletingReadingTokens { user_id }) =
+                    self.signup.resumed(request_id)
+                else {
+                    tracing::error!(call_id, "tokens answered a deletion nobody asked for");
+
+                    return;
+                };
+
+                self.remove_banks_to_delete(request_id, user_id, tokens, actions);
             }
 
             EventStore::CodeLoaded { stored } => {

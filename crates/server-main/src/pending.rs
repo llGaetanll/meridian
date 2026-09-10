@@ -58,6 +58,25 @@ pub enum Pending {
     /// Waiting on Stripe to create the subscription itself.
     SubscribingTo { user_id: Uuid, customer_id: String },
 
+    /// Deleting an account, waiting on Stripe to stop the subscription.
+    ///
+    /// First because it is the only step that can be told to somebody: a card
+    /// that keeps being charged after the app is gone is the failure a person
+    /// notices, where a Plaid Item they never see is one only we pay for.
+    Deleting { user_id: Uuid },
+
+    /// The subscription is stopped. Waiting on the store for the tokens the
+    /// bank removals need, which have to be read before anything is deleted.
+    DeletingReadingTokens { user_id: Uuid },
+
+    /// The banks are being stopped at Plaid, `left` of them still out.
+    ///
+    /// Counted rather than listed, because what happens next does not depend
+    /// on which bank answered: the rows go once none is outstanding. A bank
+    /// that failed to be removed is logged and does not hold the deletion up
+    /// — the alternative is an account nobody can delete.
+    DeletingBanks { user_id: Uuid, left: u32 },
+
     /// Decided. Held until nothing the request started is still out, because
     /// a route reads the store the moment it is answered.
     Owed(Owed),

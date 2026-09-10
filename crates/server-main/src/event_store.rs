@@ -56,4 +56,8 @@ pub enum EventStore {
     /// The address a user is written to. `None` is a user that is not there,
     /// which a live session should make impossible.
     UserLoaded { email: Option<String> },
+
+    /// The access tokens this user's banks were reached with, and the bank
+    /// each one opens. Empty is an account with no banks, which deletes fine.
+    AccessTokensLoaded { tokens: Vec<(String, String)> },
 }

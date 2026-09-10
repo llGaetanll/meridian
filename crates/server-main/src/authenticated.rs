@@ -26,6 +26,9 @@ pub enum Authenticated {
 
     /// Asking what the subscription is. The other one.
     BillingStatusRequested,
+
+    /// Cancelling and deleting, which are one action.
+    DeleteRequested,
 }
 
 impl Authenticated {
@@ -43,6 +46,7 @@ impl Authenticated {
             EventRouter::BillingStatusRequested { .. } => {
                 Some(Authenticated::BillingStatusRequested)
             }
+            EventRouter::DeleteRequested { .. } => Some(Authenticated::DeleteRequested),
             _ => None,
         }
     }
@@ -56,6 +60,7 @@ impl Authenticated {
             Authenticated::SnapshotRequested => Route::Snapshot,
             Authenticated::SubscribeRequested => Route::BillingSubscribe,
             Authenticated::BillingStatusRequested => Route::BillingStatus,
+            Authenticated::DeleteRequested => Route::AccountDelete,
         }
     }
 
@@ -72,7 +77,13 @@ impl Authenticated {
     /// route to becoming a customer.
     pub fn needs_entitlement(&self) -> bool {
         match self {
-            Authenticated::SubscribeRequested | Authenticated::BillingStatusRequested => false,
+            // Deleting is here for a reason worth stating: somebody whose
+            // subscription has lapsed must still be able to get their data
+            // out of our hands. A deletion refused for want of a payment is a
+            // deletion right that does not exist.
+            Authenticated::SubscribeRequested
+            | Authenticated::BillingStatusRequested
+            | Authenticated::DeleteRequested => false,
 
             Authenticated::LinkRequested
             | Authenticated::LinkClosed

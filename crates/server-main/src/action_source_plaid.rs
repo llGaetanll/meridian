@@ -75,4 +75,15 @@ pub enum ActionSourcePlaid {
         link_token: String,
         public_token: String,
     },
+
+    /// Stop this bank, and stop being billed for it.
+    ///
+    /// The token rides on the action rather than being looked up when the call
+    /// is made, because by then the row it came from is on its way out — see
+    /// `src_postgres::load_access_tokens`.
+    RemoveItem {
+        call_id: CallId,
+        item_id: String,
+        access_token: String,
+    },
 }

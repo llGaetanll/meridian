@@ -207,6 +207,21 @@ pub enum ActionStore {
         call_id: CallId,
         user_id: uuid::Uuid,
     },
+
+    /// Every access token this user's banks were reached with, opened.
+    ///
+    /// Read before anything is deleted: the tokens are what the Plaid
+    /// removals need, and deleting the user takes `items` with it.
+    LoadAccessTokens {
+        call_id: CallId,
+        user_id: uuid::Uuid,
+    },
+
+    /// Delete the account and everything that hangs off it.
+    DeleteUser {
+        call_id: CallId,
+        user_id: uuid::Uuid,
+    },
 }
 
 impl ActionStore {
@@ -237,7 +252,9 @@ impl ActionStore {
             | Self::SaveCustomer { call_id, .. }
             | Self::ApplySubscriptionEvent { call_id, .. }
             | Self::LoadSubscriptions { call_id, .. }
-            | Self::LoadUser { call_id, .. } => *call_id,
+            | Self::LoadUser { call_id, .. }
+            | Self::LoadAccessTokens { call_id, .. }
+            | Self::DeleteUser { call_id, .. } => *call_id,
         }
     }
 }

@@ -66,6 +66,7 @@ pub(crate) fn router(to_loop: ToLoop, origins: &WebOrigins) -> Router {
         .route("/sync/status", get(sync_status))
         .route("/billing/subscribe", post(billing_subscribe))
         .route("/billing/status", get(billing_status))
+        .route("/account/delete", post(account_delete))
         .route(STRIPE_WEBHOOK_PATH, post(stripe_webhook))
         .route(WEBHOOK_PATH, post(plaid_webhook))
         // Inside the CORS layer, so a browser's preflight `OPTIONS` is answered
@@ -208,6 +209,41 @@ struct BillingAnswer {
     status: Option<String>,
     good_until: Option<u64>,
     cancel_at_period_end: bool,
+}
+
+/// `POST /account/delete`
+///
+/// Cancel the subscription, stop the banks at Plaid, and delete everything.
+/// One action, because a paused account is one we keep paying Plaid for.
+///
+/// **It takes nothing, and there is no undo.** The confirmation belongs in the
+/// client, where somebody can be told what they are about to lose; a body
+/// asking "are you sure" is a thing that can be sent by anything holding the
+/// token.
+///
+/// Answered only once the rows are actually gone, so a client that hears this
+/// can forget its session without wondering.
+async fn account_delete(
+    State(to_loop): State<ToLoop>,
+    Extension(ip): Extension<ClientIp>,
+    headers: axum::http::HeaderMap,
+) -> Result<StatusCode, StatusCode> {
+    let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let answer = runtime_router::dispatch(
+        &to_loop,
+        Client::anonymous(ip),
+        EventRouter::DeleteRequested { token_sha256 },
+    )
+    .await;
+
+    refused(&answer)?;
+
+    match answer {
+        Some(ActionRouter::Deleted) => Ok(StatusCode::NO_CONTENT),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE),
+    }
 }
 
 /// `POST /stripe/webhook`

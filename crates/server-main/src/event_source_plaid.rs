@@ -92,4 +92,15 @@ pub enum EventSourcePlaid {
     /// The Link flow did not produce a bank. Dismissed, failed, or timed out —
     /// the common ending, not a rare one.
     LinkAbandoned { call_id: CallId, link_token: String },
+
+    /// A bank was removed at Plaid, or was not.
+    ///
+    /// `removed` false is a bank still billing, which is why it is a fact the
+    /// machine hears rather than something the runtime swallows: the log line
+    /// it produces is the only thing that says to go and look.
+    ItemRemoved {
+        call_id: CallId,
+        item_id: String,
+        removed: bool,
+    },
 }

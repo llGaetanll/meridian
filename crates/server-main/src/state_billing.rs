@@ -98,6 +98,27 @@ impl StateBilling {
             .insert(subscription_id.to_string(), user_id);
     }
 
+    /// Which subscription is this user's, if this process knows of one.
+    ///
+    /// The reverse of [`user_for_subscription`](Self::user_for_subscription),
+    /// walked rather than indexed: it is asked once when an account is being
+    /// deleted, and a second map would be a second thing to keep in step.
+    pub fn subscription_for_user(&self, user_id: Uuid) -> Option<String> {
+        self.subscriptions
+            .iter()
+            .find(|(_, owner)| **owner == user_id)
+            .map(|(subscription_id, _)| subscription_id.clone())
+    }
+
+    /// Forget everything about a user whose account is gone.
+    ///
+    /// Both indexes, because a webhook arriving after the account was deleted
+    /// must not find a user id that no longer names anybody.
+    pub fn forget(&mut self, user_id: Uuid) {
+        self.customers.retain(|_, owner| *owner != user_id);
+        self.subscriptions.retain(|_, owner| *owner != user_id);
+    }
+
     /// Whether a webhook is really Stripe's.
     ///
     /// A rule, so it is the machine's: which signature is acceptable and
