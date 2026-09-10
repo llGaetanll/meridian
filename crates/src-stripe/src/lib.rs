@@ -18,6 +18,7 @@ mod stripe_response_subscription;
 mod stripe_webhook;
 mod stripe_webhook_event;
 
+pub use stripe_client::API_VERSION;
 pub use stripe_client::StripeClient;
 pub use stripe_client::StripeCredentials;
 pub use stripe_error::StripeError;
@@ -27,6 +28,7 @@ pub use stripe_request_subscription::create_subscription;
 pub use stripe_request_subscription::get_subscription;
 pub use stripe_response_customer::StripeCustomer;
 pub use stripe_response_subscription::StripeConfirmationSecret;
+pub use stripe_response_subscription::StripeExpandable;
 pub use stripe_response_subscription::StripeInvoice;
 pub use stripe_response_subscription::StripeSubscription;
 pub use stripe_response_subscription::StripeSubscriptionItem;

@@ -25,9 +25,39 @@ pub struct StripeSubscription {
     pub items: StripeSubscriptionItems,
 
     /// The unpaid invoice and the secret its card form confirms against.
-    /// Absent once there is nothing to pay.
+    ///
+    /// **Either an id or the whole object**, which is how Stripe answers every
+    /// expandable field: a call that asked to expand it gets the object, and
+    /// one that did not gets `"in_…"`. A type insisting on the object parses
+    /// the create — which expands it — and then fails on every plain read of
+    /// the same subscription.
     #[serde(default)]
-    pub latest_invoice: Option<StripeInvoice>,
+    pub latest_invoice: Option<StripeExpandable<StripeInvoice>>,
+}
+
+/// A field Stripe will send either as an id or as the object itself.
+///
+/// Untagged, so serde tries the object first and falls back to the string.
+/// Order matters: a string would never parse as the struct, but the struct arm
+/// must be tried first or an object would be read as neither.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum StripeExpandable<T> {
+    /// The object, from a call that asked for it.
+    Expanded(T),
+
+    /// Just its id, from a call that did not.
+    Id(String),
+}
+
+impl<T> StripeExpandable<T> {
+    /// The object, where this call asked for it.
+    pub fn expanded(&self) -> Option<&T> {
+        match self {
+            StripeExpandable::Expanded(value) => Some(value),
+            StripeExpandable::Id(_) => None,
+        }
+    }
 }
 
 impl StripeSubscription {
@@ -45,6 +75,7 @@ impl StripeSubscription {
     pub fn client_secret(&self) -> Option<&str> {
         self.latest_invoice
             .as_ref()?
+            .expanded()?
             .confirmation_secret
             .as_ref()
             .map(|secret| secret.client_secret.as_str())

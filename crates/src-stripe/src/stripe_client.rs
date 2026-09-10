@@ -22,7 +22,15 @@ const BASE_URL: &str = "https://api.stripe.com/v1/";
 /// the shape of its objects between versions, and a response that grew a field
 /// is not the thing that should decide whether somebody is subscribed. Moving
 /// it is a deliberate edit with the changelog open.
-const API_VERSION: &str = "2025-08-27.basil";
+///
+/// **A webhook endpoint has a version of its own, and it must be this one.**
+/// Registered without one it sends whatever the account currently defaults to,
+/// so the objects this crate parses would come from two versions at once — the
+/// pinned one for a reply to a call we made, the account's for a delivery we
+/// did not. Both shapes agree today, which is exactly what makes the drift
+/// worth pinning rather than watching: nothing would fail until the day it
+/// does. #88 registers the endpoint with `api_version` set to this.
+pub const API_VERSION: &str = "2026-08-26.dahlia";
 
 /// The key, and the price it sells.
 pub struct StripeCredentials {
