@@ -43,7 +43,7 @@ pub async fn fetch_balances(
     access_token: &str,
     now: api_common::Timestamp,
 ) -> Result<Connection, PlaidError> {
-    let balances = src_plaid::fetch_balances(&client, access_token).await?;
+    let balances = src_plaid::fetch_balances(client, access_token).await?;
 
     Ok(project::connection(&balances, now))
 }
@@ -54,7 +54,7 @@ pub async fn sync_transactions(
     access_token: &str,
     cursor: Option<String>,
 ) -> Result<Page, PlaidError> {
-    let sync = src_plaid::sync_transactions(&client, access_token, cursor).await?;
+    let sync = src_plaid::sync_transactions(client, access_token, cursor).await?;
 
     Ok(Page {
         added: sync.added.iter().map(project::entry).collect(),
@@ -77,7 +77,7 @@ pub async fn fetch_recurring(
     client: &PlaidClient,
     access_token: &str,
 ) -> Result<Vec<Stream>, PlaidError> {
-    let recurring = src_plaid::fetch_recurring(&client, access_token).await?;
+    let recurring = src_plaid::fetch_recurring(client, access_token).await?;
 
     Ok(project::streams(&recurring))
 }
@@ -113,7 +113,7 @@ pub async fn open_link(
         None => request,
     };
 
-    let res = src_plaid::create_link_token(&client, &request).await?;
+    let res = src_plaid::create_link_token(client, &request).await?;
 
     Ok((res.link_token, res.hosted_link_url))
 }
@@ -131,7 +131,7 @@ pub async fn poll_link(
     client: &PlaidClient,
     link_token: &str,
 ) -> Result<(bool, Vec<String>), PlaidError> {
-    let res = src_plaid::link_session(&client, link_token).await?;
+    let res = src_plaid::link_session(client, link_token).await?;
 
     Ok((
         res.finished(),
@@ -148,7 +148,7 @@ pub async fn webhook_key(
     client: &PlaidClient,
     key_id: &str,
 ) -> Result<src_plaid::PlaidJwk, PlaidError> {
-    src_plaid::fetch_webhook_key(&client, key_id).await
+    src_plaid::fetch_webhook_key(client, key_id).await
 }
 
 /// Trade a `public_token` for the permanent one, and the Item it belongs to.
@@ -156,9 +156,19 @@ pub async fn exchange(
     client: &PlaidClient,
     public_token: &str,
 ) -> Result<(String, String), PlaidError> {
-    let res = src_plaid::exchange_public_token(&client, public_token).await?;
+    let res = src_plaid::exchange_public_token(client, public_token).await?;
 
     Ok((res.item_id, res.access_token))
+}
+
+/// Remove one bank at Plaid, which is the only way its bill stops.
+///
+/// Answers nothing: there is nothing to say about an Item that no longer
+/// exists, and whether it went is the `Result`.
+pub async fn remove_item(client: &PlaidClient, access_token: &str) -> Result<(), PlaidError> {
+    src_plaid::remove_item(client, access_token).await?;
+
+    Ok(())
 }
 
 /// The one client every call in this module is made on.
@@ -248,14 +258,4 @@ mod tests {
         assert_eq!(fetched.streams.len(), 8);
         assert!(!fetched.cursor.is_empty());
     }
-}
-
-/// Remove one bank at Plaid, which is the only way its bill stops.
-///
-/// Answers nothing: there is nothing to say about an Item that no longer
-/// exists, and whether it went is the `Result`.
-pub async fn remove_item(client: &PlaidClient, access_token: &str) -> Result<(), PlaidError> {
-    src_plaid::remove_item(client, access_token).await?;
-
-    Ok(())
 }
