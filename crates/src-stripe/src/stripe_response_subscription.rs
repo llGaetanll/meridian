@@ -2,6 +2,8 @@
 
 use serde::Deserialize;
 
+use crate::StripeStatus;
+
 /// One subscription, cut down to what decides entitlement.
 #[derive(Debug, Clone, Deserialize)]
 pub struct StripeSubscription {
@@ -10,7 +12,8 @@ pub struct StripeSubscription {
 
     /// `incomplete`, `active`, `past_due`, `canceled`, and the rest. A string
     /// rather than an enum: Stripe adds statuses, and a new one arriving must
-    /// not be a parse failure in the middle of a webhook.
+    /// not be a parse failure in the middle of a webhook. What one means is
+    /// [`StripeSubscription::status`].
     pub status: String,
 
     /// `cus_…`, so a subscription read on its own still says whose it is.
@@ -81,6 +84,11 @@ impl StripeSubscription {
         self.items.data.first().map(|item| item.current_period_end)
     }
 
+    /// What Stripe's word for this subscription means.
+    pub fn status(&self) -> StripeStatus {
+        StripeStatus::from_name(&self.status)
+    }
+
     /// Whether this status is one that stops being worth anything at once,
     /// whatever period it reports.
     ///
@@ -100,7 +108,10 @@ impl StripeSubscription {
     /// takes the app away from a paying customer mid-month over a card that a
     /// smart retry fixes an hour later.
     fn status_ends_it(&self) -> bool {
-        matches!(self.status.as_str(), "unpaid" | "incomplete_expired")
+        matches!(
+            self.status(),
+            StripeStatus::Unpaid | StripeStatus::IncompleteExpired
+        )
     }
 
     /// When this subscription stops being worth anything.

@@ -15,6 +15,7 @@ mod stripe_request_customer;
 mod stripe_request_subscription;
 mod stripe_response_customer;
 mod stripe_response_subscription;
+mod stripe_status;
 mod stripe_webhook;
 mod stripe_webhook_event;
 
@@ -33,6 +34,7 @@ pub use stripe_response_subscription::StripeInvoice;
 pub use stripe_response_subscription::StripeSubscription;
 pub use stripe_response_subscription::StripeSubscriptionItem;
 pub use stripe_response_subscription::StripeSubscriptionItems;
+pub use stripe_status::StripeStatus;
 pub use stripe_webhook::StripeSignature;
 pub use stripe_webhook::StripeSignatureError;
 pub use stripe_webhook::TOLERANCE_SECS;
