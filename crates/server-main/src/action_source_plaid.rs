@@ -1,13 +1,11 @@
 //! Something for Plaid to do.
 
-use crate::CallId;
-
 #[derive(Debug)]
 pub enum ActionSourcePlaid {
     /// Fetch the key a webhook says it was signed with.
     ///
     /// The one call an unauthenticated request can cause.
-    FetchWebhookKey { call_id: CallId, kid: String },
+    FetchWebhookKey { kid: String },
 
     /// Ask what one bank's accounts hold.
     ///
@@ -18,7 +16,6 @@ pub enum ActionSourcePlaid {
     /// put a bank credential in the event log. The same goes for the two
     /// below.
     FetchBalances {
-        call_id: CallId,
         item_id: String,
 
         /// Carries the clock, so the `synced_at` written against this bank is
@@ -36,7 +33,6 @@ pub enum ActionSourcePlaid {
     /// `cursor` is where to resume from, and losing it means re-fetching an
     /// entire history.
     SyncTransactions {
-        call_id: CallId,
         item_id: String,
         cursor: Option<String>,
     },
@@ -45,33 +41,26 @@ pub enum ActionSourcePlaid {
     ///
     /// The last call of a sync, and the one it can do without: Plaid derives
     /// the streams from transactions, so a bank attached seconds ago has none.
-    FetchRecurring { call_id: CallId, item_id: String },
+    FetchRecurring { item_id: String },
 
     /// Open a Link session and get the page that hosts it.
     ///
     /// A session nobody finishes costs nothing and expires on its own, so this
     /// is the one call in the flow that is free to repeat.
-    OpenLink {
-        call_id: CallId,
-        user_id: uuid::Uuid,
-    },
+    OpenLink { user_id: uuid::Uuid },
 
     /// Ask what became of every Link session this user has open.
     ///
     /// All of them in one action: fanning out to N calls is the runtime's
     /// business, and N actions would be N answers to a handler that can only
     /// send one.
-    PollLinks {
-        call_id: CallId,
-        link_tokens: Vec<String>,
-    },
+    PollLinks { link_tokens: Vec<String> },
 
     /// Trade a `public_token` for the permanent one.
     ///
     /// **The call that spends a Production Item slot**, and the only action in
     /// the server whose effect cannot be undone.
     ExchangePublicToken {
-        call_id: CallId,
         link_token: String,
         public_token: String,
     },
@@ -82,7 +71,6 @@ pub enum ActionSourcePlaid {
     /// is made, because by then the row it came from is on its way out — see
     /// `src_postgres::load_access_tokens`.
     RemoveItem {
-        call_id: CallId,
         item_id: String,
         access_token: String,
     },

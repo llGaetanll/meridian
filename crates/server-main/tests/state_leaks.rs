@@ -44,53 +44,53 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         // Plaid says a Link session finished with a token to exchange. Nothing
         // is believed until the key it names has been fetched.
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchWebhookKey { call_id: 1, .. } },
+        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
 
-        < Event::FromSourcePlaid { event: EventSourcePlaid::WebhookKeyLoaded { call_id: 1, kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::ExchangePublicToken { call_id: 2, .. } },
+        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
+        > Action::ToSourcePlaid { call_id: 2, action: ActionSourcePlaid::ExchangePublicToken { .. } },
 
         // The bank is written down. Nobody has asked what the session came
         // to yet, so the outcome waits for a route that will.
-        < Event::FromSourcePlaid { event: EventSourcePlaid::ItemLinked { call_id: 2, link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
-        > Action::ToStore { action: ActionStore::SaveItem { call_id: 3, .. } },
+        < Event::FromSourcePlaid { call_id: 2, event: EventSourcePlaid::ItemLinked { link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        > Action::ToStore { call_id: 3, action: ActionStore::SaveItem { .. } },
 
         // The write says whose bank it is, which is what the first sync is
         // started from — on a call nobody is parked on, so the webhook is
         // answered without waiting for it.
         < Event::FromStore { call_id: 3, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { call_id: 4, .. } },
+        > Action::ToSourcePlaid { call_id: 4, action: ActionSourcePlaid::FetchBalances { .. } },
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
 
         // The phone catches up and is told what its session came to, which is
         // also what collects the outcome the webhook left behind.
         < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 5, .. } },
+        > Action::ToStore { call_id: 5, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 5, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 6, .. } },
+        > Action::ToStore { call_id: 6, action: ActionStore::LoadPendingLinks { .. } },
 
         < Event::FromStore { call_id: 6, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        > Action::ToStore { action: ActionStore::CollectLink { call_id: 7, .. } },
+        > Action::ToStore { call_id: 7, action: ActionStore::CollectLink { .. } },
 
         < Event::FromStore { call_id: 7, event: EventStore::WriteSuccess },
         > @r#"ToRouter { request_id: 2, action: Linked { count: 1 } }"#,
 
         // The first sync runs its three calls out. Nobody is waiting on it,
         // so its last write is the end of it.
-        < Event::FromSourcePlaid { event: EventSourcePlaid::BalancesLoaded { call_id: 4, item_id: "item-9".to_string(), connection: Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![] } } },
-        > Action::ToStore { action: ActionStore::SaveAccounts { call_id: 8, .. } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::SyncTransactions { call_id: 9, .. } },
+        < Event::FromSourcePlaid { call_id: 4, event: EventSourcePlaid::BalancesLoaded { item_id: "item-9".to_string(), connection: Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![] } } },
+        > Action::ToStore { call_id: 8, action: ActionStore::SaveAccounts { .. } },
+        > Action::ToSourcePlaid { call_id: 9, action: ActionSourcePlaid::SyncTransactions { .. } },
 
         < Event::FromStore { call_id: 8, event: EventStore::WriteSuccess },
 
-        < Event::FromSourcePlaid { event: EventSourcePlaid::TransactionsLoaded { call_id: 9, item_id: "item-9".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: false } },
-        > Action::ToStore { action: ActionStore::SaveTransactions { call_id: 10, .. } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchRecurring { call_id: 11, .. } },
+        < Event::FromSourcePlaid { call_id: 9, event: EventSourcePlaid::TransactionsLoaded { item_id: "item-9".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: false } },
+        > Action::ToStore { call_id: 10, action: ActionStore::SaveTransactions { .. } },
+        > Action::ToSourcePlaid { call_id: 11, action: ActionSourcePlaid::FetchRecurring { .. } },
 
         < Event::FromStore { call_id: 10, event: EventStore::WriteSuccess },
 
-        < Event::FromSourcePlaid { event: EventSourcePlaid::RecurringLoaded { call_id: 11, item_id: "item-9".to_string(), streams: vec![] } },
-        > Action::ToStore { action: ActionStore::SaveStreams { call_id: 12, .. } },
+        < Event::FromSourcePlaid { call_id: 11, event: EventSourcePlaid::RecurringLoaded { item_id: "item-9".to_string(), streams: vec![] } },
+        > Action::ToStore { call_id: 12, action: ActionStore::SaveStreams { .. } },
 
         < Event::FromStore { call_id: 12, event: EventStore::WriteSuccess },
 
@@ -101,31 +101,31 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         // The launch after it. The bank was synced ten minutes ago, so this
         // one goes back to Plaid before it serves anything.
         < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 13, .. } },
+        > Action::ToStore { call_id: 13, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 13, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { action: ActionStore::LoadItems { call_id: 14, .. } },
+        > Action::ToStore { call_id: 14, action: ActionStore::LoadItems { .. } },
 
         < Event::FromStore { call_id: 14, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: Some("cursor-2".to_string()), synced_at: Some(T0), login_required: false }] } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { call_id: 15, .. } },
+        > Action::ToSourcePlaid { call_id: 15, action: ActionSourcePlaid::FetchBalances { .. } },
 
-        < Event::FromSourcePlaid { event: EventSourcePlaid::BalancesLoaded { call_id: 15, item_id: "item-9".to_string(), connection: Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: Timestamp::from_secs(T0.as_secs() + 600) }, accounts: vec![] } } },
-        > Action::ToStore { action: ActionStore::SaveAccounts { call_id: 16, .. } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::SyncTransactions { call_id: 17, .. } },
+        < Event::FromSourcePlaid { call_id: 15, event: EventSourcePlaid::BalancesLoaded { item_id: "item-9".to_string(), connection: Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: Timestamp::from_secs(T0.as_secs() + 600) }, accounts: vec![] } } },
+        > Action::ToStore { call_id: 16, action: ActionStore::SaveAccounts { .. } },
+        > Action::ToSourcePlaid { call_id: 17, action: ActionSourcePlaid::SyncTransactions { .. } },
 
         < Event::FromStore { call_id: 16, event: EventStore::WriteSuccess },
 
-        < Event::FromSourcePlaid { event: EventSourcePlaid::TransactionsLoaded { call_id: 17, item_id: "item-9".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-3".to_string(), has_more: false } },
-        > Action::ToStore { action: ActionStore::SaveTransactions { call_id: 18, .. } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchRecurring { call_id: 19, .. } },
+        < Event::FromSourcePlaid { call_id: 17, event: EventSourcePlaid::TransactionsLoaded { item_id: "item-9".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-3".to_string(), has_more: false } },
+        > Action::ToStore { call_id: 18, action: ActionStore::SaveTransactions { .. } },
+        > Action::ToSourcePlaid { call_id: 19, action: ActionSourcePlaid::FetchRecurring { .. } },
 
         < Event::FromStore { call_id: 18, event: EventStore::WriteSuccess },
 
-        < Event::FromSourcePlaid { event: EventSourcePlaid::RecurringLoaded { call_id: 19, item_id: "item-9".to_string(), streams: vec![] } },
-        > Action::ToStore { action: ActionStore::SaveStreams { call_id: 20, .. } },
+        < Event::FromSourcePlaid { call_id: 19, event: EventSourcePlaid::RecurringLoaded { item_id: "item-9".to_string(), streams: vec![] } },
+        > Action::ToStore { call_id: 20, action: ActionStore::SaveStreams { .. } },
 
         < Event::FromStore { call_id: 20, event: EventStore::WriteSuccess },
-        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 21, .. } },
+        > Action::ToStore { call_id: 21, action: ActionStore::LoadSnapshot { .. } },
 
         < Event::FromStore { call_id: 21, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { request_id: 3, action: ActionRouter::Serve { .. } },
@@ -166,7 +166,7 @@ fn a_call_that_is_given_up_on_takes_what_it_was_doing_with_it() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         // The store says nothing at all. Time passes and the route is
         // answered with what a machine that cannot read has to say.
@@ -194,10 +194,10 @@ fn a_route_parked_on_a_session_nobody_reports_on_is_let_go_of_whole() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
 
         // Nothing recorded, so this parks: no call is out, and no answer.
         < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
@@ -225,19 +225,19 @@ fn starting_a_subscription_leaves_nothing_behind() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { action: ActionStore::LoadUser { call_id: 2, .. } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadUser { .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
-        > Action::ToSourceStripe { action: ActionSourceStripe::CreateCustomer { call_id: 3, .. } },
+        > Action::ToSourceStripe { call_id: 3, action: ActionSourceStripe::CreateCustomer { .. } },
 
-        < Event::FromSourceStripe { event: EventSourceStripe::CustomerCreated { call_id: 3, user_id: uuid::Uuid::nil(), customer_id: "cus_1".to_string() } },
-        > Action::ToSourceStripe { action: ActionSourceStripe::CreateSubscription { call_id: 4, .. } },
+        < Event::FromSourceStripe { call_id: 3, event: EventSourceStripe::CustomerCreated { user_id: uuid::Uuid::nil(), customer_id: "cus_1".to_string() } },
+        > Action::ToSourceStripe { call_id: 4, action: ActionSourceStripe::CreateSubscription { .. } },
 
-        < Event::FromSourceStripe { event: EventSourceStripe::SubscriptionCreated { call_id: 4, user_id: uuid::Uuid::nil(), subscription_id: "sub_1".to_string(), status: "incomplete".to_string(), client_secret: Some("pi_1_secret".to_string()) } },
-        > Action::ToStore { action: ActionStore::SaveCustomer { call_id: 5, .. } },
+        < Event::FromSourceStripe { call_id: 4, event: EventSourceStripe::SubscriptionCreated { user_id: uuid::Uuid::nil(), subscription_id: "sub_1".to_string(), status: "incomplete".to_string(), client_secret: Some("pi_1_secret".to_string()) } },
+        > Action::ToStore { call_id: 5, action: ActionStore::SaveCustomer { .. } },
 
         < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
         > @r#"ToRouter { request_id: 1, action: Subscribing { client_secret: "pi_1_secret" } }"#,
@@ -260,15 +260,15 @@ fn a_stripe_that_refuses_leaves_nothing_behind() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { action: ActionStore::LoadUser { call_id: 2, .. } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadUser { .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
-        > Action::ToSourceStripe { action: ActionSourceStripe::CreateCustomer { call_id: 3, .. } },
+        > Action::ToSourceStripe { call_id: 3, action: ActionSourceStripe::CreateCustomer { .. } },
 
-        < Event::FromSourceStripe { event: EventSourceStripe::StripeFailed { call_id: 3, user_id: uuid::Uuid::nil(), message: "stripe said no".to_string() } },
+        < Event::FromSourceStripe { call_id: 3, event: EventSourceStripe::StripeFailed { user_id: uuid::Uuid::nil(), message: "stripe said no".to_string() } },
         > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 62) } },
@@ -295,19 +295,19 @@ fn leaving_leaves_nothing_behind() {
         < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(uuid::Uuid::nil(), "active", Some(fixtures::PAID_UNTIL))] } },
 
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::DeleteRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToSourceStripe { action: ActionSourceStripe::CancelSubscription { call_id: 2, .. } },
+        > Action::ToSourceStripe { call_id: 2, action: ActionSourceStripe::CancelSubscription { .. } },
 
-        < Event::FromSourceStripe { event: EventSourceStripe::SubscriptionCancelled { call_id: 2, user_id: uuid::Uuid::nil(), good_until: Some(1818633600) } },
-        > Action::ToStore { action: ActionStore::LoadAccessTokens { call_id: 3, .. } },
+        < Event::FromSourceStripe { call_id: 2, event: EventSourceStripe::SubscriptionCancelled { user_id: uuid::Uuid::nil(), good_until: Some(1818633600) } },
+        > Action::ToStore { call_id: 3, action: ActionStore::LoadAccessTokens { .. } },
 
         < Event::FromStore { call_id: 3, event: EventStore::AccessTokensLoaded { tokens: vec![("item-1".to_string(), "token-1".to_string())] } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::RemoveItem { call_id: 4, .. } },
+        > Action::ToSourcePlaid { call_id: 4, action: ActionSourcePlaid::RemoveItem { .. } },
 
-        < Event::FromSourcePlaid { event: EventSourcePlaid::ItemRemoved { call_id: 4, item_id: "item-1".to_string(), removed: true } },
-        > Action::ToStore { action: ActionStore::DeleteUser { call_id: 5, .. } },
+        < Event::FromSourcePlaid { call_id: 4, event: EventSourcePlaid::ItemRemoved { item_id: "item-1".to_string(), removed: true } },
+        > Action::ToStore { call_id: 5, action: ActionStore::DeleteUser { .. } },
 
         < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
         > @r#"ToRouter { request_id: 1, action: Deleted }"#,

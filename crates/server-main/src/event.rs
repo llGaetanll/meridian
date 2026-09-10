@@ -26,10 +26,23 @@ pub enum Event {
     },
 
     /// Plaid answered, or failed to.
-    FromSourcePlaid { event: EventSourcePlaid },
+    ///
+    /// The call rides here rather than on each
+    /// [`EventSourcePlaid`](crate::EventSourcePlaid) variant, because every
+    /// answer is the answer to one.
+    FromSourcePlaid {
+        call_id: CallId,
+        event: EventSourcePlaid,
+    },
 
     /// Stripe answered, or failed to.
-    FromSourceStripe { event: EventSourceStripe },
+    ///
+    /// The call rides here for the reason it does on
+    /// [`FromSourcePlaid`](Event::FromSourcePlaid).
+    FromSourceStripe {
+        call_id: CallId,
+        event: EventSourceStripe,
+    },
 
     /// A stream the server writes to changed, without being asked anything.
     FromSocket { event: EventSocket },

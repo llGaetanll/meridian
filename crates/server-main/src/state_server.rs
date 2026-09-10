@@ -167,8 +167,12 @@ impl StateServer {
                 client,
                 event,
             } => self.handle_event_router(*request_id, client, event, actions),
-            Event::FromSourcePlaid { event } => self.handle_event_source(event, actions),
-            Event::FromSourceStripe { event } => self.handle_event_stripe(event, actions),
+            Event::FromSourcePlaid { call_id, event } => {
+                self.handle_event_source(*call_id, event, actions)
+            }
+            Event::FromSourceStripe { call_id, event } => {
+                self.handle_event_stripe(*call_id, event, actions)
+            }
             Event::FromSocket { event } => self.handle_event_socket(event),
             Event::FromStore { call_id, event } => {
                 self.handle_event_store(*call_id, event, actions)
@@ -200,8 +204,8 @@ impl StateServer {
             );
 
             actions.push(Action::ToStore {
+                call_id: self.signup.calling(request_id, self.now),
                 action: ActionStore::LoadSession {
-                    call_id: self.signup.calling(request_id, self.now),
                     token_sha256: token_sha256.to_vec(),
                     now: self.now,
                 },
@@ -341,8 +345,8 @@ impl StateServer {
         let call_id = self.signup.calling(request_id, self.now);
 
         actions.push(Action::ToStore {
+            call_id,
             action: ActionStore::ApplySubscriptionEvent {
-                call_id,
                 subscription_id: subscription.id.clone(),
                 status: subscription.status.clone(),
                 // What the store keeps is the date entitlement is decided
@@ -442,10 +446,8 @@ impl StateServer {
                 );
 
                 actions.push(Action::ToStore {
-                    action: ActionStore::LoadItems {
-                        call_id: self.signup.calling(request_id, self.now),
-                        user_id,
-                    },
+                    call_id: self.signup.calling(request_id, self.now),
+                    action: ActionStore::LoadItems { user_id },
                 });
             }
 
@@ -463,10 +465,8 @@ impl StateServer {
                 );
 
                 actions.push(Action::ToStore {
-                    action: ActionStore::LoadUser {
-                        call_id: self.signup.calling(request_id, self.now),
-                        user_id,
-                    },
+                    call_id: self.signup.calling(request_id, self.now),
+                    action: ActionStore::LoadUser { user_id },
                 });
             }
 
@@ -539,8 +539,8 @@ impl StateServer {
             .waits_on(request_id, Pending::Deleting { user_id });
 
         actions.push(Action::ToSourceStripe {
+            call_id: self.signup.calling(request_id, self.now),
             action: ActionSourceStripe::CancelSubscription {
-                call_id: self.signup.calling(request_id, self.now),
                 user_id,
                 subscription_id,
                 now: self.now,
@@ -559,10 +559,8 @@ impl StateServer {
             .waits_on(request_id, Pending::DeletingReadingTokens { user_id });
 
         actions.push(Action::ToStore {
-            action: ActionStore::LoadAccessTokens {
-                call_id: self.signup.calling(request_id, self.now),
-                user_id,
-            },
+            call_id: self.signup.calling(request_id, self.now),
+            action: ActionStore::LoadAccessTokens { user_id },
         });
     }
 
@@ -590,8 +588,8 @@ impl StateServer {
 
         for (item_id, access_token) in tokens {
             actions.push(Action::ToSourcePlaid {
+                call_id: self.signup.calling(request_id, self.now),
                 action: ActionSourcePlaid::RemoveItem {
-                    call_id: self.signup.calling(request_id, self.now),
                     item_id: item_id.clone(),
                     access_token: access_token.clone(),
                 },
@@ -609,10 +607,8 @@ impl StateServer {
         self.billing.forget(user_id);
 
         actions.push(Action::ToStore {
-            action: ActionStore::DeleteUser {
-                call_id: self.signup.calling(request_id, self.now),
-                user_id,
-            },
+            call_id: self.signup.calling(request_id, self.now),
+            action: ActionStore::DeleteUser { user_id },
         });
 
         // Owed, so it goes out once the delete has actually landed: a client
@@ -836,8 +832,8 @@ impl StateServer {
         );
 
         actions.push(Action::ToSourcePlaid {
+            call_id: self.signup.calling(request_id, self.now),
             action: ActionSourcePlaid::FetchWebhookKey {
-                call_id: self.signup.calling(request_id, self.now),
                 kid: kid.to_string(),
             },
         });
@@ -900,10 +896,8 @@ impl StateServer {
                 );
 
                 actions.push(Action::ToStore {
-                    action: ActionStore::LoadItem {
-                        call_id: self.signup.calling(request_id, self.now),
-                        item_id,
-                    },
+                    call_id: self.signup.calling(request_id, self.now),
+                    action: ActionStore::LoadItem { item_id },
                 });
 
                 return;
@@ -1018,8 +1012,8 @@ impl StateServer {
                 // Written down, or the server comes back up and asks Plaid
                 // the same question it was just refused.
                 actions.push(Action::ToStore {
+                    call_id: self.signup.calling(request_id, self.now),
                     action: ActionStore::SaveStatus {
-                        call_id: self.signup.calling(request_id, self.now),
                         item_id: item_id.clone(),
                         error_code: required.then(|| ITEM_LOGIN_REQUIRED.to_string()),
                     },
@@ -1046,24 +1040,25 @@ impl StateServer {
     /// Two calls in a row make one subscription, so the first answer decides
     /// whether the second is still wanted — which is why they are two events
     /// and not one helper.
-    fn handle_event_stripe(&mut self, event: &EventSourceStripe, actions: &mut Vec<Action>) {
+    fn handle_event_stripe(
+        &mut self,
+        call_id: CallId,
+        event: &EventSourceStripe,
+        actions: &mut Vec<Action>,
+    ) {
         match event {
             EventSourceStripe::CustomerCreated {
-                call_id,
                 user_id,
                 customer_id,
             } => {
-                let Some(request_id) = self.signup.answered(*call_id) else {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
                 let Some(Pending::Subscribing { user_id: waiting }) =
                     self.signup.resumed(request_id)
                 else {
-                    tracing::error!(
-                        call_id,
-                        "a customer answered a request nobody is waiting on"
-                    );
+                    tracing::error!("a customer answered a request nobody is waiting on");
 
                     return;
                 };
@@ -1088,13 +1083,12 @@ impl StateServer {
             }
 
             EventSourceStripe::SubscriptionCreated {
-                call_id,
                 user_id,
                 subscription_id,
                 status,
                 client_secret,
             } => {
-                let Some(request_id) = self.signup.answered(*call_id) else {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
@@ -1103,10 +1097,7 @@ impl StateServer {
                     customer_id,
                 }) = self.signup.resumed(request_id)
                 else {
-                    tracing::error!(
-                        call_id,
-                        "a subscription answered a request nobody is waiting on"
-                    );
+                    tracing::error!("a subscription answered a request nobody is waiting on");
 
                     return;
                 };
@@ -1158,20 +1149,16 @@ impl StateServer {
             }
 
             EventSourceStripe::SubscriptionCancelled {
-                call_id,
                 user_id,
                 good_until,
             } => {
-                let Some(request_id) = self.signup.answered(*call_id) else {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
                 let Some(Pending::Deleting { user_id: waiting }) = self.signup.resumed(request_id)
                 else {
-                    tracing::error!(
-                        call_id,
-                        "a cancellation answered a request nobody is waiting on"
-                    );
+                    tracing::error!("a cancellation answered a request nobody is waiting on");
 
                     return;
                 };
@@ -1190,12 +1177,8 @@ impl StateServer {
                 self.read_tokens_to_delete(request_id, *user_id, actions);
             }
 
-            EventSourceStripe::StripeFailed {
-                call_id,
-                user_id,
-                message,
-            } => {
-                let Some(request_id) = self.signup.answered(*call_id) else {
+            EventSourceStripe::StripeFailed { user_id, message } => {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
@@ -1211,29 +1194,26 @@ impl StateServer {
         }
     }
 
-    fn handle_event_source(&mut self, event: &EventSourcePlaid, actions: &mut Vec<Action>) {
+    fn handle_event_source(
+        &mut self,
+        call_id: CallId,
+        event: &EventSourcePlaid,
+        actions: &mut Vec<Action>,
+    ) {
         match event {
             // One bank stopped, or did not. Either way it is no longer
             // outstanding: a removal that failed is logged and does not hold
             // the deletion up, because the alternative is an account nobody
             // can delete over a bank they cannot see.
-            EventSourcePlaid::ItemRemoved {
-                call_id,
-                item_id,
-                removed,
-            } => {
-                let Some(request_id) = self.signup.answered(*call_id) else {
+            EventSourcePlaid::ItemRemoved { item_id, removed } => {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
                 let Some(Pending::DeletingBanks { user_id, left }) =
                     self.signup.resumed(request_id)
                 else {
-                    tracing::error!(
-                        call_id,
-                        item_id,
-                        "a removal answered a request nobody is waiting on"
-                    );
+                    tracing::error!(item_id, "a removal answered a request nobody is waiting on");
 
                     return;
                 };
@@ -1258,7 +1238,7 @@ impl StateServer {
                 self.delete_the_rows(request_id, user_id, actions);
             }
 
-            EventSourcePlaid::WebhookKeyLoaded { call_id, kid, key } => {
+            EventSourcePlaid::WebhookKeyLoaded { kid, key } => {
                 // A miss that is not written down is a call to Plaid for
                 // every POST naming an id nobody has.
                 self.keys.insert(
@@ -1269,7 +1249,7 @@ impl StateServer {
                     },
                 );
 
-                let Some(request_id) = self.signup.answered(*call_id) else {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
@@ -1299,7 +1279,6 @@ impl StateServer {
             }
 
             EventSourcePlaid::BalancesLoaded {
-                call_id,
                 item_id,
                 connection,
             } => {
@@ -1317,8 +1296,8 @@ impl StateServer {
                 // of the rest of the sync. Nothing here holds a ledger to
                 // assign over, the trap `docs/PLAID.md` describes.
                 actions.push(Action::ToStore {
+                    call_id: self.signup.alongside(call_id, self.now),
                     action: ActionStore::SaveAccounts {
-                        call_id: self.signup.alongside(*call_id, self.now),
                         item_id: item_id.clone(),
                         institution_name: Some(connection.name.clone()),
                         accounts: connection.accounts.clone(),
@@ -1328,14 +1307,14 @@ impl StateServer {
                 // A sync nothing is recording is one that was given up on, so
                 // there is nothing to ask Plaid next.
                 let Some(cursor) = self.syncing.get(item_id).map(|s| s.cursor.clone()) else {
-                    self.signup.landed(*call_id, self.now, actions);
+                    self.signup.landed(call_id, self.now, actions);
 
                     return;
                 };
 
                 actions.push(Action::ToSourcePlaid {
+                    call_id: self.signup.passing(call_id, self.now),
                     action: ActionSourcePlaid::SyncTransactions {
-                        call_id: self.signup.passing(*call_id, self.now),
                         item_id: item_id.clone(),
                         cursor,
                     },
@@ -1344,7 +1323,6 @@ impl StateServer {
 
             // The lists are a **diff** handed straight to the store.
             EventSourcePlaid::TransactionsLoaded {
-                call_id,
                 item_id,
                 added,
                 modified,
@@ -1384,8 +1362,8 @@ impl StateServer {
                 }
 
                 actions.push(Action::ToStore {
+                    call_id: self.signup.alongside(call_id, self.now),
                     action: ActionStore::SaveTransactions {
-                        call_id: self.signup.alongside(*call_id, self.now),
                         item_id: item_id.clone(),
                         added: added.clone(),
                         modified: modified.clone(),
@@ -1396,32 +1374,24 @@ impl StateServer {
 
                 // A sync nothing is recording is one that was given up on.
                 let Some(cursor) = self.syncing.get(item_id).map(|s| s.cursor.clone()) else {
-                    self.signup.landed(*call_id, self.now, actions);
+                    self.signup.landed(call_id, self.now, actions);
 
                     return;
                 };
 
-                let call_id = self.signup.passing(*call_id, self.now);
+                let call_id = self.signup.passing(call_id, self.now);
                 let item_id = item_id.clone();
 
                 let action = if another_page {
-                    ActionSourcePlaid::SyncTransactions {
-                        call_id,
-                        item_id,
-                        cursor,
-                    }
+                    ActionSourcePlaid::SyncTransactions { item_id, cursor }
                 } else {
-                    ActionSourcePlaid::FetchRecurring { call_id, item_id }
+                    ActionSourcePlaid::FetchRecurring { item_id }
                 };
 
-                actions.push(Action::ToSourcePlaid { action });
+                actions.push(Action::ToSourcePlaid { call_id, action });
             }
 
-            EventSourcePlaid::RecurringLoaded {
-                call_id,
-                item_id,
-                streams,
-            } => {
+            EventSourcePlaid::RecurringLoaded { item_id, streams } => {
                 if let Some(syncing) = self.syncing.get_mut(item_id) {
                     syncing.streams = streams.len().try_into().unwrap_or(u32::MAX);
                 }
@@ -1431,8 +1401,8 @@ impl StateServer {
                 // The wait passes from the last call to the last write, so
                 // the route is answered once the rows are there.
                 actions.push(Action::ToStore {
+                    call_id: self.signup.passing(call_id, self.now),
                     action: ActionStore::SaveStreams {
-                        call_id: self.signup.passing(*call_id, self.now),
                         item_id: item_id.clone(),
                         streams: streams.clone(),
                     },
@@ -1440,12 +1410,11 @@ impl StateServer {
             }
 
             EventSourcePlaid::LinkOpened {
-                call_id,
                 user_id,
                 link_token,
                 hosted_link_url,
             } => {
-                let Some(request_id) = self.signup.answered(*call_id) else {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
@@ -1466,8 +1435,8 @@ impl StateServer {
                 );
             }
 
-            EventSourcePlaid::LinksPolled { call_id, polls } => {
-                let Some(request_id) = self.signup.answered(*call_id) else {
+            EventSourcePlaid::LinksPolled { polls } => {
+                let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
@@ -1486,24 +1455,19 @@ impl StateServer {
             // exchange outlives the request that asked for it, and what it
             // says has to be acted on either way.
             EventSourcePlaid::ItemLinked {
-                call_id,
                 link_token,
                 item_id,
             } => {
                 self.signup
-                    .item_linked(*call_id, link_token, item_id, self.now, actions);
+                    .item_linked(call_id, link_token, item_id, self.now, actions);
             }
 
-            EventSourcePlaid::LinkAbandoned {
-                call_id,
-                link_token,
-            } => {
+            EventSourcePlaid::LinkAbandoned { link_token } => {
                 self.signup
-                    .link_abandoned(*call_id, link_token, self.now, actions);
+                    .link_abandoned(call_id, link_token, self.now, actions);
             }
 
             EventSourcePlaid::PlaidFailed {
-                call_id,
                 item_id,
                 stage,
                 fault,
@@ -1519,7 +1483,7 @@ impl StateServer {
                     );
 
                     self.sync_finished(item_id, actions);
-                    self.signup.landed(*call_id, self.now, actions);
+                    self.signup.landed(call_id, self.now, actions);
 
                     return;
                 }
@@ -1532,8 +1496,8 @@ impl StateServer {
                     });
 
                     actions.push(Action::ToStore {
+                        call_id: self.signup.passing(call_id, self.now),
                         action: ActionStore::SaveStatus {
-                            call_id: self.signup.passing(*call_id, self.now),
                             item_id: item_id.clone(),
                             error_code: Some(fault.as_str().to_string()),
                         },
@@ -1543,7 +1507,7 @@ impl StateServer {
                 }
 
                 // Nothing to write, so the route is not left hanging.
-                self.signup.landed(*call_id, self.now, actions);
+                self.signup.landed(call_id, self.now, actions);
             }
         }
     }
@@ -1899,8 +1863,8 @@ impl StateServer {
         self.push_status(user_id, actions);
 
         actions.push(Action::ToSourcePlaid {
+            call_id,
             action: ActionSourcePlaid::FetchBalances {
-                call_id,
                 item_id,
                 now: self.now,
             },

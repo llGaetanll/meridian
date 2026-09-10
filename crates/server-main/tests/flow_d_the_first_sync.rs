@@ -49,13 +49,13 @@ fn a_first_sync_is_pushed_from_the_fetch_to_the_totals() {
         // C's last turn: the bank is written down, and the write says whose
         // it is. That is what D1 starts from, on a call nobody is parked on.
         < Event::FromStore { call_id: 99, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: AL, cursor: None, synced_at: None, login_required: false }) } },
-        > @r#"ToSourcePlaid { action: FetchBalances { call_id: 1, item_id: "item-9", now: Timestamp { t: 1787097600 } } }"#,
+        > @r#"ToSourcePlaid { call_id: 1, action: FetchBalances { item_id: "item-9", now: Timestamp { t: 1787097600 } } }"#,
 
         // 3 and 4a. The stream opens on the news that a bank landed. Nothing
         // has been reported yet, so the counts are zero — but `finished` is
         // what the screen reads, and it says no.
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncWatchRequested { conn_id: 1, token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 2, .. } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::SessionResolved { user_id: Some(AL) } },
         > @r#"ToRouter { request_id: 1, action: Watching { conn_id: 1, status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: false } } }"#,
@@ -64,23 +64,23 @@ fn a_first_sync_is_pushed_from_the_fetch_to_the_totals() {
         // exists — it is in neither the Link session nor the exchange. Nobody
         // asked for this and it goes out anyway, which is the whole point.
         // 5 follows on the same turn: what to ask next is the machine's.
-        < Event::FromSourcePlaid { event: EventSourcePlaid::BalancesLoaded { call_id: 1, item_id: "item-9".to_string(), connection: Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![Account { id: "acct-1".to_string(), name: "Checking".to_string(), subtype: None, mask: None, balance: 0.0, available: None, limit: None, apy: None, group: api_ledger::AccountGroup::Depository }, Account { id: "acct-2".to_string(), name: "Savings".to_string(), subtype: None, mask: None, balance: 0.0, available: None, limit: None, apy: None, group: api_ledger::AccountGroup::Depository }] } } },
+        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::BalancesLoaded { item_id: "item-9".to_string(), connection: Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![Account { id: "acct-1".to_string(), name: "Checking".to_string(), subtype: None, mask: None, balance: 0.0, available: None, limit: None, apy: None, group: api_ledger::AccountGroup::Depository }, Account { id: "acct-2".to_string(), name: "Savings".to_string(), subtype: None, mask: None, balance: 0.0, available: None, limit: None, apy: None, group: api_ledger::AccountGroup::Depository }] } } },
         > @r#"ToSocket { action: Send { conn_id: 1, status: WireSyncStatus { stage: "transactions", institution: Some("First Platypus Bank"), accounts: 2, transactions: 0, streams: 0, finished: false } } }"#,
-        > Action::ToStore { action: ActionStore::SaveAccounts { .. } },
-        > @r#"ToSourcePlaid { action: SyncTransactions { call_id: 4, item_id: "item-9", cursor: None } }"#,
+        > Action::ToStore { action: ActionStore::SaveAccounts { .. } , ..},
+        > @r#"ToSourcePlaid { call_id: 4, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
 
         // 6a. One page, and it is the last one, so 7 goes out behind it. The
         // diff goes to the store — the machine holds no ledger to apply it to.
-        < Event::FromSourcePlaid { event: EventSourcePlaid::TransactionsLoaded { call_id: 4, item_id: "item-9".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: false } },
+        < Event::FromSourcePlaid { call_id: 4, event: EventSourcePlaid::TransactionsLoaded { item_id: "item-9".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: false } },
         > @r#"ToSocket { action: Send { conn_id: 1, status: WireSyncStatus { stage: "streams", institution: Some("First Platypus Bank"), accounts: 2, transactions: 1, streams: 0, finished: false } } }"#,
-        > Action::ToStore { action: ActionStore::SaveTransactions { .. } },
-        > @r#"ToSourcePlaid { action: FetchRecurring { call_id: 6, item_id: "item-9" } }"#,
+        > Action::ToStore { action: ActionStore::SaveTransactions { .. } , ..},
+        > @r#"ToSourcePlaid { call_id: 6, action: FetchRecurring { item_id: "item-9" } }"#,
 
         // 8a and 10. The last answer, and the totals reach the screen that
         // says "You're set." on the same turn.
-        < Event::FromSourcePlaid { event: EventSourcePlaid::RecurringLoaded { call_id: 6, item_id: "item-9".to_string(), streams: vec![] } },
+        < Event::FromSourcePlaid { call_id: 6, event: EventSourcePlaid::RecurringLoaded { item_id: "item-9".to_string(), streams: vec![] } },
         > @r#"ToSocket { action: Send { conn_id: 1, status: WireSyncStatus { stage: "streams", institution: Some("First Platypus Bank"), accounts: 2, transactions: 1, streams: 0, finished: true } } }"#,
-        > Action::ToStore { action: ActionStore::SaveStreams { .. } },
+        > Action::ToStore { action: ActionStore::SaveStreams { .. } , ..},
     );
 }
 
@@ -96,32 +96,32 @@ fn a_history_that_pages_is_asked_for_one_page_at_a_time() {
 
     eval!(&mut state,
         < Event::FromStore { call_id: 99, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: AL, cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { call_id: 1, .. } },
+        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchBalances { .. } },
 
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncWatchRequested { conn_id: 1, token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 2, .. } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::SessionResolved { user_id: Some(AL) } },
         > Action::ToRouter { action: ActionRouter::Watching { .. }, .. },
 
-        < Event::FromSourcePlaid { event: EventSourcePlaid::BalancesLoaded { call_id: 1, item_id: "item-9".to_string(), connection: Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![] } } },
+        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::BalancesLoaded { item_id: "item-9".to_string(), connection: Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![] } } },
         > Action::ToSocket { action: ActionSocket::Send { .. } },
-        > Action::ToStore { action: ActionStore::SaveAccounts { .. } },
-        > @r#"ToSourcePlaid { action: SyncTransactions { call_id: 4, item_id: "item-9", cursor: None } }"#,
+        > Action::ToStore { action: ActionStore::SaveAccounts { .. } , ..},
+        > @r#"ToSourcePlaid { call_id: 4, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
 
         // More behind it, so the page is written down and the next one asked
         // for from where this one stopped.
-        < Event::FromSourcePlaid { event: EventSourcePlaid::TransactionsLoaded { call_id: 4, item_id: "item-9".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: true } },
+        < Event::FromSourcePlaid { call_id: 4, event: EventSourcePlaid::TransactionsLoaded { item_id: "item-9".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: true } },
         > @r#"ToSocket { action: Send { conn_id: 1, status: WireSyncStatus { stage: "transactions", institution: Some("First Platypus Bank"), accounts: 0, transactions: 1, streams: 0, finished: false } } }"#,
-        > Action::ToStore { action: ActionStore::SaveTransactions { .. } },
-        > @r#"ToSourcePlaid { action: SyncTransactions { call_id: 6, item_id: "item-9", cursor: Some("cursor-2") } }"#,
+        > Action::ToStore { action: ActionStore::SaveTransactions { .. } , ..},
+        > @r#"ToSourcePlaid { call_id: 6, action: SyncTransactions { item_id: "item-9", cursor: Some("cursor-2") } }"#,
 
         // The last one. What the screen is told is both pages and not the
         // second, which is the count nobody else is holding.
-        < Event::FromSourcePlaid { event: EventSourcePlaid::TransactionsLoaded { call_id: 6, item_id: "item-9".to_string(), added: vec![Entry::from_tx("b".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-3".to_string(), has_more: false } },
+        < Event::FromSourcePlaid { call_id: 6, event: EventSourcePlaid::TransactionsLoaded { item_id: "item-9".to_string(), added: vec![Entry::from_tx("b".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-3".to_string(), has_more: false } },
         > @r#"ToSocket { action: Send { conn_id: 1, status: WireSyncStatus { stage: "streams", institution: Some("First Platypus Bank"), accounts: 0, transactions: 2, streams: 0, finished: false } } }"#,
-        > Action::ToStore { action: ActionStore::SaveTransactions { .. } },
-        > @r#"ToSourcePlaid { action: FetchRecurring { call_id: 8, item_id: "item-9" } }"#,
+        > Action::ToStore { action: ActionStore::SaveTransactions { .. } , ..},
+        > @r#"ToSourcePlaid { call_id: 8, action: FetchRecurring { item_id: "item-9" } }"#,
     );
 }
 
@@ -138,27 +138,27 @@ fn a_failed_recurring_call_leaves_the_sync_finished() {
 
     eval!(&mut state,
         < Event::FromStore { call_id: 99, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: AL, cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { call_id: 1, .. } },
+        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchBalances { .. } },
 
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncWatchRequested { conn_id: 1, token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 2, .. } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::SessionResolved { user_id: Some(AL) } },
         > Action::ToRouter { action: ActionRouter::Watching { .. }, .. },
 
-        < Event::FromSourcePlaid { event: EventSourcePlaid::BalancesLoaded { call_id: 1, item_id: "item-9".to_string(), connection: Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![] } } },
+        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::BalancesLoaded { item_id: "item-9".to_string(), connection: Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![] } } },
         > Action::ToSocket { action: ActionSocket::Send { .. } },
-        > Action::ToStore { action: ActionStore::SaveAccounts { .. } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::SyncTransactions { call_id: 4, .. } },
+        > Action::ToStore { action: ActionStore::SaveAccounts { .. } , ..},
+        > Action::ToSourcePlaid { call_id: 4, action: ActionSourcePlaid::SyncTransactions { .. } },
 
-        < Event::FromSourcePlaid { event: EventSourcePlaid::TransactionsLoaded { call_id: 4, item_id: "item-9".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: false } },
+        < Event::FromSourcePlaid { call_id: 4, event: EventSourcePlaid::TransactionsLoaded { item_id: "item-9".to_string(), added: vec![Entry::from_tx("a".to_string(), Tx::Transfer { ts: Timestamp::from_secs(1_787_000_000), pos: Position { asset: "USD".into(), qty: -1.0 } })], modified: vec![], removed: vec![], cursor: "cursor-2".to_string(), has_more: false } },
         > Action::ToSocket { action: ActionSocket::Send { .. } },
-        > Action::ToStore { action: ActionStore::SaveTransactions { .. } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchRecurring { call_id: 6, .. } },
+        > Action::ToStore { action: ActionStore::SaveTransactions { .. } , ..},
+        > Action::ToSourcePlaid { call_id: 6, action: ActionSourcePlaid::FetchRecurring { .. } },
 
         // Finished, with the transactions it did get. Nothing is written down
         // about it: there is no list of charges to write and nothing to fix.
-        < Event::FromSourcePlaid { event: EventSourcePlaid::PlaidFailed { call_id: 6, item_id: "item-9".to_string(), stage: server_wire::SyncStage::Streams, fault: src_plaid::PlaidFault::NotReady } },
+        < Event::FromSourcePlaid { call_id: 6, event: EventSourcePlaid::PlaidFailed { item_id: "item-9".to_string(), stage: server_wire::SyncStage::Streams, fault: src_plaid::PlaidFault::NotReady } },
         > @r#"ToSocket { action: Send { conn_id: 1, status: WireSyncStatus { stage: "streams", institution: Some("First Platypus Bank"), accounts: 0, transactions: 1, streams: 0, finished: true } } }"#,
     );
 }
@@ -172,7 +172,7 @@ fn a_user_with_nothing_syncing_is_told_so_and_kept() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncWatchRequested { conn_id: 1, token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(AL) } },
         > @r#"ToRouter { request_id: 1, action: Watching { conn_id: 1, status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
@@ -181,7 +181,7 @@ fn a_user_with_nothing_syncing_is_told_so_and_kept() {
         // without their asking again.
         < Event::FromStore { call_id: 98, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: AL, cursor: None, synced_at: None, login_required: false }) } },
         > @r#"ToSocket { action: Send { conn_id: 1, status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: false } } }"#,
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { .. } , ..},
     );
 }
 
@@ -198,18 +198,18 @@ fn a_sync_reaches_only_the_user_whose_bank_it_is() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncWatchRequested { conn_id: 1, token_sha256: hash_token("session-mia") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(mia) } },
         > @r#"ToRouter { request_id: 1, action: Watching { conn_id: 1, status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
 
         // Al's bank, Al's sync. Mia is watching and hears none of it.
         < Event::FromStore { call_id: 99, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: AL, cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { .. } , ..},
 
-        < Event::FromSourcePlaid { event: EventSourcePlaid::BalancesLoaded { call_id: 1, item_id: "item-9".to_string(), connection: Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![] } } },
-        > Action::ToStore { action: ActionStore::SaveAccounts { .. } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::SyncTransactions { .. } },
+        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::BalancesLoaded { item_id: "item-9".to_string(), connection: Connection { id: "item-9".to_string(), name: "First Platypus Bank".to_string(), initials: "FP".to_string(), status: api_ledger::ConnectionStatus::Ok { synced_at: T0 }, accounts: vec![] } } },
+        > Action::ToStore { action: ActionStore::SaveAccounts { .. } , ..},
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::SyncTransactions { .. } , ..},
     );
 }
 
@@ -222,15 +222,15 @@ fn a_failed_sync_stops_being_something_to_watch() {
 
     eval!(&mut state,
         < Event::FromStore { call_id: 99, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: AL, cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { .. } , ..},
 
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncWatchRequested { conn_id: 1, token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 2, .. } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::SessionResolved { user_id: Some(AL) } },
         > @r#"ToRouter { request_id: 1, action: Watching { conn_id: 1, status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: false } } }"#,
 
-        < Event::FromSourcePlaid { event: EventSourcePlaid::PlaidFailed { call_id: 1, item_id: "item-9".to_string(), stage: server_wire::SyncStage::Accounts, fault: src_plaid::PlaidFault::Failed("REQUEST_FAILED".to_string()) } },
+        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::PlaidFailed { item_id: "item-9".to_string(), stage: server_wire::SyncStage::Accounts, fault: src_plaid::PlaidFault::Failed("REQUEST_FAILED".to_string()) } },
         > @r#"ToSocket { action: Send { conn_id: 1, status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
     );
 }
@@ -244,7 +244,7 @@ fn a_closed_stream_stops_being_written_to() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncWatchRequested { conn_id: 1, token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(AL) } },
         > Action::ToRouter { action: ActionRouter::Watching { .. }, .. },
@@ -252,7 +252,7 @@ fn a_closed_stream_stops_being_written_to() {
         < Event::FromSocket { event: EventSocket::Closed { conn_id: 1 } },
 
         < Event::FromStore { call_id: 99, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: AL, cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { .. } },
+        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { .. } , ..},
     );
 }
 
@@ -293,7 +293,7 @@ fn an_eleventh_stream_is_refused() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncWatchRequested { conn_id: 11, token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 11, .. } },
+        > Action::ToStore { call_id: 11, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 11, event: EventStore::SessionResolved { user_id: Some(AL) } },
         > @r#"ToRouter { request_id: 11, action: TooMany }"#,
@@ -303,7 +303,7 @@ fn an_eleventh_stream_is_refused() {
         < Event::FromSocket { event: EventSocket::Closed { conn_id: 1 } },
 
         < Event::FromRouter { request_id: 12, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SyncWatchRequested { conn_id: 12, token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 12, .. } },
+        > Action::ToStore { call_id: 12, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 12, event: EventStore::SessionResolved { user_id: Some(AL) } },
         > Action::ToRouter { action: ActionRouter::Watching { conn_id: 12, .. }, .. },
@@ -318,9 +318,9 @@ fn an_expired_login_is_reported_and_written_down() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromSourcePlaid { event: EventSourcePlaid::PlaidFailed { call_id: 1, item_id: "item-1".to_string(), stage: server_wire::SyncStage::Accounts, fault: src_plaid::PlaidFault::LoginRequired } },
+        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::PlaidFailed { item_id: "item-1".to_string(), stage: server_wire::SyncStage::Accounts, fault: src_plaid::PlaidFault::LoginRequired } },
         > Action::ToProcess { action: ActionProcess::ReportLoginRequired },
-        > Action::ToStore { action: ActionStore::SaveStatus { .. } },
+        > Action::ToStore { action: ActionStore::SaveStatus { .. } , ..},
     );
 }
 
@@ -331,6 +331,6 @@ fn an_ordinary_failure_writes_nothing() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromSourcePlaid { event: EventSourcePlaid::PlaidFailed { call_id: 1, item_id: "item-1".to_string(), stage: server_wire::SyncStage::Accounts, fault: src_plaid::PlaidFault::Failed("INTERNAL_SERVER_ERROR".to_string()) } },
+        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::PlaidFailed { item_id: "item-1".to_string(), stage: server_wire::SyncStage::Accounts, fault: src_plaid::PlaidFault::Failed("INTERNAL_SERVER_ERROR".to_string()) } },
     );
 }

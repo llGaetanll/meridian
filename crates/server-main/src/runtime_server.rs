@@ -19,6 +19,7 @@ use crate::ActionSocket;
 use crate::ActionSourcePlaid;
 use crate::ActionSourceStripe;
 use crate::ActionStore;
+use crate::CallId;
 use crate::EmailSend;
 use crate::Event;
 use crate::EventProcess;
@@ -410,9 +411,15 @@ impl RuntimeServer {
     /// to do about an answer is the machine's job.
     async fn carry_out(&self, action: &Action) -> Vec<Event> {
         match action {
-            Action::ToSourcePlaid { action } => return self.perform_action_source(action).await,
-            Action::ToSourceStripe { action } => return self.perform_action_stripe(action).await,
-            Action::ToStore { action } => return self.perform_action_store(action).await,
+            Action::ToSourcePlaid { call_id, action } => {
+                return self.perform_action_source(*call_id, action).await;
+            }
+            Action::ToSourceStripe { call_id, action } => {
+                return self.perform_action_stripe(*call_id, action).await;
+            }
+            Action::ToStore { call_id, action } => {
+                return self.perform_action_store(*call_id, action).await;
+            }
             Action::ToEmail { action } => self.perform_action_email(action).await,
             Action::ToRouter { .. } | Action::ToSocket { .. } | Action::ToProcess { .. } => {
                 unreachable!("delivered rather than performed")
@@ -428,23 +435,21 @@ impl RuntimeServer {
     /// reports that as a failed call, and the machine decides what to tell the
     /// caller. Reading `self.stripe_client` to pick a different event would be
     /// behaviour no `eval!` test can reach.
-    async fn perform_action_stripe(&self, action: &ActionSourceStripe) -> Vec<Event> {
-        let (call_id, user_id) = match action {
-            ActionSourceStripe::CreateCustomer {
-                call_id, user_id, ..
-            }
-            | ActionSourceStripe::CreateSubscription {
-                call_id, user_id, ..
-            }
-            | ActionSourceStripe::CancelSubscription {
-                call_id, user_id, ..
-            } => (*call_id, *user_id),
+    async fn perform_action_stripe(
+        &self,
+        call_id: CallId,
+        action: &ActionSourceStripe,
+    ) -> Vec<Event> {
+        let user_id = match action {
+            ActionSourceStripe::CreateCustomer { user_id, .. }
+            | ActionSourceStripe::CreateSubscription { user_id, .. }
+            | ActionSourceStripe::CancelSubscription { user_id, .. } => *user_id,
         };
 
         let Some(client) = self.stripe_client.as_ref() else {
             return vec![Event::FromSourceStripe {
+                call_id,
                 event: EventSourceStripe::StripeFailed {
-                    call_id,
                     user_id,
                     message: "this server has no stripe configured".to_string(),
                 },
@@ -452,25 +457,20 @@ impl RuntimeServer {
         };
 
         let event = match action {
-            ActionSourceStripe::CreateCustomer {
-                call_id,
-                user_id,
-                email,
-            } => match runtime_stripe::create_customer(client, *user_id, email).await {
-                Ok(customer_id) => EventSourceStripe::CustomerCreated {
-                    call_id: *call_id,
-                    user_id: *user_id,
-                    customer_id,
-                },
-                Err(e) => EventSourceStripe::StripeFailed {
-                    call_id: *call_id,
-                    user_id: *user_id,
-                    message: e.to_string(),
-                },
-            },
+            ActionSourceStripe::CreateCustomer { user_id, email } => {
+                match runtime_stripe::create_customer(client, *user_id, email).await {
+                    Ok(customer_id) => EventSourceStripe::CustomerCreated {
+                        user_id: *user_id,
+                        customer_id,
+                    },
+                    Err(e) => EventSourceStripe::StripeFailed {
+                        user_id: *user_id,
+                        message: e.to_string(),
+                    },
+                }
+            }
 
             ActionSourceStripe::CancelSubscription {
-                call_id,
                 user_id,
                 subscription_id,
                 now,
@@ -482,38 +482,33 @@ impl RuntimeServer {
             .await
             {
                 Ok(good_until) => EventSourceStripe::SubscriptionCancelled {
-                    call_id: *call_id,
                     user_id: *user_id,
                     good_until: good_until.and_then(|secs| u64::try_from(secs).ok()),
                 },
                 Err(e) => EventSourceStripe::StripeFailed {
-                    call_id: *call_id,
                     user_id: *user_id,
                     message: e.to_string(),
                 },
             },
 
             ActionSourceStripe::CreateSubscription {
-                call_id,
                 user_id,
                 customer_id,
             } => match runtime_stripe::create_subscription(client, customer_id).await {
                 Ok(subscription) => EventSourceStripe::SubscriptionCreated {
-                    call_id: *call_id,
                     user_id: *user_id,
                     subscription_id: subscription.id,
                     status: subscription.status,
                     client_secret: subscription.client_secret,
                 },
                 Err(e) => EventSourceStripe::StripeFailed {
-                    call_id: *call_id,
                     user_id: *user_id,
                     message: e.to_string(),
                 },
             },
         };
 
-        vec![Event::FromSourceStripe { event }]
+        vec![Event::FromSourceStripe { call_id, event }]
     }
 
     /// Get a sign-in code to a person, or say where it went instead.
@@ -549,52 +544,45 @@ impl RuntimeServer {
     }
 
     /// Everything Plaid is asked for.
-    async fn perform_action_source(&self, action: &ActionSourcePlaid) -> Vec<Event> {
+    async fn perform_action_source(
+        &self,
+        call_id: CallId,
+        action: &ActionSourcePlaid,
+    ) -> Vec<Event> {
         match action {
-            ActionSourcePlaid::FetchBalances {
-                call_id,
-                item_id,
-                now,
-            } => self.fetch_balances(*call_id, item_id, *now).await,
+            ActionSourcePlaid::FetchBalances { item_id, now } => {
+                self.fetch_balances(call_id, item_id, *now).await
+            }
 
-            ActionSourcePlaid::SyncTransactions {
-                call_id,
-                item_id,
-                cursor,
-            } => {
-                self.sync_transactions(*call_id, item_id, cursor.clone())
+            ActionSourcePlaid::SyncTransactions { item_id, cursor } => {
+                self.sync_transactions(call_id, item_id, cursor.clone())
                     .await
             }
 
-            ActionSourcePlaid::FetchRecurring { call_id, item_id } => {
-                self.fetch_recurring(*call_id, item_id).await
+            ActionSourcePlaid::FetchRecurring { item_id } => {
+                self.fetch_recurring(call_id, item_id).await
             }
 
             ActionSourcePlaid::RemoveItem {
-                call_id,
                 item_id,
                 access_token,
-            } => self.remove_item(*call_id, item_id, access_token).await,
+            } => self.remove_item(call_id, item_id, access_token).await,
 
-            ActionSourcePlaid::FetchWebhookKey { call_id, kid } => {
-                self.fetch_webhook_key(*call_id, kid).await
+            ActionSourcePlaid::FetchWebhookKey { kid } => {
+                self.fetch_webhook_key(call_id, kid).await
             }
 
-            ActionSourcePlaid::OpenLink { call_id, user_id } => {
-                self.open_link(*call_id, *user_id).await
-            }
+            ActionSourcePlaid::OpenLink { user_id } => self.open_link(call_id, *user_id).await,
 
-            ActionSourcePlaid::PollLinks {
-                call_id,
-                link_tokens,
-            } => self.poll_links(*call_id, link_tokens).await,
+            ActionSourcePlaid::PollLinks { link_tokens } => {
+                self.poll_links(call_id, link_tokens).await
+            }
 
             ActionSourcePlaid::ExchangePublicToken {
-                call_id,
                 link_token,
                 public_token,
             } => {
-                self.exchange_public_token(*call_id, link_token, public_token)
+                self.exchange_public_token(call_id, link_token, public_token)
                     .await
             }
         }
@@ -604,7 +592,7 @@ impl RuntimeServer {
     ///
     /// A key that will not fetch is reported as absent: remembering that keeps
     /// an invented `kid` from costing a call every time it is sent.
-    async fn fetch_webhook_key(&self, call_id: crate::CallId, kid: &str) -> Vec<Event> {
+    async fn fetch_webhook_key(&self, call_id: CallId, kid: &str) -> Vec<Event> {
         let key = match runtime_plaid::webhook_key(&self.plaid_client, kid).await {
             Ok(key) => Some(key),
 
@@ -616,8 +604,8 @@ impl RuntimeServer {
         };
 
         vec![Event::FromSourcePlaid {
+            call_id,
             event: EventSourcePlaid::WebhookKeyLoaded {
-                call_id,
                 kid: kid.to_string(),
                 key,
             },
@@ -625,7 +613,7 @@ impl RuntimeServer {
     }
 
     /// Open a Link session and report the page that hosts it.
-    async fn open_link(&self, call_id: crate::CallId, user_id: Uuid) -> Vec<Event> {
+    async fn open_link(&self, call_id: CallId, user_id: Uuid) -> Vec<Event> {
         let event = match runtime_plaid::open_link(
             &self.plaid_client,
             &user_id.to_string(),
@@ -635,7 +623,6 @@ impl RuntimeServer {
         .await
         {
             Ok((link_token, Some(hosted_link_url))) => EventSourcePlaid::LinkOpened {
-                call_id,
                 user_id,
                 link_token,
                 hosted_link_url,
@@ -646,28 +633,24 @@ impl RuntimeServer {
             Ok((link_token, None)) => {
                 tracing::error!("plaid answered a link token with no hosted url");
 
-                EventSourcePlaid::LinkAbandoned {
-                    call_id,
-                    link_token,
-                }
+                EventSourcePlaid::LinkAbandoned { link_token }
             }
 
             Err(e) => {
                 tracing::warn!(error = %e, "could not open a link session");
 
                 EventSourcePlaid::LinkAbandoned {
-                    call_id,
                     link_token: String::new(),
                 }
             }
         };
 
-        vec![Event::FromSourcePlaid { event }]
+        vec![Event::FromSourcePlaid { call_id, event }]
     }
 
     /// Ask what became of every Link session the machine named: one call each,
     /// and one event for all of them.
-    async fn poll_links(&self, call_id: crate::CallId, link_tokens: &[String]) -> Vec<Event> {
+    async fn poll_links(&self, call_id: CallId, link_tokens: &[String]) -> Vec<Event> {
         let mut polls = Vec::with_capacity(link_tokens.len());
 
         for link_token in link_tokens {
@@ -695,7 +678,8 @@ impl RuntimeServer {
         }
 
         vec![Event::FromSourcePlaid {
-            event: EventSourcePlaid::LinksPolled { call_id, polls },
+            call_id,
+            event: EventSourcePlaid::LinksPolled { polls },
         }]
     }
 
@@ -710,7 +694,7 @@ impl RuntimeServer {
     /// carrying one would put a bank credential in the log.
     async fn exchange_public_token(
         &self,
-        call_id: crate::CallId,
+        call_id: CallId,
         link_token: &str,
         public_token: &str,
     ) -> Vec<Event> {
@@ -719,7 +703,6 @@ impl RuntimeServer {
                 self.write_tokens().insert(item_id.clone(), access_token);
 
                 EventSourcePlaid::ItemLinked {
-                    call_id,
                     link_token: link_token.to_string(),
                     item_id,
                 }
@@ -729,13 +712,12 @@ impl RuntimeServer {
                 tracing::warn!(error = %e, "could not exchange a public token");
 
                 EventSourcePlaid::LinkAbandoned {
-                    call_id,
                     link_token: link_token.to_string(),
                 }
             }
         };
 
-        vec![Event::FromSourcePlaid { event }]
+        vec![Event::FromSourcePlaid { call_id, event }]
     }
 
     /// Everything the store is asked for, as the event that says what came of it.
@@ -743,11 +725,7 @@ impl RuntimeServer {
     /// The machine holds a route's answer until this arrives, so a write that
     /// reported nothing would be a request that never returns — which is why a
     /// failure is an event too.
-    async fn perform_action_store(&self, action: &ActionStore) -> Vec<Event> {
-        // Which call this answers, named once. What comes back says what was
-        // found, never which question it was.
-        let call_id = action.call_id();
-
+    async fn perform_action_store(&self, call_id: CallId, action: &ActionStore) -> Vec<Event> {
         // A read answers with what it found; a write answers that it landed.
         let event = match action {
             ActionStore::LoadSession {
@@ -770,7 +748,7 @@ impl RuntimeServer {
 
             ActionStore::LoadCode { email, .. } => self.load_code(email).await,
 
-            ActionStore::LoadSubscriptions { .. } => self.load_subscriptions().await,
+            ActionStore::LoadSubscriptions => self.load_subscriptions().await,
 
             ActionStore::LoadUser { user_id, .. } => self.load_user(*user_id).await,
 
@@ -896,7 +874,6 @@ impl RuntimeServer {
 
         match action {
             ActionStore::SaveCode {
-                call_id: _,
                 email,
                 code_sha256,
                 expires_at,
@@ -905,7 +882,6 @@ impl RuntimeServer {
             }
 
             ActionStore::SaveCustomer {
-                call_id: _,
                 user_id,
                 provider,
                 customer_id,
@@ -924,7 +900,6 @@ impl RuntimeServer {
             }
 
             ActionStore::ApplySubscriptionEvent {
-                call_id: _,
                 subscription_id,
                 status,
                 current_period_end,
@@ -956,23 +931,19 @@ impl RuntimeServer {
                 }
             }
 
-            ActionStore::DeleteUser {
-                call_id: _,
-                user_id,
-            } => {
+            ActionStore::DeleteUser { user_id } => {
                 src_postgres::delete_user(db, *user_id).await?;
             }
 
-            ActionStore::RecordAttempt { call_id: _, email } => {
+            ActionStore::RecordAttempt { email } => {
                 src_postgres::record_attempt(db, email).await?;
             }
 
-            ActionStore::DeleteCode { call_id: _, email } => {
+            ActionStore::DeleteCode { email } => {
                 src_postgres::delete_code(db, email).await?;
             }
 
             ActionStore::CreateSession {
-                call_id: _,
                 email,
                 token_sha256,
                 expires_at,
@@ -993,7 +964,7 @@ impl RuntimeServer {
                 created.await?;
             }
 
-            ActionStore::SweepSessions { call_id: _, now } => {
+            ActionStore::SweepSessions { now } => {
                 let gone = src_postgres::sweep_sessions(db, *now).await?;
 
                 // Silent when there was nothing to drop, which is most hours.
@@ -1003,17 +974,13 @@ impl RuntimeServer {
             }
 
             ActionStore::SaveLink {
-                call_id: _,
                 link_token,
                 user_id,
             } => {
                 src_postgres::save_link(db, link_token, *user_id).await?;
             }
 
-            ActionStore::CollectLink {
-                call_id: _,
-                link_token,
-            } => {
+            ActionStore::CollectLink { link_token } => {
                 src_postgres::collect_link(db, link_token).await?;
             }
 
@@ -1030,7 +997,7 @@ impl RuntimeServer {
             | ActionStore::LoadPendingLinks { .. }
             | ActionStore::LoadSnapshot { .. }
             | ActionStore::LoadCode { .. }
-            | ActionStore::LoadSubscriptions { .. }
+            | ActionStore::LoadSubscriptions
             | ActionStore::LoadUser { .. }
             | ActionStore::LoadAccessTokens { .. }
             | ActionStore::SaveItem { .. } => {
@@ -1214,7 +1181,6 @@ impl RuntimeServer {
     ) -> Result<(), src_postgres::PostgresError> {
         match action {
             ActionStore::SaveAccounts {
-                call_id: _,
                 item_id,
                 institution_name,
                 accounts,
@@ -1227,7 +1193,6 @@ impl RuntimeServer {
             }
 
             ActionStore::SaveTransactions {
-                call_id: _,
                 item_id,
                 added,
                 modified,
@@ -1249,16 +1214,11 @@ impl RuntimeServer {
                 );
             }
 
-            ActionStore::SaveStreams {
-                call_id: _,
-                item_id,
-                streams,
-            } => {
+            ActionStore::SaveStreams { item_id, streams } => {
                 src_postgres::save_streams(db, item_id, streams).await?;
             }
 
             ActionStore::SaveStatus {
-                call_id: _,
                 item_id,
                 error_code,
             } => {
@@ -1283,7 +1243,7 @@ impl RuntimeServer {
             | ActionStore::SaveItem { .. }
             | ActionStore::SaveCustomer { .. }
             | ActionStore::ApplySubscriptionEvent { .. }
-            | ActionStore::LoadSubscriptions { .. }
+            | ActionStore::LoadSubscriptions
             | ActionStore::LoadUser { .. }
             | ActionStore::LoadAccessTokens { .. }
             | ActionStore::DeleteUser { .. } => {}
@@ -1309,12 +1269,7 @@ impl RuntimeServer {
     /// A failure is reported rather than retried: what to do about a bank that
     /// is still billing is the machine's decision, and the log line is what
     /// says to go and look.
-    async fn remove_item(
-        &self,
-        call_id: crate::CallId,
-        item_id: &str,
-        access_token: &str,
-    ) -> Vec<Event> {
+    async fn remove_item(&self, call_id: CallId, item_id: &str, access_token: &str) -> Vec<Event> {
         let removed = match runtime_plaid::remove_item(&self.plaid_client, access_token).await {
             Ok(()) => true,
             Err(e) => {
@@ -1329,8 +1284,8 @@ impl RuntimeServer {
         };
 
         vec![Event::FromSourcePlaid {
+            call_id,
             event: EventSourcePlaid::ItemRemoved {
-                call_id,
                 item_id: item_id.to_string(),
                 removed,
             },
@@ -1341,12 +1296,7 @@ impl RuntimeServer {
     ///
     /// Nothing here inspects it, and nothing here decides what happens next;
     /// that is what makes the loop closed.
-    async fn fetch_balances(
-        &self,
-        call_id: crate::CallId,
-        item_id: &str,
-        now: Timestamp,
-    ) -> Vec<Event> {
+    async fn fetch_balances(&self, call_id: CallId, item_id: &str, now: Timestamp) -> Vec<Event> {
         let Some(access_token) = self.token_for(item_id) else {
             return vec![no_token(call_id, item_id, SyncStage::Accounts)];
         };
@@ -1354,21 +1304,20 @@ impl RuntimeServer {
         let event =
             match runtime_plaid::fetch_balances(&self.plaid_client, &access_token, now).await {
                 Ok(connection) => EventSourcePlaid::BalancesLoaded {
-                    call_id,
                     item_id: item_id.to_string(),
                     connection,
                 },
 
-                Err(e) => failed(call_id, item_id, SyncStage::Accounts, &e),
+                Err(e) => failed(item_id, SyncStage::Accounts, &e),
             };
 
-        vec![Event::FromSourcePlaid { event }]
+        vec![Event::FromSourcePlaid { call_id, event }]
     }
 
     /// Ask Plaid for one page of what has changed on a bank.
     async fn sync_transactions(
         &self,
-        call_id: crate::CallId,
+        call_id: CallId,
         item_id: &str,
         cursor: Option<String>,
     ) -> Vec<Event> {
@@ -1380,7 +1329,6 @@ impl RuntimeServer {
             match runtime_plaid::sync_transactions(&self.plaid_client, &access_token, cursor).await
             {
                 Ok(page) => EventSourcePlaid::TransactionsLoaded {
-                    call_id,
                     item_id: item_id.to_string(),
                     added: page.added,
                     modified: page.modified,
@@ -1389,29 +1337,28 @@ impl RuntimeServer {
                     has_more: page.has_more,
                 },
 
-                Err(e) => failed(call_id, item_id, SyncStage::Transactions, &e),
+                Err(e) => failed(item_id, SyncStage::Transactions, &e),
             };
 
-        vec![Event::FromSourcePlaid { event }]
+        vec![Event::FromSourcePlaid { call_id, event }]
     }
 
     /// Ask Plaid which charges on a bank come back.
-    async fn fetch_recurring(&self, call_id: crate::CallId, item_id: &str) -> Vec<Event> {
+    async fn fetch_recurring(&self, call_id: CallId, item_id: &str) -> Vec<Event> {
         let Some(access_token) = self.token_for(item_id) else {
             return vec![no_token(call_id, item_id, SyncStage::Streams)];
         };
 
         let event = match runtime_plaid::fetch_recurring(&self.plaid_client, &access_token).await {
             Ok(streams) => EventSourcePlaid::RecurringLoaded {
-                call_id,
                 item_id: item_id.to_string(),
                 streams,
             },
 
-            Err(e) => failed(call_id, item_id, SyncStage::Streams, &e),
+            Err(e) => failed(item_id, SyncStage::Streams, &e),
         };
 
-        vec![Event::FromSourcePlaid { event }]
+        vec![Event::FromSourcePlaid { call_id, event }]
     }
 
     /// Everything one user knows, as of now, read from the store.
@@ -1512,12 +1459,12 @@ fn unix_now() -> Timestamp {
 ///
 /// The machine reads its Items off its own connection list, each built from a
 /// stored Item, so this is the two of them having drifted.
-fn no_token(call_id: crate::CallId, item_id: &str, stage: SyncStage) -> Event {
+fn no_token(call_id: CallId, item_id: &str, stage: SyncStage) -> Event {
     tracing::error!(item_id, "asked to call plaid about an item with no token");
 
     Event::FromSourcePlaid {
+        call_id,
         event: EventSourcePlaid::PlaidFailed {
-            call_id,
             item_id: item_id.to_string(),
             stage,
             fault: PlaidFault::NoToken,
@@ -1526,12 +1473,7 @@ fn no_token(call_id: crate::CallId, item_id: &str, stage: SyncStage) -> Event {
 }
 
 /// What one refused call reaches the machine as.
-fn failed(
-    call_id: crate::CallId,
-    item_id: &str,
-    stage: SyncStage,
-    error: &PlaidError,
-) -> EventSourcePlaid {
+fn failed(item_id: &str, stage: SyncStage, error: &PlaidError) -> EventSourcePlaid {
     let fault = PlaidFault::of(error);
 
     tracing::warn!(
@@ -1543,7 +1485,6 @@ fn failed(
     );
 
     EventSourcePlaid::PlaidFailed {
-        call_id,
         item_id: item_id.to_string(),
         stage,
         fault,

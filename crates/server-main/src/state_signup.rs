@@ -217,8 +217,8 @@ impl StateSignup {
         // Two actions because they go to different places, and only one of
         // them may ever hold the plaintext.
         actions.push(Action::ToStore {
+            call_id: self.calling(request_id, now),
             action: ActionStore::SaveCode {
-                call_id: self.calling(request_id, now),
                 email: email.to_string(),
                 code_sha256: login_code::hash(&code),
                 expires_at,
@@ -254,8 +254,8 @@ impl StateSignup {
         );
 
         actions.push(Action::ToStore {
+            call_id: self.calling(request_id, now),
             action: ActionStore::LoadCode {
-                call_id: self.calling(request_id, now),
                 email: email.to_string(),
             },
         });
@@ -287,8 +287,8 @@ impl StateSignup {
             // Counted whatever the reason, expiry included: resetting the cap
             // by waiting would give unlimited guesses at the next code.
             actions.push(Action::ToStore {
+                call_id: self.calling(request_id, now),
                 action: ActionStore::RecordAttempt {
-                    call_id: self.calling(request_id, now),
                     email: email.to_string(),
                 },
             });
@@ -311,8 +311,8 @@ impl StateSignup {
         let token = login_code::generate_token(rng);
 
         actions.push(Action::ToStore {
+            call_id: self.calling(request_id, now),
             action: ActionStore::CreateSession {
-                call_id: self.calling(request_id, now),
                 email: email.to_string(),
                 token_sha256: session_token::hash(&token),
                 expires_at: Timestamp::from_secs(now.as_secs() + SESSION_GOOD_FOR_SECS),
@@ -321,8 +321,8 @@ impl StateSignup {
 
         // Single use, and spent only once it has bought something.
         actions.push(Action::ToStore {
+            call_id: self.calling(request_id, now),
             action: ActionStore::DeleteCode {
-                call_id: self.calling(request_id, now),
                 email: email.to_string(),
             },
         });
@@ -355,10 +355,8 @@ impl StateSignup {
         self.waits_on(request_id, Pending::Opening);
 
         actions.push(Action::ToSourcePlaid {
-            action: ActionSourcePlaid::OpenLink {
-                call_id: self.calling(request_id, now),
-                user_id,
-            },
+            call_id: self.calling(request_id, now),
+            action: ActionSourcePlaid::OpenLink { user_id },
         });
     }
 
@@ -380,10 +378,8 @@ impl StateSignup {
         );
 
         actions.push(Action::ToStore {
-            action: ActionStore::LoadPendingLinks {
-                call_id: self.calling(request_id, now),
-                user_id,
-            },
+            call_id: self.calling(request_id, now),
+            action: ActionStore::LoadPendingLinks { user_id },
         });
     }
 
@@ -424,8 +420,8 @@ impl StateSignup {
         self.waits_on(request_id, Pending::Polling);
 
         actions.push(Action::ToSourcePlaid {
+            call_id: self.calling(request_id, now),
             action: ActionSourcePlaid::PollLinks {
-                call_id: self.calling(request_id, now),
                 link_tokens: link_tokens.to_vec(),
             },
         });
@@ -518,8 +514,8 @@ impl StateSignup {
         self.unwatch(request_id);
 
         actions.push(Action::ToStore {
+            call_id: self.calling(request_id, now),
             action: ActionStore::CollectLink {
-                call_id: self.calling(request_id, now),
                 link_token: link_token.to_string(),
             },
         });
@@ -572,8 +568,8 @@ impl StateSignup {
         // Written down first, or somebody could finish a session we have no
         // record of asking for.
         actions.push(Action::ToStore {
+            call_id: self.calling(request_id, now),
             action: ActionStore::SaveLink {
-                call_id: self.calling(request_id, now),
                 link_token: link_token.to_string(),
                 user_id,
             },
@@ -622,8 +618,8 @@ impl StateSignup {
             self.waits_on(request_id, Pending::Exchanging);
 
             actions.push(Action::ToSourcePlaid {
+                call_id: self.exchanges(request_id, now),
                 action: ActionSourcePlaid::ExchangePublicToken {
-                    call_id: self.exchanges(request_id, now),
                     link_token,
                     public_token,
                 },
@@ -642,10 +638,8 @@ impl StateSignup {
 
         for link_token in finished {
             actions.push(Action::ToStore {
-                action: ActionStore::CollectLink {
-                    call_id: self.calling(request_id, now),
-                    link_token,
-                },
+                call_id: self.calling(request_id, now),
+                action: ActionStore::CollectLink { link_token },
             });
         }
 
@@ -689,8 +683,8 @@ impl StateSignup {
         // `/link/finish` reports it.
         if !self.collects_by_webhook() {
             actions.push(Action::ToStore {
+                call_id: self.alongside(write, now),
                 action: ActionStore::CollectLink {
-                    call_id: self.alongside(write, now),
                     link_token: link_token.to_string(),
                 },
             });
@@ -701,8 +695,8 @@ impl StateSignup {
     /// ask again.
     fn attaches(&mut self, call_id: CallId, attaching: Attaching, actions: &mut Vec<Action>) {
         actions.push(Action::ToStore {
+            call_id,
             action: ActionStore::SaveItem {
-                call_id,
                 item_id: attaching.item_id.clone(),
                 link_token: attaching.link_token.clone(),
             },
@@ -840,8 +834,8 @@ impl StateSignup {
         let collect = self.passing(call_id, now);
 
         actions.push(Action::ToStore {
+            call_id: collect,
             action: ActionStore::CollectLink {
-                call_id: collect,
                 link_token: link_token.to_string(),
             },
         });
@@ -884,8 +878,8 @@ impl StateSignup {
             }
 
             actions.push(Action::ToSourcePlaid {
+                call_id: self.exchanges(request_id, now),
                 action: ActionSourcePlaid::ExchangePublicToken {
-                    call_id: self.exchanges(request_id, now),
                     link_token: link_token.to_string(),
                     public_token: public_token.clone(),
                 },
@@ -972,10 +966,8 @@ impl StateSignup {
         self.swept = Some(now);
 
         actions.push(Action::ToStore {
-            action: ActionStore::SweepSessions {
-                call_id: self.call(),
-                now,
-            },
+            call_id: self.call(),
+            action: ActionStore::SweepSessions { now },
         });
     }
 
@@ -1128,10 +1120,8 @@ impl StateSignup {
                 self.waits_on(request_id, Pending::Reading);
 
                 actions.push(Action::ToStore {
-                    action: ActionStore::LoadSnapshot {
-                        call_id: self.calling(request_id, now),
-                        user_id,
-                    },
+                    call_id: self.calling(request_id, now),
+                    action: ActionStore::LoadSnapshot { user_id },
                 });
             }
         }

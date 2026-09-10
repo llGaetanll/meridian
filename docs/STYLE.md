@@ -185,7 +185,7 @@ eval!(&mut state,
             }],
         },
     },
-    > Action::ToSource { action: ActionSource::FetchBalances { call_id: 1, .. } },
+    > Action::ToSource { call_id: 1, action: ActionSource::FetchBalances { .. } },
 );
 ```
 

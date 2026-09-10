@@ -1,7 +1,5 @@
 //! Something for Stripe to do.
 
-use crate::CallId;
-
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -10,21 +8,13 @@ pub enum ActionSourceStripe {
     ///
     /// The address goes with it so Stripe can send a receipt, and the user id
     /// so a row in their dashboard says which of ours it is.
-    CreateCustomer {
-        call_id: CallId,
-        user_id: Uuid,
-        email: String,
-    },
+    CreateCustomer { user_id: Uuid, email: String },
 
     /// Start a subscription against the price this build was configured with.
     ///
     /// Answers with the secret the card form confirms against. Nothing is
     /// charged: the customer has given no card yet.
-    CreateSubscription {
-        call_id: CallId,
-        user_id: Uuid,
-        customer_id: String,
-    },
+    CreateSubscription { user_id: Uuid, customer_id: String },
 
     /// Stop the subscription at the end of the period already paid for.
     ///
@@ -32,7 +22,6 @@ pub enum ActionSourceStripe {
     /// served out, and taking the app away the moment somebody cancels is
     /// taking something they have paid for.
     CancelSubscription {
-        call_id: CallId,
         user_id: Uuid,
         subscription_id: String,
 

@@ -29,16 +29,16 @@ fn connecting_a_bank_opens_a_session_and_hands_over_its_page() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         // 2. Nothing is read for it: the id the session resolved to is the
         // whole of what opening a Link session needs.
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::OpenLink { call_id: 2, .. } },
+        > Action::ToSourcePlaid { call_id: 2, action: ActionSourcePlaid::OpenLink { .. } },
 
         // 3 and 4a, in that order and never the other.
-        < Event::FromSourcePlaid { event: EventSourcePlaid::LinkOpened { call_id: 2, user_id: uuid::Uuid::nil(), link_token: "link-1".to_string(), hosted_link_url: "https://secure.plaid.com/hl/link-1".to_string() } },
-        > Action::ToStore { action: ActionStore::SaveLink { call_id: 3, .. } },
+        < Event::FromSourcePlaid { call_id: 2, event: EventSourcePlaid::LinkOpened { user_id: uuid::Uuid::nil(), link_token: "link-1".to_string(), hosted_link_url: "https://secure.plaid.com/hl/link-1".to_string() } },
+        > Action::ToStore { call_id: 3, action: ActionStore::SaveLink { .. } },
 
         // The URL is handed over only once the row is down. Holding it until
         // the write lands is what makes "before" mean it.
@@ -59,7 +59,7 @@ fn a_token_that_names_nobody_opens_no_session() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("stale") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: None } },
         > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
@@ -76,13 +76,13 @@ fn a_session_plaid_would_not_open_is_not_a_page() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::OpenLink { call_id: 2, .. } },
+        > Action::ToSourcePlaid { call_id: 2, action: ActionSourcePlaid::OpenLink { .. } },
 
-        < Event::FromSourcePlaid { event: EventSourcePlaid::LinkAbandoned { call_id: 2, link_token: String::new() } },
-        > @r#"ToStore { action: CollectLink { call_id: 3, link_token: "" } }"#,
+        < Event::FromSourcePlaid { call_id: 2, event: EventSourcePlaid::LinkAbandoned { link_token: String::new() } },
+        > @r#"ToStore { call_id: 3, action: CollectLink { link_token: "" } }"#,
 
         < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
         > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,

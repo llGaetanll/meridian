@@ -75,8 +75,8 @@ fn another_page(state: &mut StateServer, call_id: u64, page: u32) -> Option<u64>
 
     state.handle_events(
         &[Event::FromSourcePlaid {
+            call_id,
             event: EventSourcePlaid::TransactionsLoaded {
-                call_id,
                 item_id: "item-1".to_string(),
                 added: Vec::new(),
                 modified: Vec::new(),
@@ -90,7 +90,8 @@ fn another_page(state: &mut StateServer, call_id: u64, page: u32) -> Option<u64>
 
     actions.iter().find_map(|action| match action {
         Action::ToSourcePlaid {
-            action: ActionSourcePlaid::SyncTransactions { call_id, .. },
+            call_id,
+            action: ActionSourcePlaid::SyncTransactions { .. },
         } => Some(*call_id),
 
         _ => None,
@@ -99,7 +100,7 @@ fn another_page(state: &mut StateServer, call_id: u64, page: u32) -> Option<u64>
 
 /// The event that answers one store read, if that is what this action is.
 fn read_back(action: &Action, items: &[ItemFacts]) -> Option<Event> {
-    let Action::ToStore { action } = action else {
+    let Action::ToStore { call_id, action } = action else {
         return None;
     };
 
@@ -120,7 +121,7 @@ fn read_back(action: &Action, items: &[ItemFacts]) -> Option<Event> {
     };
 
     Some(Event::FromStore {
-        call_id: action.call_id(),
+        call_id: *call_id,
         event,
     })
 }
@@ -164,10 +165,11 @@ fn deliver(state: &mut StateServer, request_id: u64, body: &str) {
         .iter()
         .filter_map(|action| match action {
             Action::ToSourcePlaid {
-                action: ActionSourcePlaid::FetchWebhookKey { call_id, kid },
+                call_id,
+                action: ActionSourcePlaid::FetchWebhookKey { kid },
             } => Some(Event::FromSourcePlaid {
+                call_id: *call_id,
                 event: EventSourcePlaid::WebhookKeyLoaded {
-                    call_id: *call_id,
                     kid: kid.clone(),
                     key: Some(webhook_jwk()),
                 },
@@ -207,15 +209,15 @@ fn a_burst_of_refreshes_is_rate_limited() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 31, .. } },
+        > Action::ToStore { call_id: 31, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 31, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { action: ActionStore::LoadItems { call_id: 32, .. } },
+        > Action::ToStore { call_id: 32, action: ActionStore::LoadItems { .. } },
 
         // Stale, and asked for anyway — and no call to Plaid comes out. Served
         // what the store already holds instead.
         < Event::FromStore { call_id: 32, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
-        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 33, .. } },
+        > Action::ToStore { call_id: 33, action: ActionStore::LoadSnapshot { .. } },
 
         < Event::FromStore { call_id: 33, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
@@ -242,10 +244,10 @@ fn the_rate_limit_is_per_bank() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 31, .. } },
+        > Action::ToStore { call_id: 31, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 31, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { action: ActionStore::LoadItems { call_id: 32, .. } },
+        > Action::ToStore { call_id: 32, action: ActionStore::LoadItems { .. } },
 
         < Event::FromStore { call_id: 32, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-2".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }] } },
         > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { .. }, .. },
@@ -267,7 +269,7 @@ fn a_caller_past_its_budget_is_refused() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 61, .. } },
+        > Action::ToStore { call_id: 61, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 61, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > @r#"ToRouter { request_id: 21, action: TooMany }"#,
@@ -286,7 +288,7 @@ fn the_budget_returns_when_the_window_passes() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 61, .. } },
+        > Action::ToStore { call_id: 61, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 61, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         > Action::ToRouter { action: ActionRouter::TooMany, .. },
@@ -295,13 +297,13 @@ fn the_budget_returns_when_the_window_passes() {
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 61) } },
 
         < Event::FromRouter { request_id: 22, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 62, .. } },
+        > Action::ToStore { call_id: 62, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 62, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { action: ActionStore::LoadItems { call_id: 63, .. } },
+        > Action::ToStore { call_id: 63, action: ActionStore::LoadItems { .. } },
 
         < Event::FromStore { call_id: 63, event: EventStore::ItemsLoaded { items: vec![] } },
-        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 64, .. } },
+        > Action::ToStore { call_id: 64, action: ActionStore::LoadSnapshot { .. } },
 
         < Event::FromStore { call_id: 64, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
@@ -357,7 +359,7 @@ fn one_caller_over_its_budget_does_not_refuse_the_next() {
         // the test below is about. The `Accepted` that follows is held until
         // the write lands and belongs to `flow_a_signing_in.rs`.
         < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
-        > Action::ToStore { action: ActionStore::SaveCode { .. } },
+        > Action::ToStore { action: ActionStore::SaveCode { .. } , ..},
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
     );
 }
@@ -501,8 +503,8 @@ fn a_history_pages_only_as_far_as_the_budget_allows() {
                 },
             },
             Event::FromSourcePlaid {
+                call_id: 3,
                 event: EventSourcePlaid::BalancesLoaded {
-                    call_id: 3,
                     item_id: "item-1".to_string(),
                     connection: Connection {
                         id: "item-1".to_string(),
@@ -589,7 +591,7 @@ fn opening_bank_sign_ins_faster_than_the_budget_allows_is_refused() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 31, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 61, .. } },
+        > Action::ToStore { call_id: 61, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 61, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::from_u128(31)) } },
         > @r#"ToRouter { request_id: 31, action: TooMany }"#,
@@ -622,7 +624,8 @@ fn open_a_sign_in(state: &mut StateServer, n: u64) {
         .iter()
         .filter_map(|action| match action {
             Action::ToStore {
-                action: ActionStore::LoadSession { call_id, .. },
+                call_id,
+                action: ActionStore::LoadSession { .. },
             } => Some(Event::FromStore {
                 call_id: *call_id,
                 event: EventStore::SessionResolved {
@@ -664,7 +667,8 @@ fn link_by_polling(state: &mut StateServer, request_id: u64, n: u32) {
             .iter()
             .filter_map(|action| match action {
                 Action::ToStore {
-                    action: ActionStore::LoadSession { call_id, .. },
+                    call_id,
+                    action: ActionStore::LoadSession { .. },
                 } => Some(Event::FromStore {
                     call_id: *call_id,
                     event: EventStore::SessionResolved {
@@ -673,7 +677,8 @@ fn link_by_polling(state: &mut StateServer, request_id: u64, n: u32) {
                 }),
 
                 Action::ToStore {
-                    action: ActionStore::LoadPendingLinks { call_id, .. },
+                    call_id,
+                    action: ActionStore::LoadPendingLinks { .. },
                 } => Some(Event::FromStore {
                     call_id: *call_id,
                     event: EventStore::PendingLinksLoaded {
@@ -682,10 +687,11 @@ fn link_by_polling(state: &mut StateServer, request_id: u64, n: u32) {
                 }),
 
                 Action::ToSourcePlaid {
-                    action: ActionSourcePlaid::PollLinks { call_id, .. },
+                    call_id,
+                    action: ActionSourcePlaid::PollLinks { .. },
                 } => Some(Event::FromSourcePlaid {
+                    call_id: *call_id,
                     event: EventSourcePlaid::LinksPolled {
-                        call_id: *call_id,
                         polls: vec![LinkPoll {
                             link_token: format!("link-{n}"),
                             public_tokens: vec![format!("public-{n}")],
@@ -720,15 +726,15 @@ fn a_token_polled_back_past_the_budget_is_not_exchanged() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 21, .. } },
+        > Action::ToStore { call_id: 21, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 21, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 22, .. } },
+        > Action::ToStore { call_id: 22, action: ActionStore::LoadPendingLinks { .. } },
 
         < Event::FromStore { call_id: 22, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-11".to_string()] } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { call_id: 23, .. } },
+        > Action::ToSourcePlaid { call_id: 23, action: ActionSourcePlaid::PollLinks { .. } },
 
-        < Event::FromSourcePlaid { event: EventSourcePlaid::LinksPolled { call_id: 23, polls: vec![LinkPoll { link_token: "link-11".to_string(), public_tokens: vec!["public-11".to_string()], finished: true }] } },
+        < Event::FromSourcePlaid { call_id: 23, event: EventSourcePlaid::LinksPolled { polls: vec![LinkPoll { link_token: "link-11".to_string(), public_tokens: vec!["public-11".to_string()], finished: true }] } },
         > @r#"ToRouter { request_id: 1, action: TooMany }"#,
     );
 }
@@ -773,7 +779,7 @@ fn starting_subscriptions_faster_than_the_budget_allows_is_refused() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: next, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { .. } },
+        > Action::ToStore { action: ActionStore::LoadSession { .. } , ..},
     );
 
     let mut actions = Vec::new();
@@ -824,7 +830,8 @@ fn start_a_subscription(state: &mut StateServer, request_id: u64) {
         .iter()
         .filter_map(|action| match action {
             Action::ToStore {
-                action: ActionStore::LoadSession { call_id, .. },
+                call_id,
+                action: ActionStore::LoadSession { .. },
             } => Some(Event::FromStore {
                 call_id: *call_id,
                 event: EventStore::SessionResolved {

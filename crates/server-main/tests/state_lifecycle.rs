@@ -41,13 +41,13 @@ fn expired_sessions_are_swept_on_the_hour() {
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS - 1) } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS) } },
-        > Action::ToStore { action: ActionStore::SweepSessions { .. } },
+        > Action::ToStore { action: ActionStore::SweepSessions { .. } , ..},
 
         // And not again on the tick after it.
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS + 1) } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 2 * SWEEP_SESSIONS_EVERY_SECS) } },
-        > Action::ToStore { action: ActionStore::SweepSessions { .. } },
+        > Action::ToStore { action: ActionStore::SweepSessions { .. } , ..},
     );
 }
 
@@ -75,19 +75,19 @@ fn a_call_that_never_answers_is_given_up_on() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadItems { .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { call_id: 3, .. } },
+        > Action::ToSourcePlaid { call_id: 3, action: ActionSourcePlaid::FetchBalances { .. } },
 
         // Plaid says nothing. Time passes and nothing else arrives.
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 1) } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
-        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 4, .. } },
+        > Action::ToStore { call_id: 4, action: ActionStore::LoadSnapshot { .. } },
 
         < Event::FromStore { call_id: 4, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
@@ -103,10 +103,10 @@ fn a_route_with_nothing_decided_is_told_it_cannot_be_answered() {
 
     eval!(&mut state,
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::OpenLink { call_id: 2, .. } },
+        > Action::ToSourcePlaid { call_id: 2, action: ActionSourcePlaid::OpenLink { .. } },
 
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
         > Action::ToRouter { action: ActionRouter::Unavailable, .. },
@@ -143,7 +143,7 @@ fn a_signal_with_a_call_out_waits_for_it() {
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
-        > Action::ToStore { action: ActionStore::SaveCode { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::SaveCode { .. } },
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
 
         < Event::FromTerminal { event: EventTerminal::SigInt },
@@ -176,7 +176,7 @@ fn a_shutdown_does_not_wait_forever_on_a_quiet_source() {
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
-        > Action::ToStore { action: ActionStore::SaveCode { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::SaveCode { .. } },
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
 
         < Event::FromTerminal { event: EventTerminal::SigInt },
@@ -215,13 +215,13 @@ fn shutting_down_stops_new_work() {
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadItems { .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 3, .. } },
+        > Action::ToStore { call_id: 3, action: ActionStore::LoadSnapshot { .. } },
 
         < Event::FromStore { call_id: 3, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
@@ -256,22 +256,22 @@ fn a_drain_does_not_give_up_on_the_exchange() {
         // The sheet closed.
         < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
         // Who is asking.
-        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         // Them.
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
         // What they have open.
-        > Action::ToStore { action: ActionStore::LoadPendingLinks { call_id: 2, .. } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
 
         // One session.
         < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
         // Ask Plaid what it came to.
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { call_id: 3, .. } },
+        > Action::ToSourcePlaid { call_id: 3, action: ActionSourcePlaid::PollLinks { .. } },
 
         // A token to trade.
-        < Event::FromSourcePlaid { event: EventSourcePlaid::LinksPolled { call_id: 3, polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
+        < Event::FromSourcePlaid { call_id: 3, event: EventSourcePlaid::LinksPolled { polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
         // The call that spends the slot, now out.
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::ExchangePublicToken { call_id: 4, .. } },
+        > Action::ToSourcePlaid { call_id: 4, action: ActionSourcePlaid::ExchangePublicToken { .. } },
 
         // ^C.
         < Event::FromTerminal { event: EventTerminal::SigInt },

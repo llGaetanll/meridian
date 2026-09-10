@@ -166,8 +166,8 @@ impl StateBilling {
         actions: &mut Vec<Action>,
     ) {
         actions.push(Action::ToSourceStripe {
+            call_id,
             action: crate::ActionSourceStripe::CreateCustomer {
-                call_id,
                 user_id,
                 email: email.to_string(),
             },
@@ -185,8 +185,8 @@ impl StateBilling {
         self.customer_created(customer_id, user_id);
 
         actions.push(Action::ToSourceStripe {
+            call_id,
             action: crate::ActionSourceStripe::CreateSubscription {
-                call_id,
                 user_id,
                 customer_id: customer_id.to_string(),
             },
@@ -212,8 +212,8 @@ impl StateBilling {
         self.subscription_created(subscription_id, user_id);
 
         actions.push(Action::ToStore {
+            call_id,
             action: ActionStore::SaveCustomer {
-                call_id,
                 user_id,
                 provider: BillingProvider::Stripe,
                 customer_id: customer_id.to_string(),
