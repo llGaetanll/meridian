@@ -235,6 +235,24 @@ ENTITLEMENTS=target/ios-device/entitlements.plist
 security cms -D -i "$PROFILE" \
     | plutil -extract Entitlements xml1 -o "$ENTITLEMENTS" -
 
+# Associated domains are the one key that cannot come from the profile. A
+# profile grants the capability as the string `*` — permission to claim any
+# domain — while the app has to *name* the domains it claims, as a list. Signed
+# with the `*`, the app claims none: iOS has no domain to fetch an
+# apple-app-site-association from, the Universal Link never associates, and an
+# OAuth bank's handback opens the fallback page in Safari instead of the app.
+#
+# Taken from the file the profile was cut against, so the claim and the grant
+# still cannot drift apart.
+# Single-quoted because the backslashes are plutil's, not the shell's: a bare
+# dot separates one key from the next in a keypath, so an unescaped name is
+# read as five nested dictionaries.
+DOMAINS='com\.apple\.developer\.associated-domains'
+
+plutil -replace "$DOMAINS" \
+    -json "$(plutil -extract "$DOMAINS" json -o - swift/Support/Meridian.entitlements)" \
+    "$ENTITLEMENTS"
+
 codesign --force --sign "$IDENTITY" --entitlements "$ENTITLEMENTS" --timestamp=none $APP
 
 # `--terminate-existing` so a re-run replaces the running app rather than
