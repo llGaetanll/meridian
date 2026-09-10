@@ -114,7 +114,7 @@ pub struct WireConnection {
     pub id: String,
     pub name: String,
     pub initials: String,
-    /// `"ok"` or `"login_required"`.
+    /// The status's name, e.g. `"login_required"`.
     pub status: String,
     /// When this connection last synced. A timestamp rather than "synced 2m
     /// ago", which goes stale the moment it is sent.
@@ -130,27 +130,22 @@ impl WireConnection {
             id: self.id.clone(),
             name: self.name.clone(),
             initials: self.initials.clone(),
-            status: match self.status.as_str() {
-                "login_required" => ConnectionStatus::LoginRequired,
-                _ => ConnectionStatus::Ok {
-                    synced_at: self.synced_at,
-                },
-            },
+            status: connection_status_from_name(&self.status, self.synced_at),
             accounts: self.accounts.iter().map(WireAccount::to_account).collect(),
         }
     }
 
     fn from_connection(c: &Connection) -> Self {
-        let (status, synced_at) = match &c.status {
-            ConnectionStatus::Ok { synced_at } => ("ok", *synced_at),
-            ConnectionStatus::LoginRequired => ("login_required", Timestamp::EPOCH),
+        let synced_at = match &c.status {
+            ConnectionStatus::Ok { synced_at } => *synced_at,
+            ConnectionStatus::LoginRequired => Timestamp::EPOCH,
         };
 
         Self {
             id: c.id.clone(),
             name: c.name.clone(),
             initials: c.initials.clone(),
-            status: status.to_string(),
+            status: connection_status_name(&c.status).to_string(),
             synced_at,
             accounts: c.accounts.iter().map(WireAccount::from_account).collect(),
         }
@@ -368,6 +363,31 @@ pub fn stage_from_name(name: &str) -> SyncStage {
         .unwrap_or(SyncStage::Accounts)
 }
 
+/// The wire name of a connection that is syncing.
+const STATUS_OK: &str = "ok";
+
+/// The wire name of a connection whose bank wants a fresh sign-in.
+const STATUS_LOGIN_REQUIRED: &str = "login_required";
+
+/// The wire name of a connection's status. Written out rather than derived
+/// from `Debug`, so renaming a Rust variant is a deliberate wire change.
+fn connection_status_name(status: &ConnectionStatus) -> &'static str {
+    match status {
+        ConnectionStatus::Ok { .. } => STATUS_OK,
+        ConnectionStatus::LoginRequired => STATUS_LOGIN_REQUIRED,
+    }
+}
+
+/// A status's wire name back into the enum, with the timestamp that rides
+/// beside it on the wire. An unknown name reads as working, which costs a
+/// stale "synced 2m ago" rather than a bank the user is told to reconnect.
+fn connection_status_from_name(name: &str, synced_at: Timestamp) -> ConnectionStatus {
+    match name {
+        STATUS_LOGIN_REQUIRED => ConnectionStatus::LoginRequired,
+        _ => ConnectionStatus::Ok { synced_at },
+    }
+}
+
 /// The wire name of a category. Written out rather than derived from `Debug`,
 /// so renaming a Rust variant is a deliberate wire change.
 fn category_name(c: Category) -> &'static str {
@@ -418,6 +438,29 @@ mod tests {
         for stage in SyncStage::ALL {
             assert_eq!(stage_from_name(stage_name(stage)), stage);
         }
+    }
+
+    /// The phone maps these names back to the enum, and only
+    /// `"login_required"` puts the Reconnect button on the bank. A name
+    /// changed on one side and not the other leaves a bank that is not
+    /// syncing looking fine, so the two are pinned here as text.
+    #[test]
+    fn connection_status_names_are_stable() {
+        assert_eq!(
+            connection_status_name(&ConnectionStatus::Ok {
+                synced_at: Timestamp::EPOCH
+            }),
+            "ok",
+        );
+        assert_eq!(
+            connection_status_name(&ConnectionStatus::LoginRequired),
+            "login_required",
+        );
+
+        assert_eq!(
+            connection_status_from_name("login_required", Timestamp::EPOCH),
+            ConnectionStatus::LoginRequired,
+        );
     }
 
     /// The app maps these names back to the enum. A name changed on one side
