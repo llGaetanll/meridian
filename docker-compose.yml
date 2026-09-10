@@ -145,9 +145,35 @@ services:
       # should not be made to invent one.
       PUBLIC_URL: ${PUBLIC_URL:-}
 
+      # Where an OAuth bank's own app hands the sign-in back. The one variable
+      # the server treats as optional on purpose: unset, the link token is the
+      # one a browser gets and an OAuth bank stays inside the web session, so
+      # empty here rather than `:?`.
+      #
+      # It has to be listed even so. The server reads it from its own
+      # environment, and a variable that lives only in `.env` is one the
+      # container never sees — the startup line's `handback=` then says `none`
+      # however the file is set.
+      PLAID_REDIRECT_URI: ${PLAID_REDIRECT_URI:-}
+
       # Required, like the rest. Which origins a browser may call this server
       # from, and the only setting here that no other kind of client notices.
       WEB_ORIGINS: ${WEB_ORIGINS:?}
+
+      # Stripe, which is how a subscription is paid for. Empty rather than `:?`
+      # because the server treats all three as optional: without them it starts
+      # and says at WARN that nobody can subscribe, which is what a laptop that
+      # is not selling anything should do.
+      #
+      # Without the webhook secret every webhook is refused, which is the safe
+      # direction — an unverified webhook is somebody claiming a subscription
+      # was paid for.
+      #
+      # STRIPE_PUBLISHABLE_KEY is deliberately absent. It belongs to the card
+      # form in the browser, and no service here serves one.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
 
       # The server's stdout here is a pipe to the daemon, never a terminal, so
       # left to work it out for itself it turns colour off — and the log is
