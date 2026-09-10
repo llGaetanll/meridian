@@ -416,6 +416,33 @@
   vertical-align: -4px;
 }
 
+/* A screen that says one thing.
+
+   A title, a line or two under it, and the actions at the foot. First run is a
+   stack of these, and so is the paywall: the app has one thing to tell you and
+   one thing for you to do, and the width goes on the sentence rather than on
+   rows.
+
+   Where the block sits is the platform's — the phone's full height under the
+   thumb, a column down the middle of the web's content area — the way `.onb`
+   is on the phone. What is here is the type, so a sentence is the same size
+   wherever it is read.
+
+   The measure is short on purpose. These are sentences, and a line of prose
+   run across a 900px page is one the eye loses its place in. */
+
+.ui .say-title { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.18; }
+.ui .say-body {
+  margin-top: 10px;
+  max-width: 32ch;
+  font-size: 14.5px; color: var(--text-muted);
+}
+.ui .say-body b { color: var(--text); font-weight: 600; }
+
+/* The actions of such a screen, stacked. One violet at most, and it goes last:
+   nearest the thumb, and the last thing read. */
+.ui .acts { display: flex; flex-direction: column; gap: 10px; }
+
 /* A code: as many fields as there are digits, one glyph each.
 
    Set in the money face, because a code is read a digit at a time and
