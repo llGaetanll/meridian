@@ -20,6 +20,17 @@ pub struct StripeSubscription {
     #[serde(default)]
     pub cancel_at_period_end: bool,
 
+    /// When the subscription ended outright, if it did.
+    ///
+    /// **The difference between the two ways a subscription stops.** Cancelled
+    /// at period end, this is null and the period runs on — access continues,
+    /// which is what the terms promise. Ended for real (deleted, or Stripe
+    /// gave up retrying a payment) it is set, and `current_period_end` still
+    /// reports the period it had reached: a month in the future, for a
+    /// subscription that stopped a moment ago.
+    #[serde(default)]
+    pub ended_at: Option<i64>,
+
     /// The lines it bills. Exactly one here — Meridian sells one thing — but
     /// Stripe models it as a list and the period lives on the entry.
     pub items: StripeSubscriptionItems,
@@ -68,6 +79,54 @@ impl StripeSubscription {
     /// reads as "expired" to anything deciding entitlement.
     pub fn current_period_end(&self) -> Option<i64> {
         self.items.data.first().map(|item| item.current_period_end)
+    }
+
+    /// Whether this status is one that stops being worth anything at once,
+    /// whatever period it reports.
+    ///
+    /// Stripe is explicit about `unpaid`: *"Revoke access to your product when
+    /// the subscription is unpaid, because payments were already attempted and
+    /// retried while past_due."* It keeps generating invoices while nobody
+    /// pays them, so the period rolls forward on a subscription earning
+    /// nothing — and `ended_at` stays null, because it has not ended.
+    ///
+    /// `incomplete_expired` is the same shape at the other end of the life: a
+    /// first payment that never landed within 23 hours. Terminal, and it never
+    /// bought anything.
+    ///
+    /// `past_due` is deliberately **not** here. Stripe is still retrying, the
+    /// customer has paid for the period they are in, and the ordinary reason
+    /// is an expired card on somebody who will replace it. Revoking there
+    /// takes the app away from a paying customer mid-month over a card that a
+    /// smart retry fixes an hour later.
+    fn status_ends_it(&self) -> bool {
+        matches!(self.status.as_str(), "unpaid" | "incomplete_expired")
+    }
+
+    /// When this subscription stops being worth anything.
+    ///
+    /// Three cases, and the reason this is not just `current_period_end`:
+    ///
+    /// - **Cancelled at period end.** `ended_at` is null while it runs, so the
+    ///   period end stands and access continues to the day paid for — which
+    ///   is what `site/app/terms` promises.
+    /// - **Ended outright**, deleted or cancelled immediately. `ended_at` is
+    ///   the moment it stopped. The period end still reports the period it
+    ///   never finished, a month out, and believing that hands a deleted
+    ///   subscription another month.
+    /// - **`unpaid` or `incomplete_expired`.** Nothing ended and nothing was
+    ///   paid: `ended_at` is null and the period may even have rolled forward.
+    ///   Worth nothing from now, so `now` is the answer — which the caller
+    ///   supplies, because a machine that read a clock here would be doing IO.
+    pub fn good_until(&self, now: i64) -> Option<i64> {
+        if self.status_ends_it() {
+            return Some(now);
+        }
+
+        match self.ended_at {
+            Some(ended_at) => Some(ended_at),
+            None => self.current_period_end(),
+        }
     }
 
     /// The secret the card form needs, if there is an invoice waiting to be

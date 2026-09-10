@@ -7,9 +7,19 @@
 //! delivery, captured off `stripe listen`, and the only way to accept it is to
 //! have read Stripe's scheme right.
 //!
-//! The secret is not in the fixture. It is a live credential, and one in a
-//! committed file is one in the repository forever, so it comes from the
-//! environment and the test says what to do when it is absent.
+//! # The secret is here, on purpose
+//!
+//! It is the one `stripe listen` printed for the run that produced this body,
+//! and it stopped meaning anything the moment that process exited: a CLI
+//! listener's secret is per-run, is not the account's, and is not what a
+//! registered endpoint signs with. So it is inert, and keeping it beside the
+//! fixture is what makes this test self-contained.
+//!
+//! The first version of this read `STRIPE_WEBHOOK_SECRET` from the
+//! environment, which was wrong in a way worth writing down: the fixture and
+//! the environment are only in step until somebody rolls the real secret — and
+//! rolling it is a thing we *want* to be easy. A test that fails when a
+//! credential is rotated correctly is a test that teaches people to ignore it.
 
 use src_stripe::StripeSignature;
 use src_stripe::StripeWebhookObject;
@@ -17,40 +27,25 @@ use src_stripe::verify;
 
 const BODY: &[u8] = include_bytes!("fixtures/webhook_body.json");
 const HEADER: &str = include_str!("fixtures/webhook_signature.txt");
+const SECRET: &str = include_str!("fixtures/webhook_secret.txt");
 
-/// The secret that signed the fixture, or a reason there is nothing to check.
+/// The header, and the moment Stripe signed it.
 ///
-/// A `stripe listen` prints a *new* secret each time, so a fixture and a
-/// secret from different runs do not go together — which is a mismatch rather
-/// than a bug in the code under test.
-fn secret() -> Option<String> {
-    let _ = dotenvy::dotenv();
-
-    std::env::var("STRIPE_WEBHOOK_SECRET")
-        .ok()
-        .filter(|secret| !secret.is_empty())
+/// The timestamp comes off the fixture rather than the clock, so the window is
+/// not what is under test here and this does not rot the day after it is
+/// written.
+fn signature() -> StripeSignature {
+    StripeSignature::parse(HEADER.trim()).expect("stripe sent a well formed header")
 }
 
 #[test]
 fn a_webhook_stripe_signed_is_believed() {
-    let Some(secret) = secret() else {
-        eprintln!("skipped: STRIPE_WEBHOOK_SECRET is not set");
-        return;
-    };
-
-    let signature =
-        StripeSignature::parse(HEADER.trim()).expect("stripe sent a well formed header");
-
-    // The timestamp is the one in the fixture, so the window is not what is
-    // under test here and the check does not rot the day after it was written.
-    let now = signature.timestamp;
+    let signature = signature();
 
     assert_eq!(
-        verify(BODY, &signature, &secret, now),
+        verify(BODY, &signature, SECRET.trim(), signature.timestamp),
         Ok(()),
-        "a real Stripe signature was refused — the scheme has been misread, \
-         or the fixture and STRIPE_WEBHOOK_SECRET are from different \
-         `stripe listen` runs"
+        "a real Stripe signature was refused, which means the scheme has been misread"
     );
 }
 
@@ -58,19 +53,29 @@ fn a_webhook_stripe_signed_is_believed() {
 /// because the signature is right rather than because the check is lax.
 #[test]
 fn the_same_webhook_with_a_byte_changed_is_refused() {
-    let Some(secret) = secret() else {
-        eprintln!("skipped: STRIPE_WEBHOOK_SECRET is not set");
-        return;
-    };
-
-    let signature =
-        StripeSignature::parse(HEADER.trim()).expect("stripe sent a well formed header");
+    let signature = signature();
 
     let mut tampered = BODY.to_vec();
     let last = tampered.len() - 1;
     tampered[last] ^= 0x01;
 
-    assert!(verify(&tampered, &signature, &secret, signature.timestamp).is_err());
+    assert!(verify(&tampered, &signature, SECRET.trim(), signature.timestamp).is_err());
+}
+
+/// And it is this secret that makes it verify, not any secret.
+#[test]
+fn another_secret_does_not_verify_it() {
+    let signature = signature();
+
+    assert!(
+        verify(
+            BODY,
+            &signature,
+            "whsec_something_else",
+            signature.timestamp
+        )
+        .is_err()
+    );
 }
 
 /// What Stripe sends parses into what this crate declares. Independent of the
@@ -85,7 +90,20 @@ fn a_real_delivery_parses() {
     assert!(!event.r#type.is_empty());
     assert!(event.created > 0);
 
-    // The fixture is a `customer.created`, which is none of the shapes this
-    // app acts on — and the catch-all is exactly what must happen to it.
-    assert!(matches!(event.data.object, StripeWebhookObject::Other));
+    // A `customer.subscription.updated`, which is one of the five this app
+    // subscribes to — so it must reach the arm that decides entitlement rather
+    // than the catch-all.
+    let StripeWebhookObject::Subscription(subscription) = &event.data.object else {
+        panic!(
+            "a subscription event did not parse as one: {:?}",
+            event.data.object
+        );
+    };
+
+    // The two fields entitlement is actually decided from, on a real body.
+    assert!(!subscription.status.is_empty());
+    assert!(
+        subscription.current_period_end().is_some(),
+        "the period sits on the item, and a real delivery has it there"
+    );
 }

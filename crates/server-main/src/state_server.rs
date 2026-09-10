@@ -316,7 +316,7 @@ impl StateServer {
             return;
         };
 
-        let entitlement = StateBilling::entitlement_of(subscription);
+        let entitlement = StateBilling::entitlement_of(subscription, self.now);
 
         // Held only for a user this process knows about. One it does not is a
         // subscription created against another database — a test key pointed
@@ -343,8 +343,11 @@ impl StateServer {
                 call_id,
                 subscription_id: subscription.id.clone(),
                 status: subscription.status.clone(),
+                // What the store keeps is the date entitlement is decided
+                // from, which is `ended_at` where a subscription stopped
+                // outright — see `StripeSubscription::good_until`.
                 current_period_end: subscription
-                    .current_period_end()
+                    .good_until(self.now.as_secs() as i64)
                     .and_then(|secs| u64::try_from(secs).ok())
                     .map(Timestamp::from_secs),
                 cancel_at_period_end: subscription.cancel_at_period_end,

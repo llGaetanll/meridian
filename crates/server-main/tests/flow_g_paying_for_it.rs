@@ -450,3 +450,59 @@ fn a_stripe_that_will_not_answer_is_not_a_subscription() {
         > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
     );
 }
+
+/// A deleted subscription closes the app **now**, not at the end of the month
+/// it had already reached.
+///
+/// Stripe sends `customer.subscription.deleted` with `status: canceled`,
+/// `ended_at` set to the moment it stopped, and `current_period_end` still a
+/// month in the future — the period it never finished. Deciding from the
+/// period end serves somebody whose payment was reversed, or whose
+/// subscription was deleted for fraud, for up to another month.
+#[test]
+fn a_deleted_subscription_closes_the_app_at_once() {
+    let mut state = state();
+
+    let ended_at = Timestamp::from_secs(T0.as_secs() + 60);
+
+    let body = fixtures::stripe_subscription_deleted(
+        "evt_1",
+        ended_at.as_secs(),
+        "sub_1",
+        ended_at.as_secs(),
+        // A month past the end, which is what Stripe still reports.
+        ended_at.as_secs() + 30 * 24 * 60 * 60,
+    );
+
+    let signature = stripe_signed(&body, ended_at);
+
+    eval!(&mut state,
+        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "active", Some(PAID_UNTIL))] } },
+
+        // Paid up, and the app opens.
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 1, .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore { action: ActionStore::LoadItems { call_id: 2, .. } },
+
+        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![] } },
+        > Action::ToStore { action: ActionStore::LoadSnapshot { call_id: 3, .. } },
+
+        < Event::FromStore { call_id: 3, event: EventStore::SnapshotLoaded { snapshot: server_wire::WireSnapshot::new(&[], &[], &[]) } },
+        > Action::ToRouter { request_id: 1, action: ActionRouter::Serve { .. } },
+
+        // The subscription is deleted.
+        < Event::FromProcess { event: EventProcess::Tick { now: ended_at } },
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+        > @r#"ToRouter { request_id: 2, action: Accepted }"#,
+        > Action::ToStore { action: ActionStore::ApplySubscriptionEvent { call_id: 4, .. } },
+
+        // And the app is shut, in the same second — not in a month.
+        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { action: ActionStore::LoadSession { call_id: 5, .. } },
+
+        < Event::FromStore { call_id: 5, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > @r#"ToRouter { request_id: 3, action: PaymentRequired }"#,
+    );
+}

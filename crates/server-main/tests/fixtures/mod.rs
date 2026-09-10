@@ -232,6 +232,24 @@ pub fn stripe_signed(body: &[u8], at: Timestamp) -> String {
     format!("t={},v1={hex}", at.as_secs())
 }
 
+/// A `customer.subscription.deleted` body, as Stripe sends one.
+///
+/// The shape that matters: `canceled`, `ended_at` set to the moment it
+/// stopped, and `current_period_end` still a month out. Believing the period
+/// end here serves a deleted subscription for the rest of its month.
+pub fn stripe_subscription_deleted(
+    event_id: &str,
+    created: u64,
+    subscription_id: &str,
+    ended_at: u64,
+    current_period_end: u64,
+) -> Vec<u8> {
+    format!(
+        r#"{{"id":"{event_id}","type":"customer.subscription.deleted","created":{created},"data":{{"object":{{"object":"subscription","id":"{subscription_id}","status":"canceled","customer":"cus_1","cancel_at_period_end":false,"ended_at":{ended_at},"items":{{"data":[{{"current_period_start":0,"current_period_end":{current_period_end}}}]}}}}}}}}"#
+    )
+    .into_bytes()
+}
+
 /// A `customer.subscription.updated` body, as Stripe sends one.
 ///
 /// `current_period_end` sits on the item rather than on the subscription,

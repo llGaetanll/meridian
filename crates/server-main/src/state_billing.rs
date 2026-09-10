@@ -207,12 +207,15 @@ impl StateBilling {
     /// Answers the entitlement it implies, for the parent to hold. The write
     /// to the store goes out beside it, and the ordering guard there is what
     /// makes a repeat or an out-of-order delivery harmless.
-    pub fn entitlement_of(subscription: &src_stripe::StripeSubscription) -> Entitlement {
+    pub fn entitlement_of(
+        subscription: &src_stripe::StripeSubscription,
+        now: Timestamp,
+    ) -> Entitlement {
         Entitlement {
             provider: BillingProvider::Stripe,
             status: subscription.status.clone(),
             good_until: subscription
-                .current_period_end()
+                .good_until(now.as_secs() as i64)
                 .and_then(|secs| u64::try_from(secs).ok())
                 .map(Timestamp::from_secs),
             cancel_at_period_end: subscription.cancel_at_period_end,
