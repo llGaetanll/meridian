@@ -35,7 +35,14 @@ pub enum Refusal {
     /// the two would sign somebody out for not having paid.
     PaymentRequired,
 
-    /// Anything else, including a request that never arrived.
+    /// A status this client has no rule about. The code and not a sentence
+    /// about it, so a rule about one of them is a `match` rather than a
+    /// comparison against a spelling.
+    Answered(u16),
+
+    /// A call that produced no status to read — a request that never arrived,
+    /// or an answer that would not parse. Under whatever the library that
+    /// failed called it.
     Failed(String),
 }
 
@@ -129,7 +136,7 @@ impl Meridian {
             200 => {}
             401 => return Err(Refusal::Unauthorized),
             402 => return Err(Refusal::PaymentRequired),
-            other => return Err(Refusal::Failed(format!("the server said {other}"))),
+            other => return Err(Refusal::Answered(other)),
         }
 
         match serde_json::from_str(&body) {
