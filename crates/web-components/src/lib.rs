@@ -5,6 +5,7 @@ mod transaction;
 
 pub use chart::*;
 pub use markets::*;
+pub use shell::Brand;
 pub use shell::NavItem;
 pub use shell::Shell;
 pub use transaction::*;

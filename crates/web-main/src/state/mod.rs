@@ -1,9 +1,12 @@
 //! Reactive state. It calls into [`crate::io`] but performs no requests itself.
 
+mod billing;
 mod markets;
 
 use leptos::prelude::*;
 
+pub use billing::BillingState;
+pub use billing::Standing;
 pub use markets::MarketsState;
 
 use crate::io::Markets;

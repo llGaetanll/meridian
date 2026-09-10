@@ -11,6 +11,9 @@ leptos_meta = { workspace = true }
 api-cache = { path = "../api-cache" }
 api-common = { path = "../api-common" }
 chrono = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 src-yahoo = { path = "../src-yahoo" }
 api-ledger = { path = "../api-ledger" }
 web-ui = { path = "../web-ui" }
@@ -18,4 +21,4 @@ web-components = { path = "../web-components" }
 
 [dependencies.web-sys]
 version = "0.3"
-features = ["DomRect", "Window", "Location"]
+features = ["DomRect", "Window", "Location", "Storage"]

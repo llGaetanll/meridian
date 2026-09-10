@@ -3,6 +3,7 @@ watch = [
     "../web-main/src",
     "../web-main/css",
     "../web-main/input.css",
+    "../../sketches/shared",
     "../web-ui/src",
     "../web-components/src",
 ]

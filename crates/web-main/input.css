@@ -6,6 +6,13 @@
 @import "./css/theme.css";
 @import "./css/app.css";
 @import "./css/markets.css";
+/* The design language itself, read from the sheet rather than copied into the
+   app: two copies of it is exactly the drift the sheet exists to prevent.
+   Everything in it is scoped to `.ui`, so it sits beside `app.css` without the
+   two fighting — and it goes after, because `.ui .btn` and app.css's own
+   `.btn:hover` weigh the same and the last one written wins. */
+@import "../../sketches/shared/components.css";
+@import "./css/paywall.css";
 
 :root {
   --chart-accent: theme('colors.accent.500');

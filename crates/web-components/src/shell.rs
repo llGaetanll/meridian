@@ -68,6 +68,27 @@ pub fn Shell(
     }
 }
 
+/// The globe and the name. Head of the sidebar, and the one thing on a screen
+/// drawn without one that says whose app this is.
+#[component]
+pub fn Brand() -> impl IntoView {
+    view! {
+        <div class="brand">
+            <svg
+                class="brand-mark"
+                viewBox="0 0 200 200"
+                fill="none"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                inner_html=BRAND_MARK
+            />
+            <span>Meridian</span>
+        </div>
+    }
+}
+
 #[component]
 fn Sidebar(
     active: NavItem,
@@ -76,19 +97,7 @@ fn Sidebar(
 ) -> impl IntoView {
     view! {
         <aside class="sidebar">
-            <div class="brand">
-                <svg
-                    class="brand-mark"
-                    viewBox="0 0 200 200"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                    inner_html=BRAND_MARK
-                />
-                <span>Meridian</span>
-            </div>
+            <Brand />
 
             <nav class="nav">
                 {NavItem::ALL

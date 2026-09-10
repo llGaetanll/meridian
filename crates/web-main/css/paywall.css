@@ -1,0 +1,33 @@
+/* Where the paywall sits.
+
+   One column down the middle of the window, which is this platform's answer to
+   the phone's `.onb` — the block is the design language's, the place it stands
+   is ours. Nothing here restyles a component.
+
+   It replaces the shell rather than sitting inside it: every screen behind the
+   sidebar answers 402 for this session, so a nav that is all dead ends is a
+   worse thing to draw than no nav. */
+
+.paywall {
+  display: flex;
+  /* The shell owns scrolling for the app; with no shell this screen owns its
+     own, or a short window clips the button with no way to reach it. */
+  height: 100%;
+  overflow-y: auto;
+  padding: 56px 24px;
+}
+
+/* The measure the whole screen is set to: the sentences, the rows under them
+   and the button are one column wide. Centred with `auto` margins rather than
+   by the flex box, which cuts the top off whatever it cannot fit. */
+.paywall .measure {
+  width: 100%;
+  max-width: 420px;
+  margin: auto;
+}
+
+.paywall .brand { padding: 0 0 32px; }
+
+/* The facts the server sent, and then the one thing to do. */
+.paywall .facts { margin-top: 24px; }
+.paywall .acts { margin-top: 26px; }
