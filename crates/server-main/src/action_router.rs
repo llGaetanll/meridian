@@ -3,6 +3,8 @@
 //! One per [`EventRouter`](crate::EventRouter): the handler parks until its
 //! own comes back, so an event that produced none never answers.
 
+use server_wire::WireUnpaid;
+
 use crate::ConnId;
 
 #[derive(Debug)]
@@ -74,7 +76,11 @@ pub enum ActionRouter {
     /// purpose: the session is good and the answer is a paywall, not a sign-in
     /// screen. A client that conflated them would sign somebody out for not
     /// having paid.
-    PaymentRequired,
+    ///
+    /// It carries why, because one code is several screens and only the server
+    /// can tell them apart — and because the provider's own vocabulary stops
+    /// here (`entitlement::unpaid`) rather than reaching a client.
+    PaymentRequired { unpaid: WireUnpaid },
 
     /// A subscription has been started, and this is what the card form
     /// confirms against.
@@ -87,8 +93,10 @@ pub enum ActionRouter {
         /// Whether the app may be used right now.
         entitled: bool,
 
-        /// The provider's word for it, absent if they have never subscribed.
-        status: Option<String>,
+        /// Why not, present exactly when [`entitled`](Self::BillingStatus) is
+        /// false. Our word and never the provider's, the same one the 402
+        /// carries — a client draws one paywall, so it reads one vocabulary.
+        unpaid: Option<WireUnpaid>,
 
         /// The end of the period paid for, in seconds.
         good_until: Option<u64>,

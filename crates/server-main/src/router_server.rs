@@ -34,6 +34,7 @@ use crate::ActionRouter;
 use crate::Client;
 use crate::ClientIp;
 use crate::EventRouter;
+use crate::Refusal;
 use crate::WEBHOOK_PATH;
 use crate::WebOrigins;
 use crate::router_trace;
@@ -44,6 +45,7 @@ use crate::runtime_router::Watched;
 use crate::session_token;
 use server_wire::WireSnapshot;
 use server_wire::WireSyncStatus;
+use server_wire::WireUnpaid;
 
 /// The route Stripe is told to call.
 ///
@@ -104,7 +106,7 @@ async fn snapshot(
     State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
-) -> Result<Json<WireSnapshot>, StatusCode> {
+) -> Result<Json<WireSnapshot>, Refusal> {
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
     // The machine answers only once every fetch this request set going has
@@ -120,8 +122,8 @@ async fn snapshot(
 
     match answer {
         Some(ActionRouter::Serve { snapshot }) => Ok(Json(snapshot)),
-        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
-        _ => Err(StatusCode::SERVICE_UNAVAILABLE),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),
     }
 }
 
@@ -136,7 +138,7 @@ async fn billing_subscribe(
     State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
-) -> Result<Json<SubscribeAnswer>, StatusCode> {
+) -> Result<Json<SubscribeAnswer>, Refusal> {
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
     let answer = runtime_router::dispatch(
@@ -152,8 +154,8 @@ async fn billing_subscribe(
         Some(ActionRouter::Subscribing { client_secret }) => {
             Ok(Json(SubscribeAnswer { client_secret }))
         }
-        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
-        _ => Err(StatusCode::SERVICE_UNAVAILABLE),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),
     }
 }
 
@@ -173,7 +175,7 @@ async fn billing_status(
     State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
-) -> Result<Json<BillingAnswer>, StatusCode> {
+) -> Result<Json<BillingAnswer>, Refusal> {
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
     let answer = runtime_router::dispatch(
@@ -188,17 +190,17 @@ async fn billing_status(
     match answer {
         Some(ActionRouter::BillingStatus {
             entitled,
-            status,
+            unpaid,
             good_until,
             cancel_at_period_end,
         }) => Ok(Json(BillingAnswer {
             entitled,
-            status,
+            unpaid,
             good_until,
             cancel_at_period_end,
         })),
-        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
-        _ => Err(StatusCode::SERVICE_UNAVAILABLE),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),
     }
 }
 
@@ -206,7 +208,11 @@ async fn billing_status(
 #[derive(Debug, serde::Serialize)]
 struct BillingAnswer {
     entitled: bool,
-    status: Option<String>,
+
+    /// Why not, present exactly when `entitled` is false.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    unpaid: Option<WireUnpaid>,
+
     good_until: Option<u64>,
     cancel_at_period_end: bool,
 }
@@ -227,7 +233,7 @@ async fn account_delete(
     State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
-) -> Result<StatusCode, StatusCode> {
+) -> Result<StatusCode, Refusal> {
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
     let answer = runtime_router::dispatch(
@@ -241,8 +247,8 @@ async fn account_delete(
 
     match answer {
         Some(ActionRouter::Deleted) => Ok(StatusCode::NO_CONTENT),
-        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
-        _ => Err(StatusCode::SERVICE_UNAVAILABLE),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),
     }
 }
 
@@ -347,7 +353,7 @@ async fn auth_verify(
     State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     Json(body): Json<AuthVerifyBody>,
-) -> Result<Json<AuthVerified>, StatusCode> {
+) -> Result<Json<AuthVerified>, Refusal> {
     let answer = runtime_router::dispatch(
         &to_loop,
         Client::anonymous(ip),
@@ -365,9 +371,9 @@ async fn auth_verify(
 
         // A store that would not answer, told apart from a code that was no
         // good because only one of the two is the caller's to fix.
-        Some(ActionRouter::Unavailable) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Some(ActionRouter::Unavailable) => Err(StatusCode::INTERNAL_SERVER_ERROR.into()),
 
-        _ => Err(StatusCode::UNAUTHORIZED),
+        _ => Err(StatusCode::UNAUTHORIZED.into()),
     }
 }
 
@@ -385,7 +391,7 @@ async fn link_start(
     State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
-) -> Result<Json<LinkStarted>, StatusCode> {
+) -> Result<Json<LinkStarted>, Refusal> {
     // Hashed here: the plaintext is a live credential and the event goes in the
     // log.
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
@@ -404,15 +410,15 @@ async fn link_start(
     match answer {
         Some(ActionRouter::LinkOpened { url }) => Ok(Json(LinkStarted { url })),
 
-        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
 
         // The session this caller holds could not be read. Told apart from
         // Plaid refusing, the same way the other routes tell a store that
         // would not answer apart from an answer: a gateway error points at
         // somebody else's service for something that went wrong here.
-        Some(ActionRouter::Unavailable) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Some(ActionRouter::Unavailable) => Err(StatusCode::INTERNAL_SERVER_ERROR.into()),
 
-        _ => Err(StatusCode::BAD_GATEWAY),
+        _ => Err(StatusCode::BAD_GATEWAY.into()),
     }
 }
 
@@ -451,7 +457,7 @@ async fn link_finish(
     State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
-) -> Result<Json<LinkFinished>, StatusCode> {
+) -> Result<Json<LinkFinished>, Refusal> {
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
     let answer = runtime_router::dispatch(
@@ -468,13 +474,13 @@ async fn link_finish(
         Some(ActionRouter::LinkPending) => Ok(Json(LinkFinished::Pending)),
         Some(ActionRouter::LinkAbandoned) => Ok(Json(LinkFinished::Abandoned)),
 
-        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
 
         // The store would not say what this caller has open, or the poll it
         // asked for never came back. Told apart from a session that came to
         // nothing: "abandoned" is a sentence about somebody's bank, and saying
         // it because Postgres was down is saying something we do not know.
-        Some(ActionRouter::Unavailable) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Some(ActionRouter::Unavailable) => Err(StatusCode::INTERNAL_SERVER_ERROR.into()),
 
         // Nothing at all, which cannot happen: every router event answers. It
         // reads as the ordinary ending rather than a 500, because a phone with
@@ -548,7 +554,7 @@ async fn sync_status(
     State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
-) -> Result<Sse<KeepAliveStream<Statuses>>, StatusCode> {
+) -> Result<Sse<KeepAliveStream<Statuses>>, Refusal> {
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
     // Refused before a byte of the response has gone out. A stream that opens
@@ -568,18 +574,18 @@ async fn sync_status(
         },
 
         Watched::Refused(Some(ActionRouter::Unauthorized)) => {
-            return Err(StatusCode::UNAUTHORIZED);
+            return Err(StatusCode::UNAUTHORIZED.into());
         }
 
-        Watched::Refused(Some(ActionRouter::PaymentRequired)) => {
-            return Err(StatusCode::PAYMENT_REQUIRED);
+        Watched::Refused(Some(ActionRouter::PaymentRequired { unpaid })) => {
+            return Err(Refusal::unpaid(unpaid));
         }
 
         Watched::Refused(Some(ActionRouter::TooMany)) => {
-            return Err(StatusCode::TOO_MANY_REQUESTS);
+            return Err(StatusCode::TOO_MANY_REQUESTS.into());
         }
 
-        Watched::Refused(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Watched::Refused(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR.into()),
     };
 
     // Comments down an idle connection, so nothing between here and the phone
@@ -650,14 +656,15 @@ fn normalize(email: &str) -> String {
 /// cannot answer a refusal with a 503 by forgetting to name it. `TooMany`
 /// carries no `Retry-After` — see
 /// [`ActionRouter::TooMany`](crate::ActionRouter::TooMany).
-fn refused(answer: &Option<ActionRouter>) -> Result<(), StatusCode> {
+fn refused(answer: &Option<ActionRouter>) -> Result<(), Refusal> {
     match answer {
-        Some(ActionRouter::TooMany) => Err(StatusCode::TOO_MANY_REQUESTS),
+        Some(ActionRouter::TooMany) => Err(StatusCode::TOO_MANY_REQUESTS.into()),
 
         // Signed in, and has not paid. Told apart from a 401 on purpose: the
-        // session is good, and what the client needs is a card form rather
-        // than a sign-in screen.
-        Some(ActionRouter::PaymentRequired) => Err(StatusCode::PAYMENT_REQUIRED),
+        // session is good, and what the client needs is a paywall rather than
+        // a sign-in screen. It is the one refusal with a body, because which
+        // paywall is a fact only this side holds.
+        Some(ActionRouter::PaymentRequired { unpaid }) => Err(Refusal::unpaid(unpaid.clone())),
 
         _ => Ok(()),
     }
@@ -665,27 +672,63 @@ fn refused(answer: &Option<ActionRouter>) -> Result<(), StatusCode> {
 
 #[cfg(test)]
 mod tests {
+    use axum::response::IntoResponse;
+
     use super::*;
 
     /// The codes a refusal turns into, which are a wire contract with every
-    /// client: 402 is a card form and 401 is a sign-in screen, and a client
-    /// that conflated them would sign somebody out for not having paid.
+    /// client: 402 is a paywall and 401 is a sign-in screen, and a client that
+    /// conflated them would sign somebody out for not having paid.
     #[test]
     fn a_refusal_is_told_apart_from_a_failure() {
+        let code = |answer| match refused(&Some(answer)) {
+            Ok(()) => None,
+            Err(refusal) => Some(refusal.into_response().status()),
+        };
+
         assert_eq!(
-            refused(&Some(ActionRouter::PaymentRequired)),
-            Err(StatusCode::PAYMENT_REQUIRED),
+            code(ActionRouter::PaymentRequired {
+                unpaid: WireUnpaid {
+                    reason: "never".to_string(),
+                    ran_out: None,
+                },
+            }),
+            Some(StatusCode::PAYMENT_REQUIRED),
         );
 
         assert_eq!(
-            refused(&Some(ActionRouter::TooMany)),
-            Err(StatusCode::TOO_MANY_REQUESTS),
+            code(ActionRouter::TooMany),
+            Some(StatusCode::TOO_MANY_REQUESTS)
         );
 
         // Everything else is the route's own business, and passes through.
-        assert_eq!(refused(&Some(ActionRouter::Unauthorized)), Ok(()));
-        assert_eq!(refused(&Some(ActionRouter::Accepted)), Ok(()));
-        assert_eq!(refused(&None), Ok(()));
+        assert_eq!(code(ActionRouter::Unauthorized), None);
+        assert_eq!(code(ActionRouter::Accepted), None);
+        assert!(refused(&None).is_ok());
+    }
+
+    /// The 402 is the one refusal with a body, and the body is why. A client
+    /// reading the code alone cannot tell somebody who has never subscribed
+    /// from somebody whose card stopped working, and those are two screens.
+    #[tokio::test]
+    async fn a_payment_refusal_says_why() {
+        let refusal = Refusal::unpaid(WireUnpaid {
+            reason: "declined".to_string(),
+            ran_out: Some(1_786_492_800),
+        });
+
+        let response = refusal.into_response();
+
+        assert_eq!(response.status(), StatusCode::PAYMENT_REQUIRED);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("a body built from a plain struct");
+
+        assert_eq!(
+            String::from_utf8_lossy(&body),
+            r#"{"reason":"declined","ran_out":1786492800}"#,
+        );
     }
 
     /// The three words the phone switches on. They are a wire contract with

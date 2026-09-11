@@ -2,7 +2,11 @@
 
 use api_common::Timestamp;
 
+use server_wire::UnpaidReason;
+use server_wire::WireUnpaid;
+use server_wire::unpaid_reason_name;
 use src_postgres::BillingProvider;
+use src_stripe::StripeStatus;
 
 /// What is known about one user's subscription.
 ///
@@ -47,5 +51,129 @@ impl Entitlement {
     pub fn allows(&self, now: Timestamp) -> bool {
         self.good_until
             .is_some_and(|until| now.as_secs() < until.as_secs())
+    }
+}
+
+/// Why a session is being refused, for the paywall the client draws.
+///
+/// The one place a provider's vocabulary stops. Stripe's eight words and
+/// Apple's own map onto three of ours here, so a client never learns either
+/// dictionary and a third provider is another arm in this function rather than
+/// a release of every app.
+///
+/// `None` is somebody who has never subscribed, which is most of who sees a
+/// paywall.
+pub fn unpaid(entitlement: Option<&Entitlement>) -> WireUnpaid {
+    let Some(entitlement) = entitlement else {
+        return WireUnpaid {
+            reason: unpaid_reason_name(UnpaidReason::Never).to_string(),
+            ran_out: None,
+        };
+    };
+
+    let reason = match entitlement.provider {
+        BillingProvider::Stripe => from_stripe(&entitlement.status),
+
+        // Nothing writes one yet. Until the Apple rail exists, saying the
+        // least is the only honest answer: the word in the row is one this
+        // function has never mapped.
+        BillingProvider::Apple => UnpaidReason::Never,
+    };
+
+    WireUnpaid {
+        reason: unpaid_reason_name(reason).to_string(),
+        ran_out: entitlement.good_until.map(|until| until.as_secs()),
+    }
+}
+
+/// Stripe's word for a subscription, as the reason a paywall is being drawn.
+///
+/// Only ever asked about a session already refused, so whatever the word says,
+/// the date we hold has passed.
+fn from_stripe(status: &str) -> UnpaidReason {
+    match StripeStatus::from_name(status) {
+        // A renewal that failed, and a first payment that never landed inside
+        // Stripe's 23 hours. A payment was attempted and did not go through,
+        // which is the whole of what `Declined` claims.
+        StripeStatus::PastDue | StripeStatus::Unpaid | StripeStatus::IncompleteExpired => {
+            UnpaidReason::Declined
+        }
+
+        StripeStatus::Canceled => UnpaidReason::Ended,
+
+        // A first payment still in flight — a 3D Secure challenge open, inside
+        // Stripe's window. Nothing has been refused and no period has ever
+        // run out, so neither `Declined` nor `Ended` is true yet.
+        StripeStatus::Incomplete => UnpaidReason::Unconfirmed,
+
+        // Stripe believes this person is paying and the date we hold says they
+        // are not. That is a webhook we never received, and it may land a
+        // minute from now — so this is the one state where saying anything
+        // about a cause would be inventing one.
+        StripeStatus::Active => {
+            tracing::warn!(
+                status,
+                "a subscription Stripe calls active has a period that has run out — \
+                 a missed webhook, and somebody paying is being refused",
+            );
+
+            UnpaidReason::Unconfirmed
+        }
+
+        // Neither is reachable by configuration: nothing offers a trial and
+        // nothing pauses a subscription. Worth a line if one ever appears, and
+        // worth the screen that claims nothing about what came before.
+        StripeStatus::Trialing | StripeStatus::Paused | StripeStatus::Other(_) => {
+            tracing::warn!(
+                status,
+                "a subscription status nothing in this app can produce",
+            );
+
+            UnpaidReason::Never
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The fold from Stripe's eight words to our four. It is the only place a
+    /// provider's vocabulary is read, so what each one becomes is written down
+    /// here rather than inferred from the flow tests that happen to cross it.
+    #[test]
+    fn stripes_words_become_ours() {
+        // A payment was attempted and did not go through. `incomplete_expired`
+        // is here and `incomplete` is not: one is a first payment that never
+        // landed, the other is one still in flight.
+        assert_eq!(from_stripe("past_due"), UnpaidReason::Declined);
+        assert_eq!(from_stripe("unpaid"), UnpaidReason::Declined);
+        assert_eq!(from_stripe("incomplete_expired"), UnpaidReason::Declined);
+
+        assert_eq!(from_stripe("canceled"), UnpaidReason::Ended);
+
+        // Nothing has been refused yet, and no period has run out.
+        assert_eq!(from_stripe("incomplete"), UnpaidReason::Unconfirmed);
+
+        // Stripe believes this person is paying and our date says otherwise,
+        // which is a webhook that has not arrived. Telling them it ended would
+        // be telling a paying customer their subscription is over.
+        assert_eq!(from_stripe("active"), UnpaidReason::Unconfirmed);
+
+        // Unreachable by configuration, and a word we have never seen. Both
+        // get the screen that claims nothing about what came before, because
+        // every other one of the four states a cause.
+        assert_eq!(from_stripe("trialing"), UnpaidReason::Never);
+        assert_eq!(from_stripe("paused"), UnpaidReason::Never);
+        assert_eq!(from_stripe("refunded"), UnpaidReason::Never);
+    }
+
+    /// Nobody has ever subscribed, which is most of who sees a paywall.
+    #[test]
+    fn no_subscription_at_all_claims_nothing() {
+        let unpaid = unpaid(None);
+
+        assert_eq!(unpaid.reason(), UnpaidReason::Never);
+        assert_eq!(unpaid.ran_out, None);
     }
 }

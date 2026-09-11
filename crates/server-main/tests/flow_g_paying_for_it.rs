@@ -106,7 +106,7 @@ fn a_started_subscription_entitles_nobody() {
         > Action::ToStore { call_id: 6, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 6, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > @r#"ToRouter { request_id: 2, action: PaymentRequired }"#,
+        > @r#"ToRouter { request_id: 2, action: PaymentRequired { unpaid: WireUnpaid { reason: "never", ran_out: None } } }"#,
     );
 }
 
@@ -345,7 +345,7 @@ fn an_active_subscription_whose_period_ran_out_does_not() {
         > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > @r#"ToRouter { request_id: 1, action: PaymentRequired }"#,
+        > @r#"ToRouter { request_id: 1, action: PaymentRequired { unpaid: WireUnpaid { reason: "unconfirmed", ran_out: Some(1787097599) } } }"#,
     );
 }
 
@@ -380,7 +380,7 @@ fn a_period_ends_because_a_tick_says_so() {
         > Action::ToStore { call_id: 4, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 4, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > @r#"ToRouter { request_id: 2, action: PaymentRequired }"#,
+        > @r#"ToRouter { request_id: 2, action: PaymentRequired { unpaid: WireUnpaid { reason: "unconfirmed", ran_out: Some(1787097660) } } }"#,
     );
 }
 
@@ -396,7 +396,7 @@ fn an_unpaid_session_can_still_ask_where_it_stands() {
         > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > @r#"ToRouter { request_id: 1, action: BillingStatus { entitled: false, status: None, good_until: None, cancel_at_period_end: false } }"#,
+        > @r#"ToRouter { request_id: 1, action: BillingStatus { entitled: false, unpaid: Some(WireUnpaid { reason: "never", ran_out: None }), good_until: None, cancel_at_period_end: false } }"#,
     );
 }
 
@@ -410,7 +410,7 @@ fn a_paid_session_is_told_what_it_has() {
         > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > @r#"ToRouter { request_id: 1, action: BillingStatus { entitled: true, status: Some("active"), good_until: Some(1818633600), cancel_at_period_end: false } }"#,
+        > @r#"ToRouter { request_id: 1, action: BillingStatus { entitled: true, unpaid: None, good_until: Some(1818633600), cancel_at_period_end: false } }"#,
     );
 }
 
@@ -503,7 +503,7 @@ fn a_deleted_subscription_closes_the_app_at_once() {
         > Action::ToStore { call_id: 5, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 5, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > @r#"ToRouter { request_id: 3, action: PaymentRequired }"#,
+        > @r#"ToRouter { request_id: 3, action: PaymentRequired { unpaid: WireUnpaid { reason: "ended", ran_out: Some(1787097660) } } }"#,
     );
 }
 
@@ -663,7 +663,7 @@ fn an_unpaid_subscription_closes_the_app() {
         > Action::ToStore { call_id: 2, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 2, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > @r#"ToRouter { request_id: 2, action: PaymentRequired }"#,
+        > @r#"ToRouter { request_id: 2, action: PaymentRequired { unpaid: WireUnpaid { reason: "declined", ran_out: Some(1787097600) } } }"#,
     );
 }
 
@@ -699,7 +699,7 @@ fn a_renewal_moves_the_period_forward() {
         > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > @r#"ToRouter { request_id: 1, action: PaymentRequired }"#,
+        > @r#"ToRouter { request_id: 1, action: PaymentRequired { unpaid: WireUnpaid { reason: "unconfirmed", ran_out: Some(1787097660) } } }"#,
 
         // The renewal lands.
         < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },

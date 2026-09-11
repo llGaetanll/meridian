@@ -343,6 +343,97 @@ impl SyncStage {
     ];
 }
 
+/// Why a refusal was a 402, so a client can draw the right paywall.
+///
+/// The only refusal that carries a body. A 401 and a 429 are wholly said by
+/// their status code; this one is not, because "you have never subscribed" and
+/// "your card stopped working" are the same code and different screens.
+///
+/// **No provider vocabulary crosses this.** Stripe says `past_due` and Apple
+/// says something else again, and a client that matched on either would have
+/// learned one provider's dictionary — so a second provider would be a second
+/// set of arms in every app. The server maps; the wire carries our word.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WireUnpaid {
+    /// `"never"`, `"declined"`, `"ended"` or `"unconfirmed"`.
+    pub reason: String,
+
+    /// The end of the period that was paid for, in seconds. Always in the
+    /// past: entitlement is that date against the clock, so a period still
+    /// running is a session that was never refused. Absent where there is no
+    /// date, which is also every [`UnpaidReason::Never`].
+    pub ran_out: Option<u64>,
+}
+
+impl WireUnpaid {
+    /// Why, as a value. An unknown word reads as
+    /// [`Never`](UnpaidReason::Never) — see [`unpaid_reason_from_name`].
+    pub fn reason(&self) -> UnpaidReason {
+        unpaid_reason_from_name(&self.reason)
+    }
+}
+
+/// Why somebody signed in is not being served.
+///
+/// Four words, and they are the four different things a paywall has to say.
+/// There is no "paid" arm: this is carried by a refusal, and a session being
+/// served never produces one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnpaidReason {
+    /// Nobody has ever subscribed on this account. Says nothing about a past,
+    /// which is what makes it the safe reading of a word we do not know.
+    Never,
+
+    /// A payment did not go through.
+    Declined,
+
+    /// A subscription that ended, and the period it paid for has passed.
+    Ended,
+
+    /// We cannot tell. A payment still in flight, or a provider that believes
+    /// this person is paying while the date we hold says otherwise.
+    ///
+    /// Its own word rather than folded into one of the three, because each of
+    /// those states a cause — never subscribed, a card refused, a subscription
+    /// ended — and this is exactly the case where none of them is known to be
+    /// true. Somebody mid-payment told their subscription has ended is being
+    /// lied to.
+    Unconfirmed,
+}
+
+impl UnpaidReason {
+    pub const ALL: [UnpaidReason; 4] = [
+        UnpaidReason::Never,
+        UnpaidReason::Declined,
+        UnpaidReason::Ended,
+        UnpaidReason::Unconfirmed,
+    ];
+}
+
+/// The wire name of a reason. Written out rather than derived from `Debug`, so
+/// renaming a Rust variant is a deliberate wire change.
+pub fn unpaid_reason_name(reason: UnpaidReason) -> &'static str {
+    match reason {
+        UnpaidReason::Never => "never",
+        UnpaidReason::Declined => "declined",
+        UnpaidReason::Ended => "ended",
+        UnpaidReason::Unconfirmed => "unconfirmed",
+    }
+}
+
+/// A reason's wire name back into the enum.
+///
+/// An unknown word reads as `never`, whose screen claims nothing about what
+/// came before — so a server that learns a fourth reason before a client does
+/// makes that client say less rather than something untrue.
+pub fn unpaid_reason_from_name(name: &str) -> UnpaidReason {
+    UnpaidReason::ALL
+        .iter()
+        .copied()
+        .find(|reason| unpaid_reason_name(*reason) == name)
+        .unwrap_or(UnpaidReason::Never)
+}
+
 /// The wire name of a stage. Written out rather than derived from `Debug`, so
 /// renaming the variant is a deliberate wire change and not an accident.
 pub fn stage_name(stage: SyncStage) -> &'static str {
@@ -461,6 +552,24 @@ mod tests {
             connection_status_from_name("login_required", Timestamp::EPOCH),
             ConnectionStatus::LoginRequired,
         );
+    }
+
+    /// Every client switches on these three words to decide which paywall it
+    /// draws, so they are a wire contract and are pinned here as text. A word
+    /// changed on one side and not the other tells somebody whose card was
+    /// declined that they have never subscribed.
+    #[test]
+    fn the_reasons_a_paywall_draws_are_named_on_the_wire() {
+        assert_eq!(unpaid_reason_name(UnpaidReason::Never), "never");
+        assert_eq!(unpaid_reason_name(UnpaidReason::Declined), "declined");
+        assert_eq!(unpaid_reason_name(UnpaidReason::Ended), "ended");
+        assert_eq!(unpaid_reason_name(UnpaidReason::Unconfirmed), "unconfirmed");
+
+        assert_eq!(unpaid_reason_from_name("declined"), UnpaidReason::Declined);
+
+        // A reason this build has never heard of says the least rather than
+        // something untrue.
+        assert_eq!(unpaid_reason_from_name("refunded"), UnpaidReason::Never);
     }
 
     /// The app maps these names back to the enum. A name changed on one side

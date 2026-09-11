@@ -198,7 +198,7 @@ fn somebody_whose_subscription_lapsed_can_still_delete_their_account() {
         > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > @r#"ToRouter { request_id: 1, action: PaymentRequired }"#,
+        > @r#"ToRouter { request_id: 1, action: PaymentRequired { unpaid: WireUnpaid { reason: "ended", ran_out: Some(1787097599) } } }"#,
 
         // And the door out is still open. The subscription is still
         // cancelled: a period that has run out is not a subscription Stripe
@@ -282,7 +282,7 @@ fn a_deleted_account_is_forgotten_whole() {
         > Action::ToStore { call_id: 5, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 5, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > @r#"ToRouter { request_id: 2, action: PaymentRequired }"#,
+        > @r#"ToRouter { request_id: 2, action: PaymentRequired { unpaid: WireUnpaid { reason: "never", ran_out: None } } }"#,
     );
 }
 

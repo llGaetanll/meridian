@@ -64,6 +64,7 @@ use crate::StateBilling;
 use crate::StateSignup;
 use crate::Syncing;
 use crate::WebhookFacts;
+use crate::entitlement;
 use crate::rate_limit::ServerRateCtx;
 use crate::rate_limit::ServerRateLimiter;
 
@@ -408,8 +409,16 @@ impl StateServer {
         if event.needs_entitlement() && !self.allows(user_id) {
             tracing::info!(%user_id, route = route.as_str(), "a route was asked for without a subscription");
 
-            self.signup
-                .answer(request_id, ActionRouter::PaymentRequired, self.now, actions);
+            // Why, and not only that: one status code is four screens, and
+            // which one is a fact only this side holds.
+            let unpaid = entitlement::unpaid(self.entitled.get(&user_id));
+
+            self.signup.answer(
+                request_id,
+                ActionRouter::PaymentRequired { unpaid },
+                self.now,
+                actions,
+            );
 
             return;
         }
@@ -483,12 +492,19 @@ impl StateServer {
 
             Authenticated::BillingStatusRequested => {
                 let entitlement = self.entitled.get(&user_id);
+                let entitled = self.allows(user_id);
 
                 self.signup.answer(
                     request_id,
                     ActionRouter::BillingStatus {
-                        entitled: self.allows(user_id),
-                        status: entitlement.map(|e| e.status.clone()),
+                        entitled,
+
+                        // Why, in our words, and only when there is a why.
+                        // The provider's own word does not leave the server on
+                        // this route either — it is the one a client reads
+                        // most, so a leak here would be the whole of the leak.
+                        unpaid: (!entitled).then(|| entitlement::unpaid(entitlement)),
+
                         good_until: entitlement
                             .and_then(|e| e.good_until)
                             .map(|until| until.as_secs()),
