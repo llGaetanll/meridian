@@ -126,5 +126,4 @@ the slot, so a careless connection is permanent.
 ## Compliance
 
 `docs/COMPLIANCE.md` says who may publish Meridian on each platform and what
-the law asks of it everywhere. Read it before a store submission, and before
-anything that would let Meridian move money.
+the law asks of it everywhere. Read it before a store submission.

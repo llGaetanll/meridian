@@ -42,9 +42,9 @@ storefronts Apple also shows the seller's address, phone and email publicly.
 
 **Guideline 3.2.1(viii)** is the other one to know: apps "used for financial
 trading, investing, or money management should be submitted by the financial
-institution performing such services". Meridian reads and never moves money,
-and the usual reading is that this does not reach a budgeting app — Monarch and
-Copilot are not banks. **If Meridian ever moves money, reread this first.**
+institution performing such services". **Meridian never moves money**; it only
+reads. The usual reading is that this does not reach a budgeting app — Monarch
+and Copilot are not banks.
 
 ## Google Play
 
