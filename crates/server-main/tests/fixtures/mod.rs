@@ -21,15 +21,15 @@ use src_apple::AppleEnvironment;
 /// else.
 pub const T0: Timestamp = Timestamp::from_secs(1_787_097_600);
 
-/// A machine that has been told what time it is and that its process is up —
-/// the first two events the runtime sends, and neither of them any test's
-/// claim. What it has *not* been told is a seed: the tests that mint anything
-/// send one.
+/// A machine that has been told what time it is and that its process is up,
+/// and whose read of who has paid came back with nobody — the first events a
+/// server sees, and none of them any test's claim. What it has *not* been told
+/// is a seed: the tests that mint anything send one.
 ///
 /// It collects Link sessions by polling, which is what a laptop does and what
 /// `docs/API_FLOW.md` calls C1.
 pub fn state() -> StateServer {
-    started(PlaidCollect::Poll)
+    started(PlaidCollect::Poll, Vec::new())
 }
 
 /// The same machine, told that Plaid calls us instead — C2.
@@ -38,7 +38,7 @@ pub fn state() -> StateServer {
 /// up, so this is the whole difference between the two — and the reason
 /// `/link/finish` reads rather than polls is a decision made from it.
 pub fn state_collecting_by_webhook() -> StateServer {
-    started(PlaidCollect::Webhook)
+    started(PlaidCollect::Webhook, Vec::new())
 }
 
 /// The machine, with [`SUBSCRIBER`] paid up well past the end of the suite.
@@ -50,12 +50,18 @@ pub fn state_collecting_by_webhook() -> StateServer {
 /// machine: a test that set a private field would be testing a state the
 /// server cannot actually be in.
 pub fn state_subscribed() -> StateServer {
-    subscribed(state())
+    started(
+        PlaidCollect::Poll,
+        vec![subscription(SUBSCRIBER, "active", Some(PAID_UNTIL))],
+    )
 }
 
 /// The same, collecting by webhook.
 pub fn state_subscribed_by_webhook() -> StateServer {
-    subscribed(state_collecting_by_webhook())
+    started(
+        PlaidCollect::Webhook,
+        vec![subscription(SUBSCRIBER, "active", Some(PAID_UNTIL))],
+    )
 }
 
 /// The user every flow test signs in as.
@@ -70,35 +76,20 @@ pub const PAID_UNTIL: Timestamp = Timestamp::from_secs(T0.as_secs() + 365 * 24 *
 /// For a test about two accounts, where both have to be able to reach the app
 /// before it can say anything about keeping them apart.
 pub fn state_subscribed_many(users: &[uuid::Uuid]) -> StateServer {
-    let mut state = state();
-
-    let subscriptions: Vec<_> = users
+    let subscriptions = users
         .iter()
         .map(|user_id| subscription(*user_id, "active", Some(PAID_UNTIL)))
         .collect();
 
-    state.handle_events(
-        &[Event::FromStore {
-            call_id: 0,
-            event: EventStore::SubscriptionsLoaded { subscriptions },
-        }],
-        &mut Vec::new(),
-    );
-
-    state
+    started(PlaidCollect::Poll, subscriptions)
 }
 
-/// Hand the machine one paid-up subscription, as the startup read would.
-pub fn subscribed(mut state: StateServer) -> StateServer {
-    state.handle_events(
-        &[Event::FromStore {
-            call_id: 0,
-            event: EventStore::SubscriptionsLoaded {
-                subscriptions: vec![subscription(SUBSCRIBER, "active", Some(PAID_UNTIL))],
-            },
-        }],
-        &mut Vec::new(),
-    );
+/// A machine whose process is up and which has asked who has paid, with no
+/// answer yet — the moment after a restart, for the tests that are about it.
+pub fn state_starting() -> StateServer {
+    let mut state = StateServer::new();
+
+    state.handle_events(&process_up(PlaidCollect::Poll), &mut Vec::new());
 
     state
 }
@@ -126,28 +117,44 @@ pub fn subscription(
     }
 }
 
-fn started(collect: PlaidCollect) -> StateServer {
+/// A machine taken through its start: the process is up, and the store has
+/// answered the read of who has paid with these rows.
+fn started(
+    collect: PlaidCollect,
+    subscriptions: Vec<src_postgres::StoredSubscription>,
+) -> StateServer {
     let mut state = StateServer::new();
 
+    state.handle_events(&process_up(collect), &mut Vec::new());
+
     state.handle_events(
-        &[
-            Event::FromProcess {
-                event: EventProcess::Tick { now: T0 },
-            },
-            Event::FromProcess {
-                event: EventProcess::Started {
-                    collect,
-                    web_origins: WebOrigins::parse(WEB_ORIGIN).expect("a literal origin"),
-                    stripe_webhook_secret: Some(STRIPE_WEBHOOK_SECRET.to_string()),
-                    stripe_publishable_key: Some(STRIPE_PUBLISHABLE_KEY.to_string()),
-                    apple_environment: Some(AppleEnvironment::Sandbox),
-                },
-            },
-        ],
+        &[Event::FromStore {
+            call_id: STARTUP_READ,
+            event: EventStore::SubscriptionsLoaded { subscriptions },
+        }],
         &mut Vec::new(),
     );
 
     state
+}
+
+/// The first two events the runtime sends: the time, and what the process
+/// came up with.
+fn process_up(collect: PlaidCollect) -> [Event; 2] {
+    [
+        Event::FromProcess {
+            event: EventProcess::Tick { now: T0 },
+        },
+        Event::FromProcess {
+            event: EventProcess::Started {
+                collect,
+                web_origins: WebOrigins::parse(WEB_ORIGIN).expect("a literal origin"),
+                stripe_webhook_secret: Some(STRIPE_WEBHOOK_SECRET.to_string()),
+                stripe_publishable_key: Some(STRIPE_PUBLISHABLE_KEY.to_string()),
+                apple_environment: Some(AppleEnvironment::Sandbox),
+            },
+        },
+    ]
 }
 
 /// Where these tests say the web app is served from: a laptop's, the way

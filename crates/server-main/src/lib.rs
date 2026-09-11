@@ -124,6 +124,7 @@ pub use server_wire::WireSnapshot;
 pub use session_token::hash as hash_token;
 pub use state_billing::StateBilling;
 pub use state_server::FRESH_FOR_SECS;
+pub use state_server::STARTUP_READ;
 pub use state_server::StateServer;
 pub use state_server::WATCHERS_AT_MOST;
 pub use state_server::WEBHOOK_KEY_MISS_GOOD_FOR_SECS;

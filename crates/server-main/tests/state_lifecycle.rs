@@ -13,10 +13,95 @@ mod fixtures;
 
 use api_common::Timestamp;
 use api_eval::eval;
+use fixtures::SUBSCRIBER;
 use fixtures::T0;
+use fixtures::state_starting;
 use fixtures::state_subscribed;
 
 use server_main::*;
+
+/// Who has paid is written down in the store and nowhere else, so a server
+/// that has just started knows nobody until it asks. It asks in the turn it
+/// learns it is up, before anybody could have asked it anything.
+#[test]
+fn a_server_asks_who_has_paid_as_it_starts() {
+    let mut state = StateServer::new();
+
+    eval!(&mut state,
+        < Event::FromProcess { event: EventProcess::Tick { now: T0 } },
+
+        < Event::FromProcess {
+            event: EventProcess::Started {
+                collect: PlaidCollect::Poll,
+                web_origins: WebOrigins::parse("http://127.0.0.1:8080").expect("a literal origin"),
+                stripe_webhook_secret: None,
+                stripe_publishable_key: None,
+                apple_environment: None,
+            },
+        },
+        > @r#"ToStore { call_id: 0, action: LoadSubscriptions }"#,
+    );
+}
+
+/// A subscriber who asks in the moment after a restart is told the server
+/// cannot answer yet, not that they never paid; and once the read is in, the
+/// same request is served. Deciding from the empty table would send somebody
+/// who pays every month to the paywall.
+#[test]
+fn a_subscriber_is_not_told_they_never_paid_while_the_server_starts() {
+    let mut state = state_starting();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
+
+        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "active", Some(fixtures::PAID_UNTIL))] } },
+
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadItems { .. } },
+    );
+}
+
+/// Stripe's word about a subscription is not taken while the server starts:
+/// what it said would be written over by the rows being read, and answering
+/// unavailable is what makes Stripe send it again.
+#[test]
+fn a_payment_webhook_is_sent_again_rather_than_taken_while_the_server_starts() {
+    let mut state = state_starting();
+
+    let body = fixtures::stripe_subscription_event(
+        "evt_1",
+        T0.as_secs(),
+        fixtures::SUBSCRIPTION_ID,
+        "active",
+        fixtures::PAID_UNTIL.as_secs(),
+    );
+    let signature = fixtures::stripe_signed(&body, T0);
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+        > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
+    );
+}
+
+/// A store that would not answer the startup read is asked again on the next
+/// tick — not at once, where a store failing fast would be asked in a loop, and
+/// not never, where the server would answer unavailable for the rest of its
+/// life.
+#[test]
+fn a_startup_read_the_store_refused_is_asked_again() {
+    let mut state = state_starting();
+
+    eval!(&mut state,
+        < Event::FromStore { call_id: 0, event: EventStore::ReadError { message: "connection refused".to_string() } },
+
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 1) } },
+        > @r#"ToStore { call_id: 0, action: LoadSubscriptions }"#,
+    );
+}
 
 /// A tick with nothing outstanding decides nothing. Every second of a quiet
 /// server goes through here, so it had better be free.

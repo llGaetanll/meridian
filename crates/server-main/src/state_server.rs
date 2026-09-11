@@ -94,6 +94,11 @@ pub const WATCHERS_AT_MOST: usize = 10;
 /// still full means the webhook is refused.
 pub const WEBHOOK_KEYS_AT_MOST: usize = 64;
 
+/// The call the startup read of who has paid goes out on. Zero, which the
+/// counter never hands out: it is the one call made before any route exists,
+/// and nothing waits on it but the machine itself.
+pub const STARTUP_READ: CallId = 0;
+
 /// Everything the server holds between requests.
 ///
 /// Fields are private: state changes only through
@@ -191,6 +196,26 @@ impl StateServer {
         event: &EventRouter,
         actions: &mut Vec<Action>,
     ) {
+        // Every signed-in route is decided from who has paid, and so are both
+        // of the webhooks that say so. Until the startup read is in, that
+        // table is empty rather than known; unavailable is the true answer,
+        // and it is the one Stripe and Apple send again.
+        if self.starting()
+            && (event.token().is_some()
+                || matches!(
+                    event,
+                    EventRouter::StripeWebhookReceived { .. }
+                        | EventRouter::AppleNotificationReceived { .. }
+                ))
+        {
+            tracing::info!("a request arrived before the server knew who has paid");
+
+            self.signup
+                .answer(request_id, ActionRouter::Unavailable, self.now, actions);
+
+            return;
+        }
+
         // A route that has to know who is asking asks the store first.
         if let Some(token_sha256) = event.token() {
             let Some(authenticated) = Authenticated::of(event) else {
@@ -1669,8 +1694,6 @@ impl StateServer {
 
     fn handle_event_process(&mut self, event: &EventProcess, actions: &mut Vec<Action>) {
         match event {
-            // Nothing is pulled into memory at boot: the store is read per
-            // request, which is what makes a second server process possible.
             EventProcess::Started {
                 collect,
                 web_origins,
@@ -1684,6 +1707,11 @@ impl StateServer {
                     stripe_publishable_key.clone(),
                     *apple_environment,
                 );
+
+                actions.push(Action::ToStore {
+                    call_id: STARTUP_READ,
+                    action: ActionStore::LoadSubscriptions,
+                });
             }
 
             EventProcess::Seeded { seed } => {
@@ -1706,6 +1734,15 @@ impl StateServer {
                 );
 
                 self.now = *now;
+
+                if self.state == (Lifecycle::Starting { retry: true }) {
+                    self.state = Lifecycle::Starting { retry: false };
+
+                    actions.push(Action::ToStore {
+                        call_id: STARTUP_READ,
+                        action: ActionStore::LoadSubscriptions,
+                    });
+                }
 
                 // Or the limiters' maps grow for the life of the process:
                 // one is keyed by whoever calls us and the other by every bank
@@ -1755,6 +1792,12 @@ impl StateServer {
                 }
 
                 tracing::info!(count = subscriptions.len(), "subscriptions loaded");
+
+                if self.starting() {
+                    tracing::info!("started");
+
+                    self.state = Lifecycle::Running;
+                }
             }
 
             // The address a subscription's receipt goes to, which is the last
@@ -1951,6 +1994,14 @@ impl StateServer {
             EventStore::ReadError { message } => {
                 tracing::error!(message, "could not read the store");
 
+                if call_id == STARTUP_READ {
+                    if self.starting() {
+                        self.state = Lifecycle::Starting { retry: true };
+                    }
+
+                    return;
+                }
+
                 let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
@@ -2140,6 +2191,11 @@ impl StateServer {
             request_windows: self.requests.kept(),
             plaid_windows: self.limiter.kept(),
         }
+    }
+
+    /// Whether the machine is still gathering who has paid.
+    fn starting(&self) -> bool {
+        matches!(self.state, Lifecycle::Starting { .. })
     }
 
     /// Whether the machine is on its way out, drained or not.

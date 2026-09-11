@@ -98,6 +98,12 @@ fn a_machine_with_no_publishable_key_starts_no_subscription() {
                     apple_environment: None,
                 },
             },
+            Event::FromStore {
+                call_id: STARTUP_READ,
+                event: EventStore::SubscriptionsLoaded {
+                    subscriptions: Vec::new(),
+                },
+            },
         ],
         &mut Vec::new(),
     );
@@ -286,6 +292,12 @@ fn a_machine_with_no_secret_believes_nothing() {
                     stripe_webhook_secret: None,
                     stripe_publishable_key: None,
                     apple_environment: None,
+                },
+            },
+            Event::FromStore {
+                call_id: STARTUP_READ,
+                event: EventStore::SubscriptionsLoaded {
+                    subscriptions: Vec::new(),
                 },
             },
         ],
