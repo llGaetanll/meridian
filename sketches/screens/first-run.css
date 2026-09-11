@@ -1,0 +1,38 @@
+/* Where first run and the paywall stand on the web, from
+   crates/web-main/css/onboarding.css and paywall.css: no shell, one column
+   down the middle of the window. */
+
+.onboarding, .paywall {
+  display: flex;
+  height: 100%;
+  overflow-y: auto;
+  padding: 56px 24px;
+}
+
+.onboarding .measure, .paywall .measure {
+  width: 100%;
+  max-width: 420px;
+  margin: auto;
+}
+
+.onboarding .brand, .paywall .brand { padding: 0 0 32px; }
+
+.onboarding .back { margin: -6px 0 10px -4px; }
+
+.onboarding .entry { margin-top: 24px; }
+.onboarding .entry .acts { margin-top: 12px; }
+
+.onboarding .rows { margin-top: 18px; }
+.onboarding .acts { margin-top: 26px; }
+
+.onboarding .sync-bar { position: relative; margin-top: 26px; }
+.onboarding .sync-bar .track { position: absolute; left: 0; right: 0; top: -1px; }
+.onboarding .sync-bar + .rows { margin-top: 10px; }
+
+.onboarding .tally { margin-top: 20px; }
+
+.onboarding .resend { margin-top: 16px; }
+
+.paywall .facts { margin-top: 24px; }
+.paywall .acts { margin-top: 26px; }
+.paywall .pay { margin-top: 24px; }

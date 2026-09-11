@@ -1,0 +1,75 @@
+/* Scaffolding, not the app: one row per state, the phone beside the desktop. */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  padding: 36px 24px 80px;
+  background: #0a0d12;
+  color: var(--text);
+  font-family: Inter, "Inter var", ui-sans-serif, -apple-system, system-ui, sans-serif;
+  font-size: 15px; line-height: 1.5; letter-spacing: -0.006em;
+  -webkit-font-smoothing: antialiased;
+}
+
+.sheet { display: flex; flex-direction: column; gap: 52px; width: max-content; }
+
+.sheet > h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.03em; }
+.sheet > h1 a { color: var(--text-faint); font-weight: 500; text-decoration: none; }
+
+.state { display: flex; flex-direction: column; gap: 12px; }
+.state-label {
+  padding-left: 4px;
+  font-size: 12px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--violet-400);
+}
+
+.side { display: flex; align-items: flex-start; gap: 28px; }
+
+/* A browser window. First run and the paywall are one column down the middle
+   of it, so they are drawn at their own size in a narrower window; the tabs
+   need 1440 for their rail and are drawn at 70% so the phone still fits
+   beside them. */
+.window {
+  display: flex; flex-direction: column; flex: none;
+  width: 1000px; height: 844px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.window.wide { width: 1440px; height: 920px; zoom: 0.7; }
+.window-bar {
+  display: flex; align-items: center; gap: 8px; flex: none;
+  height: 38px; padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.window-bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--bars); }
+.window-url {
+  margin: 0 auto;
+  padding: 3px 16px;
+  border-radius: var(--r-pill);
+  background: var(--bg);
+  font-size: 11.5px; color: var(--text-faint);
+}
+.viewport { flex: 1; min-height: 0; font-size: 14px; line-height: 1.5; }
+
+.phone {
+  position: relative;
+  display: flex; flex-direction: column; flex: none;
+  width: 390px; height: 844px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 46px;
+  background: var(--bg);
+}
+
+/* Where the phone draws nothing for this state. */
+.absent {
+  display: grid; place-items: center; flex: none;
+  width: 390px; height: 844px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 46px;
+  font-size: 13px; color: var(--text-faint);
+}

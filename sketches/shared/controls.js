@@ -190,7 +190,11 @@
 
     const chips = [...grid.querySelectorAll(":scope > .chip")];
     if (!chips.length) return;
-    const widths = chips.map((el) => Math.ceil(el.getBoundingClientRect().width));
+
+    /* A drawing shrunk with `zoom` reports its chips at the size they are
+       drawn and its measure at the size it is laid out. */
+    const scale = grid.getBoundingClientRect().width / grid.offsetWidth || 1;
+    const widths = chips.map((el) => Math.ceil(el.getBoundingClientRect().width / scale));
 
     const lines = pack(widths, measure);
     const packed = document.createElement("div");

@@ -1,15 +1,31 @@
-/* The three pages, at the web's size.
+/* The web's tabs, from crates/web-main/css/page.css, ledger.css,
+   recurring.css, balances.css and account.css. */
 
-   Same components as the phone and, where the piece is the same piece, the
-   same class name — `.hero`, `.sec`, `.split-row`, `.day`, `.tx`, `.conn`. The
-   difference is only ever what the width is spent on: a line the phone has to
-   assemble into one sentence gets columns here, and a control the phone has to
-   put in the flow of the page gets the rail.
-
-   Rules run the width of the column they divide rather than the width of the
-   screen. On the phone the screen *is* the column; here a rule crossing the
-   gap into the rail would be dividing two things that are not in a list
-   together. */
+.ui .page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--rail-w);
+  gap: 36px;
+  align-items: start;
+}
+.ui .page > .rail { display: flex; flex-direction: column; padding-top: 30px; }
+.ui .page .rail-sec { padding-top: 26px; }
+.ui .page .rail-sec:first-child { padding-top: 0; }
+.ui .page .rail-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px;
+}
+.ui .page .rail-title {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+}
+.ui .page .rail-title .v {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 13px; font-weight: 700;
+  letter-spacing: 0; text-transform: none;
+  color: var(--text-muted);
+}
+.ui .page .rail-title .v.down { color: var(--down); }
 
 .ui .hero { padding: 30px 0 30px; }
 .ui .hero-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
@@ -23,9 +39,8 @@
   font-size: 42px; font-weight: 700; line-height: 1.05;
   letter-spacing: -0.035em;
 }
+.ui .hero-acts { display: flex; align-items: center; gap: 12px; }
 
-/* In and out. The words are words and stay grey; the direction is in them
-   already, so the figures do not carry a sign as well. */
 .ui .diff {
   display: flex; gap: 18px;
   margin-top: 10px;
@@ -44,18 +59,25 @@
   color: var(--text-faint);
 }
 .ui .sec-title .v {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   font-size: 13px; font-weight: 700;
   letter-spacing: 0; text-transform: none;
 }
 
-/* The ledger.
+.ui .split-row {
+  position: relative;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.ui .split-row .nm {
+  min-width: 0;
+  font-size: 13.5px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ui .split-row .amt { font-size: 13.5px; }
+.ui .split-row .track { position: absolute; left: 0; right: 0; bottom: 0; }
 
-   The row is where the width goes. The phone stacks the merchant over its
-   category and calls that a row; here the category and the account each get a
-   column, so the eye can run down one of them without reading the others. The
-   figures are the last column and the day's net sits on the same edge, so the
-   two agree about where money is. */
+/* Ledger */
 
 .ui .month {
   margin-top: 26px;
@@ -65,9 +87,6 @@
 }
 .ui .list > .month:first-child { margin-top: 8px; }
 
-/* The heading a day's rows scroll under, and the only thing on the page that
-   moves while you scroll. The rule belongs to the row above it rather than to
-   the heading, so a pinned heading does not carry a second line up with it. */
 .ui .day {
   position: sticky; top: 0; z-index: 1;
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
@@ -101,46 +120,26 @@
   display: flex; align-items: baseline; gap: 6px; min-width: 0;
   font-size: 12.5px; color: var(--text-muted);
 }
-/* The category gives way before the word Pending does: a row whose state has
-   been clipped to "Pen…" is a row that has stopped saying the one thing the
-   dimming is there to explain. */
 .ui .tx-cat .t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ui .tx-cat .pending-tag { flex: none; color: var(--text-faint); }
 .ui .tx-cat .pending-tag::before { content: "· "; color: var(--slate-700); }
-.ui .tx-amt { text-align: right; font-size: 13.5px; font-weight: 600; }
-/* Pending: the whole row recedes, so it reads as one provisional thing rather
-   than a row with some grey parts in it. */
+.ui .tx-amt { text-align: right; font-size: 13.5px; }
 .ui .tx.pending { opacity: 0.45; }
 
-/* The split: a table you read down, with each row's share standing on the rule
-   under it. */
-
-.ui .split-row {
-  position: relative;
-  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--divider);
+.ui .list-empty {
+  padding: 40px 0;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--text-faint);
 }
-.ui .split-row .nm {
-  min-width: 0;
-  font-size: 13.5px; color: var(--text-muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.ui .split-row .amt { font-size: 13.5px; font-weight: 600; }
-.ui .split-row .track { position: absolute; left: 0; right: 0; bottom: 0; }
 
-/* Recurring.
-
-   The streams keep the shape the ledger's rows have — a mark, a name that
-   takes the slack, then columns — because they are the same kind of list read
-   the same way. `frequency`, `when` and `soon` are already three fields on the
-   row; the phone joins them into one line because it has one line. */
+/* Recurring */
 
 .ui .rec-head {
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
   padding: 22px 0 6px;
 }
-.ui .rec-head:first-of-type { padding-top: 0; }
+.ui .sec-title + .rec-head { padding-top: 0; }
 .ui .rec-head .nm { font-size: 13px; font-weight: 600; letter-spacing: -0.008em; }
 .ui .rec-head .sum { font-size: 12px; font-weight: 500; color: var(--text-faint); }
 
@@ -159,22 +158,8 @@
 }
 .ui .rec-freq { font-size: 12.5px; color: var(--text-muted); }
 .ui .rec-when { font-size: 12.5px; color: var(--text-faint); }
-/* Due inside the week. Amber rather than rose: a subscription landing on
-   Saturday is a heads-up, not a debt. */
 .ui .rec-when.soon { color: var(--amber-300); }
-.ui .rec-amt { text-align: right; font-size: 14.5px; font-weight: 600; }
-
-/* The calendar, in the rail.
-
-   A whole month at 300px, which is what kills the phone's sideways strip: the
-   columns either side and the swipe that goes with them exist because one
-   month is all that fits on a phone. Here the month is centred with an arrow
-   on each side, saying what the swipe said, and nothing is cut off at the
-   glass.
-
-   The arrows are the plain button — no frame and no edge — because a framed
-   one either side of the month would be two controls flanking a label rather
-   than one line you step along. */
+.ui .rec-amt { text-align: right; font-size: 14.5px; }
 
 .ui .cal-grid {
   display: grid;
@@ -188,15 +173,10 @@
   padding-bottom: 6px;
 }
 .ui .cal-head { display: flex; align-items: center; justify-content: space-between; }
-/* Both arrows the same width, so the month between them lands on the middle of
-   the rail rather than on the middle of what is left over. */
 .ui .cal-head .btn { justify-content: center; width: 24px; padding: 4px 0; }
 .ui .cal-head .btn svg { width: 14px; height: 14px; }
 .ui .cal-month { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
 
-/* What landed on the day you picked. It follows the calendar rather than
-   opening over it: the two are one answer, and the month you chose the day in
-   should still be there while you read it. */
 .ui .daycard { margin-top: 22px; }
 .ui .daycard-head {
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
@@ -206,7 +186,6 @@
   color: var(--text-faint);
 }
 .ui .daycard-head .t {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   font-size: 13px; font-weight: 700;
   letter-spacing: 0; text-transform: none;
   color: var(--text-muted);
@@ -221,14 +200,9 @@
   font-size: 13px; font-weight: 500;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.ui .dayrow .amt { font-size: 13px; font-weight: 600; }
+.ui .dayrow .amt { font-size: 13px; }
 
-/* Balances.
-
-   The one page where the phone's assembled subtitle costs something: "Checking
-   ·4021 · $4,080.22 available" is one string in the core and three columns
-   here, and columns are what let you compare two current accounts without
-   reading either sentence to the end. */
+/* Balances */
 
 .ui .conn { margin-top: 30px; }
 .ui .accounts > .conn:first-child { margin-top: 0; }
@@ -250,12 +224,9 @@
 }
 .ui .acct-kind { font-size: 12.5px; color: var(--text-muted); }
 .ui .acct-detail { font-size: 12.5px; color: var(--text-faint); }
+.ui .acct-util { display: block; }
 .ui .acct-amt { text-align: right; font-size: 14.5px; font-weight: 600; }
 
-/* One rule per block, with the same air above it as below. A block total is
-   scaffolding, not a figure to read — the account rows above it are the
-   numbers, and the section heading is the only place on the page money still
-   takes a colour. */
 .ui .conn-total {
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
   padding-top: 14px;
@@ -264,7 +235,12 @@
 .ui .conn-total .k { font-size: 12px; color: var(--text-faint); }
 .ui .conn-total .v { font-size: 13.5px; font-weight: 600; color: var(--text-muted); }
 
-/* What you hold is the same section as the headline above it, so there is no
-   rule between them — but it needs floor under it, or the last block's total
-   ends flush against the rule that starts the next section. */
 .ui .accounts { padding-bottom: 6px; }
+
+/* Account */
+
+.account-page { max-width: 640px; padding-top: 30px; }
+.account-page > .sec:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.account-page .banks .row + .row { border-top: 1px solid var(--divider); }
+.account-page .banks-empty { font-size: 13px; color: var(--text-faint); }
+.account-page .build { margin-top: 36px; font-size: 11.5px; color: var(--text-faint); }

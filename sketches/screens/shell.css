@@ -1,0 +1,95 @@
+/* The web's frame, from crates/web-main/css/app.css: the sidebar, and one
+   scroller beside it. */
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  height: 100%;
+}
+
+.sidebar {
+  display: flex; flex-direction: column; gap: 22px;
+  height: 100%;
+  padding: 22px 14px;
+  background: var(--bg);
+}
+
+.brand {
+  display: flex; align-items: center; gap: 12px;
+  padding: 2px 14px 0;
+  font-size: 24px; font-weight: 600; line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--violet-300);
+}
+.brand-mark { display: block; width: 38px; height: 38px; flex: none; }
+
+.nav { display: flex; flex-direction: column; gap: 6px; }
+.nav a {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 14px;
+  border-radius: var(--r-pill);
+  color: var(--slate-300);
+  font-size: 15px; font-weight: 500;
+  text-decoration: none;
+}
+.nav a.on {
+  background: var(--accent-tint);
+  color: var(--violet-300);
+  font-weight: 600;
+}
+.nav a.dead { opacity: 0.4; cursor: default; }
+.nav .icon { width: 22px; height: 22px; flex: none; stroke-width: 1.75; }
+
+.sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+
+.account {
+  display: flex; align-items: center; gap: 11px;
+  padding: 10px 12px; margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  cursor: pointer;
+}
+.account-id { min-width: 0; }
+.account-name {
+  font-size: 13.5px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.account .more { margin-left: auto; flex: none; color: var(--text-faint); }
+.account .more svg { display: block; width: 16px; height: 16px; }
+
+.avatar { width: 44px; height: 44px; flex: none; overflow: hidden; border-radius: var(--r-pill); }
+.avatar svg { display: block; width: 100%; height: 100%; }
+
+.main {
+  display: flex; flex-direction: column;
+  min-width: 0; height: 100%;
+  overflow-y: auto;
+}
+.main::-webkit-scrollbar { width: 8px; }
+.main::-webkit-scrollbar-thumb { background: var(--bg-input); border-radius: 4px; }
+.main::-webkit-scrollbar-track { background: transparent; }
+
+.content { display: flex; flex-direction: column; padding: 0 20px 44px 28px; }
+
+.searchrow { display: flex; justify-content: center; padding: 22px 0 2px; }
+.search {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; max-width: 520px; height: 46px;
+  padding: 0 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  color: var(--text-faint);
+}
+.search.dead { opacity: 0.45; cursor: default; }
+.search svg { width: 19px; height: 19px; flex: none; }
+.search .placeholder { flex: 1; font-size: 15px; }
+.kbd {
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--bg-input);
+  font-size: 11px; color: var(--text-faint);
+}
+
+.down { color: var(--down); }
