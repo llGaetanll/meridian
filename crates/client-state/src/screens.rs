@@ -13,6 +13,7 @@ use api_ledger::Connection;
 use api_ledger::ConnectionStatus;
 use api_ledger::Entry;
 use api_ledger::Stream;
+use api_ledger::initials;
 
 use api_common::Timestamp;
 
@@ -64,6 +65,10 @@ const SOON_DAYS: u64 = 7;
 
 /// How many selected categories a shut filter names before it says "+2".
 const SUMMARY_CHIPS: usize = 2;
+
+/// How many selected categories the Ledger's headline names before it counts
+/// them instead.
+const HEADLINE_CATEGORIES: usize = 2;
 
 /// What Meridian costs, as the site prints it and as the provider bills it.
 ///
@@ -222,12 +227,68 @@ pub(crate) fn failure(failure: &LoadFailure) -> String {
 
 fn ledger(state: &StateApp) -> ViewLedger {
     let entries = state.filtered();
+    let masked = state.masked();
+
+    let flow_in: f64 = entries
+        .iter()
+        .map(|e| e.amount())
+        .filter(|a| *a > 0.0)
+        .sum();
+    let flow_out: f64 = entries
+        .iter()
+        .map(|e| e.amount())
+        .filter(|a| *a < 0.0)
+        .sum();
 
     ViewLedger {
-        months: group_by_month(&entries),
+        headline_label: headline_label(state, entries.len()),
+        headline: fmt::money_signed(flow_in + flow_out, masked),
+        // Unsigned: the word beside each figure says which way money goes.
+        flow_in: fmt::money(flow_in, masked),
+        flow_out: fmt::money(flow_out.abs(), masked),
+        months: group_by_month(&entries, &account_labels(state)),
         filter: filter_view(state),
         empty: empty_message(state, entries.len()),
     }
+}
+
+/// What the headline is a figure for: the range, the categories, and how many
+/// rows the two of them let through.
+fn headline_label(state: &StateApp, shown: usize) -> String {
+    let selected: Vec<&str> = Category::ALL
+        .iter()
+        .filter(|category| state.ledger().categories().contains(category))
+        .map(|category| category.label())
+        .collect();
+
+    let categories = match selected.len() {
+        0 => "every category".to_string(),
+        count if count <= HEADLINE_CATEGORIES => selected.join(", "),
+        count => format!("{count} categories"),
+    };
+
+    format!(
+        "{} · {categories} · {}",
+        range_summary(&state.ledger().range()),
+        fmt::plural(shown, "transaction", "transactions"),
+    )
+}
+
+/// Each account's name as a row prints it, `"Plaid Checking ·0000"`, by id.
+fn account_labels(state: &StateApp) -> BTreeMap<&str, String> {
+    state
+        .connections()
+        .iter()
+        .flat_map(|connection| &connection.accounts)
+        .map(|account| {
+            let label = match &account.mask {
+                Some(mask) => format!("{} ·{mask}", account.name),
+                None => account.name.clone(),
+            };
+
+            (account.id.as_str(), label)
+        })
+        .collect()
 }
 
 /// What the list says when it has nothing to show.
@@ -259,7 +320,7 @@ fn empty_message(state: &StateApp, shown: usize) -> Option<String> {
 ///
 /// One pass, relying on entries arriving newest-first: a change of day or
 /// month is a change of key from the row before.
-fn group_by_month(entries: &[&Entry]) -> Vec<ViewMonthSection> {
+fn group_by_month(entries: &[&Entry], accounts: &BTreeMap<&str, String>) -> Vec<ViewMonthSection> {
     let mut months: Vec<Month<'_>> = Vec::new();
 
     for entry in entries {
@@ -306,7 +367,10 @@ fn group_by_month(entries: &[&Entry]) -> Vec<ViewMonthSection> {
             label: format!("{name} {year}"),
             name,
             year,
-            days: days.into_iter().map(day_section).collect(),
+            days: days
+                .into_iter()
+                .map(|day| day_section(day, accounts))
+                .collect(),
         })
         .collect()
 }
@@ -318,18 +382,18 @@ type Month<'a> = (String, String, Vec<Day<'a>>);
 type Day<'a> = (String, Vec<&'a Entry>);
 
 /// A day's rows, under a heading that carries the day's net.
-fn day_section((heading, entries): Day<'_>) -> ViewDaySection {
+fn day_section((heading, entries): Day<'_>, accounts: &BTreeMap<&str, String>) -> ViewDaySection {
     let net: f64 = entries.iter().map(|e| e.amount()).sum();
 
     ViewDaySection {
         heading,
         total: fmt::money_signed(net, false),
-        rows: entries.iter().map(|e| tx_row(e, false)).collect(),
+        rows: entries.iter().map(|e| tx_row(e, accounts, false)).collect(),
     }
 }
 
 /// A ledger row. Masking is for headline figures, not a $4.33 coffee.
-fn tx_row(entry: &Entry, masked: bool) -> ViewTxRow {
+fn tx_row(entry: &Entry, accounts: &BTreeMap<&str, String>, masked: bool) -> ViewTxRow {
     ViewTxRow {
         id: entry.id.clone(),
         title: entry.label.clone(),
@@ -337,7 +401,14 @@ fn tx_row(entry: &Entry, masked: bool) -> ViewTxRow {
         category_token: entry.category.token().to_string(),
         amount: fmt::money_signed(entry.amount(), masked),
         is_inflow: entry.is_inflow(),
+        account: entry
+            .account_id
+            .as_deref()
+            .and_then(|id| accounts.get(id))
+            .cloned()
+            .unwrap_or_default(),
         logo_url: entry.logo_url.clone(),
+        initials: initials(&entry.label),
         pending: entry.pending,
     }
 }

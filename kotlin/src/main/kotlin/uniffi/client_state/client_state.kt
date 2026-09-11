@@ -2692,6 +2692,22 @@ public object FfiConverterTypeViewIconRow : FfiConverterRustBuffer<ViewIconRow> 
 
 data class ViewLedger(
     /**
+     * `"All time · Food & drink, Travel · 21 transactions"` — what the
+     * headline under it is a figure for.
+     */
+    var `headlineLabel`: kotlin.String,
+    /**
+     * `"−$1,284.31"`, the net of every row the filter lets through.
+     */
+    var `headline`: kotlin.String,
+    /**
+     * `"$500.00"` and `"$1,784.31"` — the two directions of those rows,
+     * unsigned, for where a word beside the figure says which way the money
+     * goes.
+     */
+    var `flowIn`: kotlin.String,
+    var `flowOut`: kotlin.String,
+    /**
      * The transactions, grouped by month and then by day.
      */
     var `months`: List<ViewMonthSection>,
@@ -2714,6 +2730,10 @@ data class ViewLedger(
 public object FfiConverterTypeViewLedger : FfiConverterRustBuffer<ViewLedger> {
     override fun read(buf: ByteBuffer): ViewLedger =
         ViewLedger(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewMonthSection.read(buf),
             FfiConverterTypeViewFilter.read(buf),
             FfiConverterOptionalString.read(buf),
@@ -2721,7 +2741,11 @@ public object FfiConverterTypeViewLedger : FfiConverterRustBuffer<ViewLedger> {
 
     override fun allocationSize(value: ViewLedger) =
         (
-            FfiConverterSequenceTypeViewMonthSection.allocationSize(value.`months`) +
+            FfiConverterString.allocationSize(value.`headlineLabel`) +
+                FfiConverterString.allocationSize(value.`headline`) +
+                FfiConverterString.allocationSize(value.`flowIn`) +
+                FfiConverterString.allocationSize(value.`flowOut`) +
+                FfiConverterSequenceTypeViewMonthSection.allocationSize(value.`months`) +
                 FfiConverterTypeViewFilter.allocationSize(value.`filter`) +
                 FfiConverterOptionalString.allocationSize(value.`empty`)
         )
@@ -2730,6 +2754,10 @@ public object FfiConverterTypeViewLedger : FfiConverterRustBuffer<ViewLedger> {
         value: ViewLedger,
         buf: ByteBuffer,
     ) {
+        FfiConverterString.write(value.`headlineLabel`, buf)
+        FfiConverterString.write(value.`headline`, buf)
+        FfiConverterString.write(value.`flowIn`, buf)
+        FfiConverterString.write(value.`flowOut`, buf)
         FfiConverterSequenceTypeViewMonthSection.write(value.`months`, buf)
         FfiConverterTypeViewFilter.write(value.`filter`, buf)
         FfiConverterOptionalString.write(value.`empty`, buf)
@@ -3257,9 +3285,18 @@ data class ViewTxRow(
      */
     var `isInflow`: kotlin.Boolean,
     /**
+     * The account it went through, `"Plaid Checking ·0000"`. Empty where the
+     * account is not one the app knows.
+     */
+    var `account`: kotlin.String,
+    /**
      * A merchant logo, where one exists. The slot is reserved either way.
      */
     var `logoUrl`: kotlin.String?,
+    /**
+     * What the mark shows where there is no logo: `"UA"` for United Airlines.
+     */
+    var `initials`: kotlin.String,
     /**
      * Authorised but not settled.
      */
@@ -3280,7 +3317,9 @@ public object FfiConverterTypeViewTxRow : FfiConverterRustBuffer<ViewTxRow> {
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
         )
 
@@ -3292,7 +3331,9 @@ public object FfiConverterTypeViewTxRow : FfiConverterRustBuffer<ViewTxRow> {
                 FfiConverterString.allocationSize(value.`categoryToken`) +
                 FfiConverterString.allocationSize(value.`amount`) +
                 FfiConverterBoolean.allocationSize(value.`isInflow`) +
+                FfiConverterString.allocationSize(value.`account`) +
                 FfiConverterOptionalString.allocationSize(value.`logoUrl`) +
+                FfiConverterString.allocationSize(value.`initials`) +
                 FfiConverterBoolean.allocationSize(value.`pending`)
         )
 
@@ -3306,7 +3347,9 @@ public object FfiConverterTypeViewTxRow : FfiConverterRustBuffer<ViewTxRow> {
         FfiConverterString.write(value.`categoryToken`, buf)
         FfiConverterString.write(value.`amount`, buf)
         FfiConverterBoolean.write(value.`isInflow`, buf)
+        FfiConverterString.write(value.`account`, buf)
         FfiConverterOptionalString.write(value.`logoUrl`, buf)
+        FfiConverterString.write(value.`initials`, buf)
         FfiConverterBoolean.write(value.`pending`, buf)
     }
 }

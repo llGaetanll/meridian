@@ -22,8 +22,15 @@ pub struct ViewTxRow {
     /// parse the sign back out of `amount`.
     pub is_inflow: bool,
 
+    /// The account it went through, `"Plaid Checking ·0000"`. Empty where the
+    /// account is not one the app knows.
+    pub account: String,
+
     /// A merchant logo, where one exists. The slot is reserved either way.
     pub logo_url: Option<String>,
+
+    /// What the mark shows where there is no logo: `"UA"` for United Airlines.
+    pub initials: String,
 
     /// Authorised but not settled.
     pub pending: bool,

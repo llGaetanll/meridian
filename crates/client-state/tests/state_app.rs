@@ -514,6 +514,120 @@ fn a_purchase_reads_as_money_leaving() {
     );
 }
 
+/// A row names the account it went through, the way Balances names it. An
+/// account the app has not been told about leaves the column empty rather than
+/// guessing.
+#[test]
+fn a_row_names_its_account() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
+                {"id":"acc","name":"Plaid Checking","mask":"0000","balance":100.0,"group":"depository"}]}],
+            "entries":[
+                {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink","account_id":"acc"},
+                {"id":"b","ts":1786320000,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation","account_id":"gone"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            let shown = rows(ledger);
+
+            assert_eq!(shown[0].account, "Plaid Checking ·0000");
+            assert_eq!(shown[1].account, "");
+        },
+    );
+}
+
+/// Where there is no logo, the mark carries the merchant's initials.
+#[test]
+fn a_row_carries_its_initials() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
+            {"id":"a","ts":1786320000,"amount":-410.00,"asset":"USD","label":"United Airlines","category":"Travel"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(rows(ledger)[0].initials, "UA");
+        },
+    );
+}
+
+/// The headline is what the filter comes to: the net of the rows it lets
+/// through, and the two directions of them without their signs.
+#[test]
+fn the_headline_is_the_net_of_what_the_filter_lets_through() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
+            {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"},
+            {"id":"b","ts":1786492800,"amount":500.00,"asset":"USD","label":"United Airlines","category":"Travel"},
+            {"id":"c","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "Travel".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(ledger.headline, "+$488.00", "+500.00 against −12.00, and not the Uber");
+            assert_eq!(ledger.flow_in, "$500.00");
+            assert_eq!(ledger.flow_out, "$12.00");
+            assert_eq!(ledger.headline_label, "All time · Food & drink, Travel · 2 transactions");
+        },
+    );
+}
+
+/// Nothing narrowed reads as every category, and one row is one transaction.
+#[test]
+fn an_unfiltered_headline_says_every_category() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
+            {"id":"a","ts":1786492800,"amount":-12.00,"asset":"USD","label":"McDonald's","category":"FoodAndDrink"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(ledger.headline_label, "All time · every category · 1 transaction");
+        },
+    );
+}
+
+/// Past two, the categories are counted rather than named, so the label stays
+/// one line however many are on.
+#[test]
+fn three_categories_are_counted_in_the_headline() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "FoodAndDrink".to_string() } },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "Travel".to_string() } },
+        < Event::FromUi { event: EventUi::CategoryToggled { id: "Transportation".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(ledger.headline_label, "All time · 3 categories · 0 transactions");
+        },
+    );
+}
+
+/// The headline is a headline figure, so the eye covers it, while the rows it
+/// adds up stay as they are.
+#[test]
+fn covering_hides_the_ledger_headline() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{"entries":[
+            {"id":"a","ts":1786492800,"amount":-4.33,"asset":"USD","label":"Starbucks","category":"FoodAndDrink"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::MaskToggled },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+            assert_eq!(ledger.headline, "••••••");
+            assert_eq!(ledger.flow_in, "••••••");
+            assert_eq!(ledger.flow_out, "••••••");
+        },
+    );
+}
+
 #[test]
 fn selecting_a_category_narrows_the_list() {
     let mut state = app();

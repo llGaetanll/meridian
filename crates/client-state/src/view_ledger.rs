@@ -5,6 +5,19 @@ use crate::ViewTxRow;
 
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewLedger {
+    /// `"All time · Food & drink, Travel · 21 transactions"` — what the
+    /// headline under it is a figure for.
+    pub headline_label: String,
+
+    /// `"−$1,284.31"`, the net of every row the filter lets through.
+    pub headline: String,
+
+    /// `"$500.00"` and `"$1,784.31"` — the two directions of those rows,
+    /// unsigned, for where a word beside the figure says which way the money
+    /// goes.
+    pub flow_in: String,
+    pub flow_out: String,
+
     /// The transactions, grouped by month and then by day.
     pub months: Vec<ViewMonthSection>,
 

@@ -2361,6 +2361,22 @@ public func FfiConverterTypeViewIconRow_lower(_ value: ViewIconRow) -> RustBuffe
 
 public struct ViewLedger: Equatable, Hashable {
     /**
+     * `"All time · Food & drink, Travel · 21 transactions"` — what the
+     * headline under it is a figure for.
+     */
+    public var headlineLabel: String
+    /**
+     * `"−$1,284.31"`, the net of every row the filter lets through.
+     */
+    public var headline: String
+    /**
+     * `"$500.00"` and `"$1,784.31"` — the two directions of those rows,
+     * unsigned, for where a word beside the figure says which way the money
+     * goes.
+     */
+    public var flowIn: String
+    public var flowOut: String
+    /**
      * The transactions, grouped by month and then by day.
      */
     public var months: [ViewMonthSection]
@@ -2378,6 +2394,18 @@ public struct ViewLedger: Equatable, Hashable {
     // declare one manually.
     public init(
         /**
+         * `"All time · Food & drink, Travel · 21 transactions"` — what the
+         * headline under it is a figure for.
+         */headlineLabel: String, 
+        /**
+         * `"−$1,284.31"`, the net of every row the filter lets through.
+         */headline: String, 
+        /**
+         * `"$500.00"` and `"$1,784.31"` — the two directions of those rows,
+         * unsigned, for where a word beside the figure says which way the money
+         * goes.
+         */flowIn: String, flowOut: String, 
+        /**
          * The transactions, grouped by month and then by day.
          */months: [ViewMonthSection], 
         /**
@@ -2387,6 +2415,10 @@ public struct ViewLedger: Equatable, Hashable {
          * What to show instead of the list when it is empty. `None` means there
          * are rows.
          */empty: String?) {
+        self.headlineLabel = headlineLabel
+        self.headline = headline
+        self.flowIn = flowIn
+        self.flowOut = flowOut
         self.months = months
         self.filter = filter
         self.empty = empty
@@ -2408,6 +2440,10 @@ public struct FfiConverterTypeViewLedger: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewLedger {
         return
             try ViewLedger(
+                headlineLabel: FfiConverterString.read(from: &buf), 
+                headline: FfiConverterString.read(from: &buf), 
+                flowIn: FfiConverterString.read(from: &buf), 
+                flowOut: FfiConverterString.read(from: &buf), 
                 months: FfiConverterSequenceTypeViewMonthSection.read(from: &buf), 
                 filter: FfiConverterTypeViewFilter.read(from: &buf), 
                 empty: FfiConverterOptionString.read(from: &buf)
@@ -2415,6 +2451,10 @@ public struct FfiConverterTypeViewLedger: FfiConverterRustBuffer {
     }
 
     public static func write(_ value: ViewLedger, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.headlineLabel, into: &buf)
+        FfiConverterString.write(value.headline, into: &buf)
+        FfiConverterString.write(value.flowIn, into: &buf)
+        FfiConverterString.write(value.flowOut, into: &buf)
         FfiConverterSequenceTypeViewMonthSection.write(value.months, into: &buf)
         FfiConverterTypeViewFilter.write(value.filter, into: &buf)
         FfiConverterOptionString.write(value.empty, into: &buf)
@@ -3224,9 +3264,18 @@ public struct ViewTxRow: Equatable, Hashable {
      */
     public var isInflow: Bool
     /**
+     * The account it went through, `"Plaid Checking ·0000"`. Empty where the
+     * account is not one the app knows.
+     */
+    public var account: String
+    /**
      * A merchant logo, where one exists. The slot is reserved either way.
      */
     public var logoUrl: String?
+    /**
+     * What the mark shows where there is no logo: `"UA"` for United Airlines.
+     */
+    public var initials: String
     /**
      * Authorised but not settled.
      */
@@ -3256,8 +3305,15 @@ public struct ViewTxRow: Equatable, Hashable {
          * parse the sign back out of `amount`.
          */isInflow: Bool, 
         /**
+         * The account it went through, `"Plaid Checking ·0000"`. Empty where the
+         * account is not one the app knows.
+         */account: String, 
+        /**
          * A merchant logo, where one exists. The slot is reserved either way.
          */logoUrl: String?, 
+        /**
+         * What the mark shows where there is no logo: `"UA"` for United Airlines.
+         */initials: String, 
         /**
          * Authorised but not settled.
          */pending: Bool) {
@@ -3267,7 +3323,9 @@ public struct ViewTxRow: Equatable, Hashable {
         self.categoryToken = categoryToken
         self.amount = amount
         self.isInflow = isInflow
+        self.account = account
         self.logoUrl = logoUrl
+        self.initials = initials
         self.pending = pending
     }
 
@@ -3293,7 +3351,9 @@ public struct FfiConverterTypeViewTxRow: FfiConverterRustBuffer {
                 categoryToken: FfiConverterString.read(from: &buf), 
                 amount: FfiConverterString.read(from: &buf), 
                 isInflow: FfiConverterBool.read(from: &buf), 
+                account: FfiConverterString.read(from: &buf), 
                 logoUrl: FfiConverterOptionString.read(from: &buf), 
+                initials: FfiConverterString.read(from: &buf), 
                 pending: FfiConverterBool.read(from: &buf)
         )
     }
@@ -3305,7 +3365,9 @@ public struct FfiConverterTypeViewTxRow: FfiConverterRustBuffer {
         FfiConverterString.write(value.categoryToken, into: &buf)
         FfiConverterString.write(value.amount, into: &buf)
         FfiConverterBool.write(value.isInflow, into: &buf)
+        FfiConverterString.write(value.account, into: &buf)
         FfiConverterOptionString.write(value.logoUrl, into: &buf)
+        FfiConverterString.write(value.initials, into: &buf)
         FfiConverterBool.write(value.pending, into: &buf)
     }
 }
