@@ -27,13 +27,8 @@
 .p-track { position: relative; height: 5px; border-bottom: 1px solid var(--divider); }
 .p-track .track { position: absolute; left: 0; right: 0; bottom: 0; }
 
-/* The tabs: `PhoneShell`. */
-
-.p-header {
-  flex: none;
-  padding: 10px 20px 16px;
-  font-size: 30px; font-weight: 700; line-height: 1.2; letter-spacing: -0.03em;
-}
+/* The tabs: `PhoneShell`. The title, the band, the glass, the dock and the
+   month strip are the design language's; this only places them. */
 .p-banner { flex: none; padding: 8px 20px 0; }
 .p-body { position: relative; flex: 1; min-height: 0; }
 .p-scroll {
@@ -44,60 +39,8 @@
 }
 .p-scroll::-webkit-scrollbar { display: none; }
 
-/* What a headline becomes once it has scrolled away: `Band`. */
-.p-band {
-  position: absolute; top: 0; left: 0; right: 0; z-index: 2;
-  display: flex; align-items: center; gap: 12px;
-  height: 45px; padding: 0 20px;
-  border-bottom: 1px solid var(--border-strong);
-  background: var(--bg);
-}
-.p-band > svg { width: 14px; height: 14px; flex: none; color: var(--text-faint); }
-.p-band .cats { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.p-band .end { margin-left: auto; }
-.p-band .fig { font-size: 15px; font-weight: 700; }
-.p-band .flows { display: flex; gap: 10px; font-size: 13px; font-weight: 600; }
-.p-band .flows .in { color: var(--up); }
-.p-band .flows .out { color: var(--down); }
-
-.p-dockrow {
-  position: absolute; left: 16px; right: 16px; bottom: 22px;
-  display: flex; align-items: center; gap: 10px;
-}
-.p-glass {
-  background: linear-gradient(to bottom, rgba(255,255,255,0.10), rgba(255,255,255,0.02) 42%, rgba(255,255,255,0.05));
-  backdrop-filter: blur(28px) saturate(180%) brightness(1.25);
-  -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(1.25);
-  border: 1px solid rgba(255,255,255,0.14);
-  box-shadow:
-    0 1px 0 rgba(255,255,255,0.22) inset,
-    0 -1px 0 rgba(255,255,255,0.05) inset,
-    0 18px 40px rgba(0,0,0,0.55);
-}
-.p-dock {
-  flex: 1; min-width: 0;
-  display: grid; grid-template-columns: repeat(4, 1fr); align-items: center; gap: 2px;
-  height: 62px; padding: 0 6px;
-  border-radius: 31px;
-}
-.p-dock a {
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: 6px 2px;
-  border-radius: 22px;
-  font-size: 9.5px; font-weight: 500;
-  color: rgba(255,255,255,0.62);
-  text-decoration: none;
-}
-.p-dock a svg { width: 20px; height: 20px; }
-.p-dock a.on { background: rgba(167,139,250,0.16); color: var(--violet-300); }
-.p-search {
-  display: grid; place-items: center; flex: none;
-  width: 62px; height: 62px;
-  border-radius: 50%;
-  color: rgba(255,255,255,0.82);
-  opacity: 0.55;
-}
-.p-search svg { width: 23px; height: 23px; }
+/* The band floats over the top of the list rather than pushing it down. */
+.p-body > .band { position: absolute; top: 0; left: 0; right: 0; z-index: 2; }
 
 /* A page's figure, and the sections under it: `Hero` and `Sec`. */
 
@@ -154,44 +97,8 @@
 .p-tx .amt { font-size: 13.5px; font-weight: 600; }
 .p-tx .amt.in { color: var(--up); }
 
-/* Recurring: `CalendarStrip`, the month with a column of each month either
-   side showing at the glass. */
-
-.p-names {
-  position: relative;
-  height: 26px; margin-bottom: 24px;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(90deg, transparent 2%, #000 32%, #000 68%, transparent 98%);
-          mask-image: linear-gradient(90deg, transparent 2%, #000 32%, #000 68%, transparent 98%);
-}
-.p-names span {
-  position: absolute; top: 0; left: 50%;
-  font-size: 15px; font-weight: 600; line-height: 26px; letter-spacing: -0.01em;
-  white-space: nowrap;
-  transform: translateX(-50%);
-}
-.p-names .prev { transform: translateX(calc(-50% - 165px)) scale(0.87); opacity: 0.3; }
-.p-names .next { transform: translateX(calc(-50% + 165px)) scale(0.87); opacity: 0.3; }
-
-.p-cal {
-  position: relative;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
-          mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
-}
-.p-cal .m { width: 310px; margin: 0 auto; }
-.p-cal .edge { position: absolute; top: 0; width: calc(310px / 7); }
-.p-cal .edge.prev { left: calc(50% - 155px - 14px - 310px / 7); }
-.p-cal .edge.next { left: calc(50% + 155px + 14px); }
-.p-cal .wd {
-  display: grid; grid-template-columns: repeat(7, 1fr);
-  padding-bottom: 6px;
-  font-size: 10px; font-weight: 600; text-align: center;
-  color: color-mix(in srgb, var(--text-faint) 70%, transparent);
-}
-.p-cal .edge .wd { grid-template-columns: 1fr; }
-.p-cal .days { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 8px; }
-.p-cal .edge .days { grid-template-columns: 1fr; }
+/* Recurring: the day card and the streams, under the design language's month
+   strip. */
 
 .p-daycard { padding-top: 20px; }
 .p-daycard-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 20px 8px; }
