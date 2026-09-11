@@ -1,0 +1,72 @@
+/* The ledger: every transaction under its month and its day, and the filter
+   in the rail. `sketches/web/app.html#ledger` is the drawing.
+
+   The row is where the width goes. The phone stacks the merchant over its
+   category and calls that a row; here the category and the account each get a
+   column, so the eye can run down one of them without reading the others. The
+   figures are the last column and the day's net sits on the same edge, so the
+   two agree about where money is. */
+
+.ui .month {
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-strong);
+  font-size: 15px; font-weight: 700; letter-spacing: -0.015em;
+}
+.ui .list > .month:first-child { margin-top: 8px; }
+
+/* The heading a day's rows scroll under, and the only thing on the page that
+   moves while you scroll. The rule belongs to the row above it rather than to
+   the heading, so a pinned heading does not carry a second line up with it. */
+.ui .day {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 16px 0 9px;
+  background: var(--bg);
+  font-size: 12px; font-weight: 600;
+  color: var(--text-faint);
+}
+.ui .day .sum { font-size: 13.5px; font-weight: 500; }
+.ui .tx + .day { border-top: 1px solid var(--divider); }
+.ui .month + .day { border-top: 0; }
+
+.ui .tx {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 146px 180px 92px;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 0;
+}
+.ui .tx-name {
+  min-width: 0;
+  font-size: 14.5px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ui .tx-acct {
+  min-width: 0;
+  font-size: 12.5px; color: var(--text-faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ui .tx-cat {
+  display: flex; align-items: baseline; gap: 6px; min-width: 0;
+  font-size: 12.5px; color: var(--text-muted);
+}
+/* The category gives way before the word Pending does: a row whose state has
+   been clipped to "Pen…" is a row that has stopped saying the one thing the
+   dimming is there to explain. */
+.ui .tx-cat .t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ui .tx-cat .pending-tag { flex: none; color: var(--text-faint); }
+.ui .tx-cat .pending-tag::before { content: "· "; color: var(--slate-700); }
+.ui .tx-amt { text-align: right; font-size: 13.5px; }
+/* Pending: the whole row recedes, so it reads as one provisional thing rather
+   than a row with some grey parts in it. */
+.ui .tx.pending { opacity: 0.45; }
+
+/* What the list says when it has nothing to show: loading, filtered out, or
+   empty, in the machine's words. */
+.ui .list-empty {
+  padding: 40px 0;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--text-faint);
+}

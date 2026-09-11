@@ -16,6 +16,7 @@
 @import "./css/onboarding.css";
 @import "./css/page.css";
 @import "./css/recurring.css";
+@import "./css/ledger.css";
 
 :root {
   --chart-accent: theme('colors.accent.500');

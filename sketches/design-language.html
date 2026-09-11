@@ -227,9 +227,10 @@ body {
 
     <div class="entry">
       <div class="demo inline" data-select="many">
-        <button class="chip"><span class="in"><span class="n">9</span>Transportation</span></button>
-        <button class="chip on"><span class="in"><span class="n">9</span>Food &amp; drink</span></button>
-        <button class="chip"><span class="in"><span class="n">3</span>Personal care</span></button>
+        <button class="chip"><span class="in"><span class="n">9</span><span class="lb" data-label="Transportation">Transportation</span></span></button>
+        <button class="chip on"><span class="in"><span class="n">9</span><span class="lb" data-label="Food &amp; drink">Food &amp; drink</span></span></button>
+        <button class="chip"><span class="in"><span class="n">3</span><span class="lb" data-label="Personal care">Personal care</span></span></button>
+        <button class="chip empty"><span class="in"><span class="n">0</span><span class="lb" data-label="Bank fees">Bank fees</span></span></button>
       </div>
       <div class="body">
         <h3>Chip</h3>
@@ -238,9 +239,18 @@ body {
           label in violet-300 and the border warmed by the same amount. A count
           goes at the left of the label, in the money face.
           <code>.sm</code> is the same thing smaller, for a summary rather than
-          a control you aim at; <code>.dead</code> is drawn but not built.
+          a control you aim at; <code>.dead</code> is drawn but not built;
+          <code>.empty</code> is a category nothing matches, dimmed the same
+          way but still there to tap.
         </p>
-        <div class="use">.chip &gt; .in &gt; (.n, label) · .on · .sm · .dead</div>
+        <div class="why">
+          The label sits in <code>.lb</code>, a slot as wide as the label set
+          semibold, with the text repeated in <code>data-label</code>.
+          Selecting a chip sets its label semibold, which is a pixel or two
+          wider — enough to re-pack a row of chips and move every one of them
+          under the pointer. With the slot, a chip you tap stays where it was.
+        </div>
+        <div class="use">.chip &gt; .in &gt; (.n, .lb[data-label]) · .on · .sm · .dead · .empty</div>
       </div>
     </div>
 

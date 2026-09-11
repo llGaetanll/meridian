@@ -69,6 +69,21 @@
   color: var(--text-faint);
 }
 .ui .chip.on .n { color: color-mix(in srgb, var(--violet-300) 68%, transparent); }
+/* The label, in a slot the width of its heavier weight. Selecting a chip sets
+   its label semibold, a pixel or two wider than medium — enough to re-pack a
+   row of chips and move every one of them. A chip you tapped should not move,
+   and nor should its neighbours, so `.lb` is as wide as the label at its
+   widest and the weight changes inside it. The label goes in `data-label` as
+   well as in the text; `Chip.swift` does the same with a hidden copy. */
+.ui .chip .lb { display: inline-grid; }
+.ui .chip .lb::after {
+  content: attr(data-label);
+  height: 0; overflow: hidden; visibility: hidden;
+  font-weight: 600;
+}
+/* Nothing matches. The chip stays, so the grid keeps its shape, and reads as
+   unavailable — but it still answers a tap, unlike `.dead`. */
+.ui .chip.empty { opacity: 0.45; }
 /* Drawn but not live: a control that is part of the sentence and not yet
    built. Dimmed rather than hidden, so the shape of the thing is honest. */
 .ui .chip.dead { opacity: 0.45; cursor: default; }
