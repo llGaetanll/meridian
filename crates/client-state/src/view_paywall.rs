@@ -5,14 +5,16 @@
 //! draws for the same refusal.
 
 use crate::ViewIconRow;
+use crate::ViewPaywallStep;
 use crate::ViewRun;
 
 /// The paywall, in the words it is read in.
 ///
-/// No Subscribe: nothing on this phone can take money yet, and a button that
-/// looked live and did nothing would be worse than one that is not there.
-/// Signing out is the only thing that can be done from here, so it is the only
-/// thing offered.
+/// The phone draws no Subscribe: it can take money only through the App
+/// Store, which it does not do yet, and a button that looked live and did
+/// nothing would be worse than one that is not there. So it draws everything
+/// here but [`step`](Self::step), and the web and the desktop app, which take a
+/// card, draw that too.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewPaywall {
     pub title: String,
@@ -21,6 +23,10 @@ pub struct ViewPaywall {
 
     /// What it costs, and when the last period ran out where there was one.
     pub rows: Vec<ViewIconRow>,
+
+    /// How far paying has got: the button, and the card form where there is
+    /// one.
+    pub step: ViewPaywallStep,
 
     /// `"Sign out"`.
     pub sign_out: String,

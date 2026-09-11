@@ -19,6 +19,7 @@ api-ledger = { path = "../api-ledger" }
 client-state = { path = "../client-state" }
 futures = { workspace = true }
 js-sys = "0.3"
+wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 server-wire = { path = "../server-wire" }
 web-ui = { path = "../web-ui" }
@@ -26,4 +27,4 @@ web-components = { path = "../web-components" }
 
 [dependencies.web-sys]
 version = "0.3"
-features = ["DomRect", "Window", "Location", "Storage"]
+features = ["DomRect", "HtmlElement", "Window", "Location", "Storage"]

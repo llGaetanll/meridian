@@ -21,6 +21,7 @@ use serde::Deserialize;
 use crate::io::Failure;
 use crate::io::LinkOutcome;
 use crate::io::Sse;
+use crate::io::Subscribing;
 
 /// What this client is called in the logs, and what its bodies pass through
 /// on the way there.
@@ -149,6 +150,14 @@ impl Meridian {
             // waiting, and every other outcome ends the same way.
             _ => LinkOutcome::Abandoned,
         })
+    }
+
+    /// Start a subscription, and answer with what the card form needs to pay
+    /// its first invoice.
+    ///
+    /// Nobody is entitled by this: nothing has been charged when it answers.
+    pub async fn subscribe(&self, token: &str) -> Result<Subscribing, Failure> {
+        self.post_authed("billing/subscribe", token).await
     }
 
     /// How the sync is going, handed to `status` as JSON each time it moves,
@@ -321,15 +330,18 @@ impl Meridian {
     }
 }
 
-/// Two answers here are a credential: the session `/auth/verify` hands back,
-/// good for ninety days, and the page `/link/start` hands back, whose address
-/// is a Link token. The code that buys the first goes the same way. Each is
-/// logged as its length.
+/// Three answers here are a credential: the session `/auth/verify` hands back,
+/// good for ninety days, the page `/link/start` hands back, whose address is a
+/// Link token, and the secret `/billing/subscribe` hands back, which pays an
+/// invoice. The code that buys the first goes the same way. Each is logged as
+/// its length.
 fn redact_session<'a>(ctx: &Context<'_>, body: Cow<'a, str>) -> Cow<'a, str> {
     let secret = match ctx.direction {
         Direction::Request => ctx.url.ends_with("/auth/verify"),
         Direction::Response => {
-            ctx.url.ends_with("/auth/verify") || ctx.url.ends_with("/link/start")
+            ctx.url.ends_with("/auth/verify")
+                || ctx.url.ends_with("/link/start")
+                || ctx.url.ends_with("/billing/subscribe")
         }
     };
 

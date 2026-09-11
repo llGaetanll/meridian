@@ -31,3 +31,6 @@
 /* The facts the server sent, and then the one thing to do. */
 .paywall .facts { margin-top: 24px; }
 .paywall .acts { margin-top: 26px; }
+
+/* The card form, between the facts and the button that pays with it. */
+.paywall .pay { margin-top: 24px; }

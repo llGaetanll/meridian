@@ -1,6 +1,7 @@
 //! A source answered, or failed to.
 
 use crate::LoadFailure;
+use crate::PaymentRefusal;
 
 /// What a source came back with. No variant carries a clock reading.
 #[derive(Debug, uniffi::Enum)]
@@ -61,4 +62,20 @@ pub enum EventSource {
     /// refused. A fact and not a verdict: whether to open another one is the
     /// machine's, and it decides that from where the flow is.
     SyncWatchEnded,
+
+    /// A subscription is started and waiting to be paid for.
+    ///
+    /// Nothing else: what it is paid against stays with the runtime, the way
+    /// the session token does.
+    SubscriptionStarted,
+
+    /// The payment provider took the card.
+    ///
+    /// Not a subscription the server will honour yet. The provider tells the
+    /// server separately, a moment later, and until it has the server goes on
+    /// refusing.
+    PaymentTaken,
+
+    /// The provider did not take it, and why, in our words.
+    PaymentRefused { refusal: PaymentRefusal },
 }

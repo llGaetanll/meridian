@@ -30,6 +30,17 @@ pub enum ActionSource {
     /// signs both cannot ship inside an app (`docs/PLAID.md`).
     StartBankLink,
 
+    /// Ask the server to start a subscription, and have the card form ready
+    /// to pay it.
+    ///
+    /// The runtime keeps what the server answers with — the secret a card is
+    /// confirmed against, and the key the form opens with — and reports only
+    /// that it is started. Neither is a thing to put in an event log.
+    StartSubscription,
+
+    /// Pay the subscription that was started, with the card in the form.
+    TakePayment,
+
     /// Open a stream the server writes the sync's progress to, and report
     /// what arrives on it.
     ///

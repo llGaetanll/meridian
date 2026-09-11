@@ -6,15 +6,74 @@
 
 use client_state::EventUi;
 use client_state::ViewPaywall;
+use client_state::ViewPaywallStep;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use web_components::Brand;
+use web_components::CardForm;
+use web_components::CardWells;
 use web_components::IconRow;
+use web_ui::Glyph;
 
+use crate::io::stripe;
 use crate::runtime_app::RuntimeApp;
 
 #[component]
 pub fn PaywallPage(view: Signal<ViewPaywall>) -> impl IntoView {
     let runtime = expect_context::<RuntimeApp>();
+
+    let card =
+        Memo::new(move |_| view.with(|view| matches!(view.step, ViewPaywallStep::Card { .. })));
+
+    let paying = Memo::new(move |_| {
+        view.with(|view| matches!(view.step, ViewPaywallStep::Card { paying: true, .. }))
+    });
+
+    let fault = Memo::new(move |_| {
+        view.with(|view| match &view.step {
+            ViewPaywallStep::Card { fault, .. } => fault.clone(),
+            _ => None,
+        })
+    });
+
+    let action = Memo::new(move |_| {
+        view.with(|view| match &view.step {
+            ViewPaywallStep::Offer { action, .. }
+            | ViewPaywallStep::Card { action, .. }
+            | ViewPaywallStep::Confirming { action, .. } => action.clone(),
+        })
+    });
+
+    let busy = Memo::new(move |_| {
+        view.with(|view| match view.step {
+            ViewPaywallStep::Offer { opening, .. } => opening,
+            ViewPaywallStep::Card { paying, .. } => paying,
+            ViewPaywallStep::Confirming { checking, .. } => checking,
+        })
+    });
+
+    // Which event the one button sends is which step this is.
+    let pressed = move |_| {
+        let event = view.with(|view| match view.step {
+            ViewPaywallStep::Offer { .. } => EventUi::SubscribeRequested,
+            ViewPaywallStep::Card { .. } => EventUi::PaymentRequested,
+            ViewPaywallStep::Confirming { .. } => EventUi::RefreshRequested,
+        });
+
+        runtime.ui(event);
+    };
+
+    // Stripe's frames, in the wells the card form draws.
+    let mounted = Callback::new(|wells: CardWells| {
+        spawn_local(async move {
+            stripe::mount(&wells.number, &wells.expiry, &wells.cvc).await;
+        });
+    });
+
+    // The card cannot change under a payment that is out.
+    Effect::new(move || stripe::lock(paying.get()));
+
+    on_cleanup(stripe::unmount);
 
     view! {
         <div class="paywall ui">
@@ -48,6 +107,22 @@ pub fn PaywallPage(view: Signal<ViewPaywall>) -> impl IntoView {
                     }}
                 </div>
 
+                // Built once each time the card step begins, and taken down with
+                // its frames when it ends: a render that rebuilt it would put
+                // new frames in, empty.
+                {move || {
+                    card.get()
+                        .then(|| {
+                            on_cleanup(stripe::unmount);
+
+                            view! {
+                                <div class="pay">
+                                    <CardForm mounted locked=paying fault=fault />
+                                </div>
+                            }
+                        })
+                }}
+
                 <div class="acts">
                     <button
                         class="btn lg block"
@@ -56,10 +131,16 @@ pub fn PaywallPage(view: Signal<ViewPaywall>) -> impl IntoView {
                         {move || view.with(|view| view.sign_out.clone())}
                     </button>
 
-                    // Drawn and not built: the card form is its own change, and a
-                    // button that looked live and did nothing would be worse.
-                    <button class="btn primary lg block dead" disabled>
-                        Subscribe
+                    <button
+                        type="button"
+                        class=move || {
+                            if busy.get() { "btn primary lg block busy" } else { "btn primary lg block" }
+                        }
+                        disabled=move || busy.get()
+                        on:click=pressed
+                    >
+                        {move || busy.get().then(|| view! { <Glyph name="spin" /> })}
+                        {move || action.get()}
                     </button>
                 </div>
             </div>

@@ -106,6 +106,7 @@ body {
     <symbol id="i-tick-c" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="16 9.5 10.8 15 8 12.4"/></symbol>
     <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="7.5" x2="12" y2="13"/><circle cx="12" cy="16.5" r="0.6" fill="currentColor"/></symbol>
     <symbol id="i-dot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8"/></symbol>
+    <symbol id="i-card" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="6.5" y1="15" x2="10" y2="15"/></symbol>
   </defs>
 </svg>
 
@@ -439,16 +440,6 @@ body {
         </div>
       </div>
     </div>
-  </div>
-
-  <div class="group" id="saying">
-    <h2>Saying</h2>
-
-    <div class="entry">
-      <div class="demo">
-        <div class="say-title">Meridian is $5.99 a month</div>
-        <div class="say-body">Your account is ready. There is one price and nothing else to choose.</div>
-        <div class="acts" style="margin-top:22px">
 
     <div class="entry">
       <div class="demo inline">
@@ -471,6 +462,16 @@ body {
         <div class="use">.btn.plain.back &gt; svg</div>
       </div>
     </div>
+  </div>
+
+  <div class="group" id="saying">
+    <h2>Saying</h2>
+
+    <div class="entry">
+      <div class="demo">
+        <div class="say-title">Meridian is $5.99 a month</div>
+        <div class="say-body">Your account is ready. There is one price and nothing else to choose.</div>
+        <div class="acts" style="margin-top:22px">
           <button class="btn lg block">Not now</button>
           <button class="btn primary lg block">Subscribe</button>
         </div>
@@ -499,16 +500,6 @@ body {
       </div>
     </div>
 
-    <div class="entry">
-      <div class="demo">
-        <div class="banner">
-          <span class="say">Meridian can't reach the server.</span>
-          <button class="btn sm">Retry</button>
-        </div>
-      </div>
-      <div class="body">
-        <h3>Banner</h3>
-        <p>
     <div class="entry">
       <div class="demo">
         <div class="say-step">Step 1 of 3 · Account</div>
@@ -576,6 +567,16 @@ body {
       </div>
     </div>
 
+    <div class="entry">
+      <div class="demo">
+        <div class="banner">
+          <span class="say">Meridian can't reach the server.</span>
+          <button class="btn sm">Retry</button>
+        </div>
+      </div>
+      <div class="body">
+        <h3>Banner</h3>
+        <p>
           Something went wrong, in the machine's words, and the one thing to do
           about it. It sits at the top of the page, over whatever was loaded
           before, and goes when the next load lands.
@@ -647,8 +648,61 @@ body {
           wants its own slot — the same reason a column of figures is set in
           it. And a box per digit says how many are left without a counter
           saying so.
+          <br><br>
+          Where it takes typing, one real <code>input</code> sits behind all
+          the boxes, invisible and on top of them, rather than one per box. A
+          paste, a backspace and a code filled in from the notification are
+          then one event rather than a question of where focus moves, and the
+          boxes draw what it holds.
         </div>
         <div class="use">.code &gt; (.field &gt; .in, input)</div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="demo" style="display:flex;flex-direction:column;gap:14px">
+        <div class="card-entry">
+          <span class="field on"><span class="in"><svg><use href="#i-card"/></svg>4242 4242 4242<i class="caret"></i></span></span>
+          <span class="field"><span class="in"><span class="ph">MM / YY</span></span></span>
+          <span class="field"><span class="in"><span class="ph">CVC</span></span></span>
+        </div>
+        <div>
+          <div class="card-entry">
+            <span class="field"><span class="in"><svg><use href="#i-card"/></svg>4000 0000 0000 0002</span></span>
+            <span class="field"><span class="in">12 / 34</span></span>
+            <span class="field"><span class="in">123</span></span>
+          </div>
+          <div class="say-fault"><svg><use href="#i-warn"/></svg>Your card was declined. Try another card.</div>
+        </div>
+        <div class="card-entry locked">
+          <span class="field"><span class="in"><svg><use href="#i-card"/></svg>4242 4242 4242 4242</span></span>
+          <span class="field"><span class="in">12 / 34</span></span>
+          <span class="field"><span class="in">123</span></span>
+        </div>
+      </div>
+      <div class="body">
+        <h3>Card</h3>
+        <p>
+          Three fields: the number across the measure, and the date and the
+          code side by side under it, in the money face. Under them, when a
+          payment is refused, the sentence saying why; while one is out, the
+          whole card dims and stops taking typing.
+        </p>
+        <div class="why">
+          Three rather than one long field, so each is as wide as what it
+          holds, and monospace for the reason a code is: a card number is read
+          four digits at a time, and each group keeps its slot.
+          <br><br>
+          On the web and the desktop the wells are empty and Stripe's frames
+          sit in them, so a card number never passes through the app. A frame
+          has no input of ours to read, so it marks the element it sits in
+          with <code>.on</code> or <code>.bad</code>, and the field lights from
+          that exactly as it does for <code>.field.on</code>.
+          <code>.bad</code> is Stripe saying a number cannot be one &mdash; not
+          an empty field. The phone draws no card: it sells through the App
+          Store.
+        </div>
+        <div class="use">.card-entry &gt; .field &times; 3 · .locked · then .say-fault</div>
       </div>
     </div>
   </div>
@@ -657,12 +711,6 @@ body {
     <h2>Listing</h2>
 
     <div class="entry">
-          <br><br>
-          Where it takes typing, one real <code>input</code> sits behind all
-          the boxes, invisible and on top of them, rather than one per box. A
-          paste, a backspace and a code filled in from the notification are
-          then one event rather than a question of where focus moves, and the
-          boxes draw what it holds.
       <div class="demo">
         <div class="row top">
           <svg><use href="#i-lock"/></svg>
@@ -700,16 +748,6 @@ body {
         <div class="use">.row &gt; (svg, .rt &gt; .rs, .rv | .rv.hard, .go) · .top · .flat · .needs</div>
       </div>
     </div>
-  </div>
-
-  <div class="group" id="figures">
-    <h2>Figures</h2>
-
-    <div class="entry">
-      <div class="demo">
-        <div class="track-demo">
-          <div class="caption"><span>Transfer out</span><span class="money">$2,078.50</span></div>
-          <span class="track"><i style="width:55.1%"></i></span>
 
     <div class="entry">
       <div class="demo">
@@ -734,6 +772,16 @@ body {
         <div class="use">.row · .done · .now · .wait</div>
       </div>
     </div>
+  </div>
+
+  <div class="group" id="figures">
+    <h2>Figures</h2>
+
+    <div class="entry">
+      <div class="demo">
+        <div class="track-demo">
+          <div class="caption"><span>Transfer out</span><span class="money">$2,078.50</span></div>
+          <span class="track"><i style="width:55.1%"></i></span>
         </div>
       </div>
       <div class="body">
@@ -780,16 +828,6 @@ body {
         </div>
       </div>
     </div>
-  </div>
-
-  <div class="group" id="calendar">
-    <h2>Calendar</h2>
-
-    <div class="entry">
-      <div class="demo">
-        <div class="days" data-select="one">
-          <div class="cal-day"><span class="n">4</span><span class="marks"></span></div>
-          <div class="cal-day"><span class="n">10</span><span class="marks"><i></i><i></i></span></div>
 
     <div class="entry">
       <div class="demo">
@@ -813,6 +851,16 @@ body {
         <div class="use">.tally &gt; .r &gt; (.v, .k)</div>
       </div>
     </div>
+  </div>
+
+  <div class="group" id="calendar">
+    <h2>Calendar</h2>
+
+    <div class="entry">
+      <div class="demo">
+        <div class="days" data-select="one">
+          <div class="cal-day"><span class="n">4</span><span class="marks"></span></div>
+          <div class="cal-day"><span class="n">10</span><span class="marks"><i></i><i></i></span></div>
           <div class="cal-day today"><span class="n">19</span><span class="marks"></span></div>
           <div class="cal-day picked"><span class="n">22</span><span class="marks"><i></i></span></div>
           <div class="cal-day outside"><span class="n">3</span><span class="marks"></span></div>

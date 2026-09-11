@@ -2868,10 +2868,11 @@ public object FfiConverterTypeViewMonthSection : FfiConverterRustBuffer<ViewMont
 /**
  * The paywall, in the words it is read in.
  *
- * No Subscribe: nothing on this phone can take money yet, and a button that
- * looked live and did nothing would be worse than one that is not there.
- * Signing out is the only thing that can be done from here, so it is the only
- * thing offered.
+ * The phone draws no Subscribe: it can take money only through the App
+ * Store, which it does not do yet, and a button that looked live and did
+ * nothing would be worse than one that is not there. So it draws everything
+ * here but [`step`](Self::step), and the web and the desktop app, which take a
+ * card, draw that too.
  */
 data class ViewPaywall(
     var `title`: kotlin.String,
@@ -2880,6 +2881,11 @@ data class ViewPaywall(
      * What it costs, and when the last period ran out where there was one.
      */
     var `rows`: List<ViewIconRow>,
+    /**
+     * How far paying has got: the button, and the card form where there is
+     * one.
+     */
+    var `step`: ViewPaywallStep,
     /**
      * `"Sign out"`.
      */
@@ -2897,6 +2903,7 @@ public object FfiConverterTypeViewPaywall : FfiConverterRustBuffer<ViewPaywall> 
             FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewRun.read(buf),
             FfiConverterSequenceTypeViewIconRow.read(buf),
+            FfiConverterTypeViewPaywallStep.read(buf),
             FfiConverterString.read(buf),
         )
 
@@ -2905,6 +2912,7 @@ public object FfiConverterTypeViewPaywall : FfiConverterRustBuffer<ViewPaywall> 
             FfiConverterString.allocationSize(value.`title`) +
                 FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
                 FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`) +
+                FfiConverterTypeViewPaywallStep.allocationSize(value.`step`) +
                 FfiConverterString.allocationSize(value.`signOut`)
         )
 
@@ -2915,6 +2923,7 @@ public object FfiConverterTypeViewPaywall : FfiConverterRustBuffer<ViewPaywall> 
         FfiConverterString.write(value.`title`, buf)
         FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
         FfiConverterSequenceTypeViewIconRow.write(value.`rows`, buf)
+        FfiConverterTypeViewPaywallStep.write(value.`step`, buf)
         FfiConverterString.write(value.`signOut`, buf)
     }
 }
@@ -3540,6 +3549,21 @@ sealed class ActionSource {
     object StartBankLink : ActionSource()
 
     /**
+     * Ask the server to start a subscription, and have the card form ready
+     * to pay it.
+     *
+     * The runtime keeps what the server answers with — the secret a card is
+     * confirmed against, and the key the form opens with — and reports only
+     * that it is started. Neither is a thing to put in an event log.
+     */
+    object StartSubscription : ActionSource()
+
+    /**
+     * Pay the subscription that was started, with the card in the form.
+     */
+    object TakePayment : ActionSource()
+
+    /**
      * Open a stream the server writes the sync's progress to, and report
      * what arrives on it.
      *
@@ -3599,10 +3623,18 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
             }
 
             8 -> {
-                ActionSource.WatchSync
+                ActionSource.StartSubscription
             }
 
             9 -> {
+                ActionSource.TakePayment
+            }
+
+            10 -> {
+                ActionSource.WatchSync
+            }
+
+            11 -> {
                 ActionSource.StopWatchingSync
             }
 
@@ -3659,6 +3691,20 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
             }
 
             is ActionSource.StartBankLink -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is ActionSource.StartSubscription -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is ActionSource.TakePayment -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
                     4UL
@@ -3723,13 +3769,23 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
                 Unit
             }
 
-            is ActionSource.WatchSync -> {
+            is ActionSource.StartSubscription -> {
                 buf.putInt(8)
                 Unit
             }
 
-            is ActionSource.StopWatchingSync -> {
+            is ActionSource.TakePayment -> {
                 buf.putInt(9)
+                Unit
+            }
+
+            is ActionSource.WatchSync -> {
+                buf.putInt(10)
+                Unit
+            }
+
+            is ActionSource.StopWatchingSync -> {
+                buf.putInt(11)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -4105,6 +4161,32 @@ sealed class EventSource {
      */
     object SyncWatchEnded : EventSource()
 
+    /**
+     * A subscription is started and waiting to be paid for.
+     *
+     * Nothing else: what it is paid against stays with the runtime, the way
+     * the session token does.
+     */
+    object SubscriptionStarted : EventSource()
+
+    /**
+     * The payment provider took the card.
+     *
+     * Not a subscription the server will honour yet. The provider tells the
+     * server separately, a moment later, and until it has the server goes on
+     * refusing.
+     */
+    object PaymentTaken : EventSource()
+
+    /**
+     * The provider did not take it, and why, in our words.
+     */
+    data class PaymentRefused(
+        val `refusal`: uniffi.client_state.PaymentRefusal,
+    ) : EventSource() {
+        companion object
+    }
+
     companion object
 }
 
@@ -4168,6 +4250,20 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
 
             12 -> {
                 EventSource.SyncWatchEnded
+            }
+
+            13 -> {
+                EventSource.SubscriptionStarted
+            }
+
+            14 -> {
+                EventSource.PaymentTaken
+            }
+
+            15 -> {
+                EventSource.PaymentRefused(
+                    FfiConverterTypePaymentRefusal.read(buf),
+                )
             }
 
             else -> {
@@ -4264,6 +4360,28 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
                     4UL
                 )
             }
+
+            is EventSource.SubscriptionStarted -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is EventSource.PaymentTaken -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is EventSource.PaymentRefused -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypePaymentRefusal.allocationSize(value.`refusal`)
+                )
+            }
         }
 
     override fun write(
@@ -4332,6 +4450,22 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
 
             is EventSource.SyncWatchEnded -> {
                 buf.putInt(12)
+                Unit
+            }
+
+            is EventSource.SubscriptionStarted -> {
+                buf.putInt(13)
+                Unit
+            }
+
+            is EventSource.PaymentTaken -> {
+                buf.putInt(14)
+                Unit
+            }
+
+            is EventSource.PaymentRefused -> {
+                buf.putInt(15)
+                FfiConverterTypePaymentRefusal.write(value.`refusal`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -4482,6 +4616,17 @@ sealed class EventUi {
     object OnboardingFinished : EventUi()
 
     /**
+     * Subscribe, on the paywall. Starts a subscription and brings up the card
+     * form; nothing is charged by it.
+     */
+    object SubscribeRequested : EventUi()
+
+    /**
+     * Pay, under the card form.
+     */
+    object PaymentRequested : EventUi()
+
+    /**
      * Sign out, on the Account tab. Everything the app holds belongs to the
      * account, so this puts the machine back to where a fresh install starts.
      */
@@ -4595,6 +4740,14 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
             }
 
             21 -> {
+                EventUi.SubscribeRequested
+            }
+
+            22 -> {
+                EventUi.PaymentRequested
+            }
+
+            23 -> {
                 EventUi.SignOutRequested
             }
 
@@ -4754,6 +4907,20 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
                 )
             }
 
+            is EventUi.SubscribeRequested -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is EventUi.PaymentRequested -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
             is EventUi.SignOutRequested -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
@@ -4876,8 +5043,18 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
                 Unit
             }
 
-            is EventUi.SignOutRequested -> {
+            is EventUi.SubscribeRequested -> {
                 buf.putInt(21)
+                Unit
+            }
+
+            is EventUi.PaymentRequested -> {
+                buf.putInt(22)
+                Unit
+            }
+
+            is EventUi.SignOutRequested -> {
+                buf.putInt(23)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -5095,6 +5272,62 @@ public object FfiConverterTypeLoadFailure : FfiConverterRustBuffer<LoadFailure> 
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+/**
+ * How a payment was refused, in our words rather than a provider's.
+ *
+ * A reason and not a sentence: the runtime says which it was, and what each
+ * reads as is decided with every other string the app prints.
+ */
+
+enum class PaymentRefusal {
+    /**
+     * The bank said no.
+     */
+    DECLINED,
+
+    /**
+     * A detail of the card cannot be right — the number, the date or the
+     * code — or one was left unfinished.
+     */
+    INCORRECT,
+
+    /**
+     * The bank asked the cardholder to confirm it was them, and they did not.
+     */
+    UNAUTHENTICATED,
+
+    /**
+     * Nothing that says anything about the card: the provider could not be
+     * reached, or answered in a way the runtime could not read.
+     */
+    FAILED,
+
+    ;
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePaymentRefusal : FfiConverterRustBuffer<PaymentRefusal> {
+    override fun read(buf: ByteBuffer) =
+        try {
+            PaymentRefusal.values()[buf.getInt() - 1]
+        } catch (e: IndexOutOfBoundsException) {
+            throw RuntimeException("invalid enum value, something is very wrong!!", e)
+        }
+
+    override fun allocationSize(value: PaymentRefusal) = 4UL
+
+    override fun write(
+        value: PaymentRefusal,
+        buf: ByteBuffer,
+    ) {
+        buf.putInt(value.ordinal + 1)
     }
 }
 
@@ -5872,6 +6105,164 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterString.write(value.`action`, buf)
                 FfiConverterOptionalString.write(value.`opening`, buf)
                 FfiConverterOptionalString.write(value.`open`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+/**
+ * The part of the paywall that moves as somebody pays: the button, and the
+ * card form where there is one.
+ *
+ * An enum rather than flags, for the reason [`ViewOnboarding`](crate::ViewOnboarding)
+ * is one: which event the button sends is which arm this is, so the view
+ * holds no "which step am I on" of its own.
+ */
+sealed class ViewPaywallStep {
+    /**
+     * Subscribe, and nothing started. The button sends
+     * [`SubscribeRequested`](crate::EventUi::SubscribeRequested).
+     */
+    data class Offer(
+        /**
+         * `"Subscribe"`, or what it is waiting on once pressed.
+         */
+        val `action`: kotlin.String,
+        /**
+         * Whether the button is waiting on the subscription being started.
+         */
+        val `opening`: kotlin.Boolean,
+    ) : ViewPaywallStep() {
+        companion object
+    }
+
+    /**
+     * The card form, and Pay under it. The button sends
+     * [`PaymentRequested`](crate::EventUi::PaymentRequested).
+     */
+    data class Card(
+        /**
+         * `"Pay $5.99"`, or what it is waiting on once pressed.
+         */
+        val `action`: kotlin.String,
+        /**
+         * Whether the card is with the provider. The form is locked while it
+         * is.
+         */
+        val `paying`: kotlin.Boolean,
+        /**
+         * Why the last card was refused, under the form. Absent until one
+         * has been.
+         */
+        val `fault`: kotlin.String?,
+    ) : ViewPaywallStep() {
+        companion object
+    }
+
+    /**
+     * The card was taken, and the server has not heard yet. While `checking`
+     * it is being asked on its own; after that the button sends
+     * [`RefreshRequested`](crate::EventUi::RefreshRequested).
+     */
+    data class Confirming(
+        val `action`: kotlin.String,
+        val `checking`: kotlin.Boolean,
+    ) : ViewPaywallStep() {
+        companion object
+    }
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewPaywallStep : FfiConverterRustBuffer<ViewPaywallStep> {
+    override fun read(buf: ByteBuffer): ViewPaywallStep =
+        when (buf.getInt()) {
+            1 -> {
+                ViewPaywallStep.Offer(
+                    FfiConverterString.read(buf),
+                    FfiConverterBoolean.read(buf),
+                )
+            }
+
+            2 -> {
+                ViewPaywallStep.Card(
+                    FfiConverterString.read(buf),
+                    FfiConverterBoolean.read(buf),
+                    FfiConverterOptionalString.read(buf),
+                )
+            }
+
+            3 -> {
+                ViewPaywallStep.Confirming(
+                    FfiConverterString.read(buf),
+                    FfiConverterBoolean.read(buf),
+                )
+            }
+
+            else -> {
+                throw RuntimeException("invalid enum value, something is very wrong!!")
+            }
+        }
+
+    override fun allocationSize(value: ViewPaywallStep): ULong =
+        when (value) {
+            is ViewPaywallStep.Offer -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`action`) +
+                        FfiConverterBoolean.allocationSize(value.`opening`)
+                )
+            }
+
+            is ViewPaywallStep.Card -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`action`) +
+                        FfiConverterBoolean.allocationSize(value.`paying`) +
+                        FfiConverterOptionalString.allocationSize(value.`fault`)
+                )
+            }
+
+            is ViewPaywallStep.Confirming -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterString.allocationSize(value.`action`) +
+                        FfiConverterBoolean.allocationSize(value.`checking`)
+                )
+            }
+        }
+
+    override fun write(
+        value: ViewPaywallStep,
+        buf: ByteBuffer,
+    ) {
+        when (value) {
+            is ViewPaywallStep.Offer -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`action`, buf)
+                FfiConverterBoolean.write(value.`opening`, buf)
+                Unit
+            }
+
+            is ViewPaywallStep.Card -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`action`, buf)
+                FfiConverterBoolean.write(value.`paying`, buf)
+                FfiConverterOptionalString.write(value.`fault`, buf)
+                Unit
+            }
+
+            is ViewPaywallStep.Confirming -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`action`, buf)
+                FfiConverterBoolean.write(value.`checking`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }

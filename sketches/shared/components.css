@@ -202,6 +202,11 @@
   padding: 6px 4px;
 }
 .ui .btn.plain:active { transform: translateY(1px); opacity: 0.75; }
+/* Back, on a screen with no title bar to hold it: a plain button that is only
+   the chevron, and grey rather than violet, because going back is never what
+   the screen is for. */
+.ui .btn.plain.back { color: var(--text-muted); }
+.ui .btn.plain.back svg { width: 20px; height: 20px; }
 
 /* Connected buttons: the same buttons with the gap taken out. They share their
    side borders and their edges run into one line under the row, and the live
@@ -217,11 +222,6 @@
 
    Two weights, and both run the full width of the screen — a rule that stops
    short of the edge reads as a third kind of line. Strong between the parts of
-/* Back, on a screen with no title bar to hold it: a plain button that is only
-   the chevron, and grey rather than violet, because going back is never what
-   the screen is for. */
-.ui .btn.plain.back { color: var(--text-muted); }
-.ui .btn.plain.back svg { width: 20px; height: 20px; }
    a page; faint between rows and between groups of rows. Rows you read down
    rather than compare across get space and a heading instead of either. */
 
@@ -296,6 +296,13 @@
 /* a row that is only a name and a value, read down a column */
 .ui .row.flat { padding: 9px 0; }
 .ui .row.flat .rt { font-size: 13.5px; font-weight: 400; color: var(--text-muted); }
+/* A row that is a step in something running, coloured by where that step is:
+   finished, happening now, or not reached yet. The one happening now turns its
+   icon — the same arc, at the same speed, as a busy button. */
+.ui .row.done > svg { color: var(--up); }
+.ui .row.now > svg { color: var(--violet-300); animation: spin 0.9s linear infinite; }
+.ui .row.wait > svg { color: var(--bars); }
+.ui .row.wait .rt { color: var(--text-faint); font-weight: 500; }
 
 /* A share, drawn on the rule under the thing it belongs to: square ends, no
    inset, standing on the line rather than straddling it, and starting at the
@@ -307,17 +314,13 @@
   background: var(--accent-soft);
   /* No negative spread: on something four pixels tall it eats the whole glow. */
   box-shadow: 0 0 10px color-mix(in srgb, var(--accent-soft) 55%, transparent);
+  /* A share that changes slides to its new width rather than jumping, so a
+     bar filling as work lands reads as work landing. */
+  transition: width 350ms ease-out;
 }
 
 /* Money.
 
-/* A row that is a step in something running, coloured by where that step is:
-   finished, happening now, or not reached yet. The one happening now turns its
-   icon — the same arc, at the same speed, as a busy button. */
-.ui .row.done > svg { color: var(--up); }
-.ui .row.now > svg { color: var(--violet-300); animation: spin 0.9s linear infinite; }
-.ui .row.wait > svg { color: var(--bars); }
-.ui .row.wait .rt { color: var(--text-faint); font-weight: 500; }
    Every figure is set in the monospaced face with tabular figures, so a column
    of them lines up on the decimal without the reader having to look for it. In
    and out are the only two colours money takes, and they go on the figure —
@@ -329,10 +332,19 @@
   font-weight: 600;
 }
 .ui .money.in { color: var(--up); }
-  /* A share that changes slides to its new width rather than jumping, so a
-     bar filling as work lands reads as work landing. */
-  transition: width 350ms ease-out;
 .ui .money.out { color: var(--down); }
+
+/* A tally: figures read down a column, each beside what it counts — what the
+   first sync brought in. Money-faced without being money, because a column
+   you read down is the reason that face exists. */
+.ui .tally .r { display: flex; align-items: baseline; gap: 14px; padding: 12px 0; }
+.ui .tally .v {
+  min-width: 46px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 22px; font-weight: 600;
+}
+.ui .tally .k { font-size: 13.5px; color: var(--text-muted); }
 
 /* Drawn but not live, for a button — the same state the chip and the range
    option have. The phone draws two of these already: Reconnect, which needs
@@ -349,18 +361,6 @@
    away.
 
    Its own state rather than `.dead`, because the two say different things: a
-/* A tally: figures read down a column, each beside what it counts — what the
-   first sync brought in. Money-faced without being money, because a column
-   you read down is the reason that face exists. */
-.ui .tally .r { display: flex; align-items: baseline; gap: 14px; padding: 12px 0; }
-.ui .tally .v {
-  min-width: 46px;
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-  font-variant-numeric: tabular-nums;
-  font-size: 22px; font-weight: 600;
-}
-.ui .tally .k { font-size: 13.5px; color: var(--text-muted); }
-
    dead button is one there is no point pressing, and a busy one is a press
    that landed and has not finished. The phone draws one — Connect a bank,
    where the server opens a Plaid session and iOS raises a web sheet over the
@@ -446,7 +446,21 @@
 .ui .field .ph { color: var(--text-faint); }
 .ui .field.on { border-color: color-mix(in srgb, var(--violet-400) 34%, transparent); }
 .ui .field.bad { border-color: color-mix(in srgb, var(--rose-400) 40%, transparent); }
+/* A frame that is not ours — Stripe's, in a card — has no input here to read,
+   so it marks what it sits in, and the field lights the same way. */
+.ui .field:has(> .in > .on) { border-color: color-mix(in srgb, var(--violet-400) 34%, transparent); }
+.ui .field:has(> .in > .bad) { border-color: color-mix(in srgb, var(--rose-400) 40%, transparent); }
 .ui .field.bad .in { color: var(--rose-400); }
+/* A field that really takes typing: the input is the value, wearing none of
+   its own chrome, so the frame stays the field's. Its placeholder is `.ph`. */
+.ui .field input {
+  flex: 1; min-width: 0; height: 100%;
+  padding: 0; border: 0; outline: 0;
+  background: none;
+  font: inherit; color: inherit; letter-spacing: inherit;
+  caret-color: var(--violet-300);
+}
+.ui .field input::placeholder { color: var(--text-faint); opacity: 1; }
 
 /* The insertion point, drawn rather than blinking: a sketch has no focus, and
    a still frame of a live field needs one to read as live. */
@@ -462,16 +476,6 @@
 
    A title, a line or two under it, and the actions at the foot. First run is a
    stack of these, and so is the paywall: the app has one thing to tell you and
-/* A field that really takes typing: the input is the value, wearing none of
-   its own chrome, so the frame stays the field's. Its placeholder is `.ph`. */
-.ui .field input {
-  flex: 1; min-width: 0; height: 100%;
-  padding: 0; border: 0; outline: 0;
-  background: none;
-  font: inherit; color: inherit; letter-spacing: inherit;
-  caret-color: var(--violet-300);
-}
-.ui .field input::placeholder { color: var(--text-faint); opacity: 1; }
    one thing for you to do, and the width goes on the sentence rather than on
    rows.
 
@@ -496,21 +500,6 @@
 }
 .ui .say-body b { color: var(--text); font-weight: 600; }
 
-/* The actions of such a screen, stacked. One violet at most, and it goes last:
-   nearest the thumb, and the last thing read. */
-.ui .acts { display: flex; flex-direction: column; gap: 10px; }
-
-/* A code: as many fields as there are digits, one glyph each.
-
-   Set in the money face, because a code is read a digit at a time and
-   monospace keeps each one in its own slot — the same reason a column of
-   figures is set in it. A box per digit says how many are left without a
-   counter saying so. */
-
-.ui .code { position: relative; display: flex; gap: 8px; }
-.ui .code .field { flex: 1; }
-.ui .code .in {
-  justify-content: center;
 /* Where the screen stands in a flow of them — "Step 1 of 3 · Account" — which
    is the only reason a flow says how long it is. Above the title. */
 .ui .say-step {
@@ -559,11 +548,62 @@
   color: var(--text-faint); text-align: center;
 }
 
+/* The actions of such a screen, stacked. One violet at most, and it goes last:
+   nearest the thumb, and the last thing read. */
+.ui .acts { display: flex; flex-direction: column; gap: 10px; }
+
+/* A code: as many fields as there are digits, one glyph each.
+
+   Set in the money face, because a code is read a digit at a time and
+   monospace keeps each one in its own slot — the same reason a column of
+   figures is set in it. A box per digit says how many are left without a
+   counter saying so. */
+
+.ui .code { position: relative; display: flex; gap: 8px; }
+.ui .code .field { flex: 1; }
+.ui .code .in {
+  justify-content: center;
   height: 54px;
   padding: 0;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   font-size: 22px; font-weight: 600;
 }
+/* One real input behind all the boxes, invisible and on top of them. A paste,
+   a backspace and a code the browser fills in are then one event, and a click
+   anywhere on the boxes lands in it; the boxes draw what it holds. */
+.ui .code > input {
+  position: absolute; inset: 0;
+  width: 100%;
+  padding: 0; border: 0;
+  opacity: 0;
+  font-size: 16px;
+  cursor: text;
+}
+
+/* A card: the number across the measure, and the date and the code side by
+   side under it.
+
+   Three fields rather than one, each as wide as what it holds. Set in the
+   money face, like a code, because a card number is read four digits at a time
+   and each group keeps its slot.
+
+   On the web the wells are empty and Stripe's frames sit in them, so a card
+   number never passes through this app; whatever sits in a well fills it. A
+   frame styles its own text, and is handed these values to do it with. */
+
+.ui .card-entry {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.ui .card-entry > .field:first-child { grid-column: 1 / -1; }
+.ui .card-entry .in {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.ui .card-entry .in > :not(svg) { flex: 1; min-width: 0; }
+/* While a payment is out: the card it is paying with cannot change under it. */
+.ui .card-entry.locked { opacity: 0.45; pointer-events: none; }
 
 /* A banner: something went wrong, and the one thing to do about it.
 
@@ -579,17 +619,6 @@
   border: 1px solid color-mix(in srgb, var(--down) 25%, transparent);
   border-radius: var(--r-sm);
   background: var(--down-tint);
-/* One real input behind all the boxes, invisible and on top of them. A paste,
-   a backspace and a code the browser fills in are then one event, and a click
-   anywhere on the boxes lands in it; the boxes draw what it holds. */
-.ui .code > input {
-  position: absolute; inset: 0;
-  width: 100%;
-  padding: 0; border: 0;
-  opacity: 0;
-  font-size: 16px;
-  cursor: text;
-}
   font-size: 12.5px; color: var(--text-muted);
 }
 .ui .banner .say { flex: 1; min-width: 0; }

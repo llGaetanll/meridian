@@ -27,6 +27,7 @@ use crate::Unpaid;
 use crate::screens;
 use crate::state_onboarding::Progress;
 use crate::state_onboarding::Step;
+use crate::state_payment::StatePayment;
 
 /// How long to wait before opening another stream after losing one.
 ///
@@ -109,6 +110,11 @@ pub struct StateApp {
     /// says otherwise would draw an empty Ledger on every launch, for the frame
     /// between launching and the runtime answering.
     onboarding: Option<StateOnboarding>,
+
+    /// How far paying from the paywall has got. Means nothing while
+    /// [`unpaid`](Self::unpaid) is `None`, and is put back to the start
+    /// whenever that is cleared.
+    payment: StatePayment,
 }
 
 impl Default for StateApp {
@@ -129,6 +135,7 @@ impl Default for StateApp {
             watching: false,
             watch_asked: None,
             onboarding: Some(StateOnboarding::new()),
+            payment: StatePayment::default(),
         }
     }
 }
@@ -182,9 +189,14 @@ impl StateApp {
 
                 self.device_now = now;
 
+                // Asking the server whether it has heard of a payment is a
+                // rule about time, so it is asked here; the one tick that
+                // stops the asking changes the screen.
+                let stopped_asking = self.payment.tick(now, actions);
+
                 // Drawing on every tick would rebuild the Ledger sixty times a
                 // minute to arrive at the same list.
-                if self.draws_on_a_tick() {
+                if self.draws_on_a_tick() || stopped_asking {
                     self.render(actions);
                 }
             }
@@ -214,6 +226,25 @@ impl StateApp {
                 actions.push(Action::ToSource {
                     action: ActionSource::LoadSnapshot,
                 });
+
+                // And Check again, on a paywall that stopped asking whether a
+                // payment had been heard of: another minute of asking.
+                let now = self.now();
+
+                self.payment.check_again(now);
+            }
+
+            // Only from the paywall: a session being served has nothing to buy.
+            EventUi::SubscribeRequested => {
+                if self.unpaid.is_some() {
+                    self.payment.subscribe(actions);
+                }
+            }
+
+            EventUi::PaymentRequested => {
+                if self.unpaid.is_some() {
+                    self.payment.pay(actions);
+                }
             }
 
             EventUi::MaskToggled => self.masked = !self.masked,
@@ -376,8 +407,10 @@ impl StateApp {
                         self.load_failed = None;
 
                         // Served at all is served, so whatever the last
-                        // refusal said about a subscription is no longer true.
+                        // refusal said about a subscription is no longer true,
+                        // and nothing is left to pay.
                         self.unpaid = None;
+                        self.payment = StatePayment::default();
 
                         debug_assert!(
                             self.entries.windows(2).all(|w| w[0].ts() >= w[1].ts()),
@@ -471,6 +504,26 @@ impl StateApp {
                 self.render(actions);
             }
 
+            EventSource::SubscriptionStarted => {
+                self.payment.started();
+
+                self.render(actions);
+            }
+
+            EventSource::PaymentTaken => {
+                let now = self.now();
+
+                self.payment.taken(now, actions);
+
+                self.render(actions);
+            }
+
+            EventSource::PaymentRefused { refusal } => {
+                self.payment.refused(*refusal);
+
+                self.render(actions);
+            }
+
             EventSource::SyncWatchEnded => {
                 // Nothing is drawn about it and nothing is decided here: if the
                 // sync screen is still up, the rule at the end of this batch
@@ -556,6 +609,10 @@ impl StateApp {
                 | LoadFailure::Server { .. }
                 | LoadFailure::Unreadable => {
                     self.load_failed = Some(failure.clone());
+
+                    // A subscription the server could not start was not
+                    // started, so Subscribe is offered again under the banner.
+                    self.payment.failed();
 
                     // Still render: what the screen says depends on whether
                     // anything was ever loaded.
@@ -694,6 +751,10 @@ impl StateApp {
     /// is saying it.
     pub(crate) fn unpaid(&self) -> Option<&Unpaid> {
         self.unpaid.as_ref()
+    }
+
+    pub(crate) fn payment(&self) -> StatePayment {
+        self.payment
     }
 
     pub(crate) fn loaded(&self) -> bool {

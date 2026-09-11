@@ -140,6 +140,8 @@ final class RuntimeApp: ObservableObject {
         case .bankConnectRequested: "bankConnect"
         case .onboardingFinished: "onboardingFinished"
         case .signOutRequested: "signOut"
+        case .subscribeRequested: "subscribe"
+        case .paymentRequested: "pay"
         }
     }
 
@@ -190,6 +192,12 @@ final class RuntimeApp: ObservableObject {
         case .startBankLink: startBankLink()
         case .watchSync: watchSync()
         case .stopWatchingSync: stopWatchingSync()
+
+        // A card, which the phone does not take: it sells through the App
+        // Store, and draws no Subscribe for as long as it cannot. Nothing on
+        // this side sends the event that asks for either.
+        case .startSubscription, .takePayment:
+            NSLog("MERIDIAN a card payment was asked of the phone, which takes none")
         }
     }
 

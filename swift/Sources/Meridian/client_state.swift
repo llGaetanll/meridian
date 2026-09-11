@@ -2633,10 +2633,11 @@ public func FfiConverterTypeViewMonthSection_lower(_ value: ViewMonthSection) ->
 /**
  * The paywall, in the words it is read in.
  *
- * No Subscribe: nothing on this phone can take money yet, and a button that
- * looked live and did nothing would be worse than one that is not there.
- * Signing out is the only thing that can be done from here, so it is the only
- * thing offered.
+ * The phone draws no Subscribe: it can take money only through the App
+ * Store, which it does not do yet, and a button that looked live and did
+ * nothing would be worse than one that is not there. So it draws everything
+ * here but [`step`](Self::step), and the web and the desktop app, which take a
+ * card, draw that too.
  */
 public struct ViewPaywall: Equatable, Hashable {
     public var title: String
@@ -2645,6 +2646,11 @@ public struct ViewPaywall: Equatable, Hashable {
      * What it costs, and when the last period ran out where there was one.
      */
     public var rows: [ViewIconRow]
+    /**
+     * How far paying has got: the button, and the card form where there is
+     * one.
+     */
+    public var step: ViewPaywallStep
     /**
      * `"Sign out"`.
      */
@@ -2657,11 +2663,16 @@ public struct ViewPaywall: Equatable, Hashable {
          * What it costs, and when the last period ran out where there was one.
          */rows: [ViewIconRow], 
         /**
+         * How far paying has got: the button, and the card form where there is
+         * one.
+         */step: ViewPaywallStep, 
+        /**
          * `"Sign out"`.
          */signOut: String) {
         self.title = title
         self.body = body
         self.rows = rows
+        self.step = step
         self.signOut = signOut
     }
 
@@ -2684,6 +2695,7 @@ public struct FfiConverterTypeViewPaywall: FfiConverterRustBuffer {
                 title: FfiConverterString.read(from: &buf), 
                 body: FfiConverterSequenceTypeViewRun.read(from: &buf), 
                 rows: FfiConverterSequenceTypeViewIconRow.read(from: &buf), 
+                step: FfiConverterTypeViewPaywallStep.read(from: &buf), 
                 signOut: FfiConverterString.read(from: &buf)
         )
     }
@@ -2692,6 +2704,7 @@ public struct FfiConverterTypeViewPaywall: FfiConverterRustBuffer {
         FfiConverterString.write(value.title, into: &buf)
         FfiConverterSequenceTypeViewRun.write(value.body, into: &buf)
         FfiConverterSequenceTypeViewIconRow.write(value.rows, into: &buf)
+        FfiConverterTypeViewPaywallStep.write(value.step, into: &buf)
         FfiConverterString.write(value.signOut, into: &buf)
     }
 }
@@ -3577,6 +3590,19 @@ public enum ActionSource: Equatable, Hashable {
      */
     case startBankLink
     /**
+     * Ask the server to start a subscription, and have the card form ready
+     * to pay it.
+     *
+     * The runtime keeps what the server answers with — the secret a card is
+     * confirmed against, and the key the form opens with — and reports only
+     * that it is started. Neither is a thing to put in an event log.
+     */
+    case startSubscription
+    /**
+     * Pay the subscription that was started, with the card in the form.
+     */
+    case takePayment
+    /**
      * Open a stream the server writes the sync's progress to, and report
      * what arrives on it.
      *
@@ -3628,9 +3654,13 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
         
         case 7: return .startBankLink
         
-        case 8: return .watchSync
+        case 8: return .startSubscription
         
-        case 9: return .stopWatchingSync
+        case 9: return .takePayment
+        
+        case 10: return .watchSync
+        
+        case 11: return .stopWatchingSync
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3671,12 +3701,20 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(7))
         
         
-        case .watchSync:
+        case .startSubscription:
             writeInt(&buf, Int32(8))
         
         
-        case .stopWatchingSync:
+        case .takePayment:
             writeInt(&buf, Int32(9))
+        
+        
+        case .watchSync:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .stopWatchingSync:
+            writeInt(&buf, Int32(11))
         
         }
     }
@@ -4025,6 +4063,26 @@ public enum EventSource: Equatable, Hashable {
      * machine's, and it decides that from where the flow is.
      */
     case syncWatchEnded
+    /**
+     * A subscription is started and waiting to be paid for.
+     *
+     * Nothing else: what it is paid against stays with the runtime, the way
+     * the session token does.
+     */
+    case subscriptionStarted
+    /**
+     * The payment provider took the card.
+     *
+     * Not a subscription the server will honour yet. The provider tells the
+     * server separately, a moment later, and until it has the server goes on
+     * refusing.
+     */
+    case paymentTaken
+    /**
+     * The provider did not take it, and why, in our words.
+     */
+    case paymentRefused(refusal: PaymentRefusal
+    )
 
 
 
@@ -4073,6 +4131,13 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
         )
         
         case 12: return .syncWatchEnded
+        
+        case 13: return .subscriptionStarted
+        
+        case 14: return .paymentTaken
+        
+        case 15: return .paymentRefused(refusal: try FfiConverterTypePaymentRefusal.read(from: &buf)
+        )
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4133,6 +4198,19 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
         case .syncWatchEnded:
             writeInt(&buf, Int32(12))
         
+        
+        case .subscriptionStarted:
+            writeInt(&buf, Int32(13))
+        
+        
+        case .paymentTaken:
+            writeInt(&buf, Int32(14))
+        
+        
+        case let .paymentRefused(refusal):
+            writeInt(&buf, Int32(15))
+            FfiConverterTypePaymentRefusal.write(refusal, into: &buf)
+            
         }
     }
 }
@@ -4253,6 +4331,15 @@ public enum EventUi: Equatable, Hashable {
      */
     case onboardingFinished
     /**
+     * Subscribe, on the paywall. Starts a subscription and brings up the card
+     * form; nothing is charged by it.
+     */
+    case subscribeRequested
+    /**
+     * Pay, under the card form.
+     */
+    case paymentRequested
+    /**
      * Sign out, on the Account tab. Everything the app holds belongs to the
      * account, so this puts the machine back to where a fresh install starts.
      */
@@ -4327,7 +4414,11 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
         
         case 20: return .onboardingFinished
         
-        case 21: return .signOutRequested
+        case 21: return .subscribeRequested
+        
+        case 22: return .paymentRequested
+        
+        case 23: return .signOutRequested
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4426,8 +4517,16 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
             writeInt(&buf, Int32(20))
         
         
-        case .signOutRequested:
+        case .subscribeRequested:
             writeInt(&buf, Int32(21))
+        
+        
+        case .paymentRequested:
+            writeInt(&buf, Int32(22))
+        
+        
+        case .signOutRequested:
+            writeInt(&buf, Int32(23))
         
         }
     }
@@ -4646,6 +4745,106 @@ public func FfiConverterTypeLoadFailure_lift(_ buf: RustBuffer) throws -> LoadFa
 #endif
 public func FfiConverterTypeLoadFailure_lower(_ value: LoadFailure) -> RustBuffer {
     return FfiConverterTypeLoadFailure.lower(value)
+}
+
+
+
+/**
+ * How a payment was refused, in our words rather than a provider's.
+ *
+ * A reason and not a sentence: the runtime says which it was, and what each
+ * reads as is decided with every other string the app prints.
+ */
+
+public enum PaymentRefusal: Equatable, Hashable {
+    
+    /**
+     * The bank said no.
+     */
+    case declined
+    /**
+     * A detail of the card cannot be right — the number, the date or the
+     * code — or one was left unfinished.
+     */
+    case incorrect
+    /**
+     * The bank asked the cardholder to confirm it was them, and they did not.
+     */
+    case unauthenticated
+    /**
+     * Nothing that says anything about the card: the provider could not be
+     * reached, or answered in a way the runtime could not read.
+     */
+    case failed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension PaymentRefusal: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePaymentRefusal: FfiConverterRustBuffer {
+    typealias SwiftType = PaymentRefusal
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PaymentRefusal {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .declined
+        
+        case 2: return .incorrect
+        
+        case 3: return .unauthenticated
+        
+        case 4: return .failed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PaymentRefusal, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .declined:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .incorrect:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .unauthenticated:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePaymentRefusal_lift(_ buf: RustBuffer) throws -> PaymentRefusal {
+    return try FfiConverterTypePaymentRefusal.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePaymentRefusal_lower(_ value: PaymentRefusal) -> RustBuffer {
+    return FfiConverterTypePaymentRefusal.lower(value)
 }
 
 
@@ -5262,6 +5461,130 @@ public func FfiConverterTypeViewOnboarding_lift(_ buf: RustBuffer) throws -> Vie
 #endif
 public func FfiConverterTypeViewOnboarding_lower(_ value: ViewOnboarding) -> RustBuffer {
     return FfiConverterTypeViewOnboarding.lower(value)
+}
+
+
+
+/**
+ * The part of the paywall that moves as somebody pays: the button, and the
+ * card form where there is one.
+ *
+ * An enum rather than flags, for the reason [`ViewOnboarding`](crate::ViewOnboarding)
+ * is one: which event the button sends is which arm this is, so the view
+ * holds no "which step am I on" of its own.
+ */
+
+public enum ViewPaywallStep: Equatable, Hashable {
+    
+    /**
+     * Subscribe, and nothing started. The button sends
+     * [`SubscribeRequested`](crate::EventUi::SubscribeRequested).
+     */
+    case offer(
+        /**
+         * `"Subscribe"`, or what it is waiting on once pressed.
+         */action: String, 
+        /**
+         * Whether the button is waiting on the subscription being started.
+         */opening: Bool
+    )
+    /**
+     * The card form, and Pay under it. The button sends
+     * [`PaymentRequested`](crate::EventUi::PaymentRequested).
+     */
+    case card(
+        /**
+         * `"Pay $5.99"`, or what it is waiting on once pressed.
+         */action: String, 
+        /**
+         * Whether the card is with the provider. The form is locked while it
+         * is.
+         */paying: Bool, 
+        /**
+         * Why the last card was refused, under the form. Absent until one
+         * has been.
+         */fault: String?
+    )
+    /**
+     * The card was taken, and the server has not heard yet. While `checking`
+     * it is being asked on its own; after that the button sends
+     * [`RefreshRequested`](crate::EventUi::RefreshRequested).
+     */
+    case confirming(action: String, checking: Bool
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ViewPaywallStep: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewPaywallStep: FfiConverterRustBuffer {
+    typealias SwiftType = ViewPaywallStep
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewPaywallStep {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .offer(action: try FfiConverterString.read(from: &buf), opening: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 2: return .card(action: try FfiConverterString.read(from: &buf), paying: try FfiConverterBool.read(from: &buf), fault: try FfiConverterOptionString.read(from: &buf)
+        )
+        
+        case 3: return .confirming(action: try FfiConverterString.read(from: &buf), checking: try FfiConverterBool.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ViewPaywallStep, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .offer(action,opening):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(action, into: &buf)
+            FfiConverterBool.write(opening, into: &buf)
+            
+        
+        case let .card(action,paying,fault):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(action, into: &buf)
+            FfiConverterBool.write(paying, into: &buf)
+            FfiConverterOptionString.write(fault, into: &buf)
+            
+        
+        case let .confirming(action,checking):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(action, into: &buf)
+            FfiConverterBool.write(checking, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewPaywallStep_lift(_ buf: RustBuffer) throws -> ViewPaywallStep {
+    return try FfiConverterTypeViewPaywallStep.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewPaywallStep_lower(_ value: ViewPaywallStep) -> RustBuffer {
+    return FfiConverterTypeViewPaywallStep.lower(value)
 }
 
 

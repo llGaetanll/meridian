@@ -19,6 +19,7 @@ use client_state::Event;
 use client_state::EventRuntime;
 use client_state::EventSource;
 use client_state::EventUi;
+use client_state::PaymentRefusal;
 use client_state::StateApp;
 use client_state::ViewDock;
 use client_state::ViewScreen;
@@ -30,9 +31,11 @@ use leptos::task::spawn_local;
 use crate::io::Failure;
 use crate::io::LinkOutcome;
 use crate::io::Meridian;
+use crate::io::Payment;
 use crate::io::Popup;
 use crate::io::clock;
 use crate::io::session;
+use crate::io::stripe;
 
 /// Provided once in `App` with `provide_context`; a page takes it with
 /// `expect_context::<RuntimeApp>()`.
@@ -65,6 +68,14 @@ pub struct RuntimeApp {
     /// only `SaveSession` commits it to the browser's storage.
     token: StoredValue<Option<String>>,
 
+    /// The secret the card form pays the started subscription against, once
+    /// `/billing/subscribe` has answered.
+    ///
+    /// Never sent to the machine, which is told only that a subscription is
+    /// started: the secret pays an invoice, and an event log is not where
+    /// that belongs.
+    secret: StoredValue<Option<String>>,
+
     /// The stream the sync's progress arrives on, held so it can be let go.
     /// Whether there should be one is the machine's; this is only the
     /// connection `WatchSync` and `StopWatchingSync` are about.
@@ -82,6 +93,7 @@ impl RuntimeApp {
             error: RwSignal::new(None),
             loading: StoredValue::new(false),
             token: StoredValue::new(None),
+            secret: StoredValue::new(None),
             watch: StoredValue::new(None),
             server: StoredValue::new_local(Meridian::new()),
         }
@@ -203,6 +215,8 @@ impl RuntimeApp {
             ActionSource::StartBankLink => self.start_bank_link(),
             ActionSource::WatchSync => self.watch_sync(),
             ActionSource::StopWatchingSync => self.stop_watching_sync(),
+            ActionSource::StartSubscription => self.start_subscription(),
+            ActionSource::TakePayment => self.take_payment(),
         }
     }
 
@@ -243,6 +257,7 @@ impl RuntimeApp {
     /// using a token the user has just signed out of.
     fn forget_session(&self) {
         self.token.set_value(None);
+        self.secret.set_value(None);
 
         session::forget();
 
@@ -349,6 +364,79 @@ impl RuntimeApp {
                 Ok(LinkOutcome::Pending) => runtime.source(EventSource::BankPending),
                 Err(failure) => runtime.abandoned(failure),
             }
+        });
+    }
+
+    /// Start a subscription, and have the card form ready to pay it.
+    ///
+    /// What the server answers with stays here: the secret is kept for
+    /// `TakePayment`, and the key goes to Stripe.js so its frames are loading
+    /// by the time the form is drawn. The machine hears only that it started.
+    fn start_subscription(&self) {
+        let Some(token) = self.token.get_value() else {
+            tracing::error!("asked to subscribe with no session");
+
+            self.source(EventSource::LoadFailed {
+                failure: Failure::NoSession.failure(),
+            });
+
+            return;
+        };
+
+        let runtime = *self;
+        let server = self.server.get_value();
+
+        spawn_local(async move {
+            let event = match server.subscribe(&token).await {
+                Ok(subscribing) => {
+                    stripe::open(&subscribing.publishable_key);
+
+                    runtime.secret.set_value(Some(subscribing.client_secret));
+
+                    EventSource::SubscriptionStarted
+                }
+                Err(failure) => EventSource::LoadFailed {
+                    failure: failure.failure(),
+                },
+            };
+
+            runtime.source(event);
+        });
+    }
+
+    /// Pay the started subscription with the card in the form. Whatever
+    /// Stripe says is reported; whether to try again is the machine's.
+    fn take_payment(&self) {
+        let Some(secret) = self.secret.get_value() else {
+            tracing::error!("asked to pay with no subscription started");
+
+            self.source(EventSource::PaymentRefused {
+                refusal: PaymentRefusal::Failed,
+            });
+
+            return;
+        };
+
+        let runtime = *self;
+
+        spawn_local(async move {
+            let event = match stripe::confirm(&secret).await {
+                Payment::Taken => EventSource::PaymentTaken,
+                Payment::Declined => EventSource::PaymentRefused {
+                    refusal: PaymentRefusal::Declined,
+                },
+                Payment::Incorrect => EventSource::PaymentRefused {
+                    refusal: PaymentRefusal::Incorrect,
+                },
+                Payment::Unauthenticated => EventSource::PaymentRefused {
+                    refusal: PaymentRefusal::Unauthenticated,
+                },
+                Payment::Failed => EventSource::PaymentRefused {
+                    refusal: PaymentRefusal::Failed,
+                },
+            };
+
+            runtime.source(event);
         });
     }
 

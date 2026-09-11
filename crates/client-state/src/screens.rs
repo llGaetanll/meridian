@@ -5,7 +5,6 @@
 
 use std::collections::BTreeMap;
 
-use api_common::format::fmt_date;
 use api_common::format::fmt_money;
 use api_ledger::Account;
 use api_ledger::Category;
@@ -21,7 +20,6 @@ use crate::LoadFailure;
 use crate::RangeSelection;
 use crate::Screen;
 use crate::StateApp;
-use crate::Unpaid;
 use crate::ViewAccount;
 use crate::ViewAccountBank;
 use crate::ViewAccountRow;
@@ -38,21 +36,18 @@ use crate::ViewDaySection;
 use crate::ViewDock;
 use crate::ViewDockItem;
 use crate::ViewFilter;
-use crate::ViewIconRow;
 use crate::ViewLedger;
 use crate::ViewMonthSection;
-use crate::ViewPaywall;
 use crate::ViewRange;
 use crate::ViewRangeKind;
 use crate::ViewRecurring;
-use crate::ViewRowTone;
-use crate::ViewRun;
 use crate::ViewScreen;
 use crate::ViewStreamGroup;
 use crate::ViewStreamRow;
 use crate::ViewTxRow;
 use crate::fmt;
 use crate::screens_onboarding;
+use crate::screens_paywall;
 
 /// Seconds in a day, for stepping the calendar a cell at a time.
 const DAY: u64 = 86_400;
@@ -70,19 +65,13 @@ const SUMMARY_CHIPS: usize = 2;
 /// them instead.
 const HEADLINE_CATEGORIES: usize = 2;
 
-/// What Meridian costs, as the site prints it and as the provider bills it.
-///
-/// Not on the wire: a refusal says whether somebody has paid, never what it
-/// would cost them to.
-const PRICE: &str = "$5.99 a month";
-
 pub fn screen(state: &StateApp) -> ViewScreen {
     // In front of everything, first run included: every route that feeds a
     // screen is refused for this session, so there is nothing behind it to
     // draw. The bank step of first run is one of those routes.
     if let Some(unpaid) = state.unpaid() {
         return ViewScreen::Paywall {
-            view: paywall(unpaid),
+            view: screens_paywall::paywall(unpaid, state.payment()),
         };
     }
 
@@ -124,79 +113,6 @@ pub fn dock(current: Screen) -> ViewDock {
             item(Screen::Balances, "Balances", "balances"),
             item(Screen::Account, "Account", "user"),
         ],
-    }
-}
-
-/// The paywall, worded for what the server said.
-///
-/// Three states rather than one, because "you have never subscribed" and "your
-/// card stopped working" are different news and only one of them is about a
-/// card. The provider's own vocabulary does not reach here: [`Unpaid`] is our
-/// three words, and mapping a provider's onto them is the server's job.
-fn paywall(unpaid: &Unpaid) -> ViewPaywall {
-    let (title, body) = match unpaid {
-        Unpaid::Never => (
-            "Meridian is a subscription",
-            "Your account is ready. There is one price and nothing else to choose, and you \
-             can leave whenever you like.",
-        ),
-
-        Unpaid::Declined { .. } => (
-            "Your last payment didn't go through",
-            "The card on file was declined. A working card opens the app back up.",
-        ),
-
-        Unpaid::Ended { .. } => (
-            "Your subscription has ended",
-            "It ran to the end of the period you had paid for, and that has now passed. \
-             Subscribing again opens the app back up.",
-        ),
-
-        Unpaid::Unconfirmed => (
-            "We can't confirm your subscription",
-            "If you have just paid, give it a minute and pull to refresh. Nothing here \
-             has been lost.",
-        ),
-    };
-
-    let mut rows = vec![ViewIconRow {
-        icon: "tag".to_string(),
-        tone: ViewRowTone::Plain,
-        title: "Price".to_string(),
-        sub: None,
-        value: Some(PRICE.to_string()),
-    }];
-
-    // Always in the past: entitlement is that date against the clock, so a
-    // period still running is a session that never reached this screen.
-    if let Some(ran_out) = ran_out(unpaid) {
-        rows.push(ViewIconRow {
-            icon: "clock".to_string(),
-            tone: ViewRowTone::Plain,
-            title: "Ran out".to_string(),
-            sub: None,
-            value: Some(fmt_date(ran_out)),
-        });
-    }
-
-    ViewPaywall {
-        title: title.to_string(),
-        body: vec![ViewRun {
-            text: body.to_string(),
-            strong: false,
-        }],
-        rows,
-        sign_out: "Sign out".to_string(),
-    }
-}
-
-/// When the period that was paid for ended, where there was one.
-fn ran_out(unpaid: &Unpaid) -> Option<Timestamp> {
-    match unpaid {
-        Unpaid::Never | Unpaid::Unconfirmed => None,
-        Unpaid::Declined { ran_out } | Unpaid::Ended { ran_out } => {
-            ran_out.map(Timestamp::from_secs)
-        }
     }
 }
 

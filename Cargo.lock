@@ -4383,6 +4383,7 @@ dependencies = [
  "server-wire",
  "src-yahoo",
  "tracing",
+ "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-components",
  "web-sys",

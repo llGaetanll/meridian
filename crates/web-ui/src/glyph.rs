@@ -84,6 +84,9 @@ fn paths(name: &str) -> &'static str {
         "mail" => {
             r#"<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="m3 7 9 6 9-6"/>"#
         }
+        "card" => {
+            r#"<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><line x1="2.5" y1="10" x2="21.5" y2="10"/><line x1="6.5" y1="15" x2="10" y2="15"/>"#
+        }
         "back" => r#"<polyline points="15 5 8 12 15 19"/>"#,
         "tick-circle" => {
             r#"<circle cx="12" cy="12" r="9"/><polyline points="16 9.5 10.8 15 8 12.4"/>"#
