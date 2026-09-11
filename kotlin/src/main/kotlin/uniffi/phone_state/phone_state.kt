@@ -1225,6 +1225,28 @@ private class JavaLangRefCleanable(
 /**
  * @suppress
  */
+public object FfiConverterUShort : FfiConverter<UShort, Short> {
+    override fun lift(value: Short): UShort = value.toUShort()
+
+    fun lift(value: Int): UShort = value.toUShort()
+
+    override fun read(buf: ByteBuffer): UShort = lift(buf.getShort())
+
+    override fun lower(value: UShort): Short = value.toShort()
+
+    override fun allocationSize(value: UShort) = 2UL
+
+    override fun write(
+        value: UShort,
+        buf: ByteBuffer,
+    ) {
+        buf.putShort(value.toShort())
+    }
+}
+
+/**
+ * @suppress
+ */
 public object FfiConverterUInt : FfiConverter<UInt, Int> {
     override fun lift(value: Int): UInt = value.toUInt()
 
@@ -2767,6 +2789,60 @@ public object FfiConverterTypeViewMonthSection : FfiConverterRustBuffer<ViewMont
 }
 
 /**
+ * The paywall, in the words it is read in.
+ *
+ * No Subscribe: nothing on this phone can take money yet, and a button that
+ * looked live and did nothing would be worse than one that is not there.
+ * Signing out is the only thing that can be done from here, so it is the only
+ * thing offered.
+ */
+data class ViewPaywall(
+    var `title`: kotlin.String,
+    var `body`: List<ViewRun>,
+    /**
+     * What it costs, and when the last period ran out where there was one.
+     */
+    var `rows`: List<ViewIconRow>,
+    /**
+     * `"Sign out"`.
+     */
+    var `signOut`: kotlin.String,
+) {
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeViewPaywall : FfiConverterRustBuffer<ViewPaywall> {
+    override fun read(buf: ByteBuffer): ViewPaywall =
+        ViewPaywall(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeViewRun.read(buf),
+            FfiConverterSequenceTypeViewIconRow.read(buf),
+            FfiConverterString.read(buf),
+        )
+
+    override fun allocationSize(value: ViewPaywall) =
+        (
+            FfiConverterString.allocationSize(value.`title`) +
+                FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
+                FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`) +
+                FfiConverterString.allocationSize(value.`signOut`)
+        )
+
+    override fun write(
+        value: ViewPaywall,
+        buf: ByteBuffer,
+    ) {
+        FfiConverterString.write(value.`title`, buf)
+        FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
+        FfiConverterSequenceTypeViewIconRow.write(value.`rows`, buf)
+        FfiConverterString.write(value.`signOut`, buf)
+    }
+}
+
+/**
  * The time range, as the sentence the sketch draws.
  */
 data class ViewRange(
@@ -3853,10 +3929,13 @@ sealed class EventSource {
     }
 
     /**
-     * A request did not come back.
+     * A request did not come back with what was asked for.
+     *
+     * A reason and not a sentence: the runtime says what it got, and what
+     * that means — a banner, first run, the paywall — is decided here.
      */
     data class LoadFailed(
-        val `message`: kotlin.String,
+        val `failure`: uniffi.phone_state.LoadFailure,
     ) : EventSource() {
         companion object
     }
@@ -3944,7 +4023,7 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
 
             2 -> {
                 EventSource.LoadFailed(
-                    FfiConverterString.read(buf),
+                    FfiConverterTypeLoadFailure.read(buf),
                 )
             }
 
@@ -4007,7 +4086,7 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
                     4UL +
-                        FfiConverterString.allocationSize(value.`message`)
+                        FfiConverterTypeLoadFailure.allocationSize(value.`failure`)
                 )
             }
 
@@ -4090,7 +4169,7 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
 
             is EventSource.LoadFailed -> {
                 buf.putInt(2)
-                FfiConverterString.write(value.`message`, buf)
+                FfiConverterTypeLoadFailure.write(value.`failure`, buf)
                 Unit
             }
 
@@ -4724,6 +4803,187 @@ public object FfiConverterTypeFilterGroup : FfiConverterRustBuffer<FilterGroup> 
 }
 
 /**
+ * Why a source could not be read.
+ *
+ * The runtime classifies what it got; the machine decides what to do about it
+ * and words what the user reads. A sentence built at the edge is a sentence
+ * no `eval!` test can reach, and one each platform writes its own version of.
+ *
+ * Two of these are not failures to report but places to go: a session the
+ * server does not know is first run, and a session that has not paid is the
+ * paywall.
+ */
+sealed class LoadFailure {
+    /**
+     * Nothing came back. No signal, aeroplane mode, or a server that is not
+     * running.
+     */
+    object Offline : LoadFailure()
+
+    /**
+     * The server does not know this session. **401.**
+     */
+    object SignedOut : LoadFailure()
+
+    /**
+     * The session is good, and the app is not paid for. **402.**
+     */
+    data class Unpaid(
+        val `reason`: uniffi.phone_state.Unpaid,
+    ) : LoadFailure() {
+        companion object
+    }
+
+    /**
+     * Asked for too much, too fast. **429.**
+     */
+    object TooMany : LoadFailure()
+
+    /**
+     * Any other answer, which is the server's problem rather than this
+     * session's.
+     */
+    data class Server(
+        val `status`: kotlin.UShort,
+    ) : LoadFailure() {
+        companion object
+    }
+
+    /**
+     * An answer arrived and could not be read.
+     */
+    object Unreadable : LoadFailure()
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLoadFailure : FfiConverterRustBuffer<LoadFailure> {
+    override fun read(buf: ByteBuffer): LoadFailure =
+        when (buf.getInt()) {
+            1 -> {
+                LoadFailure.Offline
+            }
+
+            2 -> {
+                LoadFailure.SignedOut
+            }
+
+            3 -> {
+                LoadFailure.Unpaid(
+                    FfiConverterTypeUnpaid.read(buf),
+                )
+            }
+
+            4 -> {
+                LoadFailure.TooMany
+            }
+
+            5 -> {
+                LoadFailure.Server(
+                    FfiConverterUShort.read(buf),
+                )
+            }
+
+            6 -> {
+                LoadFailure.Unreadable
+            }
+
+            else -> {
+                throw RuntimeException("invalid enum value, something is very wrong!!")
+            }
+        }
+
+    override fun allocationSize(value: LoadFailure): ULong =
+        when (value) {
+            is LoadFailure.Offline -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is LoadFailure.SignedOut -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is LoadFailure.Unpaid -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypeUnpaid.allocationSize(value.`reason`)
+                )
+            }
+
+            is LoadFailure.TooMany -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is LoadFailure.Server -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterUShort.allocationSize(value.`status`)
+                )
+            }
+
+            is LoadFailure.Unreadable -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+        }
+
+    override fun write(
+        value: LoadFailure,
+        buf: ByteBuffer,
+    ) {
+        when (value) {
+            is LoadFailure.Offline -> {
+                buf.putInt(1)
+                Unit
+            }
+
+            is LoadFailure.SignedOut -> {
+                buf.putInt(2)
+                Unit
+            }
+
+            is LoadFailure.Unpaid -> {
+                buf.putInt(3)
+                FfiConverterTypeUnpaid.write(value.`reason`, buf)
+                Unit
+            }
+
+            is LoadFailure.TooMany -> {
+                buf.putInt(4)
+                Unit
+            }
+
+            is LoadFailure.Server -> {
+                buf.putInt(5)
+                FfiConverterUShort.write(value.`status`, buf)
+                Unit
+            }
+
+            is LoadFailure.Unreadable -> {
+                buf.putInt(6)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+/**
  * A time range the user asked for.
  *
  * The parameters ride along with the choice, so "last 3 months" is one event
@@ -4941,6 +5201,155 @@ public object FfiConverterTypeScreen : FfiConverterRustBuffer<Screen> {
 }
 
 /**
+ * What the server said about a subscription it is not honouring.
+ *
+ * Our three words rather than the payment provider's. Stripe says `past_due`
+ * and Apple says something else again, so a client matching on either
+ * vocabulary is a client that has learned one provider's — and a second
+ * provider is then a second set of arms in every app.
+ *
+ * There is no "paid" arm. This is carried by a refusal, and a session being
+ * served never produces one.
+ */
+sealed class Unpaid {
+    /**
+     * Nobody has ever subscribed on this account.
+     */
+    object Never : Unpaid()
+
+    /**
+     * A payment did not go through. The date is when the period it had paid
+     * for ended, where there was one — a first payment that never landed
+     * bought no period at all.
+     */
+    data class Declined(
+        /**
+         * When the period that was paid for ended, in seconds. Absent where
+         * the server has no date for it.
+         */
+        val `ranOut`: kotlin.ULong?,
+    ) : Unpaid() {
+        companion object
+    }
+
+    /**
+     * A subscription that was ended, and the period it paid for has passed.
+     */
+    data class Ended(
+        val `ranOut`: kotlin.ULong?,
+    ) : Unpaid() {
+        companion object
+    }
+
+    /**
+     * The server cannot tell. A payment still in flight, or a provider that
+     * believes this person is paying while the date says otherwise.
+     *
+     * Its own arm rather than folded into one of the three above, because
+     * each of those names a cause and this is the case where none of them is
+     * known to be true. Somebody mid-payment told their subscription has
+     * ended is being lied to.
+     */
+    object Unconfirmed : Unpaid()
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeUnpaid : FfiConverterRustBuffer<Unpaid> {
+    override fun read(buf: ByteBuffer): Unpaid =
+        when (buf.getInt()) {
+            1 -> {
+                Unpaid.Never
+            }
+
+            2 -> {
+                Unpaid.Declined(
+                    FfiConverterOptionalULong.read(buf),
+                )
+            }
+
+            3 -> {
+                Unpaid.Ended(
+                    FfiConverterOptionalULong.read(buf),
+                )
+            }
+
+            4 -> {
+                Unpaid.Unconfirmed
+            }
+
+            else -> {
+                throw RuntimeException("invalid enum value, something is very wrong!!")
+            }
+        }
+
+    override fun allocationSize(value: Unpaid): ULong =
+        when (value) {
+            is Unpaid.Never -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is Unpaid.Declined -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterOptionalULong.allocationSize(value.`ranOut`)
+                )
+            }
+
+            is Unpaid.Ended -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterOptionalULong.allocationSize(value.`ranOut`)
+                )
+            }
+
+            is Unpaid.Unconfirmed -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+        }
+
+    override fun write(
+        value: Unpaid,
+        buf: ByteBuffer,
+    ) {
+        when (value) {
+            is Unpaid.Never -> {
+                buf.putInt(1)
+                Unit
+            }
+
+            is Unpaid.Declined -> {
+                buf.putInt(2)
+                FfiConverterOptionalULong.write(value.`ranOut`, buf)
+                Unit
+            }
+
+            is Unpaid.Ended -> {
+                buf.putInt(3)
+                FfiConverterOptionalULong.write(value.`ranOut`, buf)
+                Unit
+            }
+
+            is Unpaid.Unconfirmed -> {
+                buf.putInt(4)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+/**
  * Where the flow is, and everything that screen prints.
  *
  * An enum rather than one record of optional fields, for the same reason
@@ -4959,6 +5368,11 @@ sealed class ViewOnboarding {
          * `"Continue with email"`.
          */
         val `action`: kotlin.String,
+        /**
+         * Why the app is back here having been signed in. Absent on a fresh
+         * install, which is the ordinary way this screen is reached.
+         */
+        val `fault`: kotlin.String?,
         val `legal`: kotlin.String,
     ) : ViewOnboarding() {
         companion object
@@ -5094,6 +5508,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                     FfiConverterString.read(buf),
                     FfiConverterSequenceTypeViewRun.read(buf),
                     FfiConverterString.read(buf),
+                    FfiConverterOptionalString.read(buf),
                     FfiConverterString.read(buf),
                 )
             }
@@ -5178,6 +5593,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                         FfiConverterString.allocationSize(value.`title`) +
                         FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
                         FfiConverterString.allocationSize(value.`action`) +
+                        FfiConverterOptionalString.allocationSize(value.`fault`) +
                         FfiConverterString.allocationSize(value.`legal`)
                 )
             }
@@ -5271,6 +5687,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterString.write(value.`title`, buf)
                 FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
                 FfiConverterString.write(value.`action`, buf)
+                FfiConverterOptionalString.write(value.`fault`, buf)
                 FfiConverterString.write(value.`legal`, buf)
                 Unit
             }
@@ -5523,7 +5940,8 @@ public object FfiConverterTypeViewRowTone : FfiConverterRustBuffer<ViewRowTone> 
 /**
  * Everything on screen, in one value, so the view holds no "which screen am
  * I on" state of its own. [`Onboarding`](ViewScreen::Onboarding) is not one
- * of [`Screen`]'s tabs — first run has an end.
+ * of [`Screen`]'s tabs — first run has an end — and neither is
+ * [`Paywall`](ViewScreen::Paywall), which stands in front of both.
  */
 sealed class ViewScreen {
     data class Ledger(
@@ -5552,6 +5970,12 @@ sealed class ViewScreen {
 
     data class Onboarding(
         val `view`: uniffi.phone_state.ViewOnboarding,
+    ) : ViewScreen() {
+        companion object
+    }
+
+    data class Paywall(
+        val `view`: uniffi.phone_state.ViewPaywall,
     ) : ViewScreen() {
         companion object
     }
@@ -5592,6 +6016,12 @@ public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen> {
             5 -> {
                 ViewScreen.Onboarding(
                     FfiConverterTypeViewOnboarding.read(buf),
+                )
+            }
+
+            6 -> {
+                ViewScreen.Paywall(
+                    FfiConverterTypeViewPaywall.read(buf),
                 )
             }
 
@@ -5641,6 +6071,14 @@ public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen> {
                         FfiConverterTypeViewOnboarding.allocationSize(value.`view`)
                 )
             }
+
+            is ViewScreen.Paywall -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL +
+                        FfiConverterTypeViewPaywall.allocationSize(value.`view`)
+                )
+            }
         }
 
     override fun write(
@@ -5677,7 +6115,45 @@ public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen> {
                 FfiConverterTypeViewOnboarding.write(value.`view`, buf)
                 Unit
             }
+
+            is ViewScreen.Paywall -> {
+                buf.putInt(6)
+                FfiConverterTypeViewPaywall.write(value.`view`, buf)
+                Unit
+            }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalULong : FfiConverterRustBuffer<kotlin.ULong?> {
+    override fun read(buf: ByteBuffer): kotlin.ULong? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterULong.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.ULong?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterULong.allocationSize(value)
+        }
+    }
+
+    override fun write(
+        value: kotlin.ULong?,
+        buf: ByteBuffer,
+    ) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterULong.write(value, buf)
+        }
     }
 }
 

@@ -1,5 +1,7 @@
 //! A source answered, or failed to.
 
+use crate::LoadFailure;
+
 /// What a source came back with. No variant carries a clock reading.
 #[derive(Debug, uniffi::Enum)]
 pub enum EventSource {
@@ -9,8 +11,11 @@ pub enum EventSource {
     /// every wire type as a UniFFI record and keeping the two in step by hand.
     SnapshotLoaded { json: String },
 
-    /// A request did not come back.
-    LoadFailed { message: String },
+    /// A request did not come back with what was asked for.
+    ///
+    /// A reason and not a sentence: the runtime says what it got, and what
+    /// that means — a banner, first run, the paywall — is decided here.
+    LoadFailed { failure: LoadFailure },
 
     /// Whether the device has a session to act on. A bool rather than the
     /// credential, which stays the runtime's and never crosses this boundary.

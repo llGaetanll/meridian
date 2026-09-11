@@ -189,22 +189,189 @@ fn the_account_tab_lists_the_banks() {
     );
 }
 
-/// A session the server has stopped honouring is the reason this screen has a
-/// way out: the failure is what the empty bank list says, rather than a claim
-/// that no bank was ever attached.
+/// A server that cannot be reached is what the empty bank list says, rather
+/// than a claim that no bank was ever attached — this is the screen somebody
+/// opens *because* the app is not working.
 #[test]
 fn a_failed_load_is_what_the_bank_list_says() {
     let mut state = app();
 
     eval!(&mut state,
-        < Event::FromSource { event: EventSource::LoadFailed { message: "the server answered 401".to_string() } },
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Offline } },
         > Action::ToUi { action: ActionUi::Render { .. } },
         > Action::ToUi { action: ActionUi::ShowError { .. } },
 
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Account } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Account { view: account }, .. } } => {
-            assert_eq!(account.banks_empty.as_deref(), Some("the server answered 401"));
+            assert_eq!(account.banks_empty.as_deref(), Some("Meridian can't reach the server."));
         },
+    );
+}
+
+/// A token the server no longer knows — a reset volume, a fresh droplet, a
+/// restored dump — is not a failed request. The session is gone, so the app
+/// goes back to where a fresh install starts and throws the token away.
+#[test]
+fn a_session_the_server_forgot_puts_first_run_back() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "entries":[{"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::SignedOut } },
+        > @r#"ToSource { action: ForgetSession }"#,
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { .. }, dock: None } },
+    );
+
+    assert_eq!(
+        state.entry_count(),
+        0,
+        "the ledger belonged to the session the server has forgotten",
+    );
+}
+
+/// Nobody tapped anything to get here, so the screen they land on says who
+/// did. Without it, being thrown back to Welcome is unexplained.
+#[test]
+fn first_run_says_why_it_is_back() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::SignedOut } },
+        > Action::ToSource { action: ActionSource::ForgetSession },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Welcome { fault, .. } }, .. } } => {
+            assert_eq!(
+                fault.as_deref(),
+                Some("You've been signed out. Sign in again to carry on."),
+            );
+        },
+    );
+}
+
+/// Signing out on purpose is the same reset without the sentence: nothing
+/// went wrong, and a screen explaining the tap you just made is noise.
+#[test]
+fn signing_out_on_purpose_says_nothing() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::SignOutRequested },
+        > Action::ToSource { action: ActionSource::ForgetSession },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Welcome { fault, .. } }, .. } } => {
+            assert_eq!(fault.as_deref(), None);
+        },
+    );
+}
+
+/// A stream the server refuses is not a stream to reopen. The sync watch is
+/// asked for once every three seconds while first run is on its sync step, and
+/// a refusal that only ended the connection left the machine asking forever
+/// behind whatever screen the refusal put up.
+#[test]
+fn a_refused_stream_is_not_reopened() {
+    let mut state = StateApp::new();
+
+    eval!(&mut state,
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW } },
+        < Event::FromSource { event: EventSource::CodeAccepted },
+        < Event::FromSource { event: EventSource::BankLinked },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToSource { action: ActionSource::WatchSync },
+
+        // The server will not open it, for this session, ever.
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Unpaid { reason: Unpaid::Never } } },
+        < Event::FromSource { event: EventSource::SyncWatchEnded },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { .. }, .. } },
+
+        // Long past the backoff, and nothing asked for: no `>` line here is
+        // the claim.
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 60 } },
+    );
+}
+
+/// A session that is good and has not paid is a paywall, not an error. No
+/// banner goes with it: nothing has gone wrong, and this is simply where the
+/// app is until somebody subscribes.
+#[test]
+fn a_session_that_has_not_paid_gets_the_paywall() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Unpaid { reason: Unpaid::Never } } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { view: paywall }, dock: None } } => {
+            assert_eq!(paywall.title, "Meridian is a subscription");
+            assert_eq!(paywall.rows.len(), 1, "a price, and no date to have run out");
+            assert_eq!(paywall.rows[0].title, "Price");
+            assert_eq!(paywall.rows[0].value.as_deref(), Some("$5.99 a month"));
+            assert_eq!(paywall.sign_out, "Sign out");
+        },
+    );
+}
+
+/// A card that stopped working reads differently from never having
+/// subscribed, and the date the last paid period ran out is the fact that
+/// says so.
+#[test]
+fn a_declined_card_is_not_a_missing_subscription() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Unpaid { reason: Unpaid::Declined { ran_out: Some(1_786_492_800) } } } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { view: paywall }, .. } } => {
+            assert_eq!(paywall.title, "Your last payment didn't go through");
+            assert_eq!(paywall.rows[1].title, "Ran out");
+            assert_eq!(paywall.rows[1].value.as_deref(), Some("Aug 12 2026"));
+        },
+    );
+}
+
+/// Every route that feeds a screen is refused for a session that has not
+/// paid, and the bank step of first run is one of them. So the paywall stands
+/// in front of first run rather than beside it.
+#[test]
+fn the_paywall_stands_in_front_of_first_run() {
+    let mut state = StateApp::new();
+
+    eval!(&mut state,
+        < Event::FromRuntime { event: EventRuntime::Tick { now: NOW } },
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Unpaid { reason: Unpaid::Never } } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { .. }, dock: None } },
+    );
+}
+
+/// Served at all is served: whatever the last refusal said about a
+/// subscription has stopped being true, so the paywall goes.
+#[test]
+fn a_snapshot_takes_the_paywall_away() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Unpaid { reason: Unpaid::Never } } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { .. }, .. } },
+
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: "{}".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { .. }, dock: Some(_) } },
+    );
+}
+
+/// The runtime hands over a reason and the machine words it, so the sentence
+/// in the banner is one this file can read — which is the whole point of the
+/// reason not being a string the edge wrote.
+#[test]
+fn the_machine_words_the_failure_not_the_runtime() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Server { status: 503 } } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToUi { action: ShowError { message: "The server is having trouble (503)." } }"#,
+
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::TooMany } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToUi { action: ShowError { message: "That was a lot of asking at once. Give it a moment." } }"#,
     );
 }
 
@@ -1197,7 +1364,7 @@ fn a_failed_load_tells_the_user_and_still_draws() {
         > Action::ToSource { action: ActionSource::LoadSnapshot },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromSource { event: EventSource::LoadFailed { message: "the server is not running".to_string() } },
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Offline } },
         > Action::ToUi { action: ActionUi::Render { .. } },
         > Action::ToUi { action: ActionUi::ShowError { .. } },
     );
@@ -1214,7 +1381,7 @@ fn a_failure_after_a_good_load_keeps_the_data() {
             {"id":"a","ts":1786492800,"amount":-5.40,"asset":"USD","label":"Uber","category":"Transportation"}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromSource { event: EventSource::LoadFailed { message: "network unreachable".to_string() } },
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Offline } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
             assert_eq!(rows(ledger).len(), 1, "the list still has its row");
             assert!(ledger.empty.is_none());

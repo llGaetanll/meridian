@@ -46,15 +46,20 @@ struct AppView: View {
         .tint(Theme.accentSoft)
     }
 
-    /// First run gets no shell. Its screens are not tabs, so there is no
-    /// header to put over them, no band to slide in and no dock to float
-    /// under them — and it is a road with an end rather than a place in the
-    /// app you can navigate back to.
+    /// First run and the paywall get no shell. Their screens are not tabs, so
+    /// there is no header to put over them, no band to slide in and no dock to
+    /// float under them — first run is a road with an end rather than a place
+    /// in the app you can navigate back to, and behind the paywall there is no
+    /// app to navigate.
     @ViewBuilder
     private static func app(of screen: ViewScreen) -> some View {
         switch screen {
         case .onboarding(let view):
             OnboardingScreen(view: view)
+                .transition(.opacity)
+
+        case .paywall(let view):
+            PaywallScreen(view: view)
                 .transition(.opacity)
 
         case .ledger, .recurring, .balances, .account:
@@ -76,7 +81,7 @@ struct AppView: View {
         case .recurring: "Recurring"
         case .balances: "Balances"
         case .account: "Account"
-        case .onboarding: ""
+        case .onboarding, .paywall: ""
         }
     }
 
@@ -92,7 +97,7 @@ struct AppView: View {
         // No headline to stand in for, so nothing on this screen wears
         // `bandAnchor()` and the band is never asked for.
         case .account: EmptyView()
-        case .onboarding: EmptyView()
+        case .onboarding, .paywall: EmptyView()
         }
     }
 
@@ -103,7 +108,7 @@ struct AppView: View {
         case .recurring(let view): RecurringScreen(view: view)
         case .balances(let view): BalancesScreen(view: view)
         case .account(let view): AccountScreen(view: view)
-        case .onboarding: EmptyView()
+        case .onboarding, .paywall: EmptyView()
         }
     }
 }

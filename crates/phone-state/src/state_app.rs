@@ -19,9 +19,11 @@ use crate::Event;
 use crate::EventRuntime;
 use crate::EventSource;
 use crate::EventUi;
+use crate::LoadFailure;
 use crate::Screen;
 use crate::StateLedger;
 use crate::StateOnboarding;
+use crate::Unpaid;
 use crate::screens;
 use crate::state_onboarding::Progress;
 use crate::state_onboarding::Step;
@@ -75,8 +77,19 @@ pub struct StateApp {
     /// several copies of the ledger that can disagree.
     ledger: StateLedger,
 
-    /// Set once a load fails, cleared when one succeeds.
-    load_failed: Option<String>,
+    /// Set once a load fails, cleared when one succeeds. The reason rather
+    /// than the sentence: what a failure reads as is decided on the way out,
+    /// with every other string the app prints.
+    ///
+    /// The two failures the machine acts on never land here. A session the
+    /// server does not know puts first run back, and one that has not paid is
+    /// [`unpaid`](Self::unpaid) — neither is news to print over the screen
+    /// somebody is already on.
+    load_failed: Option<LoadFailure>,
+
+    /// What the server said about a subscription it will not serve. `Some` is
+    /// the paywall, in front of every other screen including first run.
+    unpaid: Option<Unpaid>,
 
     /// Whether a snapshot has ever arrived. Distinguishes "still loading" from
     /// "loaded, and there is nothing".
@@ -111,6 +124,7 @@ impl Default for StateApp {
             month_step: 0,
             ledger: StateLedger::default(),
             load_failed: None,
+            unpaid: None,
             loaded: false,
             watching: false,
             watch_asked: None,
@@ -361,6 +375,10 @@ impl StateApp {
                         self.loaded = true;
                         self.load_failed = None;
 
+                        // Served at all is served, so whatever the last
+                        // refusal said about a subscription is no longer true.
+                        self.unpaid = None;
+
                         debug_assert!(
                             self.entries.windows(2).all(|w| w[0].ts() >= w[1].ts()),
                             "the ledger should arrive newest first",
@@ -370,7 +388,9 @@ impl StateApp {
                     Err(e) => {
                         // A snapshot we cannot read is a failed load, not a
                         // crash. Whatever was on screen stays there.
-                        self.load_failed = Some(format!("could not read the snapshot: {e}"));
+                        tracing::warn!(error = %e, "the snapshot could not be read");
+
+                        self.load_failed = Some(LoadFailure::Unreadable);
                     }
                 }
 
@@ -482,26 +502,64 @@ impl StateApp {
                     }
 
                     Err(e) => {
-                        self.load_failed = Some(format!("could not read the sync status: {e}"));
+                        tracing::warn!(error = %e, "the sync status could not be read");
+
+                        self.load_failed = Some(LoadFailure::Unreadable);
                     }
                 }
 
                 self.render(actions);
             }
 
-            EventSource::LoadFailed { message } => {
-                self.load_failed = Some(message.clone());
+            EventSource::LoadFailed { failure } => match failure {
+                // The session is gone, and everything held under it went with
+                // it. First run is where a fresh install starts, so it is
+                // where this lands — with a line on the Welcome screen saying
+                // why, because arriving there having done nothing is otherwise
+                // unexplained.
+                LoadFailure::SignedOut => {
+                    let now = self.device_now;
 
-                // Still render: what the screen says depends on whether
-                // anything was ever loaded.
-                self.render(actions);
+                    *self = Self::new();
+                    self.device_now = now;
 
-                actions.push(Action::ToUi {
-                    action: ActionUi::ShowError {
-                        message: message.clone(),
-                    },
-                });
-            }
+                    if let Some(flow) = &mut self.onboarding {
+                        flow.signed_out();
+                    }
+
+                    actions.push(Action::ToSource {
+                        action: ActionSource::ForgetSession,
+                    });
+
+                    self.render(actions);
+                }
+
+                // Not news and not a failure: it is where the app is until
+                // somebody pays, so it takes the screen rather than printing
+                // a banner over one.
+                LoadFailure::Unpaid { reason } => {
+                    self.unpaid = Some(reason.clone());
+
+                    self.render(actions);
+                }
+
+                LoadFailure::Offline
+                | LoadFailure::TooMany
+                | LoadFailure::Server { .. }
+                | LoadFailure::Unreadable => {
+                    self.load_failed = Some(failure.clone());
+
+                    // Still render: what the screen says depends on whether
+                    // anything was ever loaded.
+                    self.render(actions);
+
+                    actions.push(Action::ToUi {
+                        action: ActionUi::ShowError {
+                            message: screens::failure(failure),
+                        },
+                    });
+                }
+            },
         }
     }
 
@@ -512,11 +570,10 @@ impl StateApp {
             action: ActionUi::Render {
                 screen: screens::screen(self),
 
-                // No dock while first run is on screen: its screens are not
-                // tabs, and a dock under them would offer three empty ones.
-                dock: self
-                    .onboarding
-                    .is_none()
+                // No dock while first run or the paywall is on screen: their
+                // screens are not tabs, and a dock under them would offer
+                // three empty ones.
+                dock: (self.onboarding.is_none() && self.unpaid.is_none())
                     .then(|| screens::dock(self.screen)),
             },
         });
@@ -558,8 +615,11 @@ impl StateApp {
     /// and so a connection that dies is reopened by the same rule that opened
     /// the first one.
     fn settle_watch(&mut self, actions: &mut Vec<Action>) {
+        // Not while the paywall is up. The stream is one of the routes this
+        // session is refused, so asking again every three seconds is a poll
+        // against an answer that will not change until somebody pays.
         let wanted = match &self.onboarding {
-            Some(flow) => flow.step() == Step::Sync,
+            Some(flow) => flow.step() == Step::Sync && self.unpaid.is_none(),
             None => false,
         };
 
@@ -618,8 +678,14 @@ impl StateApp {
         &self.ledger
     }
 
-    pub(crate) fn load_failed(&self) -> Option<&str> {
-        self.load_failed.as_deref()
+    pub(crate) fn load_failed(&self) -> Option<&LoadFailure> {
+        self.load_failed.as_ref()
+    }
+
+    /// What the server said about a subscription it will not serve, while it
+    /// is saying it.
+    pub(crate) fn unpaid(&self) -> Option<&Unpaid> {
+        self.unpaid.as_ref()
     }
 
     pub(crate) fn loaded(&self) -> bool {

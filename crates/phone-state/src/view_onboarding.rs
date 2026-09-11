@@ -18,6 +18,9 @@ pub enum ViewOnboarding {
         body: Vec<ViewRun>,
         /// `"Continue with email"`.
         action: String,
+        /// Why the app is back here having been signed in. Absent on a fresh
+        /// install, which is the ordinary way this screen is reached.
+        fault: Option<String>,
         legal: String,
     },
 

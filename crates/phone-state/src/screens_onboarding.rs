@@ -34,7 +34,7 @@ const SYNC_STAGES: f64 = 4.0;
 
 pub(crate) fn onboarding(flow: &StateOnboarding, now: Timestamp) -> ViewOnboarding {
     match flow.step() {
-        Step::Welcome => welcome(),
+        Step::Welcome => welcome(flow),
         Step::Email => email(flow),
         Step::Code => code(flow, now),
         Step::Bank => bank(flow),
@@ -44,11 +44,19 @@ pub(crate) fn onboarding(flow: &StateOnboarding, now: Timestamp) -> ViewOnboardi
     }
 }
 
-fn welcome() -> ViewOnboarding {
+fn welcome(flow: &StateOnboarding) -> ViewOnboarding {
     ViewOnboarding::Welcome {
         title: "Every account,\none ledger.".to_string(),
         body: plain("Meridian reads your banks and puts what you spend, hold and owe on one page."),
         action: "Continue with email".to_string(),
+
+        // Nobody tapped anything to get here, so the screen says who did.
+        fault: match flow.fault() {
+            Some(Fault::SignedOut) => {
+                Some("You've been signed out. Sign in again to carry on.".to_string())
+            }
+            _ => None,
+        },
 
         // Not a link yet: there is no page behind either name, and a tap that
         // opens nothing is worse than a sentence that does not offer to.

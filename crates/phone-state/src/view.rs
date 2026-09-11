@@ -10,6 +10,7 @@ use crate::ViewAccount;
 use crate::ViewBalances;
 use crate::ViewLedger;
 use crate::ViewOnboarding;
+use crate::ViewPaywall;
 use crate::ViewRecurring;
 
 /// Which screen the app is on — the dock's four tabs.
@@ -24,7 +25,8 @@ pub enum Screen {
 
 /// Everything on screen, in one value, so the view holds no "which screen am
 /// I on" state of its own. [`Onboarding`](ViewScreen::Onboarding) is not one
-/// of [`Screen`]'s tabs — first run has an end.
+/// of [`Screen`]'s tabs — first run has an end — and neither is
+/// [`Paywall`](ViewScreen::Paywall), which stands in front of both.
 #[derive(Debug, Clone, uniffi::Enum)]
 #[expect(
     clippy::large_enum_variant,
@@ -39,4 +41,5 @@ pub enum ViewScreen {
     Balances { view: ViewBalances },
     Account { view: ViewAccount },
     Onboarding { view: ViewOnboarding },
+    Paywall { view: ViewPaywall },
 }

@@ -12,6 +12,7 @@ struct WelcomeScreen: View {
     let title: String
     let runs: [ViewRun]
     let action: String
+    let fault: String?
     let legal: String
 
     @EnvironmentObject private var runtime: RuntimeApp
@@ -26,6 +27,10 @@ struct WelcomeScreen: View {
 
             OnbTitle(text: title)
             OnbBody(runs: runs)
+
+            if let fault {
+                OnbFault(message: fault)
+            }
 
             OnbFill()
 

@@ -19,8 +19,8 @@ struct OnboardingScreen: View {
 
     var body: some View {
         switch view {
-        case .welcome(let title, let runs, let action, let legal):
-            WelcomeScreen(title: title, runs: runs, action: action, legal: legal)
+        case .welcome(let title, let runs, let action, let fault, let legal):
+            WelcomeScreen(title: title, runs: runs, action: action, fault: fault, legal: legal)
 
         case .email(let step, let title, let runs, let field, let action):
             EmailScreen(step: step, title: title, runs: runs, field: field, action: action)

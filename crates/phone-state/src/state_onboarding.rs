@@ -43,6 +43,11 @@ pub(crate) enum Fault {
     /// The code did not work. One fault for every way of failing, because a
     /// rejection carries no reason — expired and wrong are indistinguishable.
     CodeWrong,
+
+    /// The server stopped honouring the session this device was holding, so
+    /// the app put first run back. Nothing the user did, which is why it needs
+    /// saying: they arrive here having tapped nothing.
+    SignedOut,
 }
 
 /// How much of the first sync has arrived. The stage and the counts are
@@ -139,6 +144,12 @@ impl StateOnboarding {
     pub(crate) fn choose_email(&mut self) {
         self.step = Step::Email;
         self.fault = None;
+    }
+
+    /// The session this device held is one the server does not know. The flow
+    /// is already at its first screen; this is the line that says why.
+    pub(crate) fn signed_out(&mut self) {
+        self.fault = Some(Fault::SignedOut);
     }
 
     pub(crate) fn type_email(&mut self, text: &str) {

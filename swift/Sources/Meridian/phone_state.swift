@@ -465,6 +465,22 @@ fileprivate final class UniffiHandleMap<T>: @unchecked Sendable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
+    typealias FfiType = UInt16
+    typealias SwiftType = UInt16
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt16 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
     typealias FfiType = UInt32
     typealias SwiftType = UInt32
@@ -2505,6 +2521,88 @@ public func FfiConverterTypeViewMonthSection_lower(_ value: ViewMonthSection) ->
 
 
 /**
+ * The paywall, in the words it is read in.
+ *
+ * No Subscribe: nothing on this phone can take money yet, and a button that
+ * looked live and did nothing would be worse than one that is not there.
+ * Signing out is the only thing that can be done from here, so it is the only
+ * thing offered.
+ */
+public struct ViewPaywall: Equatable, Hashable {
+    public var title: String
+    public var body: [ViewRun]
+    /**
+     * What it costs, and when the last period ran out where there was one.
+     */
+    public var rows: [ViewIconRow]
+    /**
+     * `"Sign out"`.
+     */
+    public var signOut: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(title: String, body: [ViewRun], 
+        /**
+         * What it costs, and when the last period ran out where there was one.
+         */rows: [ViewIconRow], 
+        /**
+         * `"Sign out"`.
+         */signOut: String) {
+        self.title = title
+        self.body = body
+        self.rows = rows
+        self.signOut = signOut
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewPaywall: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewPaywall: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewPaywall {
+        return
+            try ViewPaywall(
+                title: FfiConverterString.read(from: &buf), 
+                body: FfiConverterSequenceTypeViewRun.read(from: &buf), 
+                rows: FfiConverterSequenceTypeViewIconRow.read(from: &buf), 
+                signOut: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewPaywall, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterSequenceTypeViewRun.write(value.body, into: &buf)
+        FfiConverterSequenceTypeViewIconRow.write(value.rows, into: &buf)
+        FfiConverterString.write(value.signOut, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewPaywall_lift(_ buf: RustBuffer) throws -> ViewPaywall {
+    return try FfiConverterTypeViewPaywall.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewPaywall_lower(_ value: ViewPaywall) -> RustBuffer {
+    return FfiConverterTypeViewPaywall.lower(value)
+}
+
+
+/**
  * The time range, as the sentence the sketch draws.
  */
 public struct ViewRange: Equatable, Hashable {
@@ -3731,9 +3829,12 @@ public enum EventSource: Equatable, Hashable {
     case snapshotLoaded(json: String
     )
     /**
-     * A request did not come back.
+     * A request did not come back with what was asked for.
+     *
+     * A reason and not a sentence: the runtime says what it got, and what
+     * that means — a banner, first run, the paywall — is decided here.
      */
-    case loadFailed(message: String
+    case loadFailed(failure: LoadFailure
     )
     /**
      * Whether the device has a session to act on. A bool rather than the
@@ -3810,7 +3911,7 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
         case 1: return .snapshotLoaded(json: try FfiConverterString.read(from: &buf)
         )
         
-        case 2: return .loadFailed(message: try FfiConverterString.read(from: &buf)
+        case 2: return .loadFailed(failure: try FfiConverterTypeLoadFailure.read(from: &buf)
         )
         
         case 3: return .sessionLoaded(signedIn: try FfiConverterBool.read(from: &buf)
@@ -3846,9 +3947,9 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
             FfiConverterString.write(json, into: &buf)
             
         
-        case let .loadFailed(message):
+        case let .loadFailed(failure):
             writeInt(&buf, Int32(2))
-            FfiConverterString.write(message, into: &buf)
+            FfiConverterTypeLoadFailure.write(failure, into: &buf)
             
         
         case let .sessionLoaded(signedIn):
@@ -4275,6 +4376,137 @@ public func FfiConverterTypeFilterGroup_lower(_ value: FilterGroup) -> RustBuffe
 
 
 /**
+ * Why a source could not be read.
+ *
+ * The runtime classifies what it got; the machine decides what to do about it
+ * and words what the user reads. A sentence built at the edge is a sentence
+ * no `eval!` test can reach, and one each platform writes its own version of.
+ *
+ * Two of these are not failures to report but places to go: a session the
+ * server does not know is first run, and a session that has not paid is the
+ * paywall.
+ */
+
+public enum LoadFailure: Equatable, Hashable {
+    
+    /**
+     * Nothing came back. No signal, aeroplane mode, or a server that is not
+     * running.
+     */
+    case offline
+    /**
+     * The server does not know this session. **401.**
+     */
+    case signedOut
+    /**
+     * The session is good, and the app is not paid for. **402.**
+     */
+    case unpaid(reason: Unpaid
+    )
+    /**
+     * Asked for too much, too fast. **429.**
+     */
+    case tooMany
+    /**
+     * Any other answer, which is the server's problem rather than this
+     * session's.
+     */
+    case server(status: UInt16
+    )
+    /**
+     * An answer arrived and could not be read.
+     */
+    case unreadable
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LoadFailure: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLoadFailure: FfiConverterRustBuffer {
+    typealias SwiftType = LoadFailure
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LoadFailure {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .offline
+        
+        case 2: return .signedOut
+        
+        case 3: return .unpaid(reason: try FfiConverterTypeUnpaid.read(from: &buf)
+        )
+        
+        case 4: return .tooMany
+        
+        case 5: return .server(status: try FfiConverterUInt16.read(from: &buf)
+        )
+        
+        case 6: return .unreadable
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LoadFailure, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .offline:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .signedOut:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .unpaid(reason):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeUnpaid.write(reason, into: &buf)
+            
+        
+        case .tooMany:
+            writeInt(&buf, Int32(4))
+        
+        
+        case let .server(status):
+            writeInt(&buf, Int32(5))
+            FfiConverterUInt16.write(status, into: &buf)
+            
+        
+        case .unreadable:
+            writeInt(&buf, Int32(6))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLoadFailure_lift(_ buf: RustBuffer) throws -> LoadFailure {
+    return try FfiConverterTypeLoadFailure.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLoadFailure_lower(_ value: LoadFailure) -> RustBuffer {
+    return FfiConverterTypeLoadFailure.lower(value)
+}
+
+
+
+/**
  * A time range the user asked for.
  *
  * The parameters ride along with the choice, so "last 3 months" is one event
@@ -4544,6 +4776,127 @@ public func FfiConverterTypeScreen_lower(_ value: Screen) -> RustBuffer {
 
 
 /**
+ * What the server said about a subscription it is not honouring.
+ *
+ * Our three words rather than the payment provider's. Stripe says `past_due`
+ * and Apple says something else again, so a client matching on either
+ * vocabulary is a client that has learned one provider's — and a second
+ * provider is then a second set of arms in every app.
+ *
+ * There is no "paid" arm. This is carried by a refusal, and a session being
+ * served never produces one.
+ */
+
+public enum Unpaid: Equatable, Hashable {
+    
+    /**
+     * Nobody has ever subscribed on this account.
+     */
+    case never
+    /**
+     * A payment did not go through. The date is when the period it had paid
+     * for ended, where there was one — a first payment that never landed
+     * bought no period at all.
+     */
+    case declined(
+        /**
+         * When the period that was paid for ended, in seconds. Absent where
+         * the server has no date for it.
+         */ranOut: UInt64?
+    )
+    /**
+     * A subscription that was ended, and the period it paid for has passed.
+     */
+    case ended(ranOut: UInt64?
+    )
+    /**
+     * The server cannot tell. A payment still in flight, or a provider that
+     * believes this person is paying while the date says otherwise.
+     *
+     * Its own arm rather than folded into one of the three above, because
+     * each of those names a cause and this is the case where none of them is
+     * known to be true. Somebody mid-payment told their subscription has
+     * ended is being lied to.
+     */
+    case unconfirmed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension Unpaid: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeUnpaid: FfiConverterRustBuffer {
+    typealias SwiftType = Unpaid
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Unpaid {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .never
+        
+        case 2: return .declined(ranOut: try FfiConverterOptionUInt64.read(from: &buf)
+        )
+        
+        case 3: return .ended(ranOut: try FfiConverterOptionUInt64.read(from: &buf)
+        )
+        
+        case 4: return .unconfirmed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: Unpaid, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .never:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .declined(ranOut):
+            writeInt(&buf, Int32(2))
+            FfiConverterOptionUInt64.write(ranOut, into: &buf)
+            
+        
+        case let .ended(ranOut):
+            writeInt(&buf, Int32(3))
+            FfiConverterOptionUInt64.write(ranOut, into: &buf)
+            
+        
+        case .unconfirmed:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUnpaid_lift(_ buf: RustBuffer) throws -> Unpaid {
+    return try FfiConverterTypeUnpaid.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeUnpaid_lower(_ value: Unpaid) -> RustBuffer {
+    return FfiConverterTypeUnpaid.lower(value)
+}
+
+
+
+/**
  * Where the flow is, and everything that screen prints.
  *
  * An enum rather than one record of optional fields, for the same reason
@@ -4560,7 +4913,11 @@ public enum ViewOnboarding: Equatable, Hashable {
     case welcome(title: String, body: [ViewRun], 
         /**
          * `"Continue with email"`.
-         */action: String, legal: String
+         */action: String, 
+        /**
+         * Why the app is back here having been signed in. Absent on a fresh
+         * install, which is the ordinary way this screen is reached.
+         */fault: String?, legal: String
     )
     /**
      * The address, and nothing else on the screen.
@@ -4645,7 +5002,7 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .welcome(title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), action: try FfiConverterString.read(from: &buf), legal: try FfiConverterString.read(from: &buf)
+        case 1: return .welcome(title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), action: try FfiConverterString.read(from: &buf), fault: try FfiConverterOptionString.read(from: &buf), legal: try FfiConverterString.read(from: &buf)
         )
         
         case 2: return .email(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), field: try FfiConverterTypeViewField.read(from: &buf), action: try FfiConverterString.read(from: &buf)
@@ -4674,11 +5031,12 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
         switch value {
         
         
-        case let .welcome(title,body,action,legal):
+        case let .welcome(title,body,action,fault,legal):
             writeInt(&buf, Int32(1))
             FfiConverterString.write(title, into: &buf)
             FfiConverterSequenceTypeViewRun.write(body, into: &buf)
             FfiConverterString.write(action, into: &buf)
+            FfiConverterOptionString.write(fault, into: &buf)
             FfiConverterString.write(legal, into: &buf)
             
         
@@ -5026,7 +5384,8 @@ public func FfiConverterTypeViewRowTone_lower(_ value: ViewRowTone) -> RustBuffe
 /**
  * Everything on screen, in one value, so the view holds no "which screen am
  * I on" state of its own. [`Onboarding`](ViewScreen::Onboarding) is not one
- * of [`Screen`]'s tabs — first run has an end.
+ * of [`Screen`]'s tabs — first run has an end — and neither is
+ * [`Paywall`](ViewScreen::Paywall), which stands in front of both.
  */
 
 public enum ViewScreen: Equatable, Hashable {
@@ -5040,6 +5399,8 @@ public enum ViewScreen: Equatable, Hashable {
     case account(view: ViewAccount
     )
     case onboarding(view: ViewOnboarding
+    )
+    case paywall(view: ViewPaywall
     )
 
 
@@ -5077,6 +5438,9 @@ public struct FfiConverterTypeViewScreen: FfiConverterRustBuffer {
         case 5: return .onboarding(view: try FfiConverterTypeViewOnboarding.read(from: &buf)
         )
         
+        case 6: return .paywall(view: try FfiConverterTypeViewPaywall.read(from: &buf)
+        )
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -5109,6 +5473,11 @@ public struct FfiConverterTypeViewScreen: FfiConverterRustBuffer {
             writeInt(&buf, Int32(5))
             FfiConverterTypeViewOnboarding.write(view, into: &buf)
             
+        
+        case let .paywall(view):
+            writeInt(&buf, Int32(6))
+            FfiConverterTypeViewPaywall.write(view, into: &buf)
+            
         }
     }
 }
@@ -5128,6 +5497,30 @@ public func FfiConverterTypeViewScreen_lower(_ value: ViewScreen) -> RustBuffer 
     return FfiConverterTypeViewScreen.lower(value)
 }
 
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
+    typealias SwiftType = UInt64?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterUInt64.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterUInt64.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
 
 #if swift(>=5.8)
 @_documentation(visibility: private)

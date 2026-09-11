@@ -94,7 +94,7 @@ fn a_device_the_app_has_never_run_on_opens_on_welcome() {
     eval!(&mut state,
         < Event::FromUi { event: EventUi::Started },
         > @r#"ToSource { action: LoadSession }"#,
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Welcome { title: "Every account,\none ledger.", body: [ViewRun { text: "Meridian reads your banks and puts what you spend, hold and owe on one page.", strong: false }], action: "Continue with email", legal: "By continuing you agree to our Terms and Privacy Policy." } }, dock: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Welcome { title: "Every account,\none ledger.", body: [ViewRun { text: "Meridian reads your banks and puts what you spend, hold and owe on one page.", strong: false }], action: "Continue with email", fault: None, legal: "By continuing you agree to our Terms and Privacy Policy." } }, dock: None } }"#,
     );
 }
 
@@ -106,7 +106,7 @@ fn no_session_leaves_the_flow_where_it_is() {
 
     eval!(&mut state,
         < Event::FromSource { event: EventSource::SessionLoaded { signed_in: false } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Welcome { title: "Every account,\none ledger.", body: [ViewRun { text: "Meridian reads your banks and puts what you spend, hold and owe on one page.", strong: false }], action: "Continue with email", legal: "By continuing you agree to our Terms and Privacy Policy." } }, dock: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Welcome { title: "Every account,\none ledger.", body: [ViewRun { text: "Meridian reads your banks and puts what you spend, hold and owe on one page.", strong: false }], action: "Continue with email", fault: None, legal: "By continuing you agree to our Terms and Privacy Policy." } }, dock: None } }"#,
 
         // And a second passing moves nothing either: Welcome says nothing
         // about the clock, so there is nothing to redraw.

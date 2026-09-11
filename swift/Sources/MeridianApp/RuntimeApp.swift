@@ -112,6 +112,7 @@ final class RuntimeApp: ObservableObject {
         case .balances: "balances"
         case .account: "account"
         case .onboarding: "first-run"
+        case .paywall: "paywall"
         case nil: "none"
         }
     }
@@ -253,7 +254,7 @@ final class RuntimeApp: ObservableObject {
 
                 self?.dispatch(.fromSource(event: .codeSent))
             } catch {
-                self?.dispatch(.fromSource(event: .loadFailed(message: error.localizedDescription)))
+                self?.dispatch(.fromSource(event: .loadFailed(failure: RuntimeIo.classify(error))))
             }
         }
     }
@@ -281,7 +282,7 @@ final class RuntimeApp: ObservableObject {
 
                 dispatch(.fromSource(event: .codeAccepted))
             } catch {
-                self?.dispatch(.fromSource(event: .loadFailed(message: error.localizedDescription)))
+                self?.dispatch(.fromSource(event: .loadFailed(failure: RuntimeIo.classify(error))))
             }
         }
     }
@@ -333,7 +334,7 @@ final class RuntimeApp: ObservableObject {
                 // A failure to reach the server on either call leaves no bank
                 // attached, which is the same screen as backing out — with the
                 // reason in the banner behind it.
-                self?.dispatch(.fromSource(event: .loadFailed(message: error.localizedDescription)))
+                self?.dispatch(.fromSource(event: .loadFailed(failure: RuntimeIo.classify(error))))
                 self?.dispatch(.fromSource(event: .bankAbandoned))
             }
         }
@@ -367,8 +368,16 @@ final class RuntimeApp: ObservableObject {
                 for try await json in RuntimeIo.syncStatuses(token: token) {
                     self?.dispatch(.fromSource(event: .syncStatusLoaded(json: json)))
                 }
+            } catch let refusal as RuntimeIo.Failure {
+                // The server would not open the stream. Reported, because a
+                // refusal swallowed here is what left the machine reopening a
+                // stream it will never be given every three seconds.
+                self?.dispatch(.fromSource(event: .loadFailed(failure: refusal.failure)))
             } catch {
-                NSLog("MERIDIAN sync progress unavailable: %@", error.localizedDescription)
+                // The connection went after it had opened — backgrounded, out
+                // of signal. Only the ending below is reported, because that
+                // is the whole of what happened.
+                NSLog("MERIDIAN sync stream ended: %@", error.localizedDescription)
             }
 
             // Not when the machine is the one that closed it: it knows, and a
@@ -405,10 +414,10 @@ final class RuntimeApp: ObservableObject {
 
             do {
                 // `/snapshot` has no unauthenticated form, so with nothing to
-                // send there is no request to make. Reported as a failed load
-                // rather than acted on here: what to do about a session that
-                // is not there is the machine's to decide, and today it has
-                // no arm that puts first run back. That is the next thing.
+                // send there is no request to make. Reported rather than acted
+                // on here: nothing to send is the same fact as a token the
+                // server will not honour, and the machine puts first run back
+                // for both.
                 guard let token else {
                     throw RuntimeIo.Failure.noSession
                 }
@@ -417,9 +426,7 @@ final class RuntimeApp: ObservableObject {
                     json: try await RuntimeIo.snapshot(token: token)
                 )
             } catch {
-                event = .loadFailed(
-                    message: error.localizedDescription
-                )
+                event = .loadFailed(failure: RuntimeIo.classify(error))
             }
 
             loading = false

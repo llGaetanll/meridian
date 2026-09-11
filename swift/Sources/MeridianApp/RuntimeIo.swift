@@ -53,12 +53,12 @@ enum RuntimeIo {
 
         let (data, status) = try await send(request)
 
-        guard (200..<300).contains(status) else {
-            throw Failure.answered(status: status)
+        if let refusal = refusal(status: status, body: data) {
+            throw refusal
         }
 
         guard let json = String(data: data, encoding: .utf8) else {
-            throw Failure.emptyBody
+            throw Failure.unreadable
         }
 
         return json
@@ -82,15 +82,15 @@ enum RuntimeIo {
 
         let (data, status) = try await send(request)
 
-        guard (200..<300).contains(status) else {
-            throw Failure.answered(status: status)
+        if let refusal = refusal(status: status, body: data) {
+            throw refusal
         }
 
         guard
             let body = try? JSONDecoder().decode(Started.self, from: data),
             let page = URL(string: body.url)
         else {
-            throw Failure.emptyBody
+            throw Failure.unreadable
         }
 
         return page
@@ -131,12 +131,12 @@ enum RuntimeIo {
 
         let (data, status) = try await send(request)
 
-        guard (200..<300).contains(status) else {
-            throw Failure.answered(status: status)
+        if let refusal = refusal(status: status, body: data) {
+            throw refusal
         }
 
         guard let body = try? JSONDecoder().decode(Finished.self, from: data) else {
-            throw Failure.emptyBody
+            throw Failure.unreadable
         }
 
         switch body.outcome {
@@ -223,9 +223,11 @@ enum RuntimeIo {
         }
 
         // Refused before any of the body went out, which is the whole reason
-        // the server answers the open as an ordinary request.
-        guard (200..<300).contains(response.statusCode) else {
-            throw Failure.answered(status: response.statusCode)
+        // the server answers the open as an ordinary request. Its body is read
+        // like any other refusal's: a 402 met here is somebody who reached the
+        // bank step without paying, and which paywall they see is in it.
+        if !(200..<300).contains(response.statusCode) {
+            throw refusal(status: response.statusCode, body: await collect(bytes)) ?? .unreachable
         }
 
         // The kind of message the last `event:` line named. Kept across lines
@@ -262,6 +264,31 @@ enum RuntimeIo {
         }
     }
 
+    /// A refusal's body, out of a response that was opened as a stream.
+    ///
+    /// Capped, because this is reached only when the status already says the
+    /// stream is not coming: a server answering a refusal with a megabyte is
+    /// not something to read to the end.
+    private static func collect(_ bytes: URLSession.AsyncBytes) async -> Data {
+        var body = Data()
+
+        do {
+            for try await byte in bytes {
+                body.append(byte)
+
+                // `WireUnpaid` is two fields. Anything past this is not that.
+                if body.count >= 4096 {
+                    break
+                }
+            }
+        } catch {
+            // A body that stopped arriving is still a refusal. What did arrive
+            // is what gets read, and an unreadable one is `never`.
+        }
+
+        return body
+    }
+
     /// The value of one Server-Sent Events field, or `nil` if the line is not
     /// that field. The space after the colon is optional and is dropped.
     private static func field(_ name: String, of line: String) -> String? {
@@ -285,10 +312,10 @@ enum RuntimeIo {
             throw Failure.unreachable
         }
 
-        let (_, status) = try await send(post(url, ["email": email]))
+        let (data, status) = try await send(post(url, ["email": email]))
 
-        guard (200..<300).contains(status) else {
-            throw Failure.answered(status: status)
+        if let refusal = refusal(status: status, body: data) {
+            throw refusal
         }
     }
 
@@ -310,14 +337,14 @@ enum RuntimeIo {
             return nil
         }
 
-        guard (200..<300).contains(status) else {
-            throw Failure.answered(status: status)
+        if let refusal = refusal(status: status, body: data) {
+            throw refusal
         }
 
         guard
             let body = try? JSONDecoder().decode(Verified.self, from: data)
         else {
-            throw Failure.emptyBody
+            throw Failure.unreadable
         }
 
         return body.token
@@ -367,31 +394,104 @@ enum RuntimeIo {
         return (data, response.statusCode)
     }
 
-    /// What went wrong, in the words the banner will print.
+    /// What a call came to, when it did not come to an answer.
     ///
-    /// The messages match `runtime_io.rs`'s, because the same failure should
-    /// read the same way whichever front-end the user is looking at.
-    enum Failure: LocalizedError {
+    /// No sentences. What the user reads is the machine's — every platform
+    /// gets one wording rather than three, and a sentence written here is one
+    /// no `eval!` test can read.
+    enum Failure: Error {
+        /// Nothing came back at all.
         case unreachable
+
+        /// The server answered, and this is what it said.
         case answered(status: Int)
-        case emptyBody
+
+        /// **402**, and the body that came with it. The one refusal that
+        /// carries anything: a status code cannot tell somebody who has never
+        /// subscribed from somebody whose card stopped working, and those are
+        /// two screens.
+        case unpaid(reason: Unpaid)
+
+        /// An answer arrived and could not be read.
+        case unreadable
 
         /// Asked for something that needs a session, with no token in hand.
-        /// Not a network failure at all — it is the app having got ahead of
-        /// itself, and it reads that way rather than blaming the server.
+        /// The app having got ahead of itself, or a session that has already
+        /// been thrown away.
         case noSession
 
-        var errorDescription: String? {
+        /// The same fact, in the machine's vocabulary.
+        ///
+        /// Classification and not a verdict: which screen a 401 leads to is
+        /// decided in `phone-state`, and this only says which of these it was.
+        var failure: LoadFailure {
             switch self {
-            case .unreachable:
-                return "could not reach the server at \(server) — is `cargo run -p server-main` running?"
+            case .unreachable: return .offline
+            case .unreadable: return .unreadable
+            case .unpaid(let reason): return .unpaid(reason: reason)
+
+            // Nothing to send means nothing the server would honour, which is
+            // the same place a 401 leads.
+            case .noSession: return .signedOut
+
             case .answered(let status):
-                return "the server answered \(status)"
-            case .emptyBody:
-                return "empty body"
-            case .noSession:
-                return "not signed in"
+                switch status {
+                case 401: return .signedOut
+                case 429: return .tooMany
+                default: return .server(status: UInt16(clamping: status))
+                }
             }
         }
+    }
+
+    /// What the server refused this with, or `nil` if it did not.
+    ///
+    /// Every route's `guard` in one place, so a refusal is read the same way
+    /// whichever route met it — and so a 402's body is never the one route
+    /// that forgot to look.
+    private static func refusal(status: Int, body: Data) -> Failure? {
+        if (200..<300).contains(status) {
+            return nil
+        }
+
+        guard status == 402 else {
+            return .answered(status: status)
+        }
+
+        return .unpaid(reason: unpaid(body))
+    }
+
+    /// Why a 402 was answered.
+    ///
+    /// A body we cannot read reads as `never`, which is the only one of the
+    /// four that claims nothing about what came before — so an old app meeting
+    /// a word it has never heard of says less rather than something untrue.
+    private static func unpaid(_ body: Data) -> Unpaid {
+        guard let said = try? JSONDecoder().decode(UnpaidBody.self, from: body) else {
+            return .never
+        }
+
+        switch said.reason {
+        case "declined": return .declined(ranOut: said.ran_out)
+        case "ended": return .ended(ranOut: said.ran_out)
+        case "unconfirmed": return .unconfirmed
+        default: return .never
+        }
+    }
+
+    /// The JSON a 402 carries. `server_wire::WireUnpaid`, and the field names
+    /// are that struct's — a rename there is a rename here, silently, because
+    /// JSON has no type to disagree with.
+    private struct UnpaidBody: Decodable {
+        let reason: String
+        let ran_out: UInt64?
+    }
+
+    /// Whatever was thrown, as the machine's vocabulary.
+    ///
+    /// Anything that is not one of ours came from URLSession or from a decoder
+    /// and means the same thing as `unreachable`: nothing usable came back.
+    static func classify(_ error: Error) -> LoadFailure {
+        (error as? Failure)?.failure ?? .offline
     }
 }
