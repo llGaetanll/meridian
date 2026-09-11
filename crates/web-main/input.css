@@ -13,6 +13,7 @@
    `.btn:hover` weigh the same and the last one written wins. */
 @import "../../sketches/shared/components.css";
 @import "./css/paywall.css";
+@import "./css/page.css";
 
 :root {
   --chart-accent: theme('colors.accent.500');

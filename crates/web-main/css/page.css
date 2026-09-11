@@ -1,0 +1,76 @@
+/* What Ledger, Recurring and Balances share: the page and its rail, the figure
+   a page opens on, and the section under it. `sketches/web/shell.css` and
+   `screens.css` are where these are drawn.
+
+   Scoped under `.page` wherever `app.css` has a rule of the same name — the
+   markets page draws its own `.rail`, and nothing here reaches it. */
+
+/* The page: what you came to read, and beside it the one control that decides
+   what it says. The rail moves with the page rather than holding still in it,
+   so there is one scroller on the screen. */
+.ui .page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--rail-w);
+  gap: 36px;
+  align-items: start;
+}
+@media (max-width: 1180px) { .ui .page { grid-template-columns: minmax(0, 1fr); } }
+
+.ui .page > .rail {
+  display: flex; flex-direction: column;
+  padding-top: 30px;
+}
+.ui .page .rail-sec { padding-top: 26px; }
+.ui .page .rail-sec:first-child { padding-top: 0; }
+.ui .page .rail-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px;
+}
+.ui .page .rail-title {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+}
+.ui .page .rail-title .v {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: 13px; font-weight: 700;
+  letter-spacing: 0; text-transform: none;
+  color: var(--text-muted);
+}
+
+.ui .hero { padding: 30px 0 30px; }
+.ui .hero-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.ui .hero .k {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+}
+.ui .hero .v {
+  margin-top: 5px;
+  font-size: 42px; font-weight: 700; line-height: 1.05;
+  letter-spacing: -0.035em;
+}
+
+/* In and out. The words are words and stay grey; the direction is in them
+   already, so the figures do not carry a sign as well. */
+.ui .diff {
+  display: flex; gap: 18px;
+  margin-top: 10px;
+  font-size: 12.5px; color: var(--text-faint);
+}
+.ui .diff b { margin-right: 5px; font-weight: 600; }
+.ui .diff .in b { color: var(--up); }
+.ui .diff .out b { color: var(--down); }
+
+.ui .sec { margin-top: 26px; padding-top: 26px; border-top: 1px solid var(--border-strong); }
+.ui .sec-title {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  margin-bottom: 14px;
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+}
+.ui .sec-title .v {
+  font-size: 13px; font-weight: 700;
+  letter-spacing: 0; text-transform: none;
+}
