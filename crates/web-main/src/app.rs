@@ -89,7 +89,6 @@ fn AppShell() -> impl IntoView {
             markets=markets
             error=runtime.error()
             on_screen=open
-            on_markets=Callback::new(move |()| markets.set(true))
             on_retry=retry
         >
             {move || match tab.get() {

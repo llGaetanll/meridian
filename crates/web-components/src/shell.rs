@@ -22,13 +22,12 @@ pub fn Shell(
     #[prop(into)] markets: Signal<bool>,
     #[prop(into)] error: Signal<Option<String>>,
     on_screen: Callback<Screen>,
-    on_markets: Callback<()>,
     on_retry: Callback<()>,
     children: Children,
 ) -> impl IntoView {
     view! {
         <div class="shell">
-            <Sidebar dock=dock markets=markets on_screen=on_screen on_markets=on_markets />
+            <Sidebar dock=dock markets=markets on_screen=on_screen />
             <div class="main">
                 <div class="content">
                     {move || {
@@ -67,7 +66,6 @@ fn Sidebar(
     dock: Signal<Option<ViewDock>>,
     markets: Signal<bool>,
     on_screen: Callback<Screen>,
-    on_markets: Callback<()>,
 ) -> impl IntoView {
     // The dock's Account is the block at the foot rather than a row here.
     let tabs = move || {
@@ -129,14 +127,9 @@ fn Sidebar(
                     Portfolios
                 </a>
 
-                <a
-                    class=move || if markets.get() { "on" } else { "" }
-                    href="#"
-                    on:click=move |ev| {
-                        ev.prevent_default();
-                        on_markets.run(());
-                    }
-                >
+                // Locked: the page is built but runs on stand-in data, and the
+                // markets side of the app is a later pass.
+                <a class="dead" aria-disabled="true">
                     <Icon kind=IconKind::Markets class="icon" />
                     Markets
                 </a>

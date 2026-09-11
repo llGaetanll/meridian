@@ -6,6 +6,11 @@ watch = [
     "../../sketches/shared",
     "../web-ui/src",
     "../web-components/src",
+    "../client-state/src",
+    "../api-common/src",
+    "../api-ledger/src",
+    "../api-trace/src",
+    "../server-wire/src",
 ]
 
 [build]
