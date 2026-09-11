@@ -3,6 +3,7 @@ mod markets;
 mod page;
 mod recurring;
 mod shell;
+mod onboarding;
 mod transaction;
 
 pub use chart::*;
@@ -13,3 +14,5 @@ pub use shell::Brand;
 pub use shell::SearchRow;
 pub use shell::Shell;
 pub use transaction::*;
+pub use onboarding::IconRow;
+pub use onboarding::Onboarding;

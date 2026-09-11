@@ -202,6 +202,11 @@
 
    Two weights, and both run the full width of the screen — a rule that stops
    short of the edge reads as a third kind of line. Strong between the parts of
+/* Back, on a screen with no title bar to hold it: a plain button that is only
+   the chevron, and grey rather than violet, because going back is never what
+   the screen is for. */
+.ui .btn.plain.back { color: var(--text-muted); }
+.ui .btn.plain.back svg { width: 20px; height: 20px; }
    a page; faint between rows and between groups of rows. Rows you read down
    rather than compare across get space and a heading instead of either. */
 
@@ -291,6 +296,13 @@
 
 /* Money.
 
+/* A row that is a step in something running, coloured by where that step is:
+   finished, happening now, or not reached yet. The one happening now turns its
+   icon — the same arc, at the same speed, as a busy button. */
+.ui .row.done > svg { color: var(--up); }
+.ui .row.now > svg { color: var(--violet-300); animation: spin 0.9s linear infinite; }
+.ui .row.wait > svg { color: var(--bars); }
+.ui .row.wait .rt { color: var(--text-faint); font-weight: 500; }
    Every figure is set in the monospaced face with tabular figures, so a column
    of them lines up on the decimal without the reader having to look for it. In
    and out are the only two colours money takes, and they go on the figure —
@@ -302,6 +314,9 @@
   font-weight: 600;
 }
 .ui .money.in { color: var(--up); }
+  /* A share that changes slides to its new width rather than jumping, so a
+     bar filling as work lands reads as work landing. */
+  transition: width 350ms ease-out;
 .ui .money.out { color: var(--down); }
 
 /* Drawn but not live, for a button — the same state the chip and the range
@@ -319,6 +334,18 @@
    away.
 
    Its own state rather than `.dead`, because the two say different things: a
+/* A tally: figures read down a column, each beside what it counts — what the
+   first sync brought in. Money-faced without being money, because a column
+   you read down is the reason that face exists. */
+.ui .tally .r { display: flex; align-items: baseline; gap: 14px; padding: 12px 0; }
+.ui .tally .v {
+  min-width: 46px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 22px; font-weight: 600;
+}
+.ui .tally .k { font-size: 13.5px; color: var(--text-muted); }
+
    dead button is one there is no point pressing, and a busy one is a press
    that landed and has not finished. The phone draws one — Connect a bank,
    where the server opens a Plaid session and iOS raises a web sheet over the
@@ -420,6 +447,16 @@
 
    A title, a line or two under it, and the actions at the foot. First run is a
    stack of these, and so is the paywall: the app has one thing to tell you and
+/* A field that really takes typing: the input is the value, wearing none of
+   its own chrome, so the frame stays the field's. Its placeholder is `.ph`. */
+.ui .field input {
+  flex: 1; min-width: 0; height: 100%;
+  padding: 0; border: 0; outline: 0;
+  background: none;
+  font: inherit; color: inherit; letter-spacing: inherit;
+  caret-color: var(--violet-300);
+}
+.ui .field input::placeholder { color: var(--text-faint); opacity: 1; }
    one thing for you to do, and the width goes on the sentence rather than on
    rows.
 
@@ -431,7 +468,12 @@
    The measure is short on purpose. These are sentences, and a line of prose
    run across a 900px page is one the eye loses its place in. */
 
-.ui .say-title { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.18; }
+/* A title keeps the line breaks it was written with: "Every account,\none
+   ledger." breaks where the sentence does, not where the measure happens to. */
+.ui .say-title {
+  font-size: 28px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.18;
+  white-space: pre-line;
+}
 .ui .say-body {
   margin-top: 10px;
   max-width: 32ch;
@@ -450,10 +492,52 @@
    figures is set in it. A box per digit says how many are left without a
    counter saying so. */
 
-.ui .code { display: flex; gap: 8px; }
+.ui .code { position: relative; display: flex; gap: 8px; }
 .ui .code .field { flex: 1; }
 .ui .code .in {
   justify-content: center;
+/* Where the screen stands in a flow of them — "Step 1 of 3 · Account" — which
+   is the only reason a flow says how long it is. Above the title. */
+.ui .say-step {
+  margin-bottom: 22px;
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+}
+
+/* A glyph over the title, on a screen that is an outcome: the tick on the one
+   that finished, the warning on the one that did not. Coloured by what it
+   means, in the row's words for it. */
+.ui .say-icon {
+  display: block;
+  width: 40px; height: 40px;
+  margin-bottom: 18px;
+  color: var(--text-faint);
+}
+.ui .say-icon.done { color: var(--up); }
+.ui .say-icon.needs { color: var(--amber-300); }
+
+/* What went wrong, under the thing it went wrong with. Absent until something
+   has — never there to warn in advance. */
+.ui .say-fault {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin-top: 13px;
+  font-size: 13px; color: var(--rose-400);
+}
+.ui .say-fault svg { width: 15px; height: 15px; flex: none; margin-top: 2px; }
+
+/* A quiet line under the actions — how long before a new code can be asked
+   for — which may carry a plain button: the way out, one click away and not
+   the loudest thing on the screen. */
+.ui .say-note { margin-top: 10px; font-size: 13px; color: var(--text-faint); }
+
+/* Small print, at the point of consent rather than in a settings screen. */
+.ui .say-legal {
+  margin-top: 16px;
+  font-size: 11.5px; line-height: 1.55;
+  color: var(--text-faint); text-align: center;
+}
+
   height: 54px;
   padding: 0;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
@@ -474,6 +558,17 @@
   border: 1px solid color-mix(in srgb, var(--down) 25%, transparent);
   border-radius: var(--r-sm);
   background: var(--down-tint);
+/* One real input behind all the boxes, invisible and on top of them. A paste,
+   a backspace and a code the browser fills in are then one event, and a click
+   anywhere on the boxes lands in it; the boxes draw what it holds. */
+.ui .code > input {
+  position: absolute; inset: 0;
+  width: 100%;
+  padding: 0; border: 0;
+  opacity: 0;
+  font-size: 16px;
+  cursor: text;
+}
   font-size: 12.5px; color: var(--text-muted);
 }
 .ui .banner .say { flex: 1; min-width: 0; }

@@ -102,6 +102,10 @@ body {
     <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/></symbol>
     <symbol id="i-bank" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9.5 9-5.5 9 5.5"/><line x1="4" y1="20" x2="20" y2="20"/><line x1="6.5" y1="12" x2="6.5" y2="17"/><line x1="12" y1="12" x2="12" y2="17"/><line x1="17.5" y1="12" x2="17.5" y2="17"/></symbol>
     <symbol id="i-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4 12.5 11.5"/><path d="M18.5 14v5.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1H10"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 5 8 12 15 19"/></symbol>
+    <symbol id="i-tick-c" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="16 9.5 10.8 15 8 12.4"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="7.5" x2="12" y2="13"/><circle cx="12" cy="16.5" r="0.6" fill="currentColor"/></symbol>
+    <symbol id="i-dot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="12" cy="12" r="8"/></symbol>
   </defs>
 </svg>
 
@@ -435,6 +439,28 @@ body {
         <div class="say-title">Meridian is $5.99 a month</div>
         <div class="say-body">Your account is ready. There is one price and nothing else to choose.</div>
         <div class="acts" style="margin-top:22px">
+
+    <div class="entry">
+      <div class="demo inline">
+        <button class="btn plain back"><svg><use href="#i-back"/></svg></button>
+      </div>
+      <div class="body">
+        <h3>Back</h3>
+        <p>
+          The plain button holding only the chevron, above the step on a
+          screen of a flow. Grey rather than violet, and the glyph at the size
+          of a word rather than a button's.
+        </p>
+        <div class="why">
+          A screen with no title bar has nowhere else to put it, and one
+          chevron does not earn a bar. Grey because going back is never what
+          the screen is for — the violet is the way forward. Where it goes is
+          the machine's call, so on every platform it is an event and not a
+          history pop.
+        </div>
+        <div class="use">.btn.plain.back &gt; svg</div>
+      </div>
+    </div>
           <button class="btn lg block">Not now</button>
           <button class="btn primary lg block">Subscribe</button>
         </div>
@@ -473,6 +499,73 @@ body {
       <div class="body">
         <h3>Banner</h3>
         <p>
+    <div class="entry">
+      <div class="demo">
+        <div class="say-step">Step 1 of 3 · Account</div>
+        <div class="say-title">Check your email</div>
+        <div class="say-body">We sent a code to <b>al@example.com</b>.</div>
+        <div class="say-fault"><svg><use href="#i-warn"/></svg>That code is not right.</div>
+        <div class="acts" style="margin-top:12px">
+          <button class="btn primary lg block">Continue</button>
+        </div>
+        <div class="say-note">Resend in 0:42 · <button class="btn plain">Wrong address?</button></div>
+        <div class="say-legal">Plaid handles the connection under its end-user privacy policy.</div>
+      </div>
+      <div class="body">
+        <h3>A screen in a flow</h3>
+        <p>
+          The same block with the parts a flow adds. <code>.say-step</code>
+          above the title says where you are; <code>.say-fault</code> says what
+          went wrong, under the thing it went wrong with;
+          <code>.say-note</code> is a quiet line under the actions, and may
+          carry a plain button; <code>.say-legal</code> is small print at the
+          foot.
+        </p>
+        <div class="why">
+          The step is the only reason a flow says how long it is. The fault is
+          absent until something has actually gone wrong — never a warning
+          waiting in advance — and its colour is the field's
+          <code>.bad</code>, so the two read as one event. The note is where a
+          way out sits when it must be there without being the loudest thing:
+          the countdown to a new code, and the address one click from being
+          fixed. The small print goes at the point of consent rather than in a
+          settings screen, because that is where the data starts moving.
+          <br><br>
+          First run is where these came from, and they are
+          <code>.onb-step</code>, <code>.err</code>, <code>.resend</code> and
+          <code>.legal</code> in <code>sketches/mobile/phone.css</code>. A
+          title keeps the line breaks it was written with.
+        </div>
+        <div class="use">.say-step · .say-fault &gt; svg · .say-note (&gt; .btn.plain) · .say-legal</div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="demo">
+        <svg class="say-icon done"><use href="#i-tick-c"/></svg>
+        <div class="say-title">You're set.</div>
+        <div class="say-body"><b>First Platypus Bank</b> is connected and syncing.</div>
+        <div style="margin-top:28px">
+          <svg class="say-icon needs"><use href="#i-warn"/></svg>
+          <div class="say-title">That didn't finish</div>
+        </div>
+      </div>
+      <div class="body">
+        <h3>An outcome</h3>
+        <p>
+          A glyph over the title, for a screen that is the result of something
+          rather than a step towards it: the tick where it finished, the
+          warning where it did not.
+        </p>
+        <div class="why">
+          The glyph carries the colour so the title does not have to. The two
+          words are the row's, <code>.done</code> and <code>.needs</code>, so a
+          colour means the same thing on a row and over a title.
+        </div>
+        <div class="use">svg.say-icon · .done · .needs</div>
+      </div>
+    </div>
+
           Something went wrong, in the machine's words, and the one thing to do
           about it. It sits at the top of the page, over whatever was loaded
           before, and goes when the next load lands.
@@ -513,7 +606,12 @@ body {
           one — and never for an empty field: nothing has gone wrong yet, and a
           form that turns red as you arrive is scolding you for showing up.
         </div>
-        <div class="use">.field &gt; .in &gt; (svg, value | .ph, .caret) · .on · .bad</div>
+        <div class="why">
+          A field that really takes typing holds an <code>input</code> in place
+          of the value, wearing none of its own chrome, and its placeholder
+          wears <code>.ph</code>'s grey.
+        </div>
+        <div class="use">.field &gt; .in &gt; (svg, value | .ph | input, .caret) · .on · .bad</div>
       </div>
     </div>
 
@@ -540,7 +638,7 @@ body {
           it. And a box per digit says how many are left without a counter
           saying so.
         </div>
-        <div class="use">.code &gt; .field &gt; .in</div>
+        <div class="use">.code &gt; (.field &gt; .in, input)</div>
       </div>
     </div>
   </div>
@@ -549,6 +647,12 @@ body {
     <h2>Listing</h2>
 
     <div class="entry">
+          <br><br>
+          Where it takes typing, one real <code>input</code> sits behind all
+          the boxes, invisible and on top of them, rather than one per box. A
+          paste, a backspace and a code filled in from the notification are
+          then one event rather than a question of where focus moves, and the
+          boxes draw what it holds.
       <div class="demo">
         <div class="row top">
           <svg><use href="#i-lock"/></svg>
@@ -596,6 +700,30 @@ body {
         <div class="track-demo">
           <div class="caption"><span>Transfer out</span><span class="money">$2,078.50</span></div>
           <span class="track"><i style="width:55.1%"></i></span>
+
+    <div class="entry">
+      <div class="demo">
+        <div class="row done"><svg><use href="#i-tick-c"/></svg><div class="rt">Accounts</div><span class="rv">8</span></div>
+        <div class="row now"><svg><use href="#i-spin"/></svg><div class="rt">Transactions</div><span class="rv">48 so far</span></div>
+        <div class="row wait"><svg><use href="#i-dot"/></svg><div class="rt">Recurring bills</div><span class="rv">waiting</span></div>
+      </div>
+      <div class="body">
+        <h3>Row, as a step</h3>
+        <p>
+          The same row for a list of steps in something running: finished,
+          happening now, not reached yet. The one happening now turns its
+          icon.
+        </p>
+        <div class="why">
+          The tone is the core's answer and the only thing that colours the
+          row — a row does not work out whether it is the one running. The arc
+          is the busy button's, at the same speed: one spinner in the app. A
+          step not reached yet dims its name as well as its icon, so the list
+          reads as far as it has got.
+        </div>
+        <div class="use">.row · .done · .now · .wait</div>
+      </div>
+    </div>
         </div>
       </div>
       <div class="body">
@@ -652,6 +780,29 @@ body {
         <div class="days" data-select="one">
           <div class="cal-day"><span class="n">4</span><span class="marks"></span></div>
           <div class="cal-day"><span class="n">10</span><span class="marks"><i></i><i></i></span></div>
+
+    <div class="entry">
+      <div class="demo">
+        <div class="tally">
+          <div class="r"><span class="v">8</span><span class="k">accounts</span></div>
+          <div class="r"><span class="v">48</span><span class="k">transactions</span></div>
+          <div class="r"><span class="v">8</span><span class="k">recurring bills found</span></div>
+        </div>
+      </div>
+      <div class="body">
+        <h3>Tally</h3>
+        <p>
+          Counts read down a column, each beside what it counts. The last
+          screen of first run is three of them.
+        </p>
+        <div class="why">
+          Money-faced without being money: a column you read down is the whole
+          reason the face exists, and it lines the counts up the way it lines
+          up figures. No colour, because a count is not money in or out.
+        </div>
+        <div class="use">.tally &gt; .r &gt; (.v, .k)</div>
+      </div>
+    </div>
           <div class="cal-day today"><span class="n">19</span><span class="marks"></span></div>
           <div class="cal-day picked"><span class="n">22</span><span class="marks"><i></i></span></div>
           <div class="cal-day outside"><span class="n">3</span><span class="marks"></span></div>

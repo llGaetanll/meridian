@@ -1,9 +1,31 @@
+//! First run: what somebody sees before anything else, ending with a bank
+//! connected.
+//!
+//! Drawn without the shell, as the paywall is: there is no app behind a
+//! sidebar yet, so a nav would be all dead ends. The brand and one column
+//! down the middle, and the screen the machine is showing in it.
+
 use client_state::ViewOnboarding;
 use leptos::prelude::*;
+use web_components::Brand;
+use web_components::Onboarding;
+
+use crate::runtime_app::RuntimeApp;
 
 #[component]
 pub fn OnboardingPage(view: Signal<ViewOnboarding>) -> impl IntoView {
-    let _ = view;
+    let runtime = expect_context::<RuntimeApp>();
 
-    view! { <div class="page">"First run"</div> }
+    // Synchronous, straight from the click: Connect a bank opens Plaid's
+    // window inside this call, and a browser refuses a window opened later.
+    let ui = Callback::new(move |event| runtime.ui(event));
+
+    view! {
+        <div class="onboarding ui">
+            <div class="measure">
+                <Brand />
+                <Onboarding view=view ui=ui />
+            </div>
+        </div>
+    }
 }

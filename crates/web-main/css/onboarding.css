@@ -1,0 +1,49 @@
+/* Where first run sits.
+
+   One column down the middle of the window, the way the paywall stands — the
+   blocks are the design language's, the place they stand is ours. Nothing here
+   restyles a component; it only spaces them.
+
+   It replaces the shell rather than sitting inside it: there is no app behind
+   a sidebar until a bank is connected. */
+
+.onboarding {
+  display: flex;
+  /* No shell to own the scrolling, so this screen owns its own, or a short
+     window clips the button with no way to reach it. */
+  height: 100%;
+  overflow-y: auto;
+  padding: 56px 24px;
+}
+
+/* Centred with `auto` margins rather than by the flex box, which cuts the top
+   off whatever it cannot fit. */
+.onboarding .measure {
+  width: 100%;
+  max-width: 420px;
+  margin: auto;
+}
+
+.onboarding .brand { padding: 0 0 32px; }
+
+/* The chevron stands above the step, as it does on the phone, and starts
+   where the words start. */
+.onboarding .back { margin: -6px 0 10px -4px; }
+
+/* The field, or the boxes, and what they carry under them. */
+.onboarding .entry { margin-top: 24px; }
+.onboarding .entry .acts { margin-top: 12px; }
+
+.onboarding .rows { margin-top: 18px; }
+.onboarding .acts { margin-top: 26px; }
+
+/* The first sync's bar stands on a rule under the body, as a share stands on
+   the rule under its category. */
+.onboarding .sync-bar { position: relative; margin-top: 26px; }
+.onboarding .sync-bar .track { position: absolute; left: 0; right: 0; top: -1px; }
+.onboarding .sync-bar + .rows { margin-top: 10px; }
+
+.onboarding .tally { margin-top: 20px; }
+
+/* A new code, once one can be asked for, stands apart from Continue. */
+.onboarding .resend { margin-top: 16px; }
