@@ -122,3 +122,9 @@ stale one is on top.
 **only ever use the Plaid Sandbox unless the user explicitly says otherwise.**
 The account is capped at 10 Production Items and removing an Item does not free
 the slot, so a careless connection is permanent.
+
+## Compliance
+
+`docs/COMPLIANCE.md` says who may publish Meridian on each platform and what
+the law asks of it everywhere. Read it before a store submission, and before
+anything that would let Meridian move money.

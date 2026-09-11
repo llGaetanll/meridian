@@ -24,11 +24,9 @@ box says so, which is not soon.
 
 ## The company — required before release, and the biggest bill so far
 
-**Apple will not take a finance app from an individual.** Guideline 5.1.1(ix)
-wants an app in "banking and financial services", or one that needs "sensitive
-user information", submitted by a legal entity. Meridian shows bank balances
-and transactions, so the Individual membership has to become an Organization —
-see #68. Google Play has the same rule for financial apps (?).
+**Apple will not take a finance app from an individual, and Google Play likely
+will not either.** The website has no such rule. Why, and what else applies,
+is in [COMPLIANCE.md](COMPLIANCE.md).
 
 Living in Manhattan, the entity is a New York LLC, and New York makes a new LLC
 **publish a notice in two newspapers for six weeks**, within 120 days, in the
@@ -150,8 +148,6 @@ server, it is the bottom-right of that table.
       from Manhattan.
 - [ ] LLC: the $25/yr filing fee and $9 biennial statement, and what an Albany
       registered agent actually charges.
-- [ ] Google Play: whether its Organization rule covers a budgeting app, or
-      only banking, loans and trading.
 
 ## Monthly actuals
 
