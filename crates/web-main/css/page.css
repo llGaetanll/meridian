@@ -1,6 +1,6 @@
 /* What Ledger, Recurring and Balances share: the page and its rail, the figure
-   a page opens on, and the section under it. `sketches/web/shell.css` and
-   `screens.css` are where these are drawn.
+   a page opens on, and the section under it. `sketches/screens/` draws them,
+   one page to a file.
 
    Scoped under `.page` wherever `app.css` has a rule of the same name — the
    markets page draws its own `.rail`, and nothing here reaches it. */

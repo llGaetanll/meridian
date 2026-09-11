@@ -1,5 +1,5 @@
 /* The ledger: every transaction under its month and its day, and the filter
-   in the rail. `sketches/web/app.html#ledger` is the drawing.
+   in the rail. `sketches/screens/ledger.html` is the drawing.
 
    The row is where the width goes. The phone stacks the merchant over its
    category and calls that a row; here the category and the account each get a
@@ -61,6 +61,10 @@
 /* Pending: the whole row recedes, so it reads as one provisional thing rather
    than a row with some grey parts in it. */
 .ui .tx.pending { opacity: 0.45; }
+
+/* markets.css sizes the chart's own `.range` with no scope, which would cut
+   the time range off after its first option. */
+.ui .range { height: auto; }
 
 /* What the list says when it has nothing to show: loading, filtered out, or
    empty, in the machine's words. */
