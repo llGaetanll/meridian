@@ -16,10 +16,47 @@ confirm is at the bottom.
 | `meridiancash.io` renewal | 3.33 (?) | `.io` is ~$40/yr; amortised |
 | Apple Developer Program | 8.25 | $99/yr, unavoidable to ship on iOS |
 | Google Play | 0.17 | $25 once |
-| **Total** | **18.95** | Of which **7.20** is the server |
+| New York LLC upkeep | 2.46 (?) | $25/yr state filing fee, $9 biennial statement. See below |
+| **Total** | **21.41** | Of which **7.20** is the server |
 
 Next step up is $12/mo (2 GB) — only when Postgres or the image build on the
 box says so, which is not soon.
+
+## The company — required before release, and the biggest bill so far
+
+**Apple will not take a finance app from an individual.** Guideline 5.1.1(ix)
+wants an app in "banking and financial services", or one that needs "sensitive
+user information", submitted by a legal entity. Meridian shows bank balances
+and transactions, so the Individual membership has to become an Organization —
+see #68. Google Play has the same rule for financial apps (?).
+
+Living in Manhattan, the entity is a New York LLC, and New York makes a new LLC
+**publish a notice in two newspapers for six weeks**, within 120 days, in the
+county named on its filing. That notice is most of the cost, and the county is
+the whole difference:
+
+| Line | Manhattan | Albany address | Note |
+| --- | --- | --- | --- |
+| Articles of Organization | 200 | 200 | The filing that creates the LLC |
+| **Newspaper notice** | **~1,800** | **~400** | Priced by the county, not the state |
+| Certificate of Publication | 50 | 50 | Proof the notice ran |
+| Registered agent in Albany | — | ~125 (?) | Only to have an Albany address. A Certificate of Change can move it back once the notice has run |
+| D-U-N-S number | 0 | 0 | Apple and Google both require one |
+| **One-time** | **~2,050** | **~775** | |
+
+- **An Albany address is the usual way round it** and is what registered
+  agents sell it for. Confirm with an accountant before filing.
+- **Delaware or Wyoming saves nothing.** Run from New York, the LLC still has
+  to register here ($250) and still publish.
+- **A New York corporation has no notice** ($125 to form), but it files its
+  own tax return every year, where a single-member LLC is a line on a personal
+  one. The accountant's fee for that return is likely to eat the saving within
+  a year or two (?).
+- **Not publishing** does not dissolve the LLC; it suspends its authority to
+  do business in New York, including suing in its courts, until the notice
+  runs.
+- **Business tax in NYC** (UBT) only starts to matter past roughly $95k of
+  revenue.
 
 ## Plaid
 
@@ -84,7 +121,7 @@ entirely on the per-Item rate:
 | 2.00 | 2.55 | 0.55 | −1.45 |
 | 3.00 | 1.55 | −1.45 | −4.45 |
 
-Fixed costs are $18.95/mo, so break-even is a single-digit number of
+Fixed costs are $21.41/mo, so break-even is a single-digit number of
 subscribers at any rate in the top half of that table. **The price is set by
 what the product is worth, not by what it costs to run** — the risk is not the
 server, it is the bottom-right of that table.
@@ -109,6 +146,12 @@ server, it is the bottom-right of that table.
       minimum — Growth has one.
 - [ ] `.io` renewal price at Namecheap.
 - [ ] Stripe: whether Link/wallet or non-US cards change the 2.9% + 30¢.
+- [ ] LLC: an accountant's word that an Albany address is fine for an LLC run
+      from Manhattan.
+- [ ] LLC: the $25/yr filing fee and $9 biennial statement, and what an Albany
+      registered agent actually charges.
+- [ ] Google Play: whether its Organization rule covers a budgeting app, or
+      only banking, loans and trading.
 
 ## Monthly actuals
 
