@@ -203,7 +203,7 @@ pub struct Fetched {
 
 /// Everything the app needs, from the captured Sandbox responses.
 ///
-/// For `examples/snapshot.rs`, which generates the corpus `phone-state`'s
+/// For `examples/snapshot.rs`, which generates the corpus `client-state`'s
 /// tests read and wants a fixed answer. Nothing the server serves comes
 /// through here: it starts with credentials or it does not start.
 pub fn fetch_fixtures(now: api_common::Timestamp) -> Fetched {

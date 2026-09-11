@@ -13,7 +13,7 @@
 // to do, which is very little: send an event, match the action, draw the
 // strings it was handed. Every number below arrives already formatted.
 
-import uniffi.phone_state.*
+import uniffi.client_state.*
 
 fun main() {
     val core = Core()

@@ -3,7 +3,7 @@
 
 @file:Suppress("NAME_SHADOWING")
 
-package uniffi.phone_state
+package uniffi.client_state
 
 // Common helper code.
 //
@@ -67,7 +67,7 @@ open class RustBuffer : Structure() {
         internal fun alloc(size: ULong = 0UL) =
             uniffiRustCall { status ->
                 // Note: need to convert the size to a `Long` value to make this work with JVM.
-                UniffiLib.ffi_phone_state_rustbuffer_alloc(size.toLong(), status)
+                UniffiLib.ffi_client_state_rustbuffer_alloc(size.toLong(), status)
             }.also {
                 if (it.data == null) {
                     throw RuntimeException("RustBuffer.alloc() returned null data pointer (size=$size)")
@@ -88,7 +88,7 @@ open class RustBuffer : Structure() {
 
         internal fun free(buf: RustBuffer.ByValue) =
             uniffiRustCall { status ->
-                UniffiLib.ffi_phone_state_rustbuffer_free(buf, status)
+                UniffiLib.ffi_client_state_rustbuffer_free(buf, status)
             }
     }
 
@@ -446,7 +446,7 @@ private fun findLibraryName(componentName: String): String {
     if (libOverride != null) {
         return libOverride
     }
-    return "phone_state"
+    return "client_state"
 }
 
 // Define FFI callback types
@@ -789,16 +789,16 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 // We now use JNA's "direct mapping" - unclear if same considerations apply exactly.
 internal object IntegrityCheckingUniffiLib {
     init {
-        Native.register(IntegrityCheckingUniffiLib::class.java, findLibraryName(componentName = "phone_state"))
+        Native.register(IntegrityCheckingUniffiLib::class.java, findLibraryName(componentName = "client_state"))
         uniffiCheckContractApiVersion(this)
         uniffiCheckApiChecksums(this)
     }
 
-    external fun uniffi_phone_state_checksum_method_core_handle_events(): Int
+    external fun uniffi_client_state_checksum_method_core_handle_events(): Int
 
-    external fun uniffi_phone_state_checksum_constructor_core_new(): Int
+    external fun uniffi_client_state_checksum_constructor_core_new(): Int
 
-    external fun ffi_phone_state_uniffi_contract_version(): Int
+    external fun ffi_client_state_uniffi_contract_version(): Int
 }
 
 internal object UniffiLib {
@@ -808,224 +808,224 @@ internal object UniffiLib {
     }
 
     init {
-        Native.register(UniffiLib::class.java, findLibraryName(componentName = "phone_state"))
+        Native.register(UniffiLib::class.java, findLibraryName(componentName = "client_state"))
     }
 
-    external fun uniffi_phone_state_fn_clone_core(
+    external fun uniffi_client_state_fn_clone_core(
         `handle`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): Long
 
-    external fun uniffi_phone_state_fn_free_core(
+    external fun uniffi_client_state_fn_free_core(
         `handle`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): Unit
 
-    external fun uniffi_phone_state_fn_constructor_core_new(uniffi_out_err: UniffiRustCallStatus): Long
+    external fun uniffi_client_state_fn_constructor_core_new(uniffi_out_err: UniffiRustCallStatus): Long
 
-    external fun uniffi_phone_state_fn_method_core_handle_events(
+    external fun uniffi_client_state_fn_method_core_handle_events(
         `ptr`: Long,
         `events`: RustBuffer.ByValue,
         uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
 
-    external fun ffi_phone_state_rustbuffer_alloc(
+    external fun ffi_client_state_rustbuffer_alloc(
         `size`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
 
-    external fun ffi_phone_state_rustbuffer_from_bytes(
+    external fun ffi_client_state_rustbuffer_from_bytes(
         `bytes`: ForeignBytes.ByValue,
         uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
 
-    external fun ffi_phone_state_rustbuffer_free(
+    external fun ffi_client_state_rustbuffer_free(
         `buf`: RustBuffer.ByValue,
         uniffi_out_err: UniffiRustCallStatus,
     ): Unit
 
-    external fun ffi_phone_state_rustbuffer_reserve(
+    external fun ffi_client_state_rustbuffer_reserve(
         `buf`: RustBuffer.ByValue,
         `additional`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
 
-    external fun ffi_phone_state_rust_future_poll_u8(
+    external fun ffi_client_state_rust_future_poll_u8(
         `handle`: Long,
         `callback`: UniffiRustFutureContinuationCallback,
         `callbackData`: Long,
     ): Unit
 
-    external fun ffi_phone_state_rust_future_cancel_u8(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_cancel_u8(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_free_u8(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_free_u8(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_complete_u8(
+    external fun ffi_client_state_rust_future_complete_u8(
         `handle`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): Int
 
-    external fun ffi_phone_state_rust_future_poll_i8(
+    external fun ffi_client_state_rust_future_poll_i8(
         `handle`: Long,
         `callback`: UniffiRustFutureContinuationCallback,
         `callbackData`: Long,
     ): Unit
 
-    external fun ffi_phone_state_rust_future_cancel_i8(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_cancel_i8(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_free_i8(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_free_i8(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_complete_i8(
+    external fun ffi_client_state_rust_future_complete_i8(
         `handle`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): Byte
 
-    external fun ffi_phone_state_rust_future_poll_u16(
+    external fun ffi_client_state_rust_future_poll_u16(
         `handle`: Long,
         `callback`: UniffiRustFutureContinuationCallback,
         `callbackData`: Long,
     ): Unit
 
-    external fun ffi_phone_state_rust_future_cancel_u16(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_cancel_u16(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_free_u16(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_free_u16(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_complete_u16(
+    external fun ffi_client_state_rust_future_complete_u16(
         `handle`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): Int
 
-    external fun ffi_phone_state_rust_future_poll_i16(
+    external fun ffi_client_state_rust_future_poll_i16(
         `handle`: Long,
         `callback`: UniffiRustFutureContinuationCallback,
         `callbackData`: Long,
     ): Unit
 
-    external fun ffi_phone_state_rust_future_cancel_i16(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_cancel_i16(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_free_i16(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_free_i16(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_complete_i16(
+    external fun ffi_client_state_rust_future_complete_i16(
         `handle`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): Short
 
-    external fun ffi_phone_state_rust_future_poll_u32(
+    external fun ffi_client_state_rust_future_poll_u32(
         `handle`: Long,
         `callback`: UniffiRustFutureContinuationCallback,
         `callbackData`: Long,
     ): Unit
 
-    external fun ffi_phone_state_rust_future_cancel_u32(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_cancel_u32(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_free_u32(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_free_u32(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_complete_u32(
+    external fun ffi_client_state_rust_future_complete_u32(
         `handle`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): Int
 
-    external fun ffi_phone_state_rust_future_poll_i32(
+    external fun ffi_client_state_rust_future_poll_i32(
         `handle`: Long,
         `callback`: UniffiRustFutureContinuationCallback,
         `callbackData`: Long,
     ): Unit
 
-    external fun ffi_phone_state_rust_future_cancel_i32(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_cancel_i32(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_free_i32(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_free_i32(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_complete_i32(
+    external fun ffi_client_state_rust_future_complete_i32(
         `handle`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): Int
 
-    external fun ffi_phone_state_rust_future_poll_u64(
+    external fun ffi_client_state_rust_future_poll_u64(
         `handle`: Long,
         `callback`: UniffiRustFutureContinuationCallback,
         `callbackData`: Long,
     ): Unit
 
-    external fun ffi_phone_state_rust_future_cancel_u64(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_cancel_u64(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_free_u64(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_free_u64(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_complete_u64(
+    external fun ffi_client_state_rust_future_complete_u64(
         `handle`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): Long
 
-    external fun ffi_phone_state_rust_future_poll_i64(
+    external fun ffi_client_state_rust_future_poll_i64(
         `handle`: Long,
         `callback`: UniffiRustFutureContinuationCallback,
         `callbackData`: Long,
     ): Unit
 
-    external fun ffi_phone_state_rust_future_cancel_i64(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_cancel_i64(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_free_i64(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_free_i64(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_complete_i64(
+    external fun ffi_client_state_rust_future_complete_i64(
         `handle`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): Long
 
-    external fun ffi_phone_state_rust_future_poll_f32(
+    external fun ffi_client_state_rust_future_poll_f32(
         `handle`: Long,
         `callback`: UniffiRustFutureContinuationCallback,
         `callbackData`: Long,
     ): Unit
 
-    external fun ffi_phone_state_rust_future_cancel_f32(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_cancel_f32(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_free_f32(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_free_f32(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_complete_f32(
+    external fun ffi_client_state_rust_future_complete_f32(
         `handle`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): Float
 
-    external fun ffi_phone_state_rust_future_poll_f64(
+    external fun ffi_client_state_rust_future_poll_f64(
         `handle`: Long,
         `callback`: UniffiRustFutureContinuationCallback,
         `callbackData`: Long,
     ): Unit
 
-    external fun ffi_phone_state_rust_future_cancel_f64(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_cancel_f64(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_free_f64(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_free_f64(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_complete_f64(
+    external fun ffi_client_state_rust_future_complete_f64(
         `handle`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): Double
 
-    external fun ffi_phone_state_rust_future_poll_rust_buffer(
+    external fun ffi_client_state_rust_future_poll_rust_buffer(
         `handle`: Long,
         `callback`: UniffiRustFutureContinuationCallback,
         `callbackData`: Long,
     ): Unit
 
-    external fun ffi_phone_state_rust_future_cancel_rust_buffer(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_cancel_rust_buffer(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_free_rust_buffer(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_free_rust_buffer(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_complete_rust_buffer(
+    external fun ffi_client_state_rust_future_complete_rust_buffer(
         `handle`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
 
-    external fun ffi_phone_state_rust_future_poll_void(
+    external fun ffi_client_state_rust_future_poll_void(
         `handle`: Long,
         `callback`: UniffiRustFutureContinuationCallback,
         `callbackData`: Long,
     ): Unit
 
-    external fun ffi_phone_state_rust_future_cancel_void(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_cancel_void(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_free_void(`handle`: Long): Unit
+    external fun ffi_client_state_rust_future_free_void(`handle`: Long): Unit
 
-    external fun ffi_phone_state_rust_future_complete_void(
+    external fun ffi_client_state_rust_future_complete_void(
         `handle`: Long,
         uniffi_out_err: UniffiRustCallStatus,
     ): Unit
@@ -1035,7 +1035,7 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
     // Get the bindings contract version from our ComponentInterface
     val bindings_contract_version = 30
     // Get the scaffolding contract version by calling the into the dylib
-    val scaffolding_contract_version = lib.ffi_phone_state_uniffi_contract_version()
+    val scaffolding_contract_version = lib.ffi_client_state_uniffi_contract_version()
     if (bindings_contract_version != scaffolding_contract_version) {
         throw RuntimeException("UniFFI contract version mismatch: try cleaning and rebuilding your project")
     }
@@ -1043,10 +1043,10 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
-    if (lib.uniffi_phone_state_checksum_method_core_handle_events() != 43271) {
+    if (lib.uniffi_client_state_checksum_method_core_handle_events() != 29355) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_phone_state_checksum_constructor_core_new() != 22848) {
+    if (lib.uniffi_client_state_checksum_constructor_core_new() != 1868) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -1551,7 +1551,7 @@ open class Core :
         this(
             UniffiWithHandle,
             uniffiRustCall { _status ->
-                UniffiLib.uniffi_phone_state_fn_constructor_core_new(_status)
+                UniffiLib.uniffi_client_state_fn_constructor_core_new(_status)
             },
         )
 
@@ -1616,7 +1616,7 @@ open class Core :
                 return
             }
             uniffiRustCall { status ->
-                UniffiLib.uniffi_phone_state_fn_free_core(handle, status)
+                UniffiLib.uniffi_client_state_fn_free_core(handle, status)
             }
         }
     }
@@ -1629,7 +1629,7 @@ open class Core :
             throw InternalException("uniffiCloneHandle() called on NoHandle object")
         }
         return uniffiRustCall { status ->
-            UniffiLib.uniffi_phone_state_fn_clone_core(handle, status)
+            UniffiLib.uniffi_client_state_fn_clone_core(handle, status)
         }
     }
 
@@ -1643,7 +1643,7 @@ open class Core :
         FfiConverterSequenceTypeAction.lift(
             callWithHandle {
                 uniffiRustCall { _status ->
-                    UniffiLib.uniffi_phone_state_fn_method_core_handle_events(
+                    UniffiLib.uniffi_client_state_fn_method_core_handle_events(
                         it,
                         FfiConverterSequenceTypeEvent.lower(`events`),
                         _status,
@@ -3320,13 +3320,13 @@ public object FfiConverterTypeViewTxRow : FfiConverterRustBuffer<ViewTxRow> {
  */
 sealed class Action {
     data class ToUi(
-        val `action`: uniffi.phone_state.ActionUi,
+        val `action`: uniffi.client_state.ActionUi,
     ) : Action() {
         companion object
     }
 
     data class ToSource(
-        val `action`: uniffi.phone_state.ActionSource,
+        val `action`: uniffi.client_state.ActionSource,
     ) : Action() {
         companion object
     }
@@ -3658,8 +3658,8 @@ sealed class ActionUi {
      * would still be a strip of ground at the bottom of the phone.
      */
     data class Render(
-        val `screen`: uniffi.phone_state.ViewScreen,
-        val `dock`: uniffi.phone_state.ViewDock?,
+        val `screen`: uniffi.client_state.ViewScreen,
+        val `dock`: uniffi.client_state.ViewDock?,
     ) : ActionUi() {
         companion object
     }
@@ -3750,19 +3750,19 @@ public object FfiConverterTypeActionUi : FfiConverterRustBuffer<ActionUi> {
  */
 sealed class Event {
     data class FromUi(
-        val `event`: uniffi.phone_state.EventUi,
+        val `event`: uniffi.client_state.EventUi,
     ) : Event() {
         companion object
     }
 
     data class FromSource(
-        val `event`: uniffi.phone_state.EventSource,
+        val `event`: uniffi.client_state.EventSource,
     ) : Event() {
         companion object
     }
 
     data class FromRuntime(
-        val `event`: uniffi.phone_state.EventRuntime,
+        val `event`: uniffi.client_state.EventRuntime,
     ) : Event() {
         companion object
     }
@@ -3935,7 +3935,7 @@ sealed class EventSource {
      * that means — a banner, first run, the paywall — is decided here.
      */
     data class LoadFailed(
-        val `failure`: uniffi.phone_state.LoadFailure,
+        val `failure`: uniffi.client_state.LoadFailure,
     ) : EventSource() {
         companion object
     }
@@ -4233,7 +4233,7 @@ sealed class EventUi {
      * A tab in the dock.
      */
     data class ScreenOpened(
-        val `screen`: uniffi.phone_state.Screen,
+        val `screen`: uniffi.client_state.Screen,
     ) : EventUi() {
         companion object
     }
@@ -4252,7 +4252,7 @@ sealed class EventUi {
      * One of the two groups inside the filter panel.
      */
     data class FilterGroupToggled(
-        val `group`: uniffi.phone_state.FilterGroup,
+        val `group`: uniffi.client_state.FilterGroup,
     ) : EventUi() {
         companion object
     }
@@ -4275,7 +4275,7 @@ sealed class EventUi {
      * One of the four range forms.
      */
     data class RangeSelected(
-        val `kind`: uniffi.phone_state.RangeSelection,
+        val `kind`: uniffi.client_state.RangeSelection,
     ) : EventUi() {
         companion object
     }
@@ -4829,7 +4829,7 @@ sealed class LoadFailure {
      * The session is good, and the app is not paid for. **402.**
      */
     data class Unpaid(
-        val `reason`: uniffi.phone_state.Unpaid,
+        val `reason`: uniffi.client_state.Unpaid,
     ) : LoadFailure() {
         companion object
     }
@@ -4994,7 +4994,7 @@ sealed class RangeSelection {
      * This month, this week, this year.
      */
     data class This(
-        val `unit`: uniffi.phone_state.RangeUnit,
+        val `unit`: uniffi.client_state.RangeUnit,
     ) : RangeSelection() {
         companion object
     }
@@ -5004,7 +5004,7 @@ sealed class RangeSelection {
      */
     data class Last(
         val `count`: kotlin.UInt,
-        val `unit`: uniffi.phone_state.RangeUnit,
+        val `unit`: uniffi.client_state.RangeUnit,
     ) : RangeSelection() {
         companion object
     }
@@ -5363,7 +5363,7 @@ sealed class ViewOnboarding {
      */
     data class Welcome(
         val `title`: kotlin.String,
-        val `body`: List<uniffi.phone_state.ViewRun>,
+        val `body`: List<uniffi.client_state.ViewRun>,
         /**
          * `"Continue with email"`.
          */
@@ -5384,8 +5384,8 @@ sealed class ViewOnboarding {
     data class Email(
         val `step`: kotlin.String,
         val `title`: kotlin.String,
-        val `body`: List<uniffi.phone_state.ViewRun>,
-        val `field`: uniffi.phone_state.ViewField,
+        val `body`: List<uniffi.client_state.ViewRun>,
+        val `field`: uniffi.client_state.ViewField,
         /**
          * `"Continue"`.
          */
@@ -5400,8 +5400,8 @@ sealed class ViewOnboarding {
     data class Code(
         val `step`: kotlin.String,
         val `title`: kotlin.String,
-        val `body`: List<uniffi.phone_state.ViewRun>,
-        val `cells`: List<uniffi.phone_state.ViewCodeCell>,
+        val `body`: List<uniffi.client_state.ViewRun>,
+        val `cells`: List<uniffi.client_state.ViewCodeCell>,
         /**
          * `"That code is not right."` One sentence for every way a code can
          * fail, because the server answers with one.
@@ -5412,7 +5412,7 @@ sealed class ViewOnboarding {
          * present-and-dim, because a dim button still invites a press.
          */
         val `action`: kotlin.String?,
-        val `resend`: uniffi.phone_state.ViewResend,
+        val `resend`: uniffi.client_state.ViewResend,
     ) : ViewOnboarding() {
         companion object
     }
@@ -5424,8 +5424,8 @@ sealed class ViewOnboarding {
     data class Bank(
         val `step`: kotlin.String,
         val `title`: kotlin.String,
-        val `body`: List<uniffi.phone_state.ViewRun>,
-        val `rows`: List<uniffi.phone_state.ViewIconRow>,
+        val `body`: List<uniffi.client_state.ViewRun>,
+        val `rows`: List<uniffi.client_state.ViewIconRow>,
         val `action`: kotlin.String,
         /**
          * Whether the button is waiting on Plaid's page to appear.
@@ -5442,13 +5442,13 @@ sealed class ViewOnboarding {
     data class Sync(
         val `step`: kotlin.String,
         val `title`: kotlin.String,
-        val `body`: List<uniffi.phone_state.ViewRun>,
+        val `body`: List<uniffi.client_state.ViewRun>,
         /**
          * How far along, 0..1 — geometry rather than a percentage to print,
          * which is the exception `docs/FFI.md` carves out for a drawn figure.
          */
         val `progress`: kotlin.Double,
-        val `rows`: List<uniffi.phone_state.ViewIconRow>,
+        val `rows`: List<uniffi.client_state.ViewIconRow>,
     ) : ViewOnboarding() {
         companion object
     }
@@ -5458,8 +5458,8 @@ sealed class ViewOnboarding {
      */
     data class Ready(
         val `title`: kotlin.String,
-        val `body`: List<uniffi.phone_state.ViewRun>,
-        val `tally`: List<uniffi.phone_state.ViewTally>,
+        val `body`: List<uniffi.client_state.ViewRun>,
+        val `tally`: List<uniffi.client_state.ViewTally>,
         /**
          * `"Add another bank"`.
          */
@@ -5479,8 +5479,8 @@ sealed class ViewOnboarding {
     data class Failed(
         val `step`: kotlin.String,
         val `title`: kotlin.String,
-        val `body`: List<uniffi.phone_state.ViewRun>,
-        val `rows`: List<uniffi.phone_state.ViewIconRow>,
+        val `body`: List<uniffi.client_state.ViewRun>,
+        val `rows`: List<uniffi.client_state.ViewIconRow>,
         val `action`: kotlin.String,
         /**
          * The same wait as [`Bank`](ViewOnboarding::Bank)'s.
@@ -5945,37 +5945,37 @@ public object FfiConverterTypeViewRowTone : FfiConverterRustBuffer<ViewRowTone> 
  */
 sealed class ViewScreen {
     data class Ledger(
-        val `view`: uniffi.phone_state.ViewLedger,
+        val `view`: uniffi.client_state.ViewLedger,
     ) : ViewScreen() {
         companion object
     }
 
     data class Recurring(
-        val `view`: uniffi.phone_state.ViewRecurring,
+        val `view`: uniffi.client_state.ViewRecurring,
     ) : ViewScreen() {
         companion object
     }
 
     data class Balances(
-        val `view`: uniffi.phone_state.ViewBalances,
+        val `view`: uniffi.client_state.ViewBalances,
     ) : ViewScreen() {
         companion object
     }
 
     data class Account(
-        val `view`: uniffi.phone_state.ViewAccount,
+        val `view`: uniffi.client_state.ViewAccount,
     ) : ViewScreen() {
         companion object
     }
 
     data class Onboarding(
-        val `view`: uniffi.phone_state.ViewOnboarding,
+        val `view`: uniffi.client_state.ViewOnboarding,
     ) : ViewScreen() {
         companion object
     }
 
     data class Paywall(
-        val `view`: uniffi.phone_state.ViewPaywall,
+        val `view`: uniffi.client_state.ViewPaywall,
     ) : ViewScreen() {
         companion object
     }

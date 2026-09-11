@@ -1,7 +1,7 @@
 /// The IO half of the app: everything effectful, and nothing that decides.
 ///
 /// The pairing `docs/ARCHITECTURE.md` describes — a state machine that decides
-/// (`phone_state::StateApp`, reached here as `Core`) and a runtime that acts.
+/// (`client_state::StateApp`, reached here as `Core`) and a runtime that acts.
 /// The function structure mirrors the machine's: `performActions` fans out to
 /// `performAction`, which fans out to one function per action group.
 ///

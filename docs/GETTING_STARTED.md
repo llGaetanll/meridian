@@ -77,7 +77,7 @@ for working on the native phone apps.
 ## The native phone apps
 
 The views for iOS and Android are Swift and Kotlin, over the Rust core in
-`phone-state`. [FFI.md](FFI.md) explains why, and what the boundary
+`client-state`. [FFI.md](FFI.md) explains why, and what the boundary
 guarantees.
 
 ### Android
@@ -125,7 +125,7 @@ codesigning are Apple-platform only, and no toolchain works around that. A Mac
 is required to build or run it.
 
 What that means in practice is that as little of the app as possible waits on a
-Mac. The logic is `phone-state`, which is plain Rust tested with `eval!` and
+Mac. The logic is `client-state`, which is plain Rust tested with `eval!` and
 needs no phone at all; the design is settled in
 `sketches/design-language.html`, which is a page. The SwiftUI is a
 transcription of the two. The more that lives in Rust, the less is stuck behind
@@ -295,7 +295,7 @@ nothing at all for a stale host ID.
 
 ### Regenerating the bindings
 
-After any change to `phone-state`'s public types:
+After any change to `client-state`'s public types:
 ```
 ./scripts/bindings.sh
 ```

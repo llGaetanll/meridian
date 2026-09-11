@@ -301,19 +301,20 @@ in [STYLE.md](STYLE.md).
 ### Where it lives
 
 A state machine is a *program's* logic, not a shared type, so it lives with the
-program: `phone-state` for the app, `server-main` for the server. The `api-*`
+program: `client-state` for the apps, `server-main` for the server. The `api-*`
 crates stay what they are — types and pure functions with no program in them.
 
 The split falls differently for the two because their IO does:
 
 - The **server** owns its machine and its runtime in one crate, because it owns
   both halves.
-- The **phone** keeps its machine in `phone-state` alone, because the runtime
-  is Swift and Kotlin, and neither of those goes in a crate.
+- The **clients** keep their machine in `client-state` alone, because each
+  runs it differently: the phone's runtime is Swift and Kotlin, which go in no
+  crate, and the web's is its own, in `web-main`.
 
 ### What this looks like once it is built
 
-The phone is the worked example: `phone-state` decides, and
+The phone is the worked example: `client-state` decides, and
 `swift/Sources/MeridianApp` carries it out. Two of its properties are worth
 stating here, because they are what the design actually buys:
 
@@ -340,7 +341,7 @@ signal graph becomes plumbing, not the place where behaviour is decided.
 | `api-common` | Shared types: `Asset`, `Price`, `Quantity`, `Timestamp`, `ChartData`, and formatting helpers. |
 | `api-ledger` | Entries, positions, accounts, recurring streams, the ledger itself. |
 | `api-eval` | The `eval!` macro every state machine is tested with. |
-| `phone-state` | The phone app's state machine: events, actions, every screen's logic and every string it prints. Synchronous, no IO. Reached from Swift and Kotlin over UniFFI — see [FFI.md](FFI.md). |
+| `client-state` | The state machine the phone and the web both run: events, actions, every screen's logic and every string it prints. Synchronous, no IO. Reached from Swift and Kotlin over UniFFI — see [FFI.md](FFI.md) — and from the web directly. |
 | `src-yahoo`, `src-coingecko` | Price sources. Requests, responses, and pure projections onto `api-common` types. |
 | `src-plaid` | The bank connection, same shape as the price sources: sync, balances, recurring, and Plaid's rate limits. |
 | `server-wire` | The JSON the server and the app share. One definition; its dependencies are only the value types the protocol carries. |

@@ -140,7 +140,7 @@ fi
 
 SDK=$(xcrun --sdk iphoneos --show-sdk-path)
 
-cargo build -p phone-state --target $RUST_TARGET
+cargo build -p client-state --target $RUST_TARGET
 
 rm -rf $APP
 mkdir -p $APP
@@ -210,11 +210,11 @@ swiftc \
     -target "$TARGET" \
     -sdk "$SDK" \
     -I $BINDINGS \
-    -Xcc -fmodule-map-file=$BINDINGS/phone_stateFFI.modulemap \
+    -Xcc -fmodule-map-file=$BINDINGS/client_stateFFI.modulemap \
     -Xclang-linker -Wno-incompatible-sysroot \
-    target/$RUST_TARGET/debug/libphone_state.a \
+    target/$RUST_TARGET/debug/libclient_state.a \
     -o $APP/Meridian \
-    $BINDINGS/phone_state.swift \
+    $BINDINGS/client_state.swift \
     $(find swift/Sources/MeridianApp -name '*.swift')
 
 # compile_commands.json is deliberately not rewritten here. The editor wants

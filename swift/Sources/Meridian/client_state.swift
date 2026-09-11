@@ -7,8 +7,8 @@ import Foundation
 // Depending on the consumer's build setup, the low-level FFI code
 // might be in a separate module, or it might be compiled inline into
 // this module. This is a bit of light hackery to work with both.
-#if canImport(phone_stateFFI)
-import phone_stateFFI
+#if canImport(client_stateFFI)
+import client_stateFFI
 #endif
 
 fileprivate extension RustBuffer {
@@ -25,13 +25,13 @@ fileprivate extension RustBuffer {
     }
 
     static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
-        try! rustCall { ffi_phone_state_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
+        try! rustCall { ffi_client_state_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
     }
 
     // Frees the buffer in place.
     // The buffer must not be used after this is called.
     func deallocate() {
-        try! rustCall { ffi_phone_state_rustbuffer_free(self, $0) }
+        try! rustCall { ffi_client_state_rustbuffer_free(self, $0) }
     }
 }
 
@@ -327,7 +327,7 @@ private func makeRustCall<T, E: Swift.Error>(
     _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T,
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws -> T {
-    uniffiEnsurePhoneStateInitialized()
+    uniffiEnsureClientStateInitialized()
     var callStatus = RustCallStatus.init()
     let returnedVal = callback(&callStatus)
     try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
@@ -675,13 +675,13 @@ open class Core: CoreProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_phone_state_fn_clone_core(self.handle, $0) }
+        return try! rustCall { uniffi_client_state_fn_clone_core(self.handle, $0) }
     }
 public convenience init() {
     let handle =
         try! rustCall() {
         uniffiCallStatus in
-    uniffi_phone_state_fn_constructor_core_new(uniffiCallStatus
+    uniffi_client_state_fn_constructor_core_new(uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -693,7 +693,7 @@ public convenience init() {
             return
         }
 
-        try! rustCall { uniffi_phone_state_fn_free_core(handle, $0) }
+        try! rustCall { uniffi_client_state_fn_free_core(handle, $0) }
     }
 
     
@@ -708,7 +708,7 @@ public convenience init() {
 open func handleEvents(events: [Event]) -> [Action]  {
     return try!  FfiConverterSequenceTypeAction.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_phone_state_fn_method_core_handle_events(
+    uniffi_client_state_fn_method_core_handle_events(
             self.uniffiCloneHandle(),
         FfiConverterSequenceTypeEvent.lower(events),uniffiCallStatus
     )
@@ -6130,14 +6130,14 @@ private let initializationResult: InitializationResult = {
     // Get the bindings contract version from our ComponentInterface
     let bindings_contract_version = 30
     // Get the scaffolding contract version by calling the into the dylib
-    let scaffolding_contract_version = ffi_phone_state_uniffi_contract_version()
+    let scaffolding_contract_version = ffi_client_state_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_phone_state_checksum_method_core_handle_events() != 43271) {
+    if (uniffi_client_state_checksum_method_core_handle_events() != 29355) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_phone_state_checksum_constructor_core_new() != 22848) {
+    if (uniffi_client_state_checksum_constructor_core_new() != 1868) {
         return InitializationResult.apiChecksumMismatch
     }
 
@@ -6146,7 +6146,7 @@ private let initializationResult: InitializationResult = {
 
 // Make the ensure init function public so that other modules which have external type references to
 // our types can call it.
-public func uniffiEnsurePhoneStateInitialized() {
+public func uniffiEnsureClientStateInitialized() {
     switch initializationResult {
     case .ok:
         break

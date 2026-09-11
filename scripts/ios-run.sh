@@ -54,7 +54,7 @@ esac
 
 SDK=$(xcrun --sdk iphonesimulator --show-sdk-path)
 
-cargo build -p phone-state --target $RUST_TARGET
+cargo build -p client-state --target $RUST_TARGET
 
 rm -rf $APP
 mkdir -p $APP
@@ -110,7 +110,7 @@ esac
 # app say `Core()` without an import. `-Xcc -fmodule-map-file` is how the C
 # half of the bindings is found.
 #
-# The core is named as an archive rather than with `-lphone_state`, because the
+# The core is named as an archive rather than with `-lclient_state`, because the
 # cargo build leaves a `.dylib` beside the `.a` and the linker prefers it — and
 # an app that loads a library out of `target/` by absolute path works only on
 # the machine that built it.
@@ -123,11 +123,11 @@ swiftc \
     -target "$TARGET" \
     -sdk "$SDK" \
     -I $BINDINGS \
-    -Xcc -fmodule-map-file=$BINDINGS/phone_stateFFI.modulemap \
+    -Xcc -fmodule-map-file=$BINDINGS/client_stateFFI.modulemap \
     -Xclang-linker -Wno-incompatible-sysroot \
-    target/$RUST_TARGET/debug/libphone_state.a \
+    target/$RUST_TARGET/debug/libclient_state.a \
     -o $APP/Meridian \
-    $BINDINGS/phone_state.swift \
+    $BINDINGS/client_state.swift \
     $(find swift/Sources/MeridianApp -name '*.swift')
 
 # What the editor needs to understand the same files, written from the same
@@ -155,7 +155,7 @@ arguments = [
     "-target", target,
     "-sdk", sdk,
     "-I", str(bindings),
-    "-Xcc", f"-fmodule-map-file={bindings}/phone_stateFFI.modulemap",
+    "-Xcc", f"-fmodule-map-file={bindings}/client_stateFFI.modulemap",
     *files,
 ]
 

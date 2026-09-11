@@ -12,7 +12,7 @@
 //! them. Nothing here reads a view back out of an action list.
 
 use api_eval::eval;
-use phone_state::*;
+use client_state::*;
 
 /// 2026-08-19 00:00 UTC, the same clock the rest of the tests are set to.
 const NOW: u64 = 1_787_097_600;

@@ -1,7 +1,8 @@
-//! The phone app's decisions, and nothing else.
+//! The client apps' decisions, and nothing else.
 //!
 //! What happens when a tab is tapped, what each screen shows, and what IO to
-//! ask for. The phone apps reach it over FFI: one object, one method.
+//! ask for. The phone apps reach it over FFI: one object, one method. The web
+//! app links it directly.
 
 mod action;
 mod action_source;

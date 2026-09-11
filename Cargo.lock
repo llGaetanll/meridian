@@ -564,6 +564,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
+name = "client-state"
+version = "0.1.0"
+dependencies = [
+ "api-common",
+ "api-eval",
+ "api-ledger",
+ "serde",
+ "serde_json",
+ "server-wire",
+ "tracing",
+ "uniffi",
+]
+
+[[package]]
 name = "cmov"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2234,20 +2248,6 @@ name = "percent-encoding"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
-
-[[package]]
-name = "phone-state"
-version = "0.1.0"
-dependencies = [
- "api-common",
- "api-eval",
- "api-ledger",
- "serde",
- "serde_json",
- "server-wire",
- "tracing",
- "uniffi",
-]
 
 [[package]]
 name = "pin-project"

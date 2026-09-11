@@ -13,7 +13,7 @@
 //! a tick, from the device, which is the only clock the app has.
 
 use api_eval::eval;
-use phone_state::*;
+use client_state::*;
 
 /// 2026-08-19 00:00 UTC — a Wednesday, and the day the sketch is drawn
 /// against, so "in 3 days" and the rest line up with what it shows. It reaches

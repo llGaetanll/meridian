@@ -12,7 +12,7 @@ and action loop the boundary is shaped around.
 | Layer | Language | Shared by |
 | --- | --- | --- |
 | `api-*`, `src-*` | Rust | web, desktop, iOS, Android |
-| `phone-state` — events, actions, the machine | Rust | all of them |
+| `client-state` — events, actions, the machine | Rust | all of them |
 | Web and desktop views | Rust (Leptos) | web, macOS, Windows, Linux |
 | iOS views | Swift | iOS |
 | Android views | Kotlin | Android |
@@ -88,7 +88,7 @@ UniFFI covers part of it at runtime. The bindings carry a contract version and
 a per-function checksum, and refuse to load a library that disagrees:
 
 ```swift
-if (uniffi_phone_state_checksum_method_core_handle_events() != 6646) {
+if (uniffi_client_state_checksum_method_core_handle_events() != 6646) {
     return InitializationResult.apiChecksumMismatch
 }
 ```
@@ -118,17 +118,17 @@ Deliberately not set up yet — see below.
 ./scripts/bindings.sh
 ```
 
-Builds `phone-state` and regenerates both languages from the built library. The
-`uniffi-bindgen` binary lives in `phone-state` itself, so the generator version can
+Builds `client-state` and regenerates both languages from the built library. The
+`uniffi-bindgen` binary lives in `client-state` itself, so the generator version can
 never disagree with the runtime version.
 
 Generated output is committed:
 
-- `swift/Sources/Meridian/` — `phone_state.swift`, the C header, the modulemap
-- `kotlin/src/main/kotlin/uniffi/phone_state/phone_state.kt`
+- `swift/Sources/Meridian/` — `client_state.swift`, the C header, the modulemap
+- `kotlin/src/main/kotlin/uniffi/client_state/client_state.kt`
 
 The core is built in three shapes, which is what `crate-type` in
-`crates/phone-state/Cargo.toml` says: a **staticlib** for iOS, which links the
+`crates/client-state/Cargo.toml` says: a **staticlib** for iOS, which links the
 core into the app binary rather than loading one beside it; a **cdylib** for
 Android, and for `uniffi-bindgen`, which reads the built library rather than
 the source; and a plain **lib** so the Rust front-ends can depend on it
@@ -142,7 +142,7 @@ spelling one.
 ./scripts/kotlin-smoke.sh
 ```
 
-Compiles the generated Kotlin against the real `libphone_state.so` and runs it:
+Compiles the generated Kotlin against the real `libclient_state.so` and runs it:
 events in, actions out, values checked on the way back. It has been run and it
 passes, so the boundary described above is not a plan — it works.
 

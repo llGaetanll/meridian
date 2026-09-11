@@ -2,7 +2,7 @@
 ///
 /// Every one of these takes a finished value from the core and prints it. If
 /// you find yourself wanting a `String(format:)` or an `if amount < 0` in this
-/// file, the field is missing from the view type — add it in `phone-state`
+/// file, the field is missing from the view type — add it in `client-state`
 /// instead. That rule is what keeps the two front-ends the same app.
 ///
 /// Every row carries its own inset rather than sitting in a padded column, so

@@ -1,5 +1,5 @@
 [package]
-name = "phone-state"
+name = "client-state"
 version = "0.1.0"
 edition = "2024"
 
@@ -9,7 +9,7 @@ edition = "2024"
 # the built library rather than the source; lib so the Rust front-end can
 # depend on it directly.
 crate-type = ["staticlib", "cdylib", "lib"]
-name = "phone_state"
+name = "client_state"
 
 [dependencies]
 # Core types the machine decides over. Nothing here does IO, which is what
@@ -27,7 +27,7 @@ uniffi = { workspace = true, features = ["cli"] }
 api-eval = { path = "../api-eval" }
 
 [[bin]]
-# The bindings generator, so `cargo run -p phone-state --bin uniffi-bindgen`
+# The bindings generator, so `cargo run -p client-state --bin uniffi-bindgen`
 # needs no separately installed tool at a matching version.
 name = "uniffi-bindgen"
 path = "uniffi-bindgen.rs"

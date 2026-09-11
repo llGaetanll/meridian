@@ -246,7 +246,7 @@ came from.** `docs/API_FLOW.md` letters the server's flows A to F, so
 `crates/server-main/tests/` has `flow_a_signing_in.rs`,
 `flow_b_opening_a_bank_sign_in.rs` and the rest, each opening with the flow's
 happy path end to end and following it with that flow's lettered alternatives.
-`crates/phone-state/tests/state_onboarding.rs` is the same rule one file
+`crates/client-state/tests/state_onboarding.rs` is the same rule one file
 earlier: first run is a flow, so it is a file.
 
 What belongs to no flow is named `state_*` after the thing it is about — the

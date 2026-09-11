@@ -1,5 +1,5 @@
-module phone_stateFFI {
-    header "phone_stateFFI.h"
+module client_stateFFI {
+    header "client_stateFFI.h"
     export *
     use "Darwin"
     use "_Builtin_stdbool"

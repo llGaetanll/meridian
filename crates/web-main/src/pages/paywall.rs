@@ -83,7 +83,7 @@ fn ran_out(reason: UnpaidReason, unpaid: Option<&WireUnpaid>) -> Option<Timestam
 
 /// The two sentences at the top, for the reason the server sent.
 ///
-/// The same four the phone draws, in the same words — `phone-state`'s
+/// The same four the phone draws, in the same words — `client-state`'s
 /// `paywall` is the other half of this screen, and somebody who signs in on
 /// both should not be told two different stories about one account.
 struct Said {

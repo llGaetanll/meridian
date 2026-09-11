@@ -75,8 +75,8 @@ pub struct Account {
     ///
     /// Not worded. Turning `"401k"` into `"401(k)"` is a decision about what a
     /// screen says, so it belongs where every other such decision is made —
-    /// `phone-state`, by way of
-    /// [`account_kind_label`](../phone_state/fn.account_kind_label.html). Keeping
+    /// `client-state`, by way of
+    /// [`account_kind_label`](../client_state/fn.account_kind_label.html). Keeping
     /// the raw value here means a change to that wording applies to data that
     /// was stored months ago, with no migration.
     pub subtype: Option<String>,

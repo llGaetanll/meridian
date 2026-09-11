@@ -423,7 +423,7 @@ enum RuntimeIo {
         /// The same fact, in the machine's vocabulary.
         ///
         /// Classification and not a verdict: which screen a 401 leads to is
-        /// decided in `phone-state`, and this only says which of these it was.
+        /// decided in `client-state`, and this only says which of these it was.
         var failure: LoadFailure {
             switch self {
             case .unreachable: return .offline

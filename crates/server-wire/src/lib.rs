@@ -1,6 +1,6 @@
-//! The JSON `server-main` sends and the phone reads.
+//! The JSON `server-main` sends and the clients read.
 //!
-//! Its own crate because `phone-state` is a `cdylib` linked into iOS and
+//! Its own crate because `client-state` is a `cdylib` linked into iOS and
 //! Android and cannot depend on anything that drags in axum and tokio. Every
 //! type is both `Serialize` and `Deserialize`, so a renamed field stops
 //! compiling on the other side rather than arriving as `None`.
