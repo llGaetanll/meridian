@@ -14,6 +14,12 @@ target = "index.html"
 [[assets]]
 file = "input.css"
 
+# input.css is written for Tailwind 4. With no `tailwindcss` on PATH, trunk
+# downloads the version named here; left unset it fetches 3.3.5, which drops
+# every @import and ships a stylesheet with nothing in it.
+[tools]
+tailwindcss = "4.3.3"
+
 # Browsers cannot call Yahoo directly (no CORS headers), so in development the
 # dev server forwards /v8 and /v1 to it. Native builds talk to Yahoo directly.
 [[proxy]]
