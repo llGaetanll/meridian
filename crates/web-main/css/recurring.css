@@ -1,0 +1,87 @@
+/* Recurring: the split and every stream down the page, and the month they
+   land on in the rail. `sketches/web/app.html#recurring` is the drawing.
+
+   The streams keep the shape the ledger's rows have — a mark, a name that
+   takes the slack, then columns — because they are the same kind of list read
+   the same way. `frequency`, `when` and `soon` are three fields on the row;
+   the phone joins them into one line because it has one line. */
+
+.ui .rec-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 22px 0 6px;
+}
+.ui .sec-title + .rec-head { padding-top: 0; }
+.ui .rec-head .nm { font-size: 13px; font-weight: 600; letter-spacing: -0.008em; }
+.ui .rec-head .sum { font-size: 12px; font-weight: 500; color: var(--text-faint); }
+
+.ui .rec {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 100px 180px 110px;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 0;
+  border-top: 1px solid var(--divider);
+}
+.ui .rec-name {
+  min-width: 0;
+  font-size: 14.5px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ui .rec-freq { font-size: 12.5px; color: var(--text-muted); }
+.ui .rec-when { font-size: 12.5px; color: var(--text-faint); }
+/* Due inside the week. Amber rather than rose: a subscription landing on
+   Saturday is a heads-up, not a debt. */
+.ui .rec-when.soon { color: var(--amber-300); }
+.ui .rec-amt { text-align: right; font-size: 14.5px; }
+
+/* The calendar, in the rail: a whole month centred between two arrows. The
+   arrows are the plain button, because a framed one either side of the month
+   would be two controls flanking a label rather than one line you step
+   along. */
+
+.ui .cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  row-gap: 8px;
+}
+.ui .cal-wd {
+  font-size: 10px; font-weight: 600;
+  text-align: center;
+  color: color-mix(in srgb, var(--text-faint) 70%, transparent);
+  padding-bottom: 6px;
+}
+.ui .cal-grid .cal-day:not(.outside) { cursor: pointer; }
+.ui .cal-head { display: flex; align-items: center; justify-content: space-between; }
+/* Both arrows the same width, so the month between them lands on the middle of
+   the rail rather than on the middle of what is left over. */
+.ui .cal-head .btn { justify-content: center; width: 24px; padding: 4px 0; }
+.ui .cal-head .btn svg { width: 14px; height: 14px; }
+.ui .cal-month { font-size: 13.5px; font-weight: 600; letter-spacing: -0.01em; }
+
+/* What landed on the day you picked. It follows the calendar rather than
+   opening over it, so the month you chose the day in is still there while you
+   read it. */
+.ui .daycard { margin-top: 22px; }
+.ui .daycard-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding-bottom: 8px;
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint);
+}
+.ui .daycard-head .t {
+  font-size: 13px; font-weight: 700;
+  letter-spacing: 0; text-transform: none;
+  color: var(--text-muted);
+}
+.ui .dayrow {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--divider);
+}
+.ui .dayrow .nm {
+  min-width: 0;
+  font-size: 13px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ui .dayrow .amt { font-size: 13px; }

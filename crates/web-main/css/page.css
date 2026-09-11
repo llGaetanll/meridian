@@ -74,3 +74,19 @@
   font-size: 13px; font-weight: 700;
   letter-spacing: 0; text-transform: none;
 }
+
+/* The split: a table you read down, with each row's share standing on the rule
+   under it. */
+.ui .split-row {
+  position: relative;
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.ui .split-row .nm {
+  min-width: 0;
+  font-size: 13.5px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ui .split-row .amt { font-size: 13.5px; }
+.ui .split-row .track { position: absolute; left: 0; right: 0; bottom: 0; }
