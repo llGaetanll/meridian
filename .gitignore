@@ -26,4 +26,9 @@ backups/
 # never shared: the laptop makes its own and so does the box, because a private
 # key that travels has been on two disks and in whatever carried it.
 certs/
+
+# Apple's are the opposite: public certificates, the same on every machine,
+# and the server cannot verify a purchase without the root among them.
+!crates/src-apple/certs/
+
 .claude/

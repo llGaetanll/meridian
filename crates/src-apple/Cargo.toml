@@ -1,0 +1,16 @@
+[package]
+name = "src-apple"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+base64 = "0.22.1"
+p256 = { version = "0.13", features = ["ecdsa"] }
+p384 = { version = "0.13", features = ["ecdsa"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+x509-cert = "0.2"
+
+[dev-dependencies]
+sha2 = { version = "0.10", features = ["oid"] }
+x509-cert = { version = "0.2", features = ["builder"] }
