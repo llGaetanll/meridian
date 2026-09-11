@@ -19,8 +19,8 @@ const SECTIONS: LegalSection[] = [
       <>
         <p>
           This policy covers the Meridian applications, the website at{" "}
-          {site.domain}, and the API behind them. {legal.entity} is the
-          controller of the personal data described here.
+          {site.domain}, and the API behind them. Meridian, based in{" "}
+          {legal.based}, is the controller of the personal data described here.
         </p>
         <p>
           Connecting a bank is the largest thing this app asks of anybody, so
@@ -149,10 +149,6 @@ const SECTIONS: LegalSection[] = [
               <a href={processor.link}>Their privacy policy</a>.
             </li>
           ))}
-          <li>
-            <strong>Our payment processor</strong> — takes payment and holds the
-            card details we never see, if you are on a paid plan.
-          </li>
           <li>
             <strong>A model provider</strong> — receives a question and a
             structured result when you use the assistant, under the rule in
@@ -324,7 +320,7 @@ const SECTIONS: LegalSection[] = [
         <p>
           Privacy: <a href={`mailto:${site.privacy}`}>{site.privacy}</a>.
           Everything else: <a href={`mailto:${site.support}`}>{site.support}</a>.
-          By post: {legal.address}.
+          We answer within one or two business days.
         </p>
         <p>
           The <Link href="/terms">Terms of Service</Link> cover the rest of the

@@ -5,10 +5,11 @@
 /// or the wrong court, which is worse than a page that admits it is unfinished.
 /// `site/README.md` lists them.
 export const legal = {
-  entity: "[the legal entity that operates Meridian]",
-  jurisdiction: "[state], [country]",
-  courts: "the courts of [state], [country]",
-  address: "[postal address]",
+  /// Where Meridian is run from. No name and no street address: Meridian is a
+  /// sole proprietorship, and Stripe and Plaid hold both privately.
+  based: "New York, United States",
+  jurisdiction: "the State of New York, United States",
+  courts: "the state and federal courts located in New York",
   effective: "[effective date]",
   updated: "[last updated]",
 
@@ -25,6 +26,11 @@ export const legal = {
       name: "Resend",
       does: "delivers the sign-in codes and account email we send you",
       link: "https://resend.com/legal/privacy-policy",
+    },
+    {
+      name: "Stripe",
+      does: "takes payment for a subscription on the web; card details go from your browser to Stripe and never reach our servers",
+      link: "https://stripe.com/privacy",
     },
     {
       name: "DigitalOcean",

@@ -33,10 +33,12 @@ starts, so colour never comes from it.
 brackets is a blank, and the pages render them as written — a policy naming the
 wrong company or the wrong court is worse than one that admits it is unfinished.
 
-- `entity` — the legal entity that operates Meridian.
-- `jurisdiction` and `courts` — the governing law, and where a dispute goes.
-- `address` — a postal address for legal notice.
-- `effective` and `updated` — the two dates at the top of each document.
+- `effective` and `updated` — the two dates at the top of each document, set
+  on the day they are published.
+
+The pages name no person and no street address. Meridian is run by a sole
+proprietor, whose name and address Stripe and Plaid hold privately; the pages
+say only that it is based in New York, and give the support address.
 
 The documents also assume things that are true today and have to stay true:
 connections are read-only, nothing is sold, there is no analytics on this site,
