@@ -437,6 +437,32 @@ fn a_blocked_window_says_the_browser_stopped_it() {
     );
 }
 
+/// A session nobody has paid for is refused a bank sign-in before one opens,
+/// and the paywall takes the screen. Once it is paid for, first run is back on
+/// the bank step with Connect a bank live — nobody opened a sign-in, so none
+/// closed, and a window cannot be opened without the next tap.
+#[test]
+fn paying_in_the_middle_of_first_run_comes_back_to_the_bank() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        // What a runtime reports when the call that opens a sign-in is
+        // refused: the refusal, then that no bank came of it.
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Unpaid { reason: Unpaid::Never } } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { .. }, dock: None } },
+
+        < Event::FromSource { event: EventSource::BankAbandoned },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { .. }, dock: None } },
+
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: "{}".to_string() } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Bank { step: "Step 2 of 3 · Bank", title: "Just so you know", body: [ViewRun { text: "Meridian uses ", strong: false }, ViewRun { text: "Plaid", strong: true }, ViewRun { text: " to connect. You sign in on your bank's own page.", strong: false }], rows: [ViewIconRow { icon: "lock", tone: Plain, title: "Your bank password goes to Plaid", sub: Some("Never to Meridian. We are handed a key to read with, not your sign-in."), value: None }, ViewIconRow { icon: "tick-circle", tone: Plain, title: "Read-only", sub: Some("Balances, transactions and recurring bills. Nothing can move money."), value: None }, ViewIconRow { icon: "ledger", tone: Plain, title: "Meridian keeps your transactions", sub: Some("They are stored on our server. That is what the ledger is made of."), value: None }, ViewIconRow { icon: "trash", tone: Plain, title: "Removing a bank deletes them", sub: Some("One tap in Account, and its history goes with it."), value: None }], action: "Connect a bank", opening: None, legal: "Plaid handles the connection under its end-user privacy policy." } }, dock: None } }"#,
+    );
+}
+
 /// The same screen, reached from Add another bank, is a different situation:
 /// there is a bank connected, a ledger behind it, and nothing about either was
 /// touched by the attempt that just closed. So it says so, and it carries a

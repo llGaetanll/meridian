@@ -290,9 +290,28 @@ impl StateOnboarding {
         self.bank = Some(institution.to_string());
     }
 
+    /// Closed before it was done. Only a sign-in being opened can end, so an
+    /// ending while none is reports on one already settled — refused, and
+    /// dealt with when the refusal arrived — and changes nothing.
     pub(crate) fn bank_abandoned(&mut self) {
+        if !self.opening {
+            return;
+        }
+
         self.opening = false;
         self.step = Step::Failed;
+    }
+
+    /// The server would not open a bank sign-in, because the session has not
+    /// been paid for. None opened, so the flow waits on the bank step for the
+    /// tap that opens one once it has been: a window cannot open without one.
+    pub(crate) fn link_unpaid(&mut self) {
+        if !self.opening {
+            return;
+        }
+
+        self.opening = false;
+        self.step = Step::Bank;
     }
 
     /// Never opened, rather than closed before it was done. The same screen,

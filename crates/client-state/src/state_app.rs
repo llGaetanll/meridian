@@ -601,6 +601,13 @@ impl StateApp {
                 LoadFailure::Unpaid { reason } => {
                     self.unpaid = Some(reason.clone());
 
+                    // Refused while a bank sign-in was being opened is why it
+                    // never opened, and first run is under the paywall until
+                    // it is paid for.
+                    if let Some(flow) = &mut self.onboarding {
+                        flow.link_unpaid();
+                    }
+
                     self.render(actions);
                 }
 
