@@ -164,6 +164,13 @@ webhook bodies carry `item_id` and counts rather than credentials, so nothing on
 the list above is at risk today — but `scrub` should learn the field before a
 webhook type that carries more arrives.
 
+**Still to do: a signed purchase is now on an event too.**
+`EventRouter::AppleTransactionReceived` carries Apple's JWS, and a `?events`
+line prints the whole of it. It is not a credential of ours — it opens nothing,
+and the server refuses one that already pays for another account — but it is
+the only proof a particular person bought a subscription, and it belongs behind
+the same rule as a webhook body rather than in a log file.
+
 The list is `CREDENTIALS` in `api_trace::scrub`, and it is Plaid's vocabulary
 because Plaid is the only source that puts a credential in a body — a price
 feed authenticates with nothing, and Resend with a header. **A source added

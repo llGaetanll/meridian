@@ -7,7 +7,11 @@ use crate::rate_limit::Route;
 
 /// A route that had to know who was asking, waiting for the answer to that.
 /// One per [`EventRouter`] variant carrying a token.
-#[derive(Debug, Clone, Copy)]
+///
+/// Not `Copy`: one of these holds a signed transaction, for the same reason
+/// [`Pending::WebhookKey`](crate::Pending) holds a whole webhook — it is what
+/// the machine cannot get back from the next event.
+#[derive(Debug, Clone)]
 pub enum Authenticated {
     LinkRequested,
     LinkClosed,
@@ -20,12 +24,21 @@ pub enum Authenticated {
 
     SnapshotRequested,
 
-    /// Starting a subscription. One of the two routes an unpaid session may
+    /// Starting a subscription. One of the three routes an unpaid session may
     /// reach — see [`Authenticated::needs_entitlement`].
     SubscribeRequested,
 
-    /// Asking what the subscription is. The other one.
+    /// Asking what the subscription is. Another.
     BillingStatusRequested,
+
+    /// Recording a purchase the App Store has already taken. The third route
+    /// an unpaid session may reach, and the one that stops it being unpaid.
+    ///
+    /// Carries what Apple signed, because by the time the session has resolved
+    /// the event it came in on is gone.
+    AppleTransactionReceived {
+        signed: String,
+    },
 
     /// Cancelling and deleting, which are one action.
     DeleteRequested,
@@ -46,6 +59,11 @@ impl Authenticated {
             EventRouter::BillingStatusRequested { .. } => {
                 Some(Authenticated::BillingStatusRequested)
             }
+            EventRouter::AppleTransactionReceived { signed, .. } => {
+                Some(Authenticated::AppleTransactionReceived {
+                    signed: signed.clone(),
+                })
+            }
             EventRouter::DeleteRequested { .. } => Some(Authenticated::DeleteRequested),
             _ => None,
         }
@@ -60,6 +78,7 @@ impl Authenticated {
             Authenticated::SnapshotRequested => Route::Snapshot,
             Authenticated::SubscribeRequested => Route::BillingSubscribe,
             Authenticated::BillingStatusRequested => Route::BillingStatus,
+            Authenticated::AppleTransactionReceived { .. } => Route::BillingApple,
             Authenticated::DeleteRequested => Route::AccountDelete,
         }
     }
@@ -71,10 +90,11 @@ impl Authenticated {
     /// says which it is. There are no unpaid users, so the answer is `true`
     /// for everything the app actually does.
     ///
-    /// The two that answer `false` are the way out of that: a session that
-    /// has not paid can start a subscription and ask how it is going, and
-    /// nothing else. Refusing those would leave somebody signed in with no
-    /// route to becoming a customer.
+    /// The three that answer `false` are the way out of that: a session that
+    /// has not paid can start a subscription, hand over one the App Store has
+    /// already taken, and ask how it is going. Refusing those would leave
+    /// somebody signed in with no route to becoming a customer — and on the
+    /// phone, having paid Apple and being refused by us.
     pub fn needs_entitlement(&self) -> bool {
         match self {
             // Deleting is here for a reason worth stating: somebody whose
@@ -83,6 +103,7 @@ impl Authenticated {
             // deletion right that does not exist.
             Authenticated::SubscribeRequested
             | Authenticated::BillingStatusRequested
+            | Authenticated::AppleTransactionReceived { .. }
             | Authenticated::DeleteRequested => false,
 
             Authenticated::LinkRequested

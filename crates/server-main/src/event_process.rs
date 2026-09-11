@@ -6,6 +6,8 @@
 
 use api_common::Timestamp;
 
+use src_apple::AppleEnvironment;
+
 use crate::PlaidCollect;
 
 #[derive(Debug)]
@@ -23,6 +25,13 @@ pub enum EventProcess {
         /// the safe direction: an unverified webhook is somebody claiming a
         /// subscription was paid for.
         stripe_webhook_secret: Option<String>,
+
+        /// Which App Store this build sells in, from `APPLE_ENV`. `None`
+        /// refuses every Apple payload, which is the safe direction: a
+        /// sandbox purchase is free, and a build that has not said which
+        /// store it means must not be talked into taking one for a real
+        /// subscription.
+        apple_environment: Option<AppleEnvironment>,
     },
 
     /// Fresh entropy for the machine's own generator.

@@ -8,6 +8,7 @@ api-common = { path = "../api-common" }
 api-ledger = { path = "../api-ledger" }
 api-trace = { path = "../api-trace" }
 server-wire = { path = "../server-wire" }
+src-apple = { path = "../src-apple" }
 src-plaid = { path = "../src-plaid" }
 src-stripe = { path = "../src-stripe" }
 src-resend = { path = "../src-resend" }

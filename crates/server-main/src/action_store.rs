@@ -171,6 +171,20 @@ pub enum ActionStore {
         event_at: api_common::Timestamp,
     },
 
+    /// Write what Apple said about a subscription.
+    ///
+    /// The same write as [`ApplySubscriptionEvent`](ActionStore::ApplySubscriptionEvent)
+    /// keyed by the customer, and it carries the user because there may be no
+    /// row yet: a first purchase is a fact about somebody who has never paid.
+    ApplyAppleEvent {
+        user_id: uuid::Uuid,
+        customer_id: String,
+        status: String,
+        current_period_end: Option<api_common::Timestamp>,
+        event_id: String,
+        event_at: api_common::Timestamp,
+    },
+
     /// Every subscription there is, for the read at startup.
     LoadSubscriptions,
 

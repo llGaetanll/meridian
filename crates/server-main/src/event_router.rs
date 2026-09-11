@@ -59,6 +59,27 @@ pub enum EventRouter {
     /// longer matches.
     StripeWebhookReceived { signature: String, body: Vec<u8> },
 
+    /// `POST /billing/apple` — the App Store took a payment, and this is
+    /// Apple's word for it.
+    ///
+    /// Carries a token because the transaction says which Apple ID paid and
+    /// not which of our accounts did; the session is the only thing that ties
+    /// the two together.
+    ///
+    /// A string rather than raw bytes, unlike the two webhooks above. Apple
+    /// signs the JWS itself and not the body that carried it, so the envelope
+    /// can be parsed at the edge and only what was signed comes through.
+    AppleTransactionReceived {
+        token_sha256: Vec<u8>,
+        signed: String,
+    },
+
+    /// `POST /apple/webhook` — what Apple says happened to a subscription
+    /// while nobody was looking.
+    ///
+    /// No session: Apple is not signed in as anybody.
+    AppleNotificationReceived { signed: String },
+
     /// `POST /account/delete` — cancel the subscription, stop the banks, and
     /// delete everything.
     DeleteRequested { token_sha256: Vec<u8> },
@@ -79,11 +100,13 @@ impl EventRouter {
             | EventRouter::SnapshotRequested { token_sha256 }
             | EventRouter::SubscribeRequested { token_sha256 }
             | EventRouter::BillingStatusRequested { token_sha256 }
+            | EventRouter::AppleTransactionReceived { token_sha256, .. }
             | EventRouter::DeleteRequested { token_sha256 } => Some(token_sha256),
 
             EventRouter::CodeRequested { .. }
             | EventRouter::CodeSubmitted { .. }
             | EventRouter::WebhookReceived { .. }
+            | EventRouter::AppleNotificationReceived { .. }
             | EventRouter::StripeWebhookReceived { .. } => None,
         }
     }
@@ -106,9 +129,12 @@ impl EventRouter {
             EventRouter::SyncWatchRequested { .. } => Some(Route::SyncStatus),
             EventRouter::SubscribeRequested { .. } => Some(Route::BillingSubscribe),
             EventRouter::BillingStatusRequested { .. } => Some(Route::BillingStatus),
+            EventRouter::AppleTransactionReceived { .. } => Some(Route::BillingApple),
             EventRouter::DeleteRequested { .. } => Some(Route::AccountDelete),
 
-            EventRouter::WebhookReceived { .. } | EventRouter::StripeWebhookReceived { .. } => None,
+            EventRouter::WebhookReceived { .. }
+            | EventRouter::AppleNotificationReceived { .. }
+            | EventRouter::StripeWebhookReceived { .. } => None,
         }
     }
 
@@ -130,6 +156,8 @@ impl EventRouter {
             | EventRouter::SubscribeRequested { .. }
             | EventRouter::BillingStatusRequested { .. }
             | EventRouter::DeleteRequested { .. }
+            | EventRouter::AppleTransactionReceived { .. }
+            | EventRouter::AppleNotificationReceived { .. }
             | EventRouter::StripeWebhookReceived { .. } => None,
         }
     }

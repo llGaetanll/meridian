@@ -81,6 +81,9 @@ pub enum Route {
     /// `GET /billing/status`
     BillingStatus,
 
+    /// `POST /billing/apple` — a purchase the App Store has just taken.
+    BillingApple,
+
     /// `POST /account/delete`
     AccountDelete,
 }
@@ -98,6 +101,7 @@ impl Route {
             Route::SyncStatus => "/sync/status",
             Route::BillingSubscribe => "/billing/subscribe",
             Route::BillingStatus => "/billing/status",
+            Route::BillingApple => "/billing/apple",
             Route::AccountDelete => "/account/delete",
         }
     }
@@ -118,6 +122,10 @@ impl Route {
             Route::AuthRequest => (EMAILS_PER_QUARTER_HOUR, QUARTER_HOUR),
 
             Route::BillingSubscribe => (SUBSCRIBES_PER_MINUTE, MINUTE),
+
+            // As tight as subscribing, because it is subscribing: the App
+            // Store took the money and this is the only thing that records it.
+            Route::BillingApple => (SUBSCRIBES_PER_MINUTE, MINUTE),
 
             // As tight as subscribing, and for the mirror-image reason: each
             // one makes calls to Plaid that cannot be undone.

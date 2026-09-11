@@ -45,6 +45,7 @@ use crate::runtime_stripe;
 use crate::source_pool::SourcePool;
 use server_wire::SyncStage;
 use server_wire::WireSnapshot;
+use src_apple::AppleEnvironment;
 use src_plaid::PlaidClient;
 use src_plaid::PlaidCredentials;
 use src_plaid::PlaidError;
@@ -166,6 +167,25 @@ impl RuntimeServer {
             tracing::warn!("no stripe webhook secret: every stripe webhook will be refused");
         }
 
+        // Said out loud or not at all, the way `PLAID_ENV` is. A fact from the
+        // edge: whether a purchase can be believed is the machine's decision,
+        // and a build that has not said which store it sells in refuses every
+        // one of them rather than guessing at the harmless-looking answer.
+        let apple_environment = std::env::var("APPLE_ENV")
+            .ok()
+            .as_deref()
+            .and_then(AppleEnvironment::from_setting);
+
+        match apple_environment {
+            Some(environment) => tracing::info!(
+                store = environment.as_str(),
+                "selling through the app store",
+            ),
+            None => tracing::warn!(
+                "APPLE_ENV is not `sandbox` or `production`: every purchase will be refused",
+            ),
+        }
+
         let stripe_client = match StripeCredentials::from_env() {
             Ok(credentials) => match runtime_stripe::client(credentials) {
                 Ok(client) => Some(client),
@@ -280,6 +300,7 @@ impl RuntimeServer {
             EventProcess::Started {
                 collect,
                 stripe_webhook_secret: stripe_webhook_secret.clone(),
+                apple_environment,
             },
             EventProcess::Seeded { seed: fresh_seed() },
         ] {
@@ -931,6 +952,37 @@ impl RuntimeServer {
                 }
             }
 
+            ActionStore::ApplyAppleEvent {
+                user_id,
+                customer_id,
+                status,
+                current_period_end,
+                event_id,
+                event_at,
+            } => {
+                // The same conditional write as the one above, keyed by the
+                // customer, and reported the same way: a delivery that changed
+                // nothing is worth seeing in a log next to one that did.
+                let moved = src_postgres::apply_apple_event(
+                    db,
+                    *user_id,
+                    customer_id,
+                    status,
+                    *current_period_end,
+                    event_id,
+                    *event_at,
+                )
+                .await?;
+
+                if !moved {
+                    tracing::info!(
+                        customer_id,
+                        event_id,
+                        "a purchase said nothing new about a subscription"
+                    );
+                }
+            }
+
             ActionStore::DeleteUser { user_id } => {
                 src_postgres::delete_user(db, *user_id).await?;
             }
@@ -1243,6 +1295,7 @@ impl RuntimeServer {
             | ActionStore::SaveItem { .. }
             | ActionStore::SaveCustomer { .. }
             | ActionStore::ApplySubscriptionEvent { .. }
+            | ActionStore::ApplyAppleEvent { .. }
             | ActionStore::LoadSubscriptions
             | ActionStore::LoadUser { .. }
             | ActionStore::LoadAccessTokens { .. }

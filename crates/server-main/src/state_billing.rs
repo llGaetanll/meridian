@@ -2,7 +2,9 @@
 //!
 //! A process end to end, the way [`StateSignup`](crate::StateSignup) is: two
 //! calls to Stripe to start a subscription, and the webhooks that say what
-//! became of it. What it does *not* own is whether somebody is entitled —
+//! became of it. Apple's rail is the same process with the first half missing
+//! — the App Store takes the money without asking us — so what is here is the
+//! believing. What it does *not* own is whether somebody is entitled —
 //! that is [`Entitlement`](crate::Entitlement) on the parent, because a link
 //! request and a snapshot both ask it and neither is billing's business.
 //!
@@ -17,12 +19,27 @@ use std::collections::HashMap;
 use api_common::Timestamp;
 use uuid::Uuid;
 
+use src_apple::AppleEnvironment;
+use src_apple::AppleNotification;
+use src_apple::AppleStatus;
+use src_apple::AppleTransaction;
 use src_postgres::BillingProvider;
 
 use crate::Action;
 use crate::ActionStore;
+use crate::AppleFacts;
 use crate::CallId;
 use crate::Entitlement;
+
+/// The app a purchase has to have been made in.
+///
+/// Ours and fixed, rather than configured: a build that could be told another
+/// bundle id is a build that can be talked into believing somebody else's
+/// receipts.
+const BUNDLE_ID: &str = "com.meridian.phone";
+
+/// The one thing this app sells.
+const PRODUCT_ID: &str = "com.meridian.phone.monthly";
 
 /// Starting subscriptions, and hearing what came of them.
 #[derive(Debug, Default)]
@@ -47,12 +64,26 @@ pub struct StateBilling {
 
     /// The same for subscriptions, which is what most webhooks actually name.
     subscriptions: HashMap<String, Uuid>,
+
+    /// Which App Store this build sells in, read out of the environment on
+    /// [`EventProcess::Started`](crate::EventProcess).
+    ///
+    /// `None` is a machine that has not been told, and it refuses every Apple
+    /// payload. There is no default and nothing is inferred: a sandbox
+    /// purchase costs nothing, so a build that took one for a real
+    /// subscription would be giving the app away to anybody with Xcode.
+    apple_environment: Option<AppleEnvironment>,
 }
 
 impl StateBilling {
     /// What the process came up with.
-    pub fn started(&mut self, webhook_secret: Option<String>) {
+    pub fn started(
+        &mut self,
+        webhook_secret: Option<String>,
+        apple_environment: Option<AppleEnvironment>,
+    ) {
         self.webhook_secret = webhook_secret;
+        self.apple_environment = apple_environment;
     }
 
     /// Take what the store held, at startup.
@@ -71,10 +102,11 @@ impl StateBilling {
         }
     }
 
-    /// Verify nothing more. The secret goes rather than a flag beside it:
-    /// there is no way back from here.
+    /// Verify nothing more. What was needed to believe anything goes, rather
+    /// than a flag beside it: there is no way back from here.
     pub fn stopping(&mut self) {
         self.webhook_secret = None;
+        self.apple_environment = None;
     }
 
     /// Whose subscription this is, if we know.
@@ -223,6 +255,158 @@ impl StateBilling {
         });
     }
 
+    /// Whether a payload the app handed over is really Apple's, and what it
+    /// says.
+    ///
+    /// A rule, so it is the machine's: which certificate chain is acceptable
+    /// and which store this build sells in are both arithmetic over what
+    /// arrived, and neither needs a socket. `now` is the tick's, so a replay
+    /// lands where it did the first time.
+    ///
+    /// `None` is refused, for one of the reasons logged inside. The caller
+    /// gets no say in which: every way of being wrong is the same answer to
+    /// whoever sent it.
+    pub fn believes_apple(&self, signed: &str, now: Timestamp) -> Option<AppleFacts> {
+        let transaction = self.transaction_of(signed, now)?;
+
+        Some(AppleFacts {
+            status: status_of(&transaction, now),
+            good_until: seconds(transaction.good_until()),
+            event_id: transaction.transaction_id.clone(),
+            event_at: stamp(transaction.signed_date, now),
+            customer_id: transaction.original_transaction_id,
+        })
+    }
+
+    /// The same for a notification Apple sent, which carries its transaction
+    /// signed again inside it.
+    ///
+    /// **The inner payload is believed in its own right.** A notification
+    /// vouches for its own bytes and for nothing it quotes, so the transaction
+    /// goes through the same chain walk as one the app hands over — and a
+    /// notification naming a sandbox transaction is refused on a production
+    /// build even though the envelope verified.
+    pub fn believes_apple_notification(&self, signed: &str, now: Timestamp) -> Option<AppleFacts> {
+        let payload = self.verified(signed, now)?;
+
+        let Ok(notification) = serde_json::from_slice::<AppleNotification>(&payload) else {
+            tracing::warn!("a believed notification was not one this build understands");
+
+            return None;
+        };
+
+        // The ones that name nobody: a renewal date extended across many
+        // subscriptions at once. Believed and acted on by nothing.
+        let Some(data) = notification.data else {
+            tracing::info!(
+                kind = notification.notification_type,
+                "a notification about no one subscription",
+            );
+
+            return None;
+        };
+
+        let Some(inner) = data.signed_transaction_info else {
+            tracing::warn!(
+                kind = notification.notification_type,
+                "a notification carrying no transaction",
+            );
+
+            return None;
+        };
+
+        let transaction = self.transaction_of(&inner, now)?;
+
+        Some(AppleFacts {
+            // Apple's own word where it said one, and the least the
+            // transaction can be read as where it did not.
+            status: data
+                .status
+                .map(AppleStatus::from_code)
+                .unwrap_or_else(|| status_of(&transaction, now)),
+
+            good_until: seconds(transaction.good_until()),
+
+            // The notification's id and not the transaction's: Apple retries a
+            // delivery for days, and this is what tells the second one from a
+            // new fact.
+            event_id: notification.notification_uuid,
+
+            event_at: stamp(transaction.signed_date, now),
+            customer_id: transaction.original_transaction_id,
+        })
+    }
+
+    /// One transaction, believed and checked against what this build sells.
+    ///
+    /// Four things have to hold, and the first is the one that matters most: a
+    /// sandbox purchase is free, so a production build that took one would be
+    /// giving the app away to anybody with Xcode.
+    fn transaction_of(&self, signed: &str, now: Timestamp) -> Option<AppleTransaction> {
+        let payload = self.verified(signed, now)?;
+
+        let Ok(transaction) = serde_json::from_slice::<AppleTransaction>(&payload) else {
+            tracing::warn!("a believed payload was not a transaction this build understands");
+
+            return None;
+        };
+
+        let sells_in = self.apple_environment?;
+
+        if AppleEnvironment::from_name(&transaction.environment) != Some(sells_in) {
+            tracing::warn!(
+                said = transaction.environment,
+                sells_in = sells_in.as_str(),
+                "a transaction from another App Store than this build sells in",
+            );
+
+            return None;
+        }
+
+        if transaction.bundle_id != BUNDLE_ID {
+            tracing::warn!(
+                bundle_id = transaction.bundle_id,
+                "a transaction from another app",
+            );
+
+            return None;
+        }
+
+        if transaction.product_id != PRODUCT_ID {
+            tracing::warn!(
+                product_id = transaction.product_id,
+                "a transaction for something this app does not sell",
+            );
+
+            return None;
+        }
+
+        Some(transaction)
+    }
+
+    /// The payload of something Apple signed, or nothing.
+    ///
+    /// Refuses without an environment, which is a machine that was never told
+    /// which store it sells in — checked here rather than after the chain
+    /// walk, so a build that cannot act on a payload does not spend three
+    /// signature checks finding out.
+    fn verified(&self, signed: &str, now: Timestamp) -> Option<Vec<u8>> {
+        if self.apple_environment.is_none() {
+            tracing::warn!("an apple payload arrived at a machine that sells in no store");
+
+            return None;
+        }
+
+        match src_apple::verify(signed, src_apple::APPLE_ROOT_CA_G3, now.as_secs() as i64) {
+            Ok(payload) => Some(payload),
+            Err(e) => {
+                tracing::warn!(%e, "an apple payload was not believed");
+
+                None
+            }
+        }
+    }
+
     /// What a believed webhook says about somebody's subscription.
     ///
     /// Answers the entitlement it implies, for the parent to hold. The write
@@ -242,4 +426,37 @@ impl StateBilling {
             cancel_at_period_end: subscription.cancel_at_period_end,
         }
     }
+}
+
+/// What a transaction alone says the subscription is.
+///
+/// A transaction carries no status — Apple puts that in the notification
+/// beside it — so this is the least its own dates can be read as. Restoring a
+/// purchase that lapsed months ago says `expired` rather than `active`, which
+/// is the difference between a paywall that explains itself and one that
+/// claims a webhook went missing.
+fn status_of(transaction: &AppleTransaction, now: Timestamp) -> AppleStatus {
+    if transaction.revocation_date.is_some() {
+        return AppleStatus::Revoked;
+    }
+
+    match transaction.good_until() {
+        Some(until) if until > now.as_secs() as i64 => AppleStatus::Active,
+        _ => AppleStatus::Expired,
+    }
+}
+
+/// A date Apple sent, as the rest of the server counts time.
+fn seconds(value: Option<i64>) -> Option<Timestamp> {
+    value
+        .and_then(|secs| u64::try_from(secs).ok())
+        .map(Timestamp::from_secs)
+}
+
+/// The same for a date in milliseconds, falling back to the tick's own clock
+/// for one that is not a time at all.
+fn stamp(millis: i64, now: Timestamp) -> Timestamp {
+    u64::try_from(millis / 1000)
+        .map(Timestamp::from_secs)
+        .unwrap_or(now)
 }

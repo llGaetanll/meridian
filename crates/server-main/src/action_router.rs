@@ -82,6 +82,14 @@ pub enum ActionRouter {
     /// here (`entitlement::unpaid`) rather than reaching a client.
     PaymentRequired { unpaid: WireUnpaid },
 
+    /// The App Store account that paid already pays for somebody else's.
+    ///
+    /// One payer, one account — the rule the `subscriptions` unique index
+    /// keeps. Told apart from every other refusal because it is the one the
+    /// person can do something about: it is the wrong account signed in, not a
+    /// purchase that went wrong.
+    Claimed,
+
     /// A subscription has been started, and this is what the card form
     /// confirms against.
     ///

@@ -39,6 +39,7 @@ use crate::ActionSocket;
 use crate::ActionSourcePlaid;
 use crate::ActionSourceStripe;
 use crate::ActionStore;
+use crate::AppleFacts;
 use crate::Authenticated;
 use crate::CachedKey;
 use crate::CallId;
@@ -270,9 +271,18 @@ impl StateServer {
                 self.believe_stripe(request_id, signature, body, actions)
             }
 
+            // Apple's half of the same thing, and believed the same way. What
+            // differs is that there is no secret to check it against: the
+            // payload carries the certificate chain that signed it, and the
+            // root it has to reach is the one committed in `src-apple`.
+            EventRouter::AppleNotificationReceived { signed } => {
+                self.believe_apple(request_id, signed, actions)
+            }
+
             EventRouter::SnapshotRequested { .. }
             | EventRouter::SubscribeRequested { .. }
             | EventRouter::BillingStatusRequested { .. }
+            | EventRouter::AppleTransactionReceived { .. }
             | EventRouter::DeleteRequested { .. } => {
                 unreachable!("a request carrying a token is resolved before it is decided")
             }
@@ -366,6 +376,70 @@ impl StateServer {
         });
     }
 
+    /// Whether a notification is really Apple's, and what to do about it.
+    ///
+    /// **Answered in the same turn the chain checks out**, before the write
+    /// lands, for the reason [`believe_stripe`](Self::believe_stripe) is:
+    /// Apple retries a delivery it is not told about, for days, so waiting for
+    /// the store would turn one renewal into a pile of them. The ordering
+    /// guard on the write is what makes that safe.
+    fn believe_apple(&mut self, request_id: RequestId, signed: &str, actions: &mut Vec<Action>) {
+        let Some(facts) = self.billing.believes_apple_notification(signed, self.now) else {
+            self.signup
+                .answer(request_id, ActionRouter::Unauthorized, self.now, actions);
+
+            return;
+        };
+
+        self.signup
+            .answer(request_id, ActionRouter::Accepted, self.now, actions);
+
+        // Acted on only for a payer this process knows about. One it does not
+        // is a purchase made against another database — a sandbox tester on a
+        // server that has been reset, or an account since deleted.
+        let Some(user_id) = self.billing.user_for_customer(&facts.customer_id) else {
+            tracing::warn!(
+                customer = facts.customer_id,
+                "a notification named a payer this process does not know",
+            );
+
+            return;
+        };
+
+        self.apple_landed(request_id, user_id, &facts, actions);
+    }
+
+    /// Hold what Apple said, and write it.
+    ///
+    /// Both doors end here — the app handing over a purchase and Apple
+    /// reporting a renewal — because what is done about a transaction does not
+    /// depend on which of them carried it.
+    fn apple_landed(
+        &mut self,
+        request_id: RequestId,
+        user_id: Uuid,
+        facts: &AppleFacts,
+        actions: &mut Vec<Action>,
+    ) {
+        self.entitled.insert(user_id, facts.entitlement());
+
+        // So the next notification, which names the payer and not the user,
+        // finds whose row to move.
+        self.billing.customer_created(&facts.customer_id, user_id);
+
+        actions.push(Action::ToStore {
+            call_id: self.signup.calling(request_id, self.now),
+            action: ActionStore::ApplyAppleEvent {
+                user_id,
+                customer_id: facts.customer_id.clone(),
+                status: facts.status.as_str().to_string(),
+                current_period_end: facts.good_until,
+                event_id: facts.event_id.clone(),
+                event_at: facts.event_at,
+            },
+        });
+    }
+
     /// Carry on with a request now that the store has said who is asking.
     ///
     /// The rate limit is asked here rather than on arrival, because charging
@@ -450,7 +524,7 @@ impl StateServer {
                     request_id,
                     Pending::Loading {
                         user_id,
-                        event: *event,
+                        event: event.clone(),
                     },
                 );
 
@@ -469,7 +543,7 @@ impl StateServer {
                     request_id,
                     Pending::Loading {
                         user_id,
-                        event: *event,
+                        event: event.clone(),
                     },
                 );
 
@@ -488,6 +562,45 @@ impl StateServer {
             // paying us and we stop paying for them. Out is out.
             Authenticated::DeleteRequested => {
                 self.delete_requested(request_id, user_id, actions);
+            }
+
+            // The App Store took the money before we heard about it, so this
+            // is not a request to buy. It is the only record that a purchase
+            // happened, and the session is the one thing tying it to an
+            // account — which is why it is the one billing route that is
+            // authenticated and still open to somebody who has not paid.
+            Authenticated::AppleTransactionReceived { signed } => {
+                let Some(facts) = self.billing.believes_apple(signed, self.now) else {
+                    self.signup
+                        .answer(request_id, ActionRouter::Unauthorized, self.now, actions);
+
+                    return;
+                };
+
+                // One payer, one account — the rule the `subscriptions` unique
+                // index keeps, decided here so the answer says which it is
+                // rather than arriving as a failed write. Somebody signed into
+                // the wrong account can do something about this; a 500 tells
+                // them nothing.
+                match self.billing.user_for_customer(&facts.customer_id) {
+                    Some(owner) if owner != user_id => {
+                        tracing::warn!(
+                            customer = facts.customer_id,
+                            "a purchase already paying for another account",
+                        );
+
+                        self.signup
+                            .answer(request_id, ActionRouter::Claimed, self.now, actions);
+
+                        return;
+                    }
+                    _ => {}
+                }
+
+                self.signup
+                    .answer(request_id, ActionRouter::Accepted, self.now, actions);
+
+                self.apple_landed(request_id, user_id, &facts, actions);
             }
 
             Authenticated::BillingStatusRequested => {
@@ -1535,9 +1648,11 @@ impl StateServer {
             EventProcess::Started {
                 collect,
                 stripe_webhook_secret,
+                apple_environment,
             } => {
                 self.signup.started(*collect);
-                self.billing.started(stripe_webhook_secret.clone());
+                self.billing
+                    .started(stripe_webhook_secret.clone(), *apple_environment);
             }
 
             EventProcess::Seeded { seed } => {

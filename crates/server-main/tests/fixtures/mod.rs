@@ -14,6 +14,7 @@
 
 use api_common::Timestamp;
 use server_main::*;
+use src_apple::AppleEnvironment;
 
 /// 2026-08-19 00:00 UTC — the clock the whole suite is set to, and the same
 /// one the phone's tests use. It reaches the machine as a tick and nowhere
@@ -137,6 +138,7 @@ fn started(collect: PlaidCollect) -> StateServer {
                 event: EventProcess::Started {
                     collect,
                     stripe_webhook_secret: Some(STRIPE_WEBHOOK_SECRET.to_string()),
+                    apple_environment: Some(AppleEnvironment::Sandbox),
                 },
             },
         ],

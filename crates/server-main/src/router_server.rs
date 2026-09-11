@@ -57,6 +57,14 @@ pub const STRIPE_WEBHOOK_PATH: &str = "/stripe/webhook";
 /// The header Stripe signs a webhook with.
 const STRIPE_SIGNATURE_HEADER: &str = "Stripe-Signature";
 
+/// The route Apple is told to call.
+///
+/// Beside the others for the same reason Stripe's is: nothing advertises it,
+/// and it is typed into App Store Connect once. Apple keeps a separate URL per
+/// environment, so the sandbox and the production build of this server each
+/// name their own.
+pub const APPLE_WEBHOOK_PATH: &str = "/apple/webhook";
+
 /// Every route, over one channel.
 pub(crate) fn router(to_loop: ToLoop, origins: &WebOrigins) -> Router {
     Router::new()
@@ -69,7 +77,9 @@ pub(crate) fn router(to_loop: ToLoop, origins: &WebOrigins) -> Router {
         .route("/billing/subscribe", post(billing_subscribe))
         .route("/billing/status", get(billing_status))
         .route("/account/delete", post(account_delete))
+        .route("/billing/apple", post(billing_apple))
         .route(STRIPE_WEBHOOK_PATH, post(stripe_webhook))
+        .route(APPLE_WEBHOOK_PATH, post(apple_webhook))
         .route(WEBHOOK_PATH, post(plaid_webhook))
         // Inside the CORS layer, so a browser's preflight `OPTIONS` is answered
         // above this and never logged.
@@ -292,6 +302,99 @@ async fn stripe_webhook(
         // nobody is entitled by.
         _ => StatusCode::SERVICE_UNAVAILABLE,
     }
+}
+
+/// `POST /billing/apple`
+///
+/// A purchase the App Store has already taken, handed over by the app.
+///
+/// Authenticated, unlike the webhook below, and that is the whole reason it
+/// exists: Apple's transaction says which Apple ID paid and never which of our
+/// accounts did, so the session is the only thing that ties the two together.
+/// Open to a session that has not paid, because paying is what it is doing.
+async fn billing_apple(
+    State(to_loop): State<ToLoop>,
+    Extension(ip): Extension<ClientIp>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<AppleTransactionBody>,
+) -> Result<StatusCode, Refusal> {
+    let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let answer = runtime_router::dispatch(
+        &to_loop,
+        Client::anonymous(ip),
+        EventRouter::AppleTransactionReceived {
+            token_sha256,
+            signed: body.signed_transaction,
+        },
+    )
+    .await;
+
+    refused(&answer)?;
+
+    match answer {
+        Some(ActionRouter::Accepted) => Ok(StatusCode::NO_CONTENT),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
+
+        // The Apple ID that paid already pays for another account. Its own
+        // code because it is the one refusal here somebody can act on.
+        Some(ActionRouter::Claimed) => Err(StatusCode::CONFLICT.into()),
+
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),
+    }
+}
+
+/// What `POST /billing/apple` takes.
+#[derive(Debug, Deserialize)]
+struct AppleTransactionBody {
+    /// What StoreKit calls `jwsRepresentation`: the transaction, signed by
+    /// Apple. Nothing in it is believed until the machine has checked the
+    /// chain that signed it.
+    #[serde(rename = "signedTransaction")]
+    signed_transaction: String,
+}
+
+/// `POST /apple/webhook`
+///
+/// What Apple says happened to a subscription while the app was shut. No
+/// session and no rate limit, the same as Stripe's: the signature on the
+/// payload is the whole of what protects it, and it is checked in the machine
+/// rather than here.
+///
+/// Unlike the two webhooks beside it the body is parsed before anything is
+/// believed, and that is safe here: Apple signs the payload itself rather than
+/// the envelope that carried it, so re-reading the JSON changes nothing that
+/// is checked.
+async fn apple_webhook(
+    State(to_loop): State<ToLoop>,
+    Extension(ip): Extension<ClientIp>,
+    Json(body): Json<AppleNotificationBody>,
+) -> StatusCode {
+    match runtime_router::dispatch(
+        &to_loop,
+        Client::anonymous(ip),
+        EventRouter::AppleNotificationReceived {
+            signed: body.signed_payload,
+        },
+    )
+    .await
+    {
+        Some(ActionRouter::Accepted) => StatusCode::NO_CONTENT,
+        Some(ActionRouter::Unauthorized) => StatusCode::UNAUTHORIZED,
+
+        // Anything else is a notification we could not act on. Told to Apple
+        // as a failure so it sends it again: dropping one silently is a
+        // renewal nobody is entitled by, or a refund nobody loses access for.
+        _ => StatusCode::SERVICE_UNAVAILABLE,
+    }
+}
+
+/// What `POST /apple/webhook` takes.
+#[derive(Debug, Deserialize)]
+struct AppleNotificationBody {
+    /// Apple's `signedPayload`, which is the whole notification as a JWS.
+    #[serde(rename = "signedPayload")]
+    signed_payload: String,
 }
 
 /// What `POST /auth/request` takes.

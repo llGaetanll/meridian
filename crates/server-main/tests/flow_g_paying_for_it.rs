@@ -247,6 +247,7 @@ fn a_machine_with_no_secret_believes_nothing() {
                 event: EventProcess::Started {
                     collect: PlaidCollect::Poll,
                     stripe_webhook_secret: None,
+                    apple_environment: None,
                 },
             },
         ],
