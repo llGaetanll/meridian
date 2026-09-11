@@ -40,6 +40,25 @@ is already there, so the code you just wrote is not in it.
 To read logs, ask for the slice you want and let it return: `docker compose
 logs --since 2m server`. Never `-f`, which does not return.
 
+## Building
+
+**Every cargo command you type covers the whole workspace. Never narrow one
+with `-p`.**
+
+```
+cargo clippy --workspace --all-targets                    check, the same command the editor runs
+cargo test --workspace                                    every test
+cargo test --workspace --test state_limits                one test file
+cargo test --workspace --test state_limits -- some_name   one test
+```
+
+Cargo works out a dependency's features from only the crates it was asked to
+build. So `-p server-main` and `-p client-state` each build `serde`, `syn` and
+`sqlx` with different features, and everything above them compiles again.
+When every agent runs the same command, dependencies are built once and
+reused. The scripts in `scripts/` that pass `-p` are fine: each one always
+runs the same command, so its build is reused too.
+
 ## Style
 
 `docs/STYLE.md` is the house style. **Read it before writing code.** Don't make
