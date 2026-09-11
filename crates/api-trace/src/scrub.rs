@@ -150,11 +150,14 @@ fn looks_like_json(body: &str) -> bool {
 
 /// Field names whose value is a credential and never reaches a line.
 ///
-/// Plaid's vocabulary, because Plaid is the only source that puts a credential
-/// in a body at all — a price feed authenticates with nothing, and Resend with
-/// a header. A source added later brings its names here rather than its own
-/// rule: one list is the only version of this anybody has to keep true.
+/// Plaid's vocabulary, and our own server's session — a price feed
+/// authenticates with nothing, and Resend with a header. A source added later
+/// brings its names here rather than its own rule: one list is the only
+/// version of this anybody has to keep true.
 const CREDENTIALS: &[&str] = &[
+    // Our own session, as `/auth/verify` hands it to a client. Good for ninety
+    // days, and a bearer: whoever holds it reads that account's banks.
+    "token",
     // On every request. `secret` is account-wide: it reads every Item on the
     // account, not one user's.
     "client_id",
@@ -425,6 +428,14 @@ mod tests {
         assert_eq!(
             redact(r#"{"access_token":"access-sandbox-1","item_id":"8Pd5Zx"}"#),
             r#"{"access_token":"[redacted 16]","item_id":"8Pd5Zx"}"#
+        );
+    }
+
+    #[test]
+    fn takes_the_session_out_of_a_sign_in() {
+        assert_eq!(
+            redact(r#"{"token":"9f86d081884c7d65"}"#),
+            r#"{"token":"[redacted 16]"}"#
         );
     }
 
