@@ -7,6 +7,9 @@ target/
 logs/
 *.log
 
+# What trunk writes on a laptop, again on every save while it is serving.
+crates/web-main/dist/
+
 # Secrets never enter an image. Compose passes them as environment at run
 # time, which is also the only way they stay out of `docker history`.
 .env
@@ -26,3 +29,8 @@ kotlin/
 sketches/
 docs/
 compile_commands.json
+
+# The site and the two images that are not this one — `deploy/` holds their
+# Dockerfiles, their ignore files and their Caddyfiles.
+site/
+deploy/

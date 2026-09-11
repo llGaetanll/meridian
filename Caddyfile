@@ -1,8 +1,9 @@
 # The only thing on the box that meets the internet.
 #
-# Caddy holds 80 and 443 and reaches the server over the compose network, which
-# is why docker-compose.yml publishes 8082 on loopback in production instead of
-# on every interface: there is exactly one door, and this is it.
+# Caddy holds 80 and 443 and reaches the server, the web app and the site over
+# the compose network, which is why docker-compose.yml publishes 8082 on
+# loopback in production instead of on every interface: there is exactly one
+# door, and this is it.
 #
 # TLS is automatic. Caddy asks Let's Encrypt for a certificate the first time it
 # serves the name and renews it from then on, so nothing here names a
@@ -89,4 +90,42 @@
 	# the failure the server's own log cannot explain. It lands in
 	# `docker compose logs` beside everything else.
 	log
+}
+
+# The web app. How long each file is kept is the web container's to say — it
+# knows which of its files are named for their content — so this block is TLS
+# and the headers every page on the name carries.
+{$MERIDIAN_APP_DOMAIN} {
+	reverse_proxy web:8080
+
+	header {
+		# The API's six months. Caddy already sends plain http here on to
+		# https; this is what stops a browser asking over http again.
+		Strict-Transport-Security "max-age=15552000"
+
+		# A page that signs somebody in and shows them their bank is not one
+		# another site gets to draw inside a frame.
+		X-Frame-Options DENY
+		X-Content-Type-Options nosniff
+	}
+
+	log
+}
+
+# The site: the landing page and the two legal documents.
+{$MERIDIAN_SITE_DOMAIN} {
+	reverse_proxy site:8080
+
+	header {
+		Strict-Transport-Security "max-age=15552000"
+		X-Content-Type-Options nosniff
+	}
+
+	log
+}
+
+# One address for the site, so that a link and a search result cannot disagree
+# about where it lives.
+www.{$MERIDIAN_SITE_DOMAIN} {
+	redir https://{$MERIDIAN_SITE_DOMAIN}{uri} permanent
 }

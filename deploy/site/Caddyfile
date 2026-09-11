@@ -1,0 +1,31 @@
+# The site's container: the files Next exported, over plain http on 8080.
+#
+# TLS, HSTS and the log are the root Caddyfile's, which is the one on the
+# internet and reaches this one as `site:8080` over the compose network.
+{
+	admin off
+	persist_config off
+	auto_https off
+}
+
+:8080 {
+	root * /srv
+
+	# Next names everything under `/_next/static/` for its content or for the
+	# build, so those are kept for a year. The pages themselves are asked about
+	# on every load.
+	header /_next/static/* Cache-Control "public, max-age=31536000, immutable"
+	header ?Cache-Control no-cache
+
+	file_server {
+		precompressed br
+	}
+
+	# Next's own not-found page, with the 404 kept.
+	handle_errors 404 {
+		rewrite * /404.html
+		file_server {
+			precompressed br
+		}
+	}
+}

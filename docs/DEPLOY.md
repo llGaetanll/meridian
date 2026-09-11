@@ -2,32 +2,38 @@
 
 The server runs on one DigitalOcean droplet at `api.meridiancash.io`, in the
 same containers it runs in on a laptop, with a proxy in front of it holding the
-only open port.
+only open port. The web app and the site are on the same box, behind the same
+proxy, each in a container of its own.
 
 ```
-      internet
-         │  443
-         ▼
-    ┌─────────┐
-    │  caddy  │  TLS, and nothing else. Certificate from Let's Encrypt.
-    └────┬────┘
-         │  server:8082, over the compose network
-    ┌────▼────┐
-    │ server  │  server-main. Publishes 8082 on loopback only.
-    └────┬────┘
+                      internet
+                         │  443
+                         ▼
+                    ┌─────────┐
+                    │  caddy  │  TLS, and nothing else. Certificates from Let's Encrypt.
+                    └────┬────┘
+         ┌───────────────┼───────────────┐   over the compose network
+         │ server:8082   │ web:8080      │ site:8080
+    ┌────▼────┐     ┌────▼────┐     ┌────▼────┐
+    │ server  │     │   web   │     │  site   │   web and site: Caddy handing out files
+    └────┬────┘     └─────────┘     └─────────┘
          │  db:5432
     ┌────▼────┐
     │   db    │  postgres:17-alpine, on a named volume.
     └─────────┘
 ```
 
+The server publishes 8082 on loopback only; the web app and the site publish
+nothing.
+
 Everything is driven from a laptop with `scripts/deploy.sh`, which is ssh and
 nothing else — no registry, no CI, and a deploy that still works on the day
 GitHub is down.
 
-**The image is built on the laptop and shipped over ssh**, with
-`docker save | ssh docker load`. The box holds no source, no Rust toolchain and
-no git; it runs Postgres, Caddy and a ten-megabyte binary. Compiling 427 crates
+**The images are built on the laptop and shipped over ssh**, with
+`docker save | ssh docker load`. The box holds no source, no Rust toolchain, no
+Node and no git; it runs Postgres, Caddy, a ten-megabyte binary and two
+directories of files. Compiling 427 crates
 is a fixed cost, and a machine sized to do it is that cost charged monthly
 rather than once — the running stack measures 11 MiB for the server and 98 MiB
 for Postgres, which is a different machine entirely from one that can link
@@ -40,17 +46,17 @@ laptop's `docker build` is the only compiler in this document.
 
 | Name | Points at | Used for |
 | --- | --- | --- |
-| `api.meridiancash.io` | the box | The server. The only name that has to exist. |
-| `meridiancash.io` | nowhere yet | The site — `site/`, built to static files. |
-| `app.meridiancash.io` | nothing yet | The web app, when it ships. |
+| `api.meridiancash.io` | the box | The server. |
+| `app.meridiancash.io` | the box | The web app — `crates/web-main`, compiled to wasm. |
+| `meridiancash.io` | the box | The site — `site/`, exported to static files. |
+| `www.meridiancash.io` | the box | A redirect to `meridiancash.io`. |
 
 The server is on its own subdomain so that putting the site or the web app on
 the apex is a DNS record rather than a migration.
 
-The site is three static pages and nothing else, so it does not belong on this
-box: `npm run build` in `site/` writes `out/`, and any static host takes it
-from there. The apex and the API are independent, which is the point — a deploy
-of one cannot take down the other.
+All three are shipped together, under one commit, by the same command — see
+[the web app and the site](#the-web-app-and-the-site) for how the two that are
+files get built.
 
 ## Before the box exists
 
@@ -204,6 +210,24 @@ live yet, the challenge fails, and Let's Encrypt's rate limit is five
 certificates per name per week — so this is the one step where being early
 costs a week of waiting. `dig api.meridiancash.io` before the first `up`.
 
+The web app and the site need their names too, and for the same reason Caddy
+asks for all four certificates the first time it starts with them. At
+Namecheap, under Advanced DNS for `meridiancash.io`:
+
+| Type | Host | Value |
+| --- | --- | --- |
+| `A` | `@` | `138.197.20.171` |
+| `AAAA` | `@` | `2604:a880:800:14:0:3:7423:5000` |
+| `CNAME` | `app` | `api.meridiancash.io.` |
+| `CNAME` | `www` | `meridiancash.io.` |
+
+The two addresses are the box's, as `api.meridiancash.io` answers them. The
+apex has to carry them itself, since a CNAME is not allowed there; `app` and
+`www` name another name instead, so moving the box changes the records that
+carry addresses and leaves these two alone. `dig +short app.meridiancash.io`,
+`www.` and the apex answering the box is the check, before the `.env` lines
+below go in.
+
 ## The box's `.env`
 
 Not the laptop's. It lives at `/srv/meridian/.env`, never enters an image, and
@@ -212,8 +236,11 @@ answers:
 
 ```sh
 # The proxy. No defaults anywhere: a box that has not said which name it
-# answers to would ask for a certificate for nothing.
+# answers to would ask for a certificate for nothing. The site's name also
+# answers as `www.`, which redirects to it.
 MERIDIAN_DOMAIN=api.meridiancash.io
+MERIDIAN_APP_DOMAIN=app.meridiancash.io
+MERIDIAN_SITE_DOMAIN=meridiancash.io
 TLS_EMAIL=you@example.com
 
 # Loopback, not every interface. Caddy reaches the server by service name over
@@ -290,12 +317,13 @@ From the laptop, with `MERIDIAN_HOST=meridian@api.meridiancash.io` in `.env`:
 ./scripts/deploy.sh ship       # compiles here; the first one is slow
 ./scripts/deploy.sh ps
 ./scripts/deploy.sh logs
-./scripts/deploy.sh health     # through DNS, TLS and Caddy, to the server
+./scripts/deploy.sh health     # through DNS, TLS and Caddy, to all three
 ```
 
 `health` answering `ok store=postgres` over https means all four of DNS, the
-certificate, the proxy and the database are right. Migrations run at boot, so
-there is no separate step for the schema.
+certificate, the proxy and the database are right, and an `ok` for each of the
+other two names means the same of theirs, as far as a page answering 200.
+Migrations run at boot, so there is no separate step for the schema.
 
 It asks by presenting a token that is deliberately not a session, and expects a
 401. There is no `/health` route: an unauthenticated one is a thing anyone on
@@ -319,6 +347,55 @@ still on it under its own tag:
 which is worth the disk precisely because there is no source on the box to
 rebuild an old one from. `docker image prune` there when it matters; at ~98 MB
 an image and 25 GB of disk, it will not be soon.
+
+The three images go back together. A commit shipped before the web app and the
+site had images of their own has only the server's on the box, and `rollback`
+refuses it rather than bringing the stack half up.
+
+## The web app and the site
+
+Two containers, `web` and `site`, each a `caddy:2-alpine` with files in it and
+nothing else. `deploy/web/` and `deploy/site/` hold each one's Dockerfile, its
+ignore file and its Caddyfile. Both are built from the root of the repository,
+because both import the design language from `sketches/shared`, and each has an
+ignore file of its own because the root `.dockerignore` is the server's.
+
+**The web app** is `trunk build --release`. Which server it calls is decided
+when it compiles — `MERIDIAN_SERVER`, read by `option_env!` in
+`crates/web-main/src/io/meridian.rs` — and the Dockerfile sets it to
+`https://api.meridiancash.io`. The box's `.env` cannot change it.
+
+trunk's own tools — wasm-bindgen, wasm-opt and tailwind — are pinned in the
+Dockerfile and installed in layers of their own, and the build runs
+`--offline`, so a deploy asks GitHub for nothing until one of those versions
+changes. Two of them have to agree with the tree: wasm-bindgen with
+`Cargo.lock`, tailwind with `crates/web-main/Trunk.toml`. Bumping either there
+without the Dockerfile fails the build, naming the tool.
+
+**The site** is `npm ci` and `npm run build`, which writes `out/`. The build
+fetches Inter from Google Fonts, since `next/font` serves it from the site
+itself.
+
+Files named for their content — trunk's `-<hash>` files and `snippets/`, and
+everything under Next's `/_next/static/` — are kept for a year as `immutable`.
+Everything else, `index.html` and the site's pages among them, is `no-cache`,
+which a browser checks on every load. `/linked.html`, where Plaid sends the
+bank's window back on the web, is served as it is and never kept. Everything
+that compresses is brotli'd when the image is built, so the box never
+compresses on a request.
+
+The proxy adds HSTS and `nosniff` to both names, and `X-Frame-Options: DENY`
+to the app. The server's `WEB_ORIGINS` has to be `https://app.meridiancash.io`
+exactly, or the browser refuses every call the app makes.
+
+**Markets is not ready for this.** Its chart asks Yahoo through the page's own
+origin, at `/v8/*` and `/v1/*`, which `trunk serve` forwards in development and
+nothing forwards here. It is locked in the web app's nav for now; when it
+unlocks, `deploy/web/Caddyfile` needs those two paths proxied to
+`query1.finance.yahoo.com`.
+
+**The legal pages are not finished.** `site/lib/legal.ts` has six blanks only a
+person can fill (#56), and the pages render them as written.
 
 ## Then the phone
 

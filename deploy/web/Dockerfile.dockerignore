@@ -1,0 +1,18 @@
+# The web image's context, in place of the root `.dockerignore`. Everything is
+# out unless it is named: the workspace, the design language the stylesheet
+# imports, and this image's Caddyfile.
+
+*
+!Cargo.toml
+!Cargo.lock
+!rust-toolchain.toml
+!crates/
+!sketches/shared/
+!deploy/web/Caddyfile
+
+# What trunk and cargo write on a laptop. `dist` alone is tens of megabytes of
+# a debug build.
+crates/web-main/dist/
+**/target/
+**/logs/
+**/*.log

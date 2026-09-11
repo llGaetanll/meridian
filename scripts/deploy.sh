@@ -14,7 +14,7 @@
 #     ./scripts/deploy.sh ps            what is actually running
 #     ./scripts/deploy.sh logs          the last few minutes, and return
 #     ./scripts/deploy.sh watch         follow them, in a window of its own
-#     ./scripts/deploy.sh health        ask the server, through the proxy
+#     ./scripts/deploy.sh health        ask every name, through the proxy
 #     ./scripts/deploy.sh shell         an interactive shell, in the checkout
 #
 # `logs` and `watch` are the two halves of the same question and are separate on
@@ -23,12 +23,13 @@
 # `watch` never returns, because it is a window you leave open — the box's
 # equivalent of `scripts/dev.sh` with no arguments.
 #
-# The image is built *here* and shipped over the same ssh connection as
-# everything else. The box runs Postgres, Caddy and a ten-megabyte binary, and
-# nothing else — no Rust toolchain, no source, no git. Compiling 427 crates is
-# a fixed cost that does not belong in the monthly bill for a machine whose
-# real job is to hold a socket open, and sizing a server for a compiler is
-# paying for the build every month instead of once.
+# The images are built *here* and shipped over the same ssh connection as
+# everything else. The box runs Postgres, Caddy, a ten-megabyte binary and two
+# directories of files, and nothing else — no Rust toolchain, no Node, no
+# source, no git. Compiling 427 crates is a fixed cost that does not belong in
+# the monthly bill for a machine whose real job is to hold a socket open, and
+# sizing a server for a compiler is paying for the build every month instead of
+# once.
 #
 # There is no registry in the path either, for the reason there is no CI: a
 # deploy that depends on nothing but ssh is a deploy that still works on the
@@ -97,6 +98,12 @@ case "$cmd" in
         # no image.
         docker build --build-arg "MERIDIAN_SHA=$sha" -t "meridian-server:$sha" .
 
+        # The web app and the site, from the same root and under the same tag:
+        # one commit is one deploy of all three. Each Dockerfile has an ignore
+        # file of its own beside it, since the root one is the server's.
+        docker build -f deploy/web/Dockerfile -t "meridian-web:$sha" .
+        docker build -f deploy/site/Dockerfile -t "meridian-site:$sha" .
+
         # How the box is run, which is not in the image and changes far more
         # often than the code. Its `.env` is deliberately not in this list: it
         # holds that box's secrets, it is not ours to overwrite, and a deploy
@@ -118,8 +125,9 @@ case "$cmd" in
 
         # Gzipped because the layer that carries the binary does not compress
         # on the wire otherwise, and this runs over whatever connection the
-        # laptop has rather than a datacentre one.
-        docker save "meridian-server:$sha" | gzip | \
+        # laptop has rather than a datacentre one. One archive for all three,
+        # so the Caddy under the web app and the site crosses it once.
+        docker save "meridian-server:$sha" "meridian-web:$sha" "meridian-site:$sha" | gzip | \
             ssh "$MERIDIAN_HOST" "gunzip | docker load"
 
         remote "echo '$sha' > .sha"
@@ -140,7 +148,10 @@ case "$cmd" in
             exit 1
         fi
 
-        remote "docker image inspect 'meridian-server:$sha' >/dev/null"
+        # All three or nothing. A commit shipped before the web app and the site
+        # had images of their own has only the server's, and is refused here
+        # rather than brought half up.
+        remote "docker image inspect 'meridian-server:$sha' 'meridian-web:$sha' 'meridian-site:$sha' >/dev/null"
         remote "echo '$sha' > .sha"
         remote "$COMPOSE up -d"
         ;;
@@ -211,6 +222,8 @@ case "$cmd" in
     # it, so a 401 means DNS, TLS, Caddy, the server and the database are all
     # answering. A store that is down says 500 here, not 401.
     health)
+        failed=
+
         code=$(curl -s -o /dev/null -w '%{http_code}' \
             -H 'Authorization: Bearer not-a-session' \
             "https://${MERIDIAN_DOMAIN:-api.meridiancash.io}/snapshot")
@@ -219,6 +232,24 @@ case "$cmd" in
             echo "ok store=postgres"
         else
             echo "unhealthy: /snapshot answered $code, expected 401" >&2
+            failed=1
+        fi
+
+        # The web app and the site are files, so the page answering 200 is the
+        # whole of the question: DNS, the certificate, Caddy and the container.
+        for url in "https://${MERIDIAN_APP_DOMAIN:-app.meridiancash.io}/" \
+            "https://${MERIDIAN_SITE_DOMAIN:-meridiancash.io}/"; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+
+            if [ "$code" = "200" ]; then
+                echo "ok $url"
+            else
+                echo "unhealthy: $url answered $code, expected 200" >&2
+                failed=1
+            fi
+        done
+
+        if [ -n "$failed" ]; then
             exit 1
         fi
         ;;

@@ -1,0 +1,16 @@
+# The site image's context, in place of the root `.dockerignore`. Everything is
+# out unless it is named: the site, the design language it imports, and this
+# image's Caddyfile.
+
+*
+!site/
+!sketches/shared/
+!deploy/site/Caddyfile
+
+# What `npm install` and `next build` write on a laptop. The image installs
+# and builds its own.
+site/node_modules/
+site/.next/
+site/out/
+site/next-env.d.ts
+site/*.tsbuildinfo

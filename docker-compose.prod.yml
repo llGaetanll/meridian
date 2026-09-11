@@ -49,6 +49,25 @@ services:
     restart: unless-stopped
     logging: *logging
 
+  # The web app and the site, each a Caddy handing out files that were built on
+  # the laptop — `deploy/web` and `deploy/site`. Shipped with the server under
+  # the same tag, so one commit is one deploy of all three and a rollback names
+  # all three.
+  #
+  # No ports. Caddy below reaches each by service name, and there is nothing
+  # in either worth asking for from a shell on the box.
+  web:
+    profiles: ["server"]
+    image: meridian-web:${MERIDIAN_SHA:?}
+    restart: unless-stopped
+    logging: *logging
+
+  site:
+    profiles: ["server"]
+    image: meridian-site:${MERIDIAN_SHA:?}
+    restart: unless-stopped
+    logging: *logging
+
   caddy:
     # Behind the same profile as the server, so a bare `up` on the box still
     # gets the database alone and the two halves cannot disagree about whether
@@ -87,6 +106,13 @@ services:
       MERIDIAN_DOMAIN: ${MERIDIAN_DOMAIN:?}
       TLS_EMAIL: ${TLS_EMAIL:?}
 
+      # The web app's name and the site's. No defaults either, for the same
+      # reason, and one more: a box that has not been given them is a box whose
+      # DNS was never pointed at them, and asking Let's Encrypt for a name that
+      # does not resolve here is a failed challenge counted against the name.
+      MERIDIAN_APP_DOMAIN: ${MERIDIAN_APP_DOMAIN:?}
+      MERIDIAN_SITE_DOMAIN: ${MERIDIAN_SITE_DOMAIN:?}
+
       # The Apple Developer team the phone app is signed by, which the
       # Caddyfile puts in the file iOS reads to decide whether this domain
       # vouches for that app. Unset is allowed and is what a box without an
@@ -102,6 +128,8 @@ services:
 
     depends_on:
       - server
+      - web
+      - site
 
 volumes:
   caddy-data:
