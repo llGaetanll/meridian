@@ -324,7 +324,7 @@ impl RuntimeApp {
             let Some(popup) = popup else {
                 tracing::warn!("the browser would not open a window for the bank");
 
-                runtime.source(EventSource::BankAbandoned);
+                runtime.source(EventSource::BankBlocked);
 
                 return;
             };
