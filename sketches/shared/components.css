@@ -459,3 +459,21 @@
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   font-size: 22px; font-weight: 600;
 }
+
+/* A banner: something went wrong, and the one thing to do about it.
+
+   Over the page and not instead of it — whatever was loaded before is still
+   worth looking at. Rose because it is a failure, and only a tint of it,
+   because a failure to reach the server is not money going out. The words are
+   grey: the colour already says it went wrong, and the sentence is read, not
+   seen. */
+
+.ui .banner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--down) 25%, transparent);
+  border-radius: var(--r-sm);
+  background: var(--down-tint);
+  font-size: 12.5px; color: var(--text-muted);
+}
+.ui .banner .say { flex: 1; min-width: 0; }

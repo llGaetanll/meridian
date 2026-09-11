@@ -8,6 +8,7 @@ use client_state::ViewPaywall;
 use client_state::ViewRecurring;
 use client_state::ViewScreen;
 use leptos::prelude::*;
+use web_components::SearchRow;
 use web_components::Shell;
 
 use crate::frame::Frame;
@@ -100,22 +101,50 @@ fn AppShell() -> impl IntoView {
 
                 Some(Tab::Ledger) => {
                     follow(screen, ledger)
-                        .map(|view| view! { <div class="ui"><LedgerPage view=view /></div> })
+                        .map(|view| {
+                            view! {
+                                <div class="ui">
+                                    <SearchRow />
+                                    <LedgerPage view=view />
+                                </div>
+                            }
+                        })
                         .into_any()
                 }
                 Some(Tab::Recurring) => {
                     follow(screen, recurring)
-                        .map(|view| view! { <div class="ui"><RecurringPage view=view /></div> })
+                        .map(|view| {
+                            view! {
+                                <div class="ui">
+                                    <SearchRow />
+                                    <RecurringPage view=view />
+                                </div>
+                            }
+                        })
                         .into_any()
                 }
                 Some(Tab::Balances) => {
                     follow(screen, balances)
-                        .map(|view| view! { <div class="ui"><BalancesPage view=view /></div> })
+                        .map(|view| {
+                            view! {
+                                <div class="ui">
+                                    <SearchRow />
+                                    <BalancesPage view=view />
+                                </div>
+                            }
+                        })
                         .into_any()
                 }
                 Some(Tab::Account) => {
                     follow(screen, account)
-                        .map(|view| view! { <div class="ui"><AccountPage view=view /></div> })
+                        .map(|view| {
+                            view! {
+                                <div class="ui">
+                                    <SearchRow />
+                                    <AccountPage view=view />
+                                </div>
+                            }
+                        })
                         .into_any()
                 }
             }}

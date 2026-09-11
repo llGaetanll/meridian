@@ -109,6 +109,10 @@
               <div class="n-t">One scroller</div>
               <div class="n-d">The sidebar stays put and everything right of it moves together — the rail included.</div>
             </div>
+            <div class="n-item">
+              <div class="n-t">The app scopes <code>.ui</code> to each page, not the shell</div>
+              <div class="n-d">Drawn here on <code>.shell</code>. In the app it sits on a wrapper around each of the machine's pages and on the banner instead, because the Markets page was built before the design language and uses <code>.btn</code>, <code>.chip</code>, <code>.field</code> and <code>.range</code> for controls of its own — under <code>.ui</code> the language's rules would restyle it. The sidebar needs no scope: nothing in it is a component.</div>
+            </div>
       </div>
     </div>
   </section>

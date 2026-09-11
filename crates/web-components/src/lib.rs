@@ -10,5 +10,6 @@ pub use markets::*;
 pub use page::*;
 pub use recurring::*;
 pub use shell::Brand;
+pub use shell::SearchRow;
 pub use shell::Shell;
 pub use transaction::*;

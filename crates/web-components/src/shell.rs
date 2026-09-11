@@ -176,6 +176,21 @@ fn Sidebar(
     }
 }
 
+/// The search box at the head of a page, drawn and dead, as the dock's search
+/// button is on the phone: nothing has drawn the screen behind it.
+#[component]
+pub fn SearchRow() -> impl IntoView {
+    view! {
+        <div class="searchrow">
+            <div class="search dead" aria-disabled="true">
+                <Icon kind=IconKind::Search />
+                <span class="placeholder">"Search merchants, accounts, streams…"</span>
+                <span class="kbd">"⌘K"</span>
+            </div>
+        </div>
+    }
+}
+
 /// What went wrong, over whatever was loaded before — which is still worth
 /// looking at, so the failure sits above it instead of replacing it.
 #[component]

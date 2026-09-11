@@ -55,13 +55,13 @@ body {
   display: block;
 }
 
-.nav { display: flex; flex-direction: column; gap: 10px; }
+.nav { display: flex; flex-direction: column; gap: 6px; }
 
 .nav a {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 11px 14px;
+  padding: 10px 14px;
   border-radius: var(--r-pill);
   color: var(--slate-300);
   text-decoration: none;
@@ -69,11 +69,14 @@ body {
   font-weight: 500;
 }
 .nav a:hover { background: var(--bg-raised); color: var(--text); }
-.nav a.active {
+.nav a.on {
   background: var(--accent-tint);
   color: var(--violet-300);
   font-weight: 600;
 }
+/* Drawn but not built, the same state a chip has. */
+.nav a.dead { opacity: 0.4; cursor: default; }
+.nav a.dead:hover { background: none; color: var(--slate-300); }
 .nav .icon { width: 22px; height: 22px; flex: none; stroke-width: 1.75; }
 
 .sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
@@ -111,8 +114,6 @@ body {
   background: var(--up); flex: none;
 }
 
-/* Search — lives in the content, horizontally centered */
-
 /* one scroll container for the whole page; the sidebar stays put */
 .main { display: flex; flex-direction: column; min-width: 0; height: 100%; overflow-y: auto; }
 .main::-webkit-scrollbar { width: 8px; }
@@ -130,7 +131,11 @@ body {
   border: 1px solid var(--border);
   color: var(--text-faint);
 }
+/* Drawn and dead, as the dock's search button is on the phone: nothing has
+   drawn the screen behind it. */
+.search.dead { opacity: 0.45; cursor: default; }
 .search svg { width: 19px; height: 19px; flex: none; }
+.search .placeholder { flex: 1; font-size: 15px; }
 .search input {
   flex: 1; background: none; border: 0; outline: none;
   color: var(--text); font: inherit; font-size: 15px;
