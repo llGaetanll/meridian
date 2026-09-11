@@ -17,7 +17,7 @@ pub(super) fn Bank(view: Signal<ViewOnboarding>, ui: Callback<EventUi>) -> impl 
     let action = part(view, |view| {
         read::action(view).unwrap_or_default().to_string()
     });
-    let opening = part(view, read::opening);
+    let opening = part(view, |view| read::opening(view).map(str::to_string));
     let legal = part(view, |view| read::legal(view).to_string());
 
     view! {

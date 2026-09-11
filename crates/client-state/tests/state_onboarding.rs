@@ -404,7 +404,7 @@ fn an_abandoned_sign_in_says_nothing_was_connected() {
         < Event::FromSource { event: EventSource::BankAbandoned },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 2 of 3 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so no bank was connected.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: false, open: None } }, dock: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 2 of 3 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so no bank was connected.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: None, open: None } }, dock: None } }"#,
 
         < Event::FromUi { event: EventUi::BankConnectRequested },
         > @r#"ToSource { action: StartBankLink }"#,
@@ -425,7 +425,7 @@ fn a_blocked_window_says_the_browser_stopped_it() {
         < Event::FromSource { event: EventSource::BankBlocked },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 2 of 3 · Bank", title: "That didn't finish", body: [ViewRun { text: "Your browser blocked the window the bank sign-in opens in, so no bank was connected. Allow pop-ups for Meridian and try again.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: false, open: None } }, dock: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 2 of 3 · Bank", title: "That didn't finish", body: [ViewRun { text: "Your browser blocked the window the bank sign-in opens in, so no bank was connected. Allow pop-ups for Meridian and try again.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: None, open: None } }, dock: None } }"#,
 
         < Event::FromUi { event: EventUi::BankConnectRequested },
         < Event::FromSource { event: EventSource::BankAbandoned },
@@ -461,7 +461,7 @@ fn a_second_sign_in_that_did_not_finish_leaves_a_way_out() {
         < Event::FromSource { event: EventSource::BankAbandoned },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 2 of 3 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so nothing was added.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "First Platypus Bank is still connected", sub: Some("Nothing about it changed. This attempt is the only thing that did not finish."), value: None }], action: "Try again", opening: false, open: Some("Open Meridian") } }, dock: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 2 of 3 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so nothing was added.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "First Platypus Bank is still connected", sub: Some("Nothing about it changed. This attempt is the only thing that did not finish."), value: None }], action: "Try again", opening: None, open: Some("Open Meridian") } }, dock: None } }"#,
     );
 }
 
@@ -537,7 +537,7 @@ fn a_pending_sign_in_that_never_lands_says_nothing_was_connected() {
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 2 of 3 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so no bank was connected.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: false, open: None } }, dock: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 2 of 3 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so no bank was connected.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: None, open: None } }, dock: None } }"#,
     );
 }
 
@@ -576,17 +576,19 @@ fn the_button_says_it_is_opening_plaid() {
         < Event::FromUi { event: EventUi::BankConnectRequested },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
-            view: ViewOnboarding::Bank { opening: true, .. } }, .. } },
+            view: ViewOnboarding::Bank { opening: Some(opening), .. } }, .. } } => {
+            assert_eq!(opening, "Opening Plaid…");
+        },
 
         < Event::FromSource { event: EventSource::BankAbandoned },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
-            view: ViewOnboarding::Failed { opening: false, .. } }, .. } },
+            view: ViewOnboarding::Failed { opening: None, .. } }, .. } },
 
         // And again from the failed screen, which opens the very same page.
         < Event::FromUi { event: EventUi::BankConnectRequested },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
-            view: ViewOnboarding::Bank { opening: true, .. } }, .. } },
+            view: ViewOnboarding::Bank { opening: Some(_), .. } }, .. } },
     );
 }
 

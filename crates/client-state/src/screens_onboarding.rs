@@ -189,7 +189,7 @@ fn bank(flow: &StateOnboarding) -> ViewOnboarding {
         ],
 
         action: "Connect a bank".to_string(),
-        opening: flow.opening(),
+        opening: opening(flow),
 
         // Named here rather than in a settings screen: this is where the data
         // starts moving.
@@ -315,10 +315,16 @@ fn failed(flow: &StateOnboarding) -> ViewOnboarding {
         }],
 
         action: "Try again".to_string(),
-        opening: flow.opening(),
+        opening: opening(flow),
 
         open: linked.then(|| "Open Meridian".to_string()),
     }
+}
+
+/// What the button that opens Plaid says while Plaid's page is on its way:
+/// what it is waiting on, rather than "Loading".
+fn opening(flow: &StateOnboarding) -> Option<String> {
+    flow.opening().then(|| "Opening Plaid…".to_string())
 }
 
 /// One thing that is true about connecting a bank.

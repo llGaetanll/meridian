@@ -19,7 +19,7 @@ pub(super) fn Failed(view: Signal<ViewOnboarding>, ui: Callback<EventUi>) -> imp
     let action = part(view, |view| {
         read::action(view).unwrap_or_default().to_string()
     });
-    let opening = part(view, read::opening);
+    let opening = part(view, |view| read::opening(view).map(str::to_string));
     let open = part(view, |view| read::aside(view).map(str::to_string));
 
     view! {

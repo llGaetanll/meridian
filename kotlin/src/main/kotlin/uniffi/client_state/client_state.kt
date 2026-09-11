@@ -5543,9 +5543,11 @@ sealed class ViewOnboarding {
         val `rows`: List<uniffi.client_state.ViewIconRow>,
         val `action`: kotlin.String,
         /**
-         * Whether the button is waiting on Plaid's page to appear.
+         * `Some("Opening Plaid…")` while the button waits on Plaid's page to
+         * appear, which is the label it wears and the reason it takes no
+         * second tap.
          */
-        val `opening`: kotlin.Boolean,
+        val `opening`: kotlin.String?,
         val `legal`: kotlin.String,
     ) : ViewOnboarding() {
         companion object
@@ -5600,7 +5602,7 @@ sealed class ViewOnboarding {
         /**
          * The same wait as [`Bank`](ViewOnboarding::Bank)'s.
          */
-        val `opening`: kotlin.Boolean,
+        val `opening`: kotlin.String?,
         /**
          * The way out, worded — `Some` only once a bank has connected.
          */
@@ -5657,7 +5659,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                     FfiConverterSequenceTypeViewRun.read(buf),
                     FfiConverterSequenceTypeViewIconRow.read(buf),
                     FfiConverterString.read(buf),
-                    FfiConverterBoolean.read(buf),
+                    FfiConverterOptionalString.read(buf),
                     FfiConverterString.read(buf),
                 )
             }
@@ -5689,7 +5691,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                     FfiConverterSequenceTypeViewRun.read(buf),
                     FfiConverterSequenceTypeViewIconRow.read(buf),
                     FfiConverterString.read(buf),
-                    FfiConverterBoolean.read(buf),
+                    FfiConverterOptionalString.read(buf),
                     FfiConverterOptionalString.read(buf),
                 )
             }
@@ -5748,7 +5750,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                         FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
                         FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`) +
                         FfiConverterString.allocationSize(value.`action`) +
-                        FfiConverterBoolean.allocationSize(value.`opening`) +
+                        FfiConverterOptionalString.allocationSize(value.`opening`) +
                         FfiConverterString.allocationSize(value.`legal`)
                 )
             }
@@ -5786,7 +5788,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                         FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
                         FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`) +
                         FfiConverterString.allocationSize(value.`action`) +
-                        FfiConverterBoolean.allocationSize(value.`opening`) +
+                        FfiConverterOptionalString.allocationSize(value.`opening`) +
                         FfiConverterOptionalString.allocationSize(value.`open`)
                 )
             }
@@ -5836,7 +5838,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
                 FfiConverterSequenceTypeViewIconRow.write(value.`rows`, buf)
                 FfiConverterString.write(value.`action`, buf)
-                FfiConverterBoolean.write(value.`opening`, buf)
+                FfiConverterOptionalString.write(value.`opening`, buf)
                 FfiConverterString.write(value.`legal`, buf)
                 Unit
             }
@@ -5868,7 +5870,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
                 FfiConverterSequenceTypeViewIconRow.write(value.`rows`, buf)
                 FfiConverterString.write(value.`action`, buf)
-                FfiConverterBoolean.write(value.`opening`, buf)
+                FfiConverterOptionalString.write(value.`opening`, buf)
                 FfiConverterOptionalString.write(value.`open`, buf)
                 Unit
             }

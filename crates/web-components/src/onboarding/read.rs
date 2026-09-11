@@ -152,15 +152,18 @@ pub(super) fn resend(view: &ViewOnboarding) -> Option<&ViewResend> {
     }
 }
 
-/// Whether the button that opens Plaid is waiting on Plaid's page.
-pub(super) fn opening(view: &ViewOnboarding) -> bool {
+/// What the button that opens Plaid says while it waits on Plaid's page, and
+/// so whether it is waiting.
+pub(super) fn opening(view: &ViewOnboarding) -> Option<&str> {
     match view {
-        ViewOnboarding::Bank { opening, .. } | ViewOnboarding::Failed { opening, .. } => *opening,
+        ViewOnboarding::Bank { opening, .. } | ViewOnboarding::Failed { opening, .. } => {
+            opening.as_deref()
+        }
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
         | ViewOnboarding::Code { .. }
         | ViewOnboarding::Sync { .. }
-        | ViewOnboarding::Ready { .. } => false,
+        | ViewOnboarding::Ready { .. } => None,
     }
 }
 

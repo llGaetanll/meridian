@@ -57,8 +57,10 @@ pub enum ViewOnboarding {
         body: Vec<ViewRun>,
         rows: Vec<ViewIconRow>,
         action: String,
-        /// Whether the button is waiting on Plaid's page to appear.
-        opening: bool,
+        /// `Some("Opening Plaid…")` while the button waits on Plaid's page to
+        /// appear, which is the label it wears and the reason it takes no
+        /// second tap.
+        opening: Option<String>,
         legal: String,
     },
 
@@ -93,7 +95,7 @@ pub enum ViewOnboarding {
         rows: Vec<ViewIconRow>,
         action: String,
         /// The same wait as [`Bank`](ViewOnboarding::Bank)'s.
-        opening: bool,
+        opening: Option<String>,
         /// The way out, worded — `Some` only once a bank has connected.
         open: Option<String>,
     },

@@ -19,7 +19,7 @@ struct BankScreen: View {
     let runs: [ViewRun]
     let rows: [ViewIconRow]
     let action: String
-    let opening: Bool
+    let opening: String?
     let legal: String
 
     @EnvironmentObject private var runtime: RuntimeApp
@@ -58,7 +58,7 @@ struct FailedScreen: View {
     let runs: [ViewRun]
     let rows: [ViewIconRow]
     let action: String
-    let opening: Bool
+    let opening: String?
     let open: String?
 
     @EnvironmentObject private var runtime: RuntimeApp
@@ -107,13 +107,13 @@ struct FailedScreen: View {
 /// Nothing moved on screen during it, which reads as a button that missed the
 /// tap — so it says what it is doing, and stops taking taps while it does.
 ///
-/// `opening` is the machine's, not this view's. Whether a bank sign-in is in
-/// flight is a fact about the flow, and the flow is where the screens are
-/// decided.
+/// `opening` is the machine's, not this view's, and so are its words. Whether
+/// a bank sign-in is in flight is a fact about the flow, and the flow is where
+/// the screens are decided.
 private struct OpenBankButton: View {
     let icon: String
     let text: String
-    let opening: Bool
+    let opening: String?
 
     @EnvironmentObject private var runtime: RuntimeApp
 
@@ -121,17 +121,17 @@ private struct OpenBankButton: View {
         Button {
             runtime.ui(.bankConnectRequested)
         } label: {
-            if opening {
+            if let opening {
                 HStack(spacing: 9) {
                     Spinner(size: 17)
 
-                    Text("Opening Plaid…")
+                    Text(opening)
                 }
             } else {
                 IconLabel(icon: icon, text: text)
             }
         }
         .buttonStyle(.primaryBlock)
-        .disabled(opening)
+        .disabled(opening != nil)
     }
 }
