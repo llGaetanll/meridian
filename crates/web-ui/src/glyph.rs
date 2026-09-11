@@ -39,7 +39,7 @@ pub fn Glyph(
 fn weight(name: &str) -> &'static str {
     match name {
         "spin" => "2.4",
-        "back" | "chevron" | "plus" => "2.2",
+        "back" | "chevron" | "plus" | "prev" | "next" => "2.2",
         "ext" | "tick-circle" | "warn" => "1.9",
         _ => "1.8",
     }
@@ -107,6 +107,8 @@ fn paths(name: &str) -> &'static str {
         }
         "dot" => r#"<circle cx="12" cy="12" r="8"/>"#,
         "plus" => r#"<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>"#,
+        "prev" => r#"<polyline points="15 18 9 12 15 6"/>"#,
+        "next" => r#"<polyline points="9 18 15 12 9 6"/>"#,
         _ => "",
     }
 }
