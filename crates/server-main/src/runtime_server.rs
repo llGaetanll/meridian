@@ -27,6 +27,7 @@ use crate::EventSourcePlaid;
 use crate::EventSourceStripe;
 use crate::EventStore;
 use crate::EventTerminal;
+use crate::LinkOpener;
 use crate::OauthRedirect;
 use crate::PlaidCollect;
 use crate::PublicUrl;
@@ -259,6 +260,8 @@ impl RuntimeServer {
 
         let router_events = event_tx.clone();
 
+        let web_origins = origins.clone();
+
         tokio::spawn(async move {
             if let Err(e) = RuntimeRouter::run(action_rx, router_events, origins).await {
                 tracing::error!(error = %e, "the router stopped");
@@ -299,6 +302,7 @@ impl RuntimeServer {
             EventProcess::Tick { now: unix_now() },
             EventProcess::Started {
                 collect,
+                web_origins,
                 stripe_webhook_secret: stripe_webhook_secret.clone(),
                 apple_environment,
             },
@@ -593,7 +597,9 @@ impl RuntimeServer {
                 self.fetch_webhook_key(call_id, kid).await
             }
 
-            ActionSourcePlaid::OpenLink { user_id } => self.open_link(call_id, *user_id).await,
+            ActionSourcePlaid::OpenLink { user_id, opener } => {
+                self.open_link(call_id, *user_id, opener).await
+            }
 
             ActionSourcePlaid::PollLinks { link_tokens } => {
                 self.poll_links(call_id, link_tokens).await
@@ -634,12 +640,15 @@ impl RuntimeServer {
     }
 
     /// Open a Link session and report the page that hosts it.
-    async fn open_link(&self, call_id: CallId, user_id: Uuid) -> Vec<Event> {
+    async fn open_link(&self, call_id: CallId, user_id: Uuid, opener: &LinkOpener) -> Vec<Event> {
+        let handback = self.handback.as_ref().filter(|_| opener.hands_back());
+
         let event = match runtime_plaid::open_link(
             &self.plaid_client,
             &user_id.to_string(),
+            &opener.completion_redirect(),
             self.webhook.as_deref(),
-            self.handback.as_ref(),
+            handback,
         )
         .await
         {

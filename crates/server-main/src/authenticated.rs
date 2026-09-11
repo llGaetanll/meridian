@@ -13,7 +13,13 @@ use crate::rate_limit::Route;
 /// the machine cannot get back from the next event.
 #[derive(Debug, Clone)]
 pub enum Authenticated {
-    LinkRequested,
+    /// Opening a bank sign-in, with the `Origin` it was asked from — which
+    /// decides where Plaid sends it back, once there is somebody to open it
+    /// for.
+    LinkRequested {
+        origin: Option<String>,
+    },
+
     LinkClosed,
 
     /// The stream this request opens, carried through the session read so the
@@ -49,7 +55,9 @@ impl Authenticated {
     /// session has resolved. `None` is a route that asks nobody's name.
     pub fn of(event: &EventRouter) -> Option<Self> {
         match event {
-            EventRouter::LinkRequested { .. } => Some(Authenticated::LinkRequested),
+            EventRouter::LinkRequested { origin, .. } => Some(Authenticated::LinkRequested {
+                origin: origin.clone(),
+            }),
             EventRouter::LinkClosed { .. } => Some(Authenticated::LinkClosed),
             EventRouter::SyncWatchRequested { conn_id, .. } => {
                 Some(Authenticated::SyncWatchRequested { conn_id: *conn_id })
@@ -72,7 +80,7 @@ impl Authenticated {
     /// The bucket a request for this counts against, once it has a caller.
     pub fn route(&self) -> Route {
         match self {
-            Authenticated::LinkRequested => Route::LinkStart,
+            Authenticated::LinkRequested { .. } => Route::LinkStart,
             Authenticated::LinkClosed => Route::LinkFinish,
             Authenticated::SyncWatchRequested { .. } => Route::SyncStatus,
             Authenticated::SnapshotRequested => Route::Snapshot,
@@ -106,7 +114,7 @@ impl Authenticated {
             | Authenticated::AppleTransactionReceived { .. }
             | Authenticated::DeleteRequested => false,
 
-            Authenticated::LinkRequested
+            Authenticated::LinkRequested { .. }
             | Authenticated::LinkClosed
             | Authenticated::SyncWatchRequested { .. }
             | Authenticated::SnapshotRequested => true,

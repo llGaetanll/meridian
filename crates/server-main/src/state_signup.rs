@@ -40,6 +40,7 @@ use crate::ActionStore;
 use crate::Attaching;
 use crate::Authenticated;
 use crate::CallId;
+use crate::LinkOpener;
 use crate::LinkOutcome;
 use crate::LinkPoll;
 use crate::LinkSession;
@@ -49,6 +50,7 @@ use crate::PlaidCollect;
 use crate::RequestId;
 use crate::StoredCode;
 use crate::Waiting;
+use crate::WebOrigins;
 use crate::email_address;
 use crate::login_code;
 use crate::session_token;
@@ -116,6 +118,11 @@ pub struct StateSignup {
     /// is a machine that has not been told the process is up.
     collect: Option<PlaidCollect>,
 
+    /// Where the web app is served from, read out of the environment on
+    /// [`EventProcess::Started`](crate::EventProcess). `None` is a machine
+    /// that has not been told, and sends every bank sign-in back to the app.
+    web_origins: Option<WebOrigins>,
+
     /// Each Link session with one half of its race in, keyed by the
     /// `link_token` that `SESSION_FINISHED` carries. Always empty under
     /// `PLAID_COLLECT=poll`, where the close causes the collection and nothing
@@ -152,8 +159,9 @@ pub struct StateSignup {
 
 impl StateSignup {
     /// What the process came up with.
-    pub fn started(&mut self, collect: PlaidCollect) {
+    pub fn started(&mut self, collect: PlaidCollect, web_origins: WebOrigins) {
         self.collect = Some(collect);
+        self.web_origins = Some(web_origins);
     }
 
     /// Take the entropy the process drew.
@@ -330,8 +338,8 @@ impl StateSignup {
         self.answer(request_id, ActionRouter::SignedIn { token }, now, actions);
     }
 
-    /// Somebody wants a bank sign-in opened. Nothing to read: their id is the
-    /// whole of what it takes.
+    /// Somebody wants a bank sign-in opened. Nothing to read: their id, and
+    /// the `Origin` they asked from, are the whole of what it takes.
     ///
     /// The budget is the account's, which is why it is passed in:
     /// [`StateServer`](crate::StateServer) holds one for every request this
@@ -340,6 +348,7 @@ impl StateSignup {
         &mut self,
         request_id: RequestId,
         user_id: Uuid,
+        origin: Option<&str>,
         limiter: &mut PlaidRateLimiter,
         now: Timestamp,
         actions: &mut Vec<Action>,
@@ -356,7 +365,13 @@ impl StateSignup {
 
         actions.push(Action::ToSourcePlaid {
             call_id: self.calling(request_id, now),
-            action: ActionSourcePlaid::OpenLink { user_id },
+            action: ActionSourcePlaid::OpenLink {
+                user_id,
+                opener: self
+                    .web_origins
+                    .as_ref()
+                    .map_or(LinkOpener::App, |web| LinkOpener::of(origin, web)),
+            },
         });
     }
 

@@ -1,5 +1,7 @@
 //! Something for Plaid to do.
 
+use crate::LinkOpener;
+
 #[derive(Debug)]
 pub enum ActionSourcePlaid {
     /// Fetch the key a webhook says it was signed with.
@@ -47,7 +49,13 @@ pub enum ActionSourcePlaid {
     ///
     /// A session nobody finishes costs nothing and expires on its own, so this
     /// is the one call in the flow that is free to repeat.
-    OpenLink { user_id: uuid::Uuid },
+    ///
+    /// `opener` is who it is for, which is where Plaid sends them back and
+    /// whether an OAuth bank may hand back to the app.
+    OpenLink {
+        user_id: uuid::Uuid,
+        opener: LinkOpener,
+    },
 
     /// Ask what became of every Link session this user has open.
     ///

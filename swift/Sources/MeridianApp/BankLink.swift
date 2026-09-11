@@ -31,11 +31,11 @@ enum BankLink {
     ///
     /// It carries no token — the redirect's only job is to close the sheet,
     /// and the `public_token` is collected afterwards by the server, over a
-    /// separate channel (`runtime_plaid.rs` sets this as
+    /// separate channel (`link_opener.rs` sets this as
     /// `completion_redirect_uri`). So there is nothing to read out of the
     /// callback URL, only the fact that it arrived.
     ///
-    /// It has to match `COMPLETION_REDIRECT` on the server, and it has to be
+    /// It has to match `APP_REDIRECT` on the server, and it has to be
     /// registered in `Info.plist` under `CFBundleURLTypes` — without that, iOS
     /// hands the redirect to nobody and the sheet never closes.
     static let scheme = "meridian"

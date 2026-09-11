@@ -9,6 +9,7 @@ use api_common::Timestamp;
 use src_apple::AppleEnvironment;
 
 use crate::PlaidCollect;
+use crate::WebOrigins;
 
 #[derive(Debug)]
 pub enum EventProcess {
@@ -19,6 +20,10 @@ pub enum EventProcess {
     /// happens has behaviour no `eval!` test can reach.
     Started {
         collect: PlaidCollect,
+
+        /// Where the web app is served from, from `WEB_ORIGINS`. The only
+        /// origins a bank sign-in is ever sent back to.
+        web_origins: WebOrigins,
 
         /// What webhooks from Stripe are checked against, where the process
         /// was configured for it. `None` refuses every one of them, which is

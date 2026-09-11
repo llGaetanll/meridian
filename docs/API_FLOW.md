@@ -81,8 +81,11 @@ server has stopped honouring the token it held.
 Starts on the Connect a bank tap, which is the screen the code screen leads to,
 and runs again unchanged for Try again and for Add another bank later on.
 
-1. `phone` -> `server` - `POST /link/start` with `Authorization: Bearer <token>`: *Asks for a Link session for whoever the token signs in.*
-2. `server` -> `plaid` - `POST /link/token/create`: *Creates the hosted session, with `meridian://linked` as the completion redirect.*
+1. `phone` -> `server` - `POST /link/start` with `Authorization: Bearer <token>`: *Asks for a Link session for whoever the token signs in. The phone sends no `Origin`; a browser does, and that is the one difference between the two.*
+2. `server` -> `plaid` - `POST /link/token/create`: *Creates the hosted session. Where Plaid sends the browser when it ends is decided from the `Origin`:*
+   a. none: *`meridian://linked`, which closes the phone's sheet. The OAuth handback goes on the token too, where `PLAID_REDIRECT_URI` names one.*
+   b. one of `WEB_ORIGINS`: *`<origin>/linked.html`, a page on the web app that closes the popup Link was opened in. No handback: that is a Universal Link, and it is the phone's.*
+   c. any other: *Treated as none. A header is the caller's to write, so an origin that is not the web app's is never an address Plaid is sent to.*
 3. `server` <- `plaid` - `200 {"link_token","hosted_link_url"}`: *The session and the page that hosts it. Nothing is spent by this, so it is safe to repeat.*
 4. `phone` <- `server` - one of:
    a. `200 {"url"}`: *The page to open. A `link_sessions` row keyed by the `link_token` is written first, carrying the `user_id` that the bearer token resolved to, which is what stops one account collecting a bank another account connected.*
@@ -92,7 +95,7 @@ and runs again unchanged for Try again and for Add another bank later on.
    e. `502 Bad Gateway`: *Plaid refused, was unreachable, or answered a `link_token` with no hosted URL. All three become one abandoned session inside.*
 5. `sheet` -> `plaid` - `GET https://secure.plaid.com/hl/...`: *Plaid's own page, where the user picks a bank and signs into it. Nothing of ours is in this exchange.*
 6. `sheet` <- `plaid` - one of:
-   a. `302 meridian://linked`: *Closes the sheet. It carries no token and is not proof a bank was connected, but it is the one signal that separates a finished flow from a dismissed one, which is what decides whether the phone asks the next question at all.*
+   a. `302 meridian://linked`: *Closes the sheet. It carries no token and is not proof a bank was connected, but it is the one signal that separates a finished flow from a dismissed one, which is what decides whether the phone asks the next question at all. On the web it is `302 <origin>/linked.html`, which closes the popup, and the web app asks C's question whenever the popup closes.*
    b. nothing at all: *The sheet was dismissed, which is an ordinary ending. The phone calls it abandoned without asking the server anything.*
 
 ## C. Collecting what the session came to

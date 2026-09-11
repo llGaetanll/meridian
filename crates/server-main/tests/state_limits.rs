@@ -590,7 +590,7 @@ fn opening_bank_sign_ins_faster_than_the_budget_allows_is_refused() {
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 31, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
+        < Event::FromRouter { request_id: 31, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1"), origin: None } },
         > Action::ToStore { call_id: 61, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 61, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::from_u128(31)) } },
@@ -615,6 +615,7 @@ fn open_a_sign_in(state: &mut StateServer, n: u64) {
             },
             event: EventRouter::LinkRequested {
                 token_sha256: hash_token("session-1"),
+                origin: None,
             },
         }],
         &mut actions,

@@ -498,9 +498,10 @@ impl StateServer {
         }
 
         match event {
-            Authenticated::LinkRequested => self.signup.link_requested(
+            Authenticated::LinkRequested { origin } => self.signup.link_requested(
                 request_id,
                 user_id,
+                origin.as_deref(),
                 &mut self.limiter,
                 self.now,
                 actions,
@@ -1647,10 +1648,11 @@ impl StateServer {
             // request, which is what makes a second server process possible.
             EventProcess::Started {
                 collect,
+                web_origins,
                 stripe_webhook_secret,
                 apple_environment,
             } => {
-                self.signup.started(*collect);
+                self.signup.started(*collect, web_origins.clone());
                 self.billing
                     .started(stripe_webhook_secret.clone(), *apple_environment);
             }

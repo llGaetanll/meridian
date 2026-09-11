@@ -137,6 +137,7 @@ fn started(collect: PlaidCollect) -> StateServer {
             Event::FromProcess {
                 event: EventProcess::Started {
                     collect,
+                    web_origins: WebOrigins::parse(WEB_ORIGIN).expect("a literal origin"),
                     stripe_webhook_secret: Some(STRIPE_WEBHOOK_SECRET.to_string()),
                     apple_environment: Some(AppleEnvironment::Sandbox),
                 },
@@ -147,6 +148,10 @@ fn started(collect: PlaidCollect) -> StateServer {
 
     state
 }
+
+/// Where these tests say the web app is served from: a laptop's, the way
+/// `.env` has it.
+pub const WEB_ORIGIN: &str = "http://127.0.0.1:8080";
 
 /// The signing key these tests pretend is Plaid's, fixed so a run is a replay.
 const WEBHOOK_KEY: [u8; 32] = [

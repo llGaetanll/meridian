@@ -28,13 +28,14 @@ fn connecting_a_bank_opens_a_session_and_hands_over_its_page() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1"), origin: None } },
         > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
-        // 2. Nothing is read for it: the id the session resolved to is the
-        // whole of what opening a Link session needs.
+        // 2. Nothing is read for it: the id the session resolved to, and the
+        // absent origin that says it is the phone asking, are the whole of
+        // what opening a Link session needs.
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToSourcePlaid { call_id: 2, action: ActionSourcePlaid::OpenLink { .. } },
+        > Action::ToSourcePlaid { call_id: 2, action: ActionSourcePlaid::OpenLink { opener: LinkOpener::App, .. } },
 
         // 3 and 4a, in that order and never the other.
         < Event::FromSourcePlaid { call_id: 2, event: EventSourcePlaid::LinkOpened { user_id: uuid::Uuid::nil(), link_token: "link-1".to_string(), hosted_link_url: "https://secure.plaid.com/hl/link-1".to_string() } },
@@ -44,6 +45,40 @@ fn connecting_a_bank_opens_a_session_and_hands_over_its_page() {
         // the write lands is what makes "before" mean it.
         < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
         > @r#"ToRouter { request_id: 1, action: LinkOpened { url: "https://secure.plaid.com/hl/link-1" } }"#,
+    );
+}
+
+/// B2, from the web app. A browser sends the `Origin` it is served from, and
+/// Plaid is told to send the popup back there, to a page that closes itself —
+/// a browser cannot follow `meridian://linked`, and the popup would sit on
+/// Plaid's last screen until somebody closed it by hand.
+#[test]
+fn the_web_app_is_sent_back_to_its_own_origin() {
+    let mut state = state_subscribed();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1"), origin: Some("http://127.0.0.1:8080".to_string()) } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        > @r#"ToSourcePlaid { call_id: 2, action: OpenLink { user_id: 00000000-0000-0000-0000-000000000000, opener: Web { origin: "http://127.0.0.1:8080" } } }"#,
+    );
+}
+
+/// B2, from anywhere else. The header is the caller's to write, so an origin
+/// that is not the web app's is never sent to Plaid as somewhere to go: the
+/// session is opened the phone's way, with the redirect that goes nowhere for
+/// anybody but the phone.
+#[test]
+fn an_origin_that_is_not_the_web_apps_is_never_a_redirect() {
+    let mut state = state_subscribed();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1"), origin: Some("https://evil.example".to_string()) } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        > @r#"ToSourcePlaid { call_id: 2, action: OpenLink { user_id: 00000000-0000-0000-0000-000000000000, opener: App } }"#,
     );
 }
 
@@ -58,7 +93,7 @@ fn a_token_that_names_nobody_opens_no_session() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("stale") } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("stale"), origin: None } },
         > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: None } },
@@ -75,7 +110,7 @@ fn a_session_plaid_would_not_open_is_not_a_page() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1") } },
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1"), origin: None } },
         > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
 
         < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },

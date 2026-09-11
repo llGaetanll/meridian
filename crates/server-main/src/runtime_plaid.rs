@@ -87,21 +87,26 @@ pub async fn fetch_recurring(
 /// `client_user_id` is our own id for the person linking. A uuid rather than
 /// an address: it ends up in Plaid's logs.
 ///
+/// `completion_redirect` is where Plaid sends the browser when the flow ends.
+/// It carries no token; the `public_token` arrives by webhook or by polling.
+///
 /// `webhook` is where Plaid should call when the session ends; `None` leaves
 /// polling to collect the result.
 ///
 /// `handback` is where an OAuth bank's own app returns the user to ours, and
-/// `None` is a deployment whose app cannot yet be reached that way. It is the
-/// difference between a bank that hands off to its app and one that keeps the
-/// sign-in inside the web session, so it is not a detail that can be defaulted.
+/// `None` is a session the web app opened, or a deployment whose app cannot
+/// yet be reached that way. It is the difference between a bank that hands off
+/// to its app and one that keeps the sign-in inside the web session, so it is
+/// not a detail that can be defaulted.
 pub async fn open_link(
     client: &PlaidClient,
     client_user_id: &str,
+    completion_redirect: &str,
     webhook: Option<&str>,
     handback: Option<&OauthRedirect>,
 ) -> Result<(String, Option<String>), PlaidError> {
     let request =
-        src_plaid::LinkTokenRequest::hosted(client_user_id).redirecting_to(COMPLETION_REDIRECT);
+        src_plaid::LinkTokenRequest::hosted(client_user_id).redirecting_to(completion_redirect);
 
     let request = match handback {
         Some(handback) => request.handing_back_to(handback.as_str()),
@@ -117,14 +122,6 @@ pub async fn open_link(
 
     Ok((res.link_token, res.hosted_link_url))
 }
-
-/// Where Plaid sends the browser when the flow ends. It carries no token; the
-/// `public_token` arrives by webhook or by polling.
-///
-/// A custom scheme, and it is allowed to be one because Plaid's own page is
-/// what opens it, from inside the web session the app is already holding. The
-/// handback address is the other case and cannot be a scheme at all.
-const COMPLETION_REDIRECT: &str = "meridian://linked";
 
 /// What became of a Link session: whether it has ended, and what it produced.
 pub async fn poll_link(

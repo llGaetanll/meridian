@@ -22,7 +22,14 @@ pub enum EventRouter {
     ///
     /// The **hash** of their bearer token, never the token: events are written
     /// to the log, and a session token in one is a way into somebody's bank.
-    LinkRequested { token_sha256: Vec<u8> },
+    ///
+    /// `origin` is the request's `Origin` header, which a browser sends and
+    /// the phone does not. Present but unreadable arrives as whatever it
+    /// decodes to, never as absent: absent is the phone.
+    LinkRequested {
+        token_sha256: Vec<u8>,
+        origin: Option<String>,
+    },
 
     /// Somebody wants to be told how their sync is going, for as long as it
     /// goes on.
@@ -94,7 +101,7 @@ impl EventRouter {
     /// compile until it says whether it is.
     pub fn token(&self) -> Option<&[u8]> {
         match self {
-            EventRouter::LinkRequested { token_sha256 }
+            EventRouter::LinkRequested { token_sha256, .. }
             | EventRouter::LinkClosed { token_sha256 }
             | EventRouter::SyncWatchRequested { token_sha256, .. }
             | EventRouter::SnapshotRequested { token_sha256 }

@@ -246,6 +246,8 @@ fn a_machine_with_no_secret_believes_nothing() {
             Event::FromProcess {
                 event: EventProcess::Started {
                     collect: PlaidCollect::Poll,
+                    web_origins: WebOrigins::parse("http://127.0.0.1:8080")
+                        .expect("a literal origin"),
                     stripe_webhook_secret: None,
                     apple_environment: None,
                 },

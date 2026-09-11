@@ -19,6 +19,7 @@ use axum::http::Method;
 use axum::http::StatusCode;
 use axum::http::header::AUTHORIZATION;
 use axum::http::header::CONTENT_TYPE;
+use axum::http::header::ORIGIN;
 use axum::response::Sse;
 use axum::response::sse::Event as SseEvent;
 use axum::response::sse::KeepAlive;
@@ -499,12 +500,21 @@ async fn link_start(
     // log.
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
+    // Lossy rather than dropped when it is not text: an absent origin is the
+    // phone, and a header nobody can read is not.
+    let origin = headers
+        .get(ORIGIN)
+        .map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned());
+
     // Anonymous, because who is asking is not known yet — the machine resolves
     // the session and buckets the request once it has.
     let answer = runtime_router::dispatch(
         &to_loop,
         Client::anonymous(ip),
-        EventRouter::LinkRequested { token_sha256 },
+        EventRouter::LinkRequested {
+            token_sha256,
+            origin,
+        },
     )
     .await;
 

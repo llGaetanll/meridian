@@ -171,8 +171,21 @@ can be a custom scheme.
 
 | | Who opens it | When | What it has to be |
 | --- | --- | --- | --- |
-| `hosted_link.completion_redirect_uri` | Plaid's page | The flow has ended | Anything. We send `meridian://linked` |
+| `hosted_link.completion_redirect_uri` | Plaid's page | The flow has ended | Anything. `meridian://linked` for the phone, `<origin>/linked.html` for the web |
 | `redirect_uri`, top level | **The bank's own app** | Part way through, at an OAuth bank | An https Universal Link, registered in the dashboard |
+
+The first is decided per session, from the `Origin` that `/link/start` was
+called with (`LinkOpener`). The phone sends none and gets the scheme. The web
+app sends the origin it is served from, and if that is one of `WEB_ORIGINS`
+the popup is sent back to a page there that closes itself; a browser cannot
+follow a custom scheme, and the popup would otherwise sit on Plaid's last
+screen. An origin that is not in the list is treated as none — a header is
+the caller's to write, and an address Plaid sends somebody to is one we vouch
+for.
+
+Neither needs registering in the dashboard. Plaid's Hosted Link guide says so
+of a custom scheme, and Sandbox takes an address it has never seen, http or
+https, and sends the browser there when the session ends.
 
 The second exists because an OAuth bank does not take the sign-in on Plaid's
 page. It hands off to its own app, and when that app is done the only way it
@@ -188,7 +201,7 @@ in their bank's app *after* signing in, with nowhere to go back to. So the two
 travel together and there is no way through `LinkTokenRequest` to say one
 without the other: `PLAID_REDIRECT_URI` is what sets both, and unset means the
 link token is the one a browser gets, where an OAuth bank stays inside the web
-session.
+session. A session the web app opens never carries them, set or not.
 
 Three things have to be true before it can be set, and all three are about the
 phone rather than about Plaid:

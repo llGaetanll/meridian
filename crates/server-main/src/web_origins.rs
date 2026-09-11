@@ -109,6 +109,14 @@ impl WebOrigins {
         self.values.clone()
     }
 
+    /// Whether an `Origin` header names one of these, matched byte for byte
+    /// the way the CORS layer matches it.
+    pub fn allows(&self, origin: &str) -> bool {
+        self.values
+            .iter()
+            .any(|value| value.as_bytes() == origin.as_bytes())
+    }
+
     /// What the log calls them.
     pub fn as_str(&self) -> &str {
         &self.named
