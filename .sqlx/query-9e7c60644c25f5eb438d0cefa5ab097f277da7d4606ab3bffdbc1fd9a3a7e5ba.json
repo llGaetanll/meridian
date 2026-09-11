@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO subscriptions\n               (user_id, provider, customer_id, status,\n                current_period_end, last_event_id, last_event_at)\n           VALUES ($1, 'apple', $2, $3, $4, $5, $6)\n           ON CONFLICT (user_id) DO UPDATE SET\n               provider           = EXCLUDED.provider,\n               customer_id        = EXCLUDED.customer_id,\n               status             = EXCLUDED.status,\n               current_period_end = EXCLUDED.current_period_end,\n               last_event_id      = EXCLUDED.last_event_id,\n               last_event_at      = EXCLUDED.last_event_at,\n               updated_at         = now()\n           WHERE subscriptions.last_event_id IS DISTINCT FROM EXCLUDED.last_event_id\n             AND (subscriptions.last_event_at IS NULL\n                  OR subscriptions.last_event_at <= EXCLUDED.last_event_at)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9e7c60644c25f5eb438d0cefa5ab097f277da7d4606ab3bffdbc1fd9a3a7e5ba"
+}

@@ -63,6 +63,7 @@ pub use postgres_session::sweep_sessions;
 pub use postgres_session::user_for_session;
 pub use postgres_subscription::BillingProvider;
 pub use postgres_subscription::StoredSubscription;
+pub use postgres_subscription::apply_apple_event;
 pub use postgres_subscription::apply_subscription_event;
 pub use postgres_subscription::load_subscription;
 pub use postgres_subscription::load_subscriptions;

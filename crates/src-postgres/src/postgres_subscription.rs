@@ -251,3 +251,63 @@ pub async fn name_subscription(
 
     Ok(())
 }
+
+/// Write what Apple said about somebody's subscription.
+///
+/// The same write as [`apply_subscription_event`], keyed by the customer.
+/// Apple's payloads carry no subscription id — the `originalTransactionId` is
+/// the whole of the identity — so there is nothing for that one to find. The
+/// user is carried because there may be no row yet: a first purchase is a fact
+/// about somebody who has never paid, and Stripe's two-step of a customer
+/// written first does not happen here.
+///
+/// **The same ordering guard**, in the `ON CONFLICT` rather than a `WHERE`: a
+/// delivery writes only if it is new and not older than what is there. Apple
+/// retries a notification for days, and the app may hand over a transaction
+/// the server has already heard about from Apple directly.
+///
+/// `cancel_at_period_end` is not written. What Apple calls it lives in the
+/// renewal info rather than the transaction, so a value here would be one
+/// nothing said.
+///
+/// Answers whether the row moved, so a caller can tell a fact from a repeat.
+pub async fn apply_apple_event(
+    db: &Db,
+    user_id: Uuid,
+    customer_id: &str,
+    status: &str,
+    current_period_end: Option<Timestamp>,
+    event_id: &str,
+    event_at: Timestamp,
+) -> Result<bool, PostgresError> {
+    let current_period_end = current_period_end.map(stamp);
+    let event_at = stamp(event_at);
+
+    let result = sqlx::query!(
+        r#"INSERT INTO subscriptions
+               (user_id, provider, customer_id, status,
+                current_period_end, last_event_id, last_event_at)
+           VALUES ($1, 'apple', $2, $3, $4, $5, $6)
+           ON CONFLICT (user_id) DO UPDATE SET
+               provider           = EXCLUDED.provider,
+               customer_id        = EXCLUDED.customer_id,
+               status             = EXCLUDED.status,
+               current_period_end = EXCLUDED.current_period_end,
+               last_event_id      = EXCLUDED.last_event_id,
+               last_event_at      = EXCLUDED.last_event_at,
+               updated_at         = now()
+           WHERE subscriptions.last_event_id IS DISTINCT FROM EXCLUDED.last_event_id
+             AND (subscriptions.last_event_at IS NULL
+                  OR subscriptions.last_event_at <= EXCLUDED.last_event_at)"#,
+        user_id,
+        customer_id,
+        status,
+        current_period_end,
+        event_id,
+        event_at,
+    )
+    .execute(db)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}

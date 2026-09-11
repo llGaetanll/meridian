@@ -29,6 +29,22 @@ impl AppleEnvironment {
         }
     }
 
+    /// The environment this build sells in, named by `APPLE_ENV`.
+    ///
+    /// Ours to spell rather than Apple's, and lower case like `PLAID_ENV`
+    /// beside it. `None` is a build that has not said which store it means,
+    /// and one that has not said refuses every purchase — there is no
+    /// default, because the two failures look identical from the outside and
+    /// only one of them is fixed by checking the spelling of a variable
+    /// nobody suspects.
+    pub fn from_setting(value: &str) -> Option<Self> {
+        match value {
+            "sandbox" => Some(AppleEnvironment::Sandbox),
+            "production" => Some(AppleEnvironment::Production),
+            _ => None,
+        }
+    }
+
     /// Apple's name for it, for the log line that says which store a purchase
     /// came from.
     pub fn as_str(&self) -> &'static str {
@@ -60,6 +76,36 @@ mod tests {
         for value in ["", "sandbox", "production", "PRODUCTION", "Prod", "Xcode"] {
             assert_eq!(
                 AppleEnvironment::from_name(value),
+                None,
+                "`{value}` must not resolve to an environment",
+            );
+        }
+    }
+
+    /// The setting is ours and lower case; the payload's word is Apple's and
+    /// is not. Reading either with the other's rule is how a build ends up
+    /// meaning neither store.
+    #[test]
+    fn the_setting_and_the_payload_are_spelled_differently() {
+        assert_eq!(
+            AppleEnvironment::from_setting("sandbox"),
+            Some(AppleEnvironment::Sandbox),
+        );
+        assert_eq!(
+            AppleEnvironment::from_setting("production"),
+            Some(AppleEnvironment::Production),
+        );
+
+        assert_eq!(AppleEnvironment::from_setting("Sandbox"), None);
+        assert_eq!(AppleEnvironment::from_name("sandbox"), None);
+    }
+
+    /// Nothing said is not production, and it is not sandbox either.
+    #[test]
+    fn an_unset_setting_names_no_store() {
+        for value in ["", "sandbx", "dev", "SANDBOX", "prod", "Xcode"] {
+            assert_eq!(
+                AppleEnvironment::from_setting(value),
                 None,
                 "`{value}` must not resolve to an environment",
             );
