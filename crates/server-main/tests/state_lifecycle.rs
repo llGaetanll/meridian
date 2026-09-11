@@ -103,6 +103,67 @@ fn a_startup_read_the_store_refused_is_asked_again() {
     );
 }
 
+/// Apple's word is held back the same way Stripe's is, and before it is read:
+/// nothing about the payload is looked at while the server starts.
+#[test]
+fn an_apple_notification_is_sent_again_rather_than_taken_while_the_server_starts() {
+    let mut state = state_starting();
+
+    eval!(&mut state,
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::AppleNotificationReceived { signed: "a.signed.payload".to_string() } },
+        > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
+    );
+}
+
+/// Somebody who is not signed in asks nothing that depends on who has paid, so
+/// they are served while the server starts.
+#[test]
+fn signing_in_is_served_while_the_server_starts() {
+    let mut state = state_starting();
+
+    eval!(&mut state,
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
+
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
+        > Action::ToStore { call_id: 1, action: ActionStore::SaveCode { .. } },
+        > Action::ToEmail { action: ActionEmail::SendCode { .. } },
+    );
+}
+
+/// A tick while the startup read is still out asks nothing: the read is asked
+/// again only when the store refused it.
+#[test]
+fn a_tick_while_the_server_starts_does_not_ask_again() {
+    let mut state = state_starting();
+
+    eval!(&mut state,
+        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 1) } },
+    );
+}
+
+/// A signal while the server starts stops it at once, and the read landing
+/// afterwards does not put it back in service.
+#[test]
+fn a_signal_while_the_server_starts_stops_it() {
+    let mut state = state_starting();
+
+    eval!(&mut state,
+        < Event::FromTerminal { event: EventTerminal::SigInt },
+        > Action::ToProcess { action: ActionProcess::Shutdown },
+    );
+
+    assert!(state.stopped(), "the startup read is nobody's request");
+
+    eval!(&mut state,
+        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: Vec::new() } },
+    );
+
+    assert!(
+        state.stopped(),
+        "a late read does not start a stopped server"
+    );
+}
+
 /// A tick with nothing outstanding decides nothing. Every second of a quiet
 /// server goes through here, so it had better be free.
 #[test]
