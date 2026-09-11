@@ -12,7 +12,9 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-cargo build -p client-state
+# `bindgen` on the build as well as the runs, so the library and the generator
+# come out of one build rather than two with different features.
+cargo build -p client-state --features bindgen
 
 # The name of the built library is the platform's, not ours: a cdylib is
 # `.dylib` on macOS and `.so` everywhere else this is run. uniffi-bindgen reads
@@ -22,12 +24,12 @@ case "$(uname -s)" in
     *) LIB=target/debug/libclient_state.so ;;
 esac
 
-cargo run -q -p client-state --bin uniffi-bindgen -- generate \
+cargo run -q -p client-state --features bindgen --bin uniffi-bindgen -- generate \
     --library "$LIB" \
     --language swift \
     --out-dir swift/Sources/Meridian
 
-cargo run -q -p client-state --bin uniffi-bindgen -- generate \
+cargo run -q -p client-state --features bindgen --bin uniffi-bindgen -- generate \
     --library "$LIB" \
     --language kotlin \
     --out-dir kotlin/src/main/kotlin

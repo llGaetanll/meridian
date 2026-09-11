@@ -21,13 +21,20 @@ server-wire = { path = "../server-wire" }
 serde = { workspace = true }
 tracing = { workspace = true }
 serde_json = { workspace = true }
-uniffi = { workspace = true, features = ["cli"] }
+uniffi = { workspace = true }
+
+[features]
+# The bindings generator, which only `scripts/bindings.sh` runs. Off by default,
+# so that nothing else built on this crate compiles it — the web app, in wasm,
+# least of all.
+bindgen = ["uniffi/cli"]
 
 [dev-dependencies]
 api-eval = { path = "../api-eval" }
 
 [[bin]]
-# The bindings generator, so `cargo run -p client-state --bin uniffi-bindgen`
-# needs no separately installed tool at a matching version.
+# The bindings generator, so `cargo run -p client-state --features bindgen --bin
+# uniffi-bindgen` needs no separately installed tool at a matching version.
 name = "uniffi-bindgen"
 path = "uniffi-bindgen.rs"
+required-features = ["bindgen"]

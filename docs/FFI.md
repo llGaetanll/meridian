@@ -120,7 +120,9 @@ Deliberately not set up yet — see below.
 
 Builds `client-state` and regenerates both languages from the built library. The
 `uniffi-bindgen` binary lives in `client-state` itself, so the generator version can
-never disagree with the runtime version.
+never disagree with the runtime version. It is behind the crate's `bindgen`
+feature, which the script turns on and nothing else does, so the web app's wasm
+build does not compile the generator.
 
 Generated output is committed:
 
