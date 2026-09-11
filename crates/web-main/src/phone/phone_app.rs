@@ -45,7 +45,7 @@ pub fn PhoneApp() -> impl IntoView {
     });
 
     let open = Callback::new(move |screen: Screen| runtime.ui(EventUi::ScreenOpened { screen }));
-    let retry = Callback::new(move |()| runtime.ui(EventUi::RefreshRequested));
+    let refresh = Callback::new(move |()| runtime.ui(EventUi::RefreshRequested));
 
     // What each page's headline becomes once it has scrolled by. The
     // Ledger's is what its filter is set to, and takes you back to it.
@@ -94,8 +94,9 @@ pub fn PhoneApp() -> impl IntoView {
             title=title
             dock=dock
             error=runtime.error()
+            loading=runtime.loading()
             on_screen=open
-            on_retry=retry
+            on_refresh=refresh
             band=band
         >
             {move || match tab.get() {

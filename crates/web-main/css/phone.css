@@ -47,6 +47,23 @@
 }
 .band-slot.on { transform: none; pointer-events: auto; }
 
+/* Pulling the list down past its top asks for it again. The spinner is the
+   one the app turns everywhere; it comes down with the finger, and while the
+   answer is on its way the list stands aside for it, as the phone's does. */
+.phone-scroll { transition: padding-top 200ms ease-out; }
+.phone-body.refreshing .phone-scroll { padding-top: 48px; }
+.phone-shell .pull {
+  position: absolute; top: 0; left: 50%; z-index: 1;
+  width: 22px; height: 22px; margin-left: -11px;
+  color: var(--text-muted);
+  opacity: var(--reach, 0);
+  transform: translateY(calc(var(--pulled, 0px) - 22px)) rotate(calc(var(--reach, 0) * 270deg));
+  pointer-events: none;
+}
+.phone-shell .pull.spinning { opacity: 1; transform: translateY(13px); }
+.phone-shell .pull svg { display: block; width: 100%; height: 100%; }
+.phone-shell .pull.spinning svg { animation: spin 0.9s linear infinite; }
+
 /* A tab crosses into the next rather than cutting to it. */
 .phone-page,
 .phone-shell .page-title span { animation: phone-in 200ms ease-out; }

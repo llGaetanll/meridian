@@ -1,10 +1,12 @@
 use client_state::Screen;
 use client_state::ViewDock;
+use leptos::ev::TouchEvent;
 use leptos::html;
 use leptos::prelude::*;
 use leptos::web_sys::Element;
 use leptos::web_sys::ScrollBehavior;
 use leptos::web_sys::ScrollToOptions;
+use web_ui::Glyph;
 
 use super::Dock;
 
@@ -16,6 +18,14 @@ const ARRIVES: f64 = 24.0;
 /// short of the anchor's own height, which is where an anchor at rest sits.
 const LEAVES: f64 = 48.0;
 
+/// How far the list has to be pulled down past its top, once damped, for
+/// letting go to ask for it again.
+const PULL: f64 = 56.0;
+
+/// The spinner comes down half as far as the finger, so the pull resists the
+/// way the list does.
+const DAMPING: f64 = 0.5;
+
 /// The phone's frame: the page's title, a scrolling body, and the dock floating
 /// over it. `swift/Sources/MeridianApp/Ui/Shell.swift` is what it draws.
 ///
@@ -23,13 +33,18 @@ const LEAVES: f64 = 48.0;
 /// title and a body and leaves the frame where it is. A page marks what its
 /// band stands in for with `data-band-anchor`; once that has scrolled by,
 /// `band` floats over the top of the body, handed the way back to it.
+///
+/// Pulling the body down past its top asks for everything again, as Retry on
+/// the banner does, and the spinner stays for as long as `loading` says the
+/// answer is on its way.
 #[component]
 pub fn PhoneShell(
     #[prop(into)] title: Signal<String>,
     #[prop(into)] dock: Signal<Option<ViewDock>>,
     #[prop(into)] error: Signal<Option<String>>,
+    #[prop(into)] loading: Signal<bool>,
     on_screen: Callback<Screen>,
-    on_retry: Callback<()>,
+    on_refresh: Callback<()>,
     band: Callback<Callback<()>, AnyView>,
     children: Children,
 ) -> impl IntoView {
@@ -92,6 +107,67 @@ pub fn PhoneShell(
         body.scroll_to_with_scroll_to_options(&options);
     });
 
+    // Where a pull began, if it began at the top; how far it has come; and
+    // whether one let go far enough and is waiting on its answer.
+    let start = StoredValue::new(None::<f64>);
+    let pulled = RwSignal::new(0.0_f64);
+    let refreshing = RwSignal::new(false);
+
+    Effect::new(move |_| {
+        if !loading.get() {
+            refreshing.set(false);
+        }
+    });
+
+    let touched = move |event: TouchEvent| {
+        let top = body
+            .get_untracked()
+            .is_some_and(|body| body.scroll_top() <= 0);
+
+        start.set_value(if top { first_y(&event) } else { None });
+    };
+
+    let dragged = move |event: TouchEvent| {
+        let (Some(from), Some(y)) = (start.get_value(), first_y(&event)) else {
+            return;
+        };
+
+        let now = ((y - from) * DAMPING).max(0.0);
+
+        if now > 0.0 || pulled.get_untracked() > 0.0 {
+            pulled.set(now);
+        }
+    };
+
+    let released = move |_: TouchEvent| {
+        if start.get_value().is_none() {
+            return;
+        }
+
+        start.set_value(None);
+
+        let far = pulled.get_untracked() >= PULL;
+
+        pulled.set(0.0);
+
+        if far {
+            on_refresh.run(());
+
+            // Only if a load went out: one the machine chose not to make has
+            // nothing to wait for.
+            refreshing.set(loading.get_untracked());
+        }
+    };
+
+    let pull = move || {
+        let shown = pulled.get().min(PULL * 1.5);
+
+        format!(
+            "--pulled: {shown:.1}px; --reach: {:.3}",
+            (shown / PULL).min(1.0)
+        )
+    };
+
     view! {
         <div class="phone-shell ui">
             <div class="page-title">
@@ -113,7 +189,7 @@ pub fn PhoneShell(
                             <div class="phone-banner">
                                 <div class="banner">
                                     <span class="say">{message}</span>
-                                    <button class="btn sm" on:click=move |_| on_retry.run(())>
+                                    <button class="btn sm" on:click=move |_| on_refresh.run(())>
                                         "Retry"
                                     </button>
                                 </div>
@@ -122,9 +198,21 @@ pub fn PhoneShell(
                     })
             }}
 
-            <div class="phone-body">
-                <div class="phone-scroll" node_ref=body on:scroll=move |_| scrolled()>
+            <div class="phone-body" class:refreshing=move || refreshing.get()>
+                <div
+                    class="phone-scroll"
+                    node_ref=body
+                    on:scroll=move |_| scrolled()
+                    on:touchstart=touched
+                    on:touchmove=dragged
+                    on:touchend=released
+                    on:touchcancel=released
+                >
                     {children()}
+                </div>
+
+                <div class="pull" class:spinning=move || refreshing.get() style=pull>
+                    <Glyph name="spin" />
                 </div>
 
                 // Over the list rather than above it: inset, the list would
@@ -137,4 +225,11 @@ pub fn PhoneShell(
             <Dock dock=dock on_screen=on_screen />
         </div>
     }
+}
+
+fn first_y(event: &TouchEvent) -> Option<f64> {
+    event
+        .touches()
+        .get(0)
+        .map(|touch| f64::from(touch.client_y()))
 }

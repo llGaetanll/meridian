@@ -55,7 +55,7 @@ pub struct RuntimeApp {
     /// Whether a snapshot is in flight. A fact about the runtime rather than
     /// a decision, and the machine would have to be told when a request
     /// started in order to know it.
-    loading: StoredValue<bool>,
+    loading: RwSignal<bool>,
 
     /// The session token, once there is one.
     ///
@@ -91,7 +91,7 @@ impl RuntimeApp {
             screen: RwSignal::new(None),
             dock: RwSignal::new(None),
             error: RwSignal::new(None),
-            loading: StoredValue::new(false),
+            loading: RwSignal::new(false),
             token: StoredValue::new(None),
             secret: StoredValue::new(None),
             watch: StoredValue::new(None),
@@ -138,6 +138,11 @@ impl RuntimeApp {
     /// What the banner says, if anything.
     pub fn error(&self) -> ReadSignal<Option<String>> {
         self.error.read_only()
+    }
+
+    /// Whether a snapshot is in flight, for the phone's refresh spinner.
+    pub fn loading(&self) -> ReadSignal<bool> {
+        self.loading.read_only()
     }
 
     /// The clock, read at the edge and sent in as an event like any other.
@@ -515,11 +520,11 @@ impl RuntimeApp {
     fn load_snapshot(&self) {
         // Two at once would race to write the same state, and the slower one
         // would win. One at a time.
-        if self.loading.get_value() {
+        if self.loading.get_untracked() {
             return;
         }
 
-        self.loading.set_value(true);
+        self.loading.set(true);
 
         let runtime = *self;
         let server = self.server.get_value();
@@ -534,7 +539,7 @@ impl RuntimeApp {
                 None => Err(Failure::NoSession),
             };
 
-            runtime.loading.set_value(false);
+            runtime.loading.set(false);
 
             let event = match loaded {
                 Ok(json) => {

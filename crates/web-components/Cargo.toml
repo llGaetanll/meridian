@@ -21,4 +21,7 @@ features = [
     "ResizeObserver",
     "ScrollBehavior",
     "ScrollToOptions",
+    "Touch",
+    "TouchEvent",
+    "TouchList",
 ]
