@@ -353,7 +353,7 @@ impl SyncStage {
 /// says something else again, and a client that matched on either would have
 /// learned one provider's dictionary — so a second provider would be a second
 /// set of arms in every app. The server maps; the wire carries our word.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WireUnpaid {
     /// `"never"`, `"declined"`, `"ended"` or `"unconfirmed"`.
     pub reason: String,

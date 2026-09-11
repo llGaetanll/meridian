@@ -8,6 +8,7 @@ use api_trace::ApiCall;
 use api_trace::Source;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use server_wire::WireUnpaid;
 
 /// What this client is called in the logs.
 const SOURCE: Source = Source::new("meridian");
@@ -33,7 +34,10 @@ pub enum Refusal {
     /// **402.** The session is good and has not paid. The answer is the
     /// paywall. Told apart from the 401 on purpose: a client that conflated
     /// the two would sign somebody out for not having paid.
-    PaymentRequired,
+    ///
+    /// `None` is a 402 whose body did not parse, which draws the screen that
+    /// claims nothing about what came before.
+    PaymentRequired(Option<WireUnpaid>),
 
     /// A status this client has no rule about. The code and not a sentence
     /// about it, so a rule about one of them is a `match` rather than a
@@ -54,9 +58,10 @@ pub struct BillingStatus {
     /// decide it here either.
     pub entitled: bool,
 
-    /// The provider's own word — `active`, `past_due`, `canceled`. Absent
-    /// where there has never been a subscription.
-    pub status: Option<String>,
+    /// Why not, present exactly when [`entitled`](BillingStatus::entitled) is
+    /// false. Our vocabulary and never a provider's — see [`WireUnpaid`].
+    #[serde(default)]
+    pub unpaid: Option<WireUnpaid>,
 
     /// The end of the period that has been paid for.
     pub good_until: Option<Timestamp>,
@@ -135,7 +140,7 @@ impl Meridian {
         match status {
             200 => {}
             401 => return Err(Refusal::Unauthorized),
-            402 => return Err(Refusal::PaymentRequired),
+            402 => return Err(Refusal::PaymentRequired(serde_json::from_str(&body).ok())),
             other => return Err(Refusal::Answered(other)),
         }
 

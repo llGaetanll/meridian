@@ -16,6 +16,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 src-yahoo = { path = "../src-yahoo" }
 api-ledger = { path = "../api-ledger" }
+server-wire = { path = "../server-wire" }
 web-ui = { path = "../web-ui" }
 web-components = { path = "../web-components" }
 

@@ -18,7 +18,7 @@ pub fn App() -> impl IntoView {
         {move || match billing.standing() {
             // Every gated route answers 402 for this session, so there is no
             // app behind the sidebar to draw.
-            Standing::Unpaid(status) => view! { <PaywallPage billing=status /> }.into_any(),
+            Standing::Unpaid(unpaid) => view! { <PaywallPage unpaid=unpaid /> }.into_any(),
             _ => {
                 view! {
                     <Shell

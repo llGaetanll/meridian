@@ -1,6 +1,7 @@
 //! Whether this session has paid, and so which screen the app is.
 
 use leptos::prelude::*;
+use server_wire::WireUnpaid;
 
 use crate::io::BillingStatus;
 use crate::io::Meridian;
@@ -18,10 +19,10 @@ pub enum Standing {
     /// The app.
     Entitled,
 
-    /// The paywall, and what the server said, to draw it from. The status is
-    /// absent where the paywall was reached by a 402 on some other route
-    /// rather than by asking.
-    Unpaid(Option<BillingStatus>),
+    /// The paywall, and why, to draw it from. Absent where the refusal
+    /// carried no readable body, which draws the screen that claims nothing
+    /// about what came before.
+    Unpaid(Option<WireUnpaid>),
 }
 
 /// What the app knows about this session's subscription.
@@ -50,12 +51,12 @@ impl BillingState {
             None => Standing::Unknown,
 
             Some(Ok(status)) if status.entitled => Standing::Entitled,
-            Some(Ok(status)) => Standing::Unpaid(Some(status)),
+            Some(Ok(status)) => Standing::Unpaid(status.unpaid.clone()),
 
             // A 402 is the paywall wherever it comes from. A 401 is a sign-in
             // screen and anything else is a failure, and neither of those is
             // this screen's business.
-            Some(Err(Refusal::PaymentRequired)) => Standing::Unpaid(None),
+            Some(Err(Refusal::PaymentRequired(unpaid))) => Standing::Unpaid(unpaid.clone()),
             Some(Err(_)) => Standing::Unknown,
         }
     }
