@@ -4002,6 +4002,12 @@ public enum EventSource: Equatable, Hashable {
      */
     case bankAbandoned
     /**
+     * The bank sign-in never opened, because the device would not show
+     * Plaid's page — a browser refusing the window it opens in. Nothing was
+     * attempted, which is not the same fact as a sign-in that closed.
+     */
+    case bankBlocked
+    /**
      * The server has not been told what the sign-in came to, because the
      * browser coming back and Plaid telling the server race. The bank may
      * yet be attached.
@@ -4059,12 +4065,14 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
         
         case 8: return .bankAbandoned
         
-        case 9: return .bankPending
+        case 9: return .bankBlocked
         
-        case 10: return .syncStatusLoaded(json: try FfiConverterString.read(from: &buf)
+        case 10: return .bankPending
+        
+        case 11: return .syncStatusLoaded(json: try FfiConverterString.read(from: &buf)
         )
         
-        case 11: return .syncWatchEnded
+        case 12: return .syncWatchEnded
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4109,17 +4117,21 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(8))
         
         
-        case .bankPending:
+        case .bankBlocked:
             writeInt(&buf, Int32(9))
         
         
-        case let .syncStatusLoaded(json):
+        case .bankPending:
             writeInt(&buf, Int32(10))
+        
+        
+        case let .syncStatusLoaded(json):
+            writeInt(&buf, Int32(11))
             FfiConverterString.write(json, into: &buf)
             
         
         case .syncWatchEnded:
-            writeInt(&buf, Int32(11))
+            writeInt(&buf, Int32(12))
         
         }
     }

@@ -463,6 +463,14 @@ impl StateApp {
                 self.render(actions);
             }
 
+            EventSource::BankBlocked => {
+                if let Some(flow) = &mut self.onboarding {
+                    flow.bank_blocked();
+                }
+
+                self.render(actions);
+            }
+
             EventSource::SyncWatchEnded => {
                 // Nothing is drawn about it and nothing is decided here: if the
                 // sync screen is still up, the rule at the end of this batch

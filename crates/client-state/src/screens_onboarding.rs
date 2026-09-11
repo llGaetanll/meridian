@@ -285,10 +285,17 @@ fn failed(flow: &StateOnboarding) -> ViewOnboarding {
         step: STEP_BANK.to_string(),
         title: "That didn't finish".to_string(),
 
-        body: plain(if linked {
-            "The bank sign-in closed before it was done, so nothing was added."
-        } else {
-            "The bank sign-in closed before it was done, so no bank was connected."
+        body: plain(match (flow.fault(), linked) {
+            (Some(Fault::Blocked), true) => {
+                "Your browser blocked the window the bank sign-in opens in, so nothing was \
+                 added. Allow pop-ups for Meridian and try again."
+            }
+            (Some(Fault::Blocked), false) => {
+                "Your browser blocked the window the bank sign-in opens in, so no bank was \
+                 connected. Allow pop-ups for Meridian and try again."
+            }
+            (_, true) => "The bank sign-in closed before it was done, so nothing was added.",
+            (_, false) => "The bank sign-in closed before it was done, so no bank was connected.",
         }),
 
         // There is no skip, so this row carries the reassurance instead — the

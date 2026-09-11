@@ -43,6 +43,11 @@ pub enum EventSource {
     /// The bank sign-in ended with nothing — dismissed, failed, timed out.
     BankAbandoned,
 
+    /// The bank sign-in never opened, because the device would not show
+    /// Plaid's page — a browser refusing the window it opens in. Nothing was
+    /// attempted, which is not the same fact as a sign-in that closed.
+    BankBlocked,
+
     /// The server has not been told what the sign-in came to, because the
     /// browser coming back and Plaid telling the server race. The bank may
     /// yet be attached.

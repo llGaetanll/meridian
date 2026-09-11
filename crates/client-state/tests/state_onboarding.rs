@@ -412,6 +412,31 @@ fn an_abandoned_sign_in_says_nothing_was_connected() {
     );
 }
 
+/// A browser shows Plaid's page in a window of its own, and it can refuse to
+/// open one. Nothing was tried, so the screen does not say a sign-in closed: it
+/// says what stopped it, and the same button tries again — which, once it has
+/// tried, is an ordinary attempt that says what an ordinary one says.
+#[test]
+fn a_blocked_window_says_the_browser_stopped_it() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankBlocked },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 2 of 3 · Bank", title: "That didn't finish", body: [ViewRun { text: "Your browser blocked the window the bank sign-in opens in, so no bank was connected. Allow pop-ups for Meridian and try again.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: false, open: None } }, dock: None } }"#,
+
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankAbandoned },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Failed { body, .. } }, .. } } => {
+            assert_eq!(body[0].text, "The bank sign-in closed before it was done, so no bank was connected.");
+        },
+    );
+}
+
 /// The same screen, reached from Add another bank, is a different situation:
 /// there is a bank connected, a ledger behind it, and nothing about either was
 /// touched by the attempt that just closed. So it says so, and it carries a

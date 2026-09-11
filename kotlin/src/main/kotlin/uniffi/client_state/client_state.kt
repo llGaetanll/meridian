@@ -4075,6 +4075,13 @@ sealed class EventSource {
     object BankAbandoned : EventSource()
 
     /**
+     * The bank sign-in never opened, because the device would not show
+     * Plaid's page — a browser refusing the window it opens in. Nothing was
+     * attempted, which is not the same fact as a sign-in that closed.
+     */
+    object BankBlocked : EventSource()
+
+    /**
      * The server has not been told what the sign-in came to, because the
      * browser coming back and Plaid telling the server race. The bank may
      * yet be attached.
@@ -4146,16 +4153,20 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
             }
 
             9 -> {
-                EventSource.BankPending
+                EventSource.BankBlocked
             }
 
             10 -> {
+                EventSource.BankPending
+            }
+
+            11 -> {
                 EventSource.SyncStatusLoaded(
                     FfiConverterString.read(buf),
                 )
             }
 
-            11 -> {
+            12 -> {
                 EventSource.SyncWatchEnded
             }
 
@@ -4219,6 +4230,13 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
             }
 
             is EventSource.BankAbandoned -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is EventSource.BankBlocked -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
                     4UL
@@ -4296,19 +4314,24 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> 
                 Unit
             }
 
-            is EventSource.BankPending -> {
+            is EventSource.BankBlocked -> {
                 buf.putInt(9)
                 Unit
             }
 
-            is EventSource.SyncStatusLoaded -> {
+            is EventSource.BankPending -> {
                 buf.putInt(10)
+                Unit
+            }
+
+            is EventSource.SyncStatusLoaded -> {
+                buf.putInt(11)
                 FfiConverterString.write(value.`json`, buf)
                 Unit
             }
 
             is EventSource.SyncWatchEnded -> {
-                buf.putInt(11)
+                buf.putInt(12)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }

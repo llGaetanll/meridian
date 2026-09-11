@@ -48,6 +48,10 @@ pub(crate) enum Fault {
     /// the app put first run back. Nothing the user did, which is why it needs
     /// saying: they arrive here having tapped nothing.
     SignedOut,
+
+    /// The bank sign-in never opened: the browser would not give Plaid's page
+    /// a window. Something the user can change, so it is named.
+    Blocked,
 }
 
 /// How much of the first sync has arrived. The stage and the counts are
@@ -253,6 +257,7 @@ impl StateOnboarding {
     pub(crate) fn connect_bank(&mut self) {
         self.step = Step::Bank;
         self.opening = true;
+        self.fault = None;
         self.sync = Progress::default();
     }
 
@@ -288,6 +293,13 @@ impl StateOnboarding {
     pub(crate) fn bank_abandoned(&mut self) {
         self.opening = false;
         self.step = Step::Failed;
+    }
+
+    /// Never opened, rather than closed before it was done. The same screen,
+    /// saying what stopped it.
+    pub(crate) fn bank_blocked(&mut self) {
+        self.bank_abandoned();
+        self.fault = Some(Fault::Blocked);
     }
 
     /// The server does not know yet, and neither do we. The sync screen rather
