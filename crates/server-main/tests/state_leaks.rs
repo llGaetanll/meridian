@@ -240,7 +240,7 @@ fn starting_a_subscription_leaves_nothing_behind() {
         > Action::ToStore { call_id: 5, action: ActionStore::SaveCustomer { .. } },
 
         < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
-        > @r#"ToRouter { request_id: 1, action: Subscribing { client_secret: "pi_1_secret" } }"#,
+        > @r#"ToRouter { request_id: 1, action: Subscribing { client_secret: "pi_1_secret", publishable_key: "pk_test_1" } }"#,
 
         // And a minute in which the window it was metered in goes idle.
         < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 62) } },

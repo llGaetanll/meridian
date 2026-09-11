@@ -53,6 +53,10 @@ pub struct StateBilling {
     /// subscription was paid for.
     webhook_secret: Option<String>,
 
+    /// What a card form opens Stripe.js with, handed out beside each secret
+    /// it confirms against. Not a credential: Stripe makes it to be in a page.
+    publishable_key: Option<String>,
+
     /// Which user each Stripe customer is, so a webhook naming `cus_…` can be
     /// turned into a row. Populated at startup and added to as customers are
     /// created.
@@ -80,10 +84,18 @@ impl StateBilling {
     pub fn started(
         &mut self,
         webhook_secret: Option<String>,
+        publishable_key: Option<String>,
         apple_environment: Option<AppleEnvironment>,
     ) {
         self.webhook_secret = webhook_secret;
+        self.publishable_key = publishable_key;
         self.apple_environment = apple_environment;
+    }
+
+    /// What a card form opens Stripe.js with. `None` is a process that can
+    /// sell nothing on the web.
+    pub fn publishable_key(&self) -> Option<&str> {
+        self.publishable_key.as_deref()
     }
 
     /// Take what the store held, at startup.

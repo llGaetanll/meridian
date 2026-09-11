@@ -91,10 +91,13 @@ pub enum ActionRouter {
     Claimed,
 
     /// A subscription has been started, and this is what the card form
-    /// confirms against.
+    /// confirms against, and the key it opens Stripe.js with.
     ///
     /// Nothing has been charged yet. Entitlement arrives by webhook, or never.
-    Subscribing { client_secret: String },
+    Subscribing {
+        client_secret: String,
+        publishable_key: String,
+    },
 
     /// What this user's subscription is, for the screen that draws it.
     BillingStatus {

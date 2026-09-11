@@ -168,6 +168,14 @@ impl RuntimeServer {
             tracing::warn!("no stripe webhook secret: every stripe webhook will be refused");
         }
 
+        let stripe_publishable_key = std::env::var("STRIPE_PUBLISHABLE_KEY")
+            .ok()
+            .filter(|key| !key.is_empty());
+
+        if stripe_publishable_key.is_none() {
+            tracing::warn!("no stripe publishable key: nothing can be sold on the web");
+        }
+
         // Said out loud or not at all, the way `PLAID_ENV` is. A fact from the
         // edge: whether a purchase can be believed is the machine's decision,
         // and a build that has not said which store it sells in refuses every
@@ -304,6 +312,7 @@ impl RuntimeServer {
                 collect,
                 web_origins,
                 stripe_webhook_secret: stripe_webhook_secret.clone(),
+                stripe_publishable_key: stripe_publishable_key.clone(),
                 apple_environment,
             },
             EventProcess::Seeded { seed: fresh_seed() },

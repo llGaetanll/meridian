@@ -540,6 +540,18 @@ impl StateServer {
             // their id. So the store is asked, and the conversation with
             // Stripe starts a turn later.
             Authenticated::SubscribeRequested => {
+                // Refused before Stripe is asked for anything: a secret with
+                // no key to open a card form with is a subscription nobody can
+                // pay, left behind in Stripe.
+                if self.billing.publishable_key().is_none() {
+                    tracing::error!("asked to subscribe with no publishable key to hand out");
+
+                    self.signup
+                        .answer(request_id, ActionRouter::Unavailable, self.now, actions);
+
+                    return;
+                }
+
                 self.signup.waits_on(
                     request_id,
                     Pending::Loading {
@@ -1268,10 +1280,23 @@ impl StateServer {
                     return;
                 };
 
+                // Checked when the route arrived, and never taken away since.
+                let Some(publishable_key) = self.billing.publishable_key() else {
+                    tracing::error!(
+                        "a subscription was started with no publishable key to hand out"
+                    );
+
+                    self.signup
+                        .answer(request_id, ActionRouter::Unavailable, self.now, actions);
+
+                    return;
+                };
+
                 self.signup.answer(
                     request_id,
                     ActionRouter::Subscribing {
                         client_secret: client_secret.clone(),
+                        publishable_key: publishable_key.to_string(),
                     },
                     self.now,
                     actions,
@@ -1650,11 +1675,15 @@ impl StateServer {
                 collect,
                 web_origins,
                 stripe_webhook_secret,
+                stripe_publishable_key,
                 apple_environment,
             } => {
                 self.signup.started(*collect, web_origins.clone());
-                self.billing
-                    .started(stripe_webhook_secret.clone(), *apple_environment);
+                self.billing.started(
+                    stripe_webhook_secret.clone(),
+                    stripe_publishable_key.clone(),
+                    *apple_environment,
+                );
             }
 
             EventProcess::Seeded { seed } => {

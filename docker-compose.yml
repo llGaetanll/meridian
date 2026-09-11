@@ -161,7 +161,7 @@ services:
       WEB_ORIGINS: ${WEB_ORIGINS:?}
 
       # Stripe, which is how a subscription is paid for. Empty rather than `:?`
-      # because the server treats all three as optional: without them it starts
+      # because the server treats all four as optional: without them it starts
       # and says at WARN that nobody can subscribe, which is what a laptop that
       # is not selling anything should do.
       #
@@ -169,9 +169,10 @@ services:
       # direction — an unverified webhook is somebody claiming a subscription
       # was paid for.
       #
-      # STRIPE_PUBLISHABLE_KEY is deliberately absent. It belongs to the card
-      # form in the browser, and no service here serves one.
+      # The publishable key is the card form's, and the server hands it out
+      # beside each subscription's secret, so no client is built with one.
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
       STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
 

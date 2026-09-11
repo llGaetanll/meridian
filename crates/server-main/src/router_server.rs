@@ -162,9 +162,13 @@ async fn billing_subscribe(
     refused(&answer)?;
 
     match answer {
-        Some(ActionRouter::Subscribing { client_secret }) => {
-            Ok(Json(SubscribeAnswer { client_secret }))
-        }
+        Some(ActionRouter::Subscribing {
+            client_secret,
+            publishable_key,
+        }) => Ok(Json(SubscribeAnswer {
+            client_secret,
+            publishable_key,
+        })),
         Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
         _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),
     }
@@ -176,6 +180,11 @@ struct SubscribeAnswer {
     /// What the card form confirms against. Not a credential of ours: it is
     /// scoped to one payment and is meant to reach a browser.
     client_secret: String,
+
+    /// What the card form opens Stripe.js with. Handed out here rather than
+    /// built into a client, so the web and the desktop app hold no key of
+    /// their own.
+    publishable_key: String,
 }
 
 /// `GET /billing/status`

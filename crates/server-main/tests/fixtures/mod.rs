@@ -139,6 +139,7 @@ fn started(collect: PlaidCollect) -> StateServer {
                     collect,
                     web_origins: WebOrigins::parse(WEB_ORIGIN).expect("a literal origin"),
                     stripe_webhook_secret: Some(STRIPE_WEBHOOK_SECRET.to_string()),
+                    stripe_publishable_key: Some(STRIPE_PUBLISHABLE_KEY.to_string()),
                     apple_environment: Some(AppleEnvironment::Sandbox),
                 },
             },
@@ -213,6 +214,9 @@ pub fn signed(body: &str, iat: u64) -> (String, Vec<u8>) {
 /// The secret these tests pretend Stripe signs with. Fixed, so a run is a
 /// replay.
 pub const STRIPE_WEBHOOK_SECRET: &str = "whsec_test_fixture";
+
+/// The key these tests hand to a card form beside each secret.
+pub const STRIPE_PUBLISHABLE_KEY: &str = "pk_test_1";
 
 /// A `Stripe-Signature` header for this body, as Stripe would write one.
 ///
