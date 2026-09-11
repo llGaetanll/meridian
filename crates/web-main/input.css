@@ -17,6 +17,8 @@
 @import "./css/page.css";
 @import "./css/recurring.css";
 @import "./css/ledger.css";
+@import "./css/account.css";
+@import "./css/balances.css";
 
 :root {
   --chart-accent: theme('colors.accent.500');

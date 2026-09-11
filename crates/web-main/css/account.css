@@ -1,0 +1,19 @@
+/* Account.
+
+   The banks, the session and the build, in one column of the same shell and
+   out of the pieces the rest of the app already draws: the section heading,
+   the row, the mark and the quiet button. No rail, because nothing here
+   decides what the page says, and no violet, because there is no
+   thing-you-are-here-to-do on it. */
+
+.account-page { max-width: 640px; padding-top: 30px; }
+
+/* The first part of the page has nothing above it to be ruled off from. */
+.account-page > .sec:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+
+.account-page .banks .row + .row { border-top: 1px solid var(--divider); }
+.account-page .banks-empty { font-size: 13px; color: var(--text-faint); }
+
+/* Nobody reads this until something is wrong, and then it is the first thing
+   we ask for. */
+.account-page .build { margin-top: 36px; font-size: 11.5px; color: var(--text-faint); }
