@@ -27,7 +27,9 @@ pub fn Onboarding(view: Signal<ViewOnboarding>, ui: Callback<EventUi>) -> impl I
     let screen = Memo::new(move |_| view.with(discriminant));
 
     move || {
-        screen.track();
+        // Read rather than only tracked: a memo nobody has read has not
+        // subscribed to the view, so it would never say the screen changed.
+        screen.get();
 
         view.with_untracked(|shown| match shown {
             ViewOnboarding::Welcome { .. } => view! { <Welcome view=view ui=ui /> }.into_any(),

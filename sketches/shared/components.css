@@ -544,7 +544,13 @@
 /* A quiet line under the actions — how long before a new code can be asked
    for — which may carry a plain button: the way out, one click away and not
    the loudest thing on the screen. */
-.ui .say-note { margin-top: 10px; font-size: 13px; color: var(--text-faint); }
+.ui .say-note {
+  margin-top: 10px;
+  font-size: 13px; color: var(--text-faint);
+  /* A countdown's figures each keep one width, so what follows it on the line
+     does not shuffle every second. */
+  font-variant-numeric: tabular-nums;
+}
 
 /* Small print, at the point of consent rather than in a settings screen. */
 .ui .say-legal {
