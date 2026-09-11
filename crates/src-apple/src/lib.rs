@@ -14,13 +14,22 @@
 //! order to believe what Apple sent.
 
 mod apple_chain;
+mod apple_environment;
 mod apple_jws;
 mod apple_key;
+mod apple_notification;
 mod apple_rejection;
 mod apple_root;
+mod apple_status;
+mod apple_transaction;
 
+pub use apple_environment::AppleEnvironment;
 pub use apple_jws::verify;
+pub use apple_notification::AppleNotification;
+pub use apple_notification::AppleNotificationData;
 pub use apple_rejection::AppleRejection;
 pub use apple_root::APPLE_ROOT_CA_G3;
+pub use apple_status::AppleStatus;
+pub use apple_transaction::AppleTransaction;
 
 pub(crate) use apple_key::AppleKey;
