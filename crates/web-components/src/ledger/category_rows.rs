@@ -81,7 +81,9 @@ pub fn CategoryRows(
     // element and the old one is gone. Observing reports a size straight away,
     // which is what takes the first measurement.
     Effect::new(move |_| {
-        lines.track();
+        // Read, not tracked: `track` does not compute a memo, so an effect
+        // that only tracks one never runs again.
+        lines.with(|_| ());
 
         let Some(container) = container.get() else {
             return;
