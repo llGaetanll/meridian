@@ -964,6 +964,15 @@ public struct ViewAccountRow: Equatable, Hashable {
      */
     public var subtitle: String
     /**
+     * `"Checking ·0000"` — the first half of the subtitle, for where it gets
+     * a column of its own.
+     */
+    public var kind: String
+    /**
+     * `"$100.00 available"` or `"4.10% APY"` — the rest of it, or empty.
+     */
+    public var detail: String
+    /**
      * `"$110.00"` or `"−$56,302.06"`.
      */
     public var amount: String
@@ -983,6 +992,13 @@ public struct ViewAccountRow: Equatable, Hashable {
          * `"Checking ·0000 · $100.00 available"` — the whole subtitle, assembled.
          */subtitle: String, 
         /**
+         * `"Checking ·0000"` — the first half of the subtitle, for where it gets
+         * a column of its own.
+         */kind: String, 
+        /**
+         * `"$100.00 available"` or `"4.10% APY"` — the rest of it, or empty.
+         */detail: String, 
+        /**
          * `"$110.00"` or `"−$56,302.06"`.
          */amount: String, 
         /**
@@ -994,6 +1010,8 @@ public struct ViewAccountRow: Equatable, Hashable {
         self.id = id
         self.name = name
         self.subtitle = subtitle
+        self.kind = kind
+        self.detail = detail
         self.amount = amount
         self.owed = owed
         self.utilisation = utilisation
@@ -1018,6 +1036,8 @@ public struct FfiConverterTypeViewAccountRow: FfiConverterRustBuffer {
                 id: FfiConverterString.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf), 
                 subtitle: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf), 
+                detail: FfiConverterString.read(from: &buf), 
                 amount: FfiConverterString.read(from: &buf), 
                 owed: FfiConverterBool.read(from: &buf), 
                 utilisation: FfiConverterOptionString.read(from: &buf)
@@ -1028,6 +1048,8 @@ public struct FfiConverterTypeViewAccountRow: FfiConverterRustBuffer {
         FfiConverterString.write(value.id, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
         FfiConverterString.write(value.subtitle, into: &buf)
+        FfiConverterString.write(value.kind, into: &buf)
+        FfiConverterString.write(value.detail, into: &buf)
         FfiConverterString.write(value.amount, into: &buf)
         FfiConverterBool.write(value.owed, into: &buf)
         FfiConverterOptionString.write(value.utilisation, into: &buf)
@@ -1066,11 +1088,30 @@ public struct ViewBalances: Equatable, Hashable {
      */
     public var masked: Bool
     /**
+     * `"Cover figures"` or `"Show figures"` — what the eye does when pressed.
+     */
+    public var maskLabel: String
+    /**
      * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks.
      */
     public var owedLabel: String
     public var owedTotal: String
     public var connections: [ViewConnection]
+    /**
+     * `"Where it sits"` — the heading over how what is held splits across
+     * the banks holding it.
+     */
+    public var heldSplitLabel: String
+    /**
+     * One slice per bank holding anything, largest first. The label is the
+     * bank's name and the token its connection id.
+     */
+    public var heldSplit: [ViewBreakdownSlice]
+    /**
+     * `"Owed against it"` — the same split, over what is owed.
+     */
+    public var owedSplitLabel: String
+    public var owedSplit: [ViewBreakdownSlice]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1087,14 +1128,33 @@ public struct ViewBalances: Equatable, Hashable {
          * above, so nothing is merely hidden in the DOM.
          */masked: Bool, 
         /**
+         * `"Cover figures"` or `"Show figures"` — what the eye does when pressed.
+         */maskLabel: String, 
+        /**
          * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks.
-         */owedLabel: String, owedTotal: String, connections: [ViewConnection]) {
+         */owedLabel: String, owedTotal: String, connections: [ViewConnection], 
+        /**
+         * `"Where it sits"` — the heading over how what is held splits across
+         * the banks holding it.
+         */heldSplitLabel: String, 
+        /**
+         * One slice per bank holding anything, largest first. The label is the
+         * bank's name and the token its connection id.
+         */heldSplit: [ViewBreakdownSlice], 
+        /**
+         * `"Owed against it"` — the same split, over what is owed.
+         */owedSplitLabel: String, owedSplit: [ViewBreakdownSlice]) {
         self.headlineLabel = headlineLabel
         self.headline = headline
         self.masked = masked
+        self.maskLabel = maskLabel
         self.owedLabel = owedLabel
         self.owedTotal = owedTotal
         self.connections = connections
+        self.heldSplitLabel = heldSplitLabel
+        self.heldSplit = heldSplit
+        self.owedSplitLabel = owedSplitLabel
+        self.owedSplit = owedSplit
     }
 
     
@@ -1116,9 +1176,14 @@ public struct FfiConverterTypeViewBalances: FfiConverterRustBuffer {
                 headlineLabel: FfiConverterString.read(from: &buf), 
                 headline: FfiConverterString.read(from: &buf), 
                 masked: FfiConverterBool.read(from: &buf), 
+                maskLabel: FfiConverterString.read(from: &buf), 
                 owedLabel: FfiConverterString.read(from: &buf), 
                 owedTotal: FfiConverterString.read(from: &buf), 
-                connections: FfiConverterSequenceTypeViewConnection.read(from: &buf)
+                connections: FfiConverterSequenceTypeViewConnection.read(from: &buf), 
+                heldSplitLabel: FfiConverterString.read(from: &buf), 
+                heldSplit: FfiConverterSequenceTypeViewBreakdownSlice.read(from: &buf), 
+                owedSplitLabel: FfiConverterString.read(from: &buf), 
+                owedSplit: FfiConverterSequenceTypeViewBreakdownSlice.read(from: &buf)
         )
     }
 
@@ -1126,9 +1191,14 @@ public struct FfiConverterTypeViewBalances: FfiConverterRustBuffer {
         FfiConverterString.write(value.headlineLabel, into: &buf)
         FfiConverterString.write(value.headline, into: &buf)
         FfiConverterBool.write(value.masked, into: &buf)
+        FfiConverterString.write(value.maskLabel, into: &buf)
         FfiConverterString.write(value.owedLabel, into: &buf)
         FfiConverterString.write(value.owedTotal, into: &buf)
         FfiConverterSequenceTypeViewConnection.write(value.connections, into: &buf)
+        FfiConverterString.write(value.heldSplitLabel, into: &buf)
+        FfiConverterSequenceTypeViewBreakdownSlice.write(value.heldSplit, into: &buf)
+        FfiConverterString.write(value.owedSplitLabel, into: &buf)
+        FfiConverterSequenceTypeViewBreakdownSlice.write(value.owedSplit, into: &buf)
     }
 }
 

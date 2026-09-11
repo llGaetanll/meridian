@@ -1811,6 +1811,15 @@ data class ViewAccountRow(
      */
     var `subtitle`: kotlin.String,
     /**
+     * `"Checking ·0000"` — the first half of the subtitle, for where it gets
+     * a column of its own.
+     */
+    var `kind`: kotlin.String,
+    /**
+     * `"$100.00 available"` or `"4.10% APY"` — the rest of it, or empty.
+     */
+    var `detail`: kotlin.String,
+    /**
      * `"$110.00"` or `"−$56,302.06"`.
      */
     var `amount`: kotlin.String,
@@ -1836,6 +1845,8 @@ public object FfiConverterTypeViewAccountRow : FfiConverterRustBuffer<ViewAccoun
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterOptionalString.read(buf),
         )
@@ -1845,6 +1856,8 @@ public object FfiConverterTypeViewAccountRow : FfiConverterRustBuffer<ViewAccoun
             FfiConverterString.allocationSize(value.`id`) +
                 FfiConverterString.allocationSize(value.`name`) +
                 FfiConverterString.allocationSize(value.`subtitle`) +
+                FfiConverterString.allocationSize(value.`kind`) +
+                FfiConverterString.allocationSize(value.`detail`) +
                 FfiConverterString.allocationSize(value.`amount`) +
                 FfiConverterBoolean.allocationSize(value.`owed`) +
                 FfiConverterOptionalString.allocationSize(value.`utilisation`)
@@ -1857,6 +1870,8 @@ public object FfiConverterTypeViewAccountRow : FfiConverterRustBuffer<ViewAccoun
         FfiConverterString.write(value.`id`, buf)
         FfiConverterString.write(value.`name`, buf)
         FfiConverterString.write(value.`subtitle`, buf)
+        FfiConverterString.write(value.`kind`, buf)
+        FfiConverterString.write(value.`detail`, buf)
         FfiConverterString.write(value.`amount`, buf)
         FfiConverterBoolean.write(value.`owed`, buf)
         FfiConverterOptionalString.write(value.`utilisation`, buf)
@@ -1879,11 +1894,30 @@ data class ViewBalances(
      */
     var `masked`: kotlin.Boolean,
     /**
+     * `"Cover figures"` or `"Show figures"` — what the eye does when pressed.
+     */
+    var `maskLabel`: kotlin.String,
+    /**
      * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks.
      */
     var `owedLabel`: kotlin.String,
     var `owedTotal`: kotlin.String,
     var `connections`: List<ViewConnection>,
+    /**
+     * `"Where it sits"` — the heading over how what is held splits across
+     * the banks holding it.
+     */
+    var `heldSplitLabel`: kotlin.String,
+    /**
+     * One slice per bank holding anything, largest first. The label is the
+     * bank's name and the token its connection id.
+     */
+    var `heldSplit`: List<ViewBreakdownSlice>,
+    /**
+     * `"Owed against it"` — the same split, over what is owed.
+     */
+    var `owedSplitLabel`: kotlin.String,
+    var `owedSplit`: List<ViewBreakdownSlice>,
 ) {
     companion object
 }
@@ -1899,7 +1933,12 @@ public object FfiConverterTypeViewBalances : FfiConverterRustBuffer<ViewBalances
             FfiConverterBoolean.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewConnection.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeViewBreakdownSlice.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeViewBreakdownSlice.read(buf),
         )
 
     override fun allocationSize(value: ViewBalances) =
@@ -1907,9 +1946,14 @@ public object FfiConverterTypeViewBalances : FfiConverterRustBuffer<ViewBalances
             FfiConverterString.allocationSize(value.`headlineLabel`) +
                 FfiConverterString.allocationSize(value.`headline`) +
                 FfiConverterBoolean.allocationSize(value.`masked`) +
+                FfiConverterString.allocationSize(value.`maskLabel`) +
                 FfiConverterString.allocationSize(value.`owedLabel`) +
                 FfiConverterString.allocationSize(value.`owedTotal`) +
-                FfiConverterSequenceTypeViewConnection.allocationSize(value.`connections`)
+                FfiConverterSequenceTypeViewConnection.allocationSize(value.`connections`) +
+                FfiConverterString.allocationSize(value.`heldSplitLabel`) +
+                FfiConverterSequenceTypeViewBreakdownSlice.allocationSize(value.`heldSplit`) +
+                FfiConverterString.allocationSize(value.`owedSplitLabel`) +
+                FfiConverterSequenceTypeViewBreakdownSlice.allocationSize(value.`owedSplit`)
         )
 
     override fun write(
@@ -1919,9 +1963,14 @@ public object FfiConverterTypeViewBalances : FfiConverterRustBuffer<ViewBalances
         FfiConverterString.write(value.`headlineLabel`, buf)
         FfiConverterString.write(value.`headline`, buf)
         FfiConverterBoolean.write(value.`masked`, buf)
+        FfiConverterString.write(value.`maskLabel`, buf)
         FfiConverterString.write(value.`owedLabel`, buf)
         FfiConverterString.write(value.`owedTotal`, buf)
         FfiConverterSequenceTypeViewConnection.write(value.`connections`, buf)
+        FfiConverterString.write(value.`heldSplitLabel`, buf)
+        FfiConverterSequenceTypeViewBreakdownSlice.write(value.`heldSplit`, buf)
+        FfiConverterString.write(value.`owedSplitLabel`, buf)
+        FfiConverterSequenceTypeViewBreakdownSlice.write(value.`owedSplit`, buf)
     }
 }
 

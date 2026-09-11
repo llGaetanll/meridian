@@ -504,10 +504,63 @@ fn balances(state: &StateApp) -> ViewBalances {
         headline_label: "Held".to_string(),
         headline: fmt::money(held, state.masked()),
         masked: state.masked(),
+        mask_label: if state.masked() {
+            "Show figures"
+        } else {
+            "Cover figures"
+        }
+        .to_string(),
         owed_label: "Owed".to_string(),
         owed_total: fmt::money(owed, state.masked()),
         connections: connection_views(state),
+        held_split_label: "Where it sits".to_string(),
+        held_split: bank_split(state, false),
+        owed_split_label: "Owed against it".to_string(),
+        owed_split: bank_split(state, true),
     }
+}
+
+/// How one side of the page splits across the banks it sits with, largest
+/// first — Recurring's split, by bank rather than by category.
+///
+/// Unsigned, because the heading over it says which side it is. Covered, the
+/// figures go and the bars stay, as they do on Recurring.
+fn bank_split(state: &StateApp, debts: bool) -> Vec<ViewBreakdownSlice> {
+    let mut totals: Vec<(&Connection, f64)> = state
+        .connections()
+        .iter()
+        .filter(|connection| connection.accounts.iter().any(|a| a.is_debt() == debts))
+        .map(|connection| {
+            let total = connection
+                .accounts
+                .iter()
+                .filter(|a| a.is_debt() == debts)
+                .map(|a| a.balance)
+                .sum();
+
+            (connection, total)
+        })
+        .collect();
+
+    let sum: f64 = totals.iter().map(|(_, total)| total).sum();
+
+    totals.sort_by(|a, b| b.1.total_cmp(&a.1));
+
+    totals
+        .into_iter()
+        .map(|(connection, total)| ViewBreakdownSlice {
+            label: connection.name.clone(),
+            token: connection.id.clone(),
+            // Guarded: nothing to split would divide by zero into a NaN
+            // width, and an overdrawn account would draw a negative one.
+            share: if sum > 0.0 {
+                (total / sum).clamp(0.0, 1.0)
+            } else {
+                0.0
+            },
+            amount: fmt::money(total, state.masked()),
+        })
+        .collect()
 }
 
 /// One block per connection, with debts split into their own block: a mortgage
@@ -586,18 +639,23 @@ fn connection_view(
 }
 
 fn account_row(account: &Account, masked: bool) -> ViewAccountRow {
-    let mut parts = vec![fmt::account_kind(account.subtype.as_deref(), account.group)];
+    let label = fmt::account_kind(account.subtype.as_deref(), account.group);
 
-    if let Some(mask) = &account.mask {
-        parts.push(format!("·{mask}"));
-    }
+    // The kind and the last four digits read as one phrase, so only what
+    // comes after them gets a separator.
+    let kind = match &account.mask {
+        Some(mask) => format!("{label} ·{mask}"),
+        None => label,
+    };
 
     // Only one fits, and available beats APY: it moves.
-    if let Some(available) = account.available {
-        parts.push(format!("{} available", fmt::money(available, masked)));
+    let detail = if let Some(available) = account.available {
+        format!("{} available", fmt::money(available, masked))
     } else if let Some(apy) = account.apy {
-        parts.push(format!("{apy:.2}% APY"));
-    }
+        format!("{apy:.2}% APY")
+    } else {
+        String::new()
+    };
 
     let amount = if account.is_debt() {
         -account.balance
@@ -608,11 +666,13 @@ fn account_row(account: &Account, masked: bool) -> ViewAccountRow {
     ViewAccountRow {
         id: account.id.clone(),
         name: account.name.clone(),
-        // Kind and mask read as one phrase, so only the rest gets a separator.
-        subtitle: match parts.len() {
-            0 | 1 => parts.join(""),
-            _ => format!("{} {}", parts[0], parts[1..].join(" · ")),
+        subtitle: if detail.is_empty() {
+            kind.clone()
+        } else {
+            format!("{kind} · {detail}")
         },
+        kind,
+        detail,
         amount: fmt::money(amount, masked),
         owed: account.is_debt(),
         utilisation: utilisation(account, masked),

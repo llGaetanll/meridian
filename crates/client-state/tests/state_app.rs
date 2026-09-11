@@ -1134,6 +1134,117 @@ fn an_account_subtitle_reads_as_a_sentence() {
     );
 }
 
+/// The web sets the kind and what else is worth knowing in columns of their
+/// own, so they arrive apart as well as joined.
+#[test]
+fn an_account_row_carries_its_kind_and_detail_apart() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
+                {"id":"acc-1","name":"Plaid Checking","subtype":"checking","mask":"0000","balance":100.0,"available":100.0,"group":"depository"},
+                {"id":"acc-2","name":"Plaid 401k","subtype":"401k","mask":"6666","balance":23631.98,"group":"investment"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            let accounts = &balances.connections[0].accounts;
+
+            assert_eq!((accounts[0].kind.as_str(), accounts[0].detail.as_str()), ("Checking ·0000", "$100.00 available"));
+            assert_eq!((accounts[1].kind.as_str(), accounts[1].detail.as_str()), ("401(k) ·6666", ""));
+        },
+    );
+}
+
+/// Without the last four digits there is no phrase for the kind to join, and
+/// what is available still gets its separator.
+#[test]
+fn an_account_without_a_mask_still_separates_what_is_available() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
+                {"id":"acc","name":"Plaid Checking","subtype":"checking","balance":100.0,"available":100.0,"group":"depository"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            assert_eq!(balances.connections[0].accounts[0].subtitle, "Checking · $100.00 available");
+        },
+    );
+}
+
+/// The split says how much of what is held each bank is holding, biggest
+/// first, and the same for what is owed. A bank with money on both sides is in
+/// both.
+#[test]
+fn the_split_says_where_the_money_sits() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "connections":[
+                {"id":"c-1","name":"Citi","initials":"CI","status":"ok","accounts":[
+                    {"id":"acc-1","name":"Citi Checking","balance":100.0,"group":"depository"},
+                    {"id":"acc-2","name":"Citi Double Cash","balance":50.0,"group":"credit"}]},
+                {"id":"c-2","name":"Fidelity","initials":"FI","status":"ok","accounts":[
+                    {"id":"acc-3","name":"Fidelity Brokerage","balance":300.0,"group":"investment"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            let held: Vec<(&str, &str, f64)> = balances.held_split.iter().map(|s| (s.label.as_str(), s.amount.as_str(), s.share)).collect();
+            let owed: Vec<(&str, &str, f64)> = balances.owed_split.iter().map(|s| (s.label.as_str(), s.amount.as_str(), s.share)).collect();
+
+            assert_eq!(held, [("Fidelity", "$300.00", 0.75), ("Citi", "$100.00", 0.25)], "biggest first");
+            assert_eq!(owed, [("Citi", "$50.00", 1.0)], "the card, and not the current account");
+        },
+    );
+}
+
+/// Covered, the split keeps its bars and loses its figures, as Recurring's
+/// does.
+#[test]
+fn a_covered_split_keeps_its_bars() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
+                {"id":"acc","name":"Plaid Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::MaskToggled },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            let slice = &balances.held_split[0];
+
+            assert_eq!((slice.amount.as_str(), slice.share), ("••••••", 1.0));
+        },
+    );
+}
+
+/// The eye is named for what pressing it does.
+#[test]
+fn the_eye_says_what_it_will_do() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            assert_eq!(balances.mask_label, "Cover figures");
+        },
+
+        < Event::FromUi { event: EventUi::MaskToggled },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            assert_eq!(balances.mask_label, "Show figures");
+        },
+    );
+}
+
 /// The grid is as many rows as the month has weeks in it. August 2026 starts
 /// on a Saturday and runs 31 days, which is six; July is five. No transaction
 /// is involved in either fact, so the snapshot carries none.
