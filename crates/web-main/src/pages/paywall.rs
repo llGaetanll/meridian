@@ -8,7 +8,7 @@ use client_state::EventUi;
 use client_state::ViewPaywall;
 use leptos::prelude::*;
 use web_components::Brand;
-use web_ui::Glyph;
+use web_components::IconRow;
 
 use crate::runtime_app::RuntimeApp;
 
@@ -37,30 +37,12 @@ pub fn PaywallPage(view: Signal<ViewPaywall>) -> impl IntoView {
                 </div>
 
                 <div class="facts">
+                    // Redrawn whole: they change only when the reason does.
                     {move || {
                         view.with(|view| {
                             view.rows
                                 .iter()
-                                .map(|row| {
-                                    view! {
-                                        <div class="row">
-                                            <Glyph name=row.icon.clone() />
-                                            <div class="rt">
-                                                {row.title.clone()}
-                                                {row
-                                                    .sub
-                                                    .clone()
-                                                    .map(|sub| view! { <div class="rs">{sub}</div> })}
-                                            </div>
-                                            {row
-                                                .value
-                                                .clone()
-                                                .map(|value| {
-                                                    view! { <span class="rv hard money">{value}</span> }
-                                                })}
-                                        </div>
-                                    }
-                                })
+                                .map(|row| view! { <IconRow row=row.clone() /> })
                                 .collect_view()
                         })
                     }}
