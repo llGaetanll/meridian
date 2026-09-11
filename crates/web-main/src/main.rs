@@ -2,9 +2,12 @@ use leptos::prelude::*;
 
 mod app;
 mod fake;
+mod frame;
 mod io;
 mod pages;
+mod runtime_app;
 mod state;
+mod tab;
 
 use app::App;
 

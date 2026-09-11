@@ -1,82 +1,47 @@
-//! Meridian's own server, and the refusals a client has to tell apart.
+//! Meridian's own server. Every call the app makes of it.
 //!
-//! Nothing here is reactive: plain async functions over plain data, like the
-//! price source beside it.
+//! Nothing here is reactive and nothing here decides: async functions over
+//! plain data, like the price source beside it. Bodies the machine reads —
+//! the snapshot, a sync status — go back as strings rather than parsed, so
+//! every platform gets the machine's one parse and there is one place that
+//! decides what a missing field means.
+//!
+//! Nothing here holds the token either. It is a parameter; the runtime holds
+//! one, and turns an outcome into an event.
 
-use api_common::Timestamp;
+use std::borrow::Cow;
+
 use api_trace::ApiCall;
 use api_trace::Source;
+use api_trace::scrub::Context;
+use api_trace::scrub::Direction;
+use futures::StreamExt;
 use serde::Deserialize;
-use serde::de::DeserializeOwned;
-use server_wire::WireUnpaid;
 
-/// What this client is called in the logs.
-const SOURCE: Source = Source::new("meridian");
+use crate::io::Failure;
+use crate::io::LinkOutcome;
+use crate::io::Sse;
+
+/// What this client is called in the logs, and what its bodies pass through
+/// on the way there.
+const SOURCE: Source = Source::new("meridian").through(&[redact_session]);
 
 /// Where the server is when the build does not name one. `MERIDIAN_SERVER` at
 /// build time points it elsewhere, as the same variable does on the phone.
 const DEFAULT_BASE_URL: &str = "http://127.0.0.1:8082/";
 
-/// Where the browser keeps the session token.
-///
-/// `localStorage` and not a cookie: the token is sent as a bearer header, and
-/// the server sets nothing for a browser to keep.
-#[cfg(target_arch = "wasm32")]
-const TOKEN_KEY: &str = "meridian.token";
+/// As much of a refused stream's body as is worth reading. `WireUnpaid` is
+/// two fields, and anything past this is not that.
+const REFUSAL_CAP: usize = 4096;
 
-/// Why the server would not answer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Refusal {
-    /// **401.** No session, or one the server has stopped honouring. The
-    /// answer is a sign-in screen.
-    Unauthorized,
-
-    /// **402.** The session is good and has not paid. The answer is the
-    /// paywall. Told apart from the 401 on purpose: a client that conflated
-    /// the two would sign somebody out for not having paid.
-    ///
-    /// `None` is a 402 whose body did not parse, which draws the screen that
-    /// claims nothing about what came before.
-    PaymentRequired(Option<WireUnpaid>),
-
-    /// A status this client has no rule about. The code and not a sentence
-    /// about it, so a rule about one of them is a `match` rather than a
-    /// comparison against a spelling.
-    Answered(u16),
-
-    /// A call that produced no status to read — a request that never arrived,
-    /// or an answer that would not parse. Under whatever the library that
-    /// failed called it.
-    Failed(String),
-}
-
-/// What `GET /billing/status` answers with.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-pub struct BillingStatus {
-    /// Whether the app may be used. Decided on the server from the date
-    /// against the clock, which is why [`BillingStatus::status`] does not
-    /// decide it here either.
-    pub entitled: bool,
-
-    /// Why not, present exactly when [`entitled`](BillingStatus::entitled) is
-    /// false. Our vocabulary and never a provider's — see [`WireUnpaid`].
-    #[serde(default)]
-    pub unpaid: Option<WireUnpaid>,
-
-    /// The end of the period that has been paid for.
-    pub good_until: Option<Timestamp>,
-
-    /// Whether it stops at the end of that period.
-    pub cancel_at_period_end: bool,
-}
-
+#[derive(Clone)]
 pub struct Meridian {
     client: reqwest::Client,
-    base_url: reqwest::Url,
+    base_url: String,
 }
 
 impl Meridian {
-    pub fn new() -> Result<Self, String> {
+    pub fn new() -> Self {
         let base_url = option_env!("MERIDIAN_SERVER").unwrap_or(DEFAULT_BASE_URL);
 
         // A base without the trailing slash swallows its last segment when a
@@ -86,32 +51,130 @@ impl Meridian {
             false => format!("{base_url}/"),
         };
 
-        Ok(Self {
+        Self {
             client: reqwest::Client::new(),
-            base_url: reqwest::Url::parse(&base_url).map_err(|e| e.to_string())?,
+            base_url,
+        }
+    }
+
+    /// The snapshot, as JSON.
+    ///
+    /// It asks for nothing but the ledger. When to go back to a bank is the
+    /// server's decision, and a gesture anybody can repeat is not.
+    pub async fn snapshot(&self, token: &str) -> Result<String, Failure> {
+        let url = self.url("snapshot")?;
+        let call = ApiCall::get(module_path!(), SOURCE, &url);
+
+        let (status, body) = self
+            .send(self.client.get(url).bearer_auth(token), call)
+            .await?;
+
+        match Failure::refusal(status, &body) {
+            Some(refusal) => Err(refusal),
+            None => Ok(body),
+        }
+    }
+
+    /// Ask for a sign-in code.
+    ///
+    /// The server answers 204 whether or not the address is one it knows, so
+    /// there is nothing to read out of a success.
+    pub async fn request_code(&self, email: &str) -> Result<(), Failure> {
+        let body = serde_json::json!({ "email": email });
+
+        let (status, body) = self.post_json("auth/request", &body).await?;
+
+        match Failure::refusal(status, &body) {
+            Some(refusal) => Err(refusal),
+            None => Ok(()),
+        }
+    }
+
+    /// Trade a code for a session, and answer with the token.
+    ///
+    /// `None` is the code being refused — wrong, expired and too many guesses
+    /// answer alike, and this passes that through. It is not a failure: a
+    /// mistyped digit is the ordinary way this ends.
+    pub async fn verify_code(&self, email: &str, code: &str) -> Result<Option<String>, Failure> {
+        let body = serde_json::json!({ "email": email, "code": code });
+
+        let (status, body) = self.post_json("auth/verify", &body).await?;
+
+        if status == 401 {
+            return Ok(None);
+        }
+
+        if let Some(refusal) = Failure::refusal(status, &body) {
+            return Err(refusal);
+        }
+
+        #[derive(Deserialize)]
+        struct Verified {
+            token: String,
+        }
+
+        let verified: Verified = serde_json::from_str(&body).map_err(|_| Failure::Unreadable)?;
+
+        Ok(Some(verified.token))
+    }
+
+    /// Open a Link session, and answer with the address of Plaid's page for
+    /// it.
+    pub async fn start_link(&self, token: &str) -> Result<String, Failure> {
+        #[derive(Deserialize)]
+        struct Started {
+            url: String,
+        }
+
+        let started: Started = self.post_authed("link/start", token).await?;
+
+        Ok(started.url)
+    }
+
+    /// Ask what the Link session came to.
+    pub async fn finish_link(&self, token: &str) -> Result<LinkOutcome, Failure> {
+        #[derive(Deserialize)]
+        struct Finished {
+            outcome: String,
+        }
+
+        let finished: Finished = self.post_authed("link/finish", token).await?;
+
+        Ok(match finished.outcome.as_str() {
+            "linked" => LinkOutcome::Linked,
+            "pending" => LinkOutcome::Pending,
+
+            // Including a word this build has never heard of. A server saying
+            // something newer than the app is not a reason to leave somebody
+            // waiting, and every other outcome ends the same way.
+            _ => LinkOutcome::Abandoned,
         })
     }
 
-    /// What this session's subscription is.
+    /// How the sync is going, handed to `status` as JSON each time it moves,
+    /// for as long as the connection lasts.
     ///
-    /// One of the two routes a session without one may reach, so a 402 from
-    /// here means the token names nobody rather than that nobody has paid.
-    pub async fn billing_status(&self, token: &str) -> Result<BillingStatus, Refusal> {
-        self.get("billing/status", token).await
-    }
-
-    async fn get<T: DeserializeOwned>(&self, path: &str, token: &str) -> Result<T, Refusal> {
-        let url = self
-            .base_url
-            .join(path)
-            .map_err(|e| Refusal::Failed(e.to_string()))?;
-
+    /// A response that never ends: the server holds it open and writes a
+    /// message whenever the sync moves. `Ok` is the connection going, which is
+    /// a fact and not a failure. `Err` is the server refusing to open it.
+    ///
+    /// Dropping the future closes the connection, which is what frees the slot
+    /// the server is holding for it.
+    pub async fn sync_statuses(
+        &self,
+        token: &str,
+        mut status: impl FnMut(String),
+    ) -> Result<(), Failure> {
+        let url = self.url("sync/status")?;
         let call = ApiCall::get(module_path!(), SOURCE, &url);
 
+        // No timeout of its own. What keeps the connection up through minutes
+        // of quiet is the server's keep-alive every fifteen seconds.
         let sent = self
             .client
             .get(url)
-            .header("Authorization", format!("Bearer {token}"))
+            .bearer_auth(token)
+            .header("Accept", "text/event-stream")
             .send()
             .await;
 
@@ -119,7 +182,117 @@ impl Meridian {
             Ok(response) => response,
             Err(e) => {
                 call.failed(&e);
-                return Err(Refusal::Failed(e.to_string()));
+
+                return Err(Failure::Unreachable);
+            }
+        };
+
+        let code = response.status().as_u16();
+        let mut body = response.bytes_stream();
+
+        // Refused before any of the stream went out, which is why the server
+        // answers the open as an ordinary request. A 402 met here is somebody
+        // who reached the bank step without paying.
+        if !(200..300).contains(&code) {
+            let mut refused = Vec::new();
+
+            while let Some(Ok(chunk)) = body.next().await {
+                refused.extend_from_slice(&chunk);
+
+                if refused.len() >= REFUSAL_CAP {
+                    break;
+                }
+            }
+
+            let refused = String::from_utf8_lossy(&refused);
+
+            let _ = call.response(code, &refused);
+
+            return Err(Failure::refusal(code, &refused).unwrap_or(Failure::Unreachable));
+        }
+
+        let _ = call.response(code, "[event stream]");
+
+        let mut sse = Sse::default();
+        let mut statuses = Vec::new();
+
+        while let Some(chunk) = body.next().await {
+            let chunk = match chunk {
+                Ok(chunk) => chunk,
+                Err(e) => {
+                    // The connection went after it had opened. The ending is
+                    // the whole of what happened, and the caller reports it.
+                    tracing::info!(error = %e, "the sync stream ended");
+
+                    return Ok(());
+                }
+            };
+
+            sse.feed(&chunk, &mut statuses);
+
+            for json in statuses.drain(..) {
+                status(json);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn post_json(
+        &self,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> Result<(u16, String), Failure> {
+        let url = self.url(path)?;
+        let body = body.to_string();
+
+        let call = ApiCall::post(module_path!(), SOURCE, &url, &body);
+
+        let request = self
+            .client
+            .post(url)
+            .header("Content-Type", "application/json")
+            .body(body);
+
+        self.send(request, call).await
+    }
+
+    /// A POST that carries nothing but the session, and whose answer is JSON.
+    async fn post_authed<T: for<'de> Deserialize<'de>>(
+        &self,
+        path: &str,
+        token: &str,
+    ) -> Result<T, Failure> {
+        let url = self.url(path)?;
+        let call = ApiCall::post(module_path!(), SOURCE, &url, "");
+
+        let (status, body) = self
+            .send(self.client.post(url).bearer_auth(token), call)
+            .await?;
+
+        if let Some(refusal) = Failure::refusal(status, &body) {
+            return Err(refusal);
+        }
+
+        serde_json::from_str(&body).map_err(|_| Failure::Unreadable)
+    }
+
+    /// Send it, and hand back the status and the body.
+    ///
+    /// The status is returned rather than failed on, because what a given
+    /// status means differs by route — a 401 from `/auth/verify` is a mistyped
+    /// digit, and a 401 from `/snapshot` is a session that has run out.
+    async fn send(
+        &self,
+        request: reqwest::RequestBuilder,
+        call: ApiCall,
+    ) -> Result<(u16, String), Failure> {
+        let response = match request.send().await {
+            Ok(response) => response,
+            Err(e) => {
+                call.failed(&e);
+
+                return Err(Failure::Unreachable);
             }
         };
 
@@ -129,44 +302,39 @@ impl Meridian {
             Ok(body) => body,
             Err(e) => {
                 call.failed(&e);
-                return Err(Refusal::Failed(e.to_string()));
+
+                return Err(Failure::Unreachable);
             }
         };
 
-        let response = call.response(status, &body);
+        let _ = call.response(status, &body);
 
-        // Read before the body is: a refusal carries no body worth parsing,
-        // and which one it is decides which screen the app draws.
-        match status {
-            200 => {}
-            401 => return Err(Refusal::Unauthorized),
-            402 => return Err(Refusal::PaymentRequired(serde_json::from_str(&body).ok())),
-            other => return Err(Refusal::Answered(other)),
-        }
+        Ok((status, body))
+    }
 
-        match serde_json::from_str(&body) {
-            Ok(value) => Ok(value),
-            Err(e) => {
-                response.parse_error(&e);
-                Err(Refusal::Failed(e.to_string()))
-            }
-        }
+    /// A path on the server. A base that will not parse is a server nobody
+    /// can reach.
+    fn url(&self, path: &str) -> Result<reqwest::Url, Failure> {
+        reqwest::Url::parse(&self.base_url)
+            .and_then(|base| base.join(path))
+            .map_err(|_| Failure::Unreachable)
     }
 }
 
-/// The session token the browser is holding, if it is holding one.
-#[cfg(target_arch = "wasm32")]
-pub fn token() -> Option<String> {
-    web_sys::window()?
-        .local_storage()
-        .ok()??
-        .get_item(TOKEN_KEY)
-        .ok()?
-        .filter(|token| !token.is_empty())
-}
+/// Two answers here are a credential: the session `/auth/verify` hands back,
+/// good for ninety days, and the page `/link/start` hands back, whose address
+/// is a Link token. The code that buys the first goes the same way. Each is
+/// logged as its length.
+fn redact_session<'a>(ctx: &Context<'_>, body: Cow<'a, str>) -> Cow<'a, str> {
+    let secret = match ctx.direction {
+        Direction::Request => ctx.url.ends_with("/auth/verify"),
+        Direction::Response => {
+            ctx.url.ends_with("/auth/verify") || ctx.url.ends_with("/link/start")
+        }
+    };
 
-/// Nothing to hold it in: there is no session outside a browser.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn token() -> Option<String> {
-    None
+    match secret {
+        true => Cow::Owned(format!("[redacted {}]", body.len())),
+        false => body,
+    }
 }

@@ -11,11 +11,15 @@ leptos_meta = { workspace = true }
 api-cache = { path = "../api-cache" }
 api-common = { path = "../api-common" }
 chrono = { workspace = true }
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["stream"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 src-yahoo = { path = "../src-yahoo" }
 api-ledger = { path = "../api-ledger" }
+client-state = { path = "../client-state" }
+futures = { workspace = true }
+js-sys = "0.3"
+wasm-bindgen-futures = "0.4"
 server-wire = { path = "../server-wire" }
 web-ui = { path = "../web-ui" }
 web-components = { path = "../web-components" }

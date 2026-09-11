@@ -1,4 +1,8 @@
+use client_state::Screen;
+use client_state::ViewDock;
+use client_state::ViewDockItem;
 use leptos::prelude::*;
+use web_ui::Glyph;
 use web_ui::Icon;
 use web_ui::IconKind;
 
@@ -7,62 +11,31 @@ const BRAND_MARK: &str = r##"<defs><clipPath id="meridian-globe-clip"><circle cx
 
 const AVATAR: &str = r##"<defs><linearGradient id="av" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="var(--violet-400)"/><stop offset="100%" stop-color="var(--violet-700)"/></linearGradient></defs><rect width="40" height="40" fill="url(#av)"/><circle cx="20" cy="14.8" r="7.2" fill="var(--bg)" opacity="0.34"/><path d="M4.6 40c0-8.6 6.9-13.6 15.4-13.6S35.4 31.4 35.4 40z" fill="var(--bg)" opacity="0.34"/>"##;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NavItem {
-    Home,
-    Portfolios,
-    Markets,
-    Spending,
-    Ledger,
-    Connections,
-}
-
-impl NavItem {
-    pub const ALL: [Self; 6] = [
-        Self::Home,
-        Self::Portfolios,
-        Self::Markets,
-        Self::Spending,
-        Self::Ledger,
-        Self::Connections,
-    ];
-
-    pub fn label(&self) -> &'static str {
-        match self {
-            Self::Home => "Home",
-            Self::Portfolios => "Portfolios",
-            Self::Markets => "Markets",
-            Self::Spending => "Spending",
-            Self::Ledger => "Ledger",
-            Self::Connections => "Connections",
-        }
-    }
-
-    pub fn icon(&self) -> IconKind {
-        match self {
-            Self::Home => IconKind::Home,
-            Self::Portfolios => IconKind::Portfolio,
-            Self::Markets => IconKind::Markets,
-            Self::Spending => IconKind::Spending,
-            Self::Ledger => IconKind::Ledger,
-            Self::Connections => IconKind::Connections,
-        }
-    }
-}
-
-/// Sidebar plus scrolling content area. Pages render inside `.content`.
+/// Sidebar plus the one scroller beside it. Pages render inside `.content`.
+///
+/// The machine's tabs come from its dock, which also says which is lit.
+/// Markets is not one of them — it is the web's own page — so it is lit from
+/// `markets` instead, and while it is, no tab of the machine's is.
 #[component]
 pub fn Shell(
-    active: NavItem,
-    #[prop(into)] account_name: String,
-    #[prop(into)] account_status: String,
+    #[prop(into)] dock: Signal<Option<ViewDock>>,
+    #[prop(into)] markets: Signal<bool>,
+    #[prop(into)] error: Signal<Option<String>>,
+    on_screen: Callback<Screen>,
+    on_markets: Callback<()>,
+    on_retry: Callback<()>,
     children: Children,
 ) -> impl IntoView {
     view! {
         <div class="shell">
-            <Sidebar active=active account_name=account_name account_status=account_status />
+            <Sidebar dock=dock markets=markets on_screen=on_screen on_markets=on_markets />
             <div class="main">
-                <div class="content">{children()}</div>
+                <div class="content">
+                    {move || {
+                        error.get().map(|message| view! { <Banner message=message on_retry=on_retry /> })
+                    }}
+                    {children()}
+                </div>
             </div>
         </div>
     }
@@ -91,52 +64,130 @@ pub fn Brand() -> impl IntoView {
 
 #[component]
 fn Sidebar(
-    active: NavItem,
-    #[prop(into)] account_name: String,
-    #[prop(into)] account_status: String,
+    dock: Signal<Option<ViewDock>>,
+    markets: Signal<bool>,
+    on_screen: Callback<Screen>,
+    on_markets: Callback<()>,
 ) -> impl IntoView {
+    // The dock's Account is the block at the foot rather than a row here.
+    let tabs = move || {
+        dock.with(|dock| {
+            dock.iter()
+                .flat_map(|dock| &dock.items)
+                .filter(|item| item.screen != Screen::Account)
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+    };
+
+    let account = Memo::new(move |_| {
+        dock.with(|dock| {
+            dock.iter()
+                .flat_map(|dock| &dock.items)
+                .find(|item| item.screen == Screen::Account)
+                .map(|item| item.label.clone())
+        })
+    });
+
     view! {
         <aside class="sidebar">
             <Brand />
 
             <nav class="nav">
-                {NavItem::ALL
-                    .into_iter()
-                    .map(|item| {
-                        // Routing is not wired up yet.
+                <For
+                    each=tabs
+                    key=|item| (item.label.clone(), item.icon.clone(), item.selected)
+                    children=move |item: ViewDockItem| {
+                        let screen = item.screen;
+                        let lit = item.selected;
+
                         view! {
-                            <a class=if item == active { "active" } else { "" } href="#">
-                                <Icon kind=item.icon() class="icon" />
-                                {item.label()}
+                            <a
+                                class=move || if lit && !markets.get() { "on" } else { "" }
+                                href="#"
+                                on:click=move |ev| {
+                                    ev.prevent_default();
+                                    on_screen.run(screen);
+                                }
+                            >
+                                <Glyph name=item.icon class="icon" />
+                                {item.label}
                             </a>
                         }
-                    })
-                    .collect_view()}
+                    }
+                />
+
+                // Drawn and not built, the same state a chip has. A nav that
+                // pretended the app was four pages would have to grow later
+                // and move everything under it.
+                <a class="dead" aria-disabled="true">
+                    <Icon kind=IconKind::Home class="icon" />
+                    Home
+                </a>
+                <a class="dead" aria-disabled="true">
+                    <Icon kind=IconKind::Portfolio class="icon" />
+                    Portfolios
+                </a>
+
+                <a
+                    class=move || if markets.get() { "on" } else { "" }
+                    href="#"
+                    on:click=move |ev| {
+                        ev.prevent_default();
+                        on_markets.run(());
+                    }
+                >
+                    <Icon kind=IconKind::Markets class="icon" />
+                    Markets
+                </a>
             </nav>
 
             <div class="sidebar-foot">
+                // Everything a setting could configure lives on the screen it
+                // affects, and the rest is Account.
                 <nav class="nav">
-                    <a href="#">
+                    <a class="dead" aria-disabled="true">
                         <Icon kind=IconKind::Settings class="icon" />
                         Settings
                     </a>
                 </nav>
-                <div class="account">
-                    <div class="avatar">
-                        <svg viewBox="0 0 40 40" aria-hidden="true" inner_html=AVATAR />
-                    </div>
-                    <div class="account-id">
-                        <div class="account-name">{account_name}</div>
-                        <div class="account-meta">
-                            <span class="status-dot" />
-                            {account_status}
-                        </div>
-                    </div>
-                    <span class="more">
-                        <Icon kind=IconKind::ChevronUpDown />
-                    </span>
-                </div>
+
+                {move || {
+                    account
+                        .get()
+                        .map(|label| {
+                            view! {
+                                <div class="account" on:click=move |_| on_screen.run(Screen::Account)>
+                                    <div class="avatar">
+                                        <svg viewBox="0 0 40 40" aria-hidden="true" inner_html=AVATAR />
+                                    </div>
+                                    <div class="account-id">
+                                        <div class="account-name">{label}</div>
+                                    </div>
+                                    <span class="more">
+                                        <Icon kind=IconKind::ChevronUpDown />
+                                    </span>
+                                </div>
+                            }
+                        })
+                }}
             </div>
         </aside>
+    }
+}
+
+/// What went wrong, over whatever was loaded before — which is still worth
+/// looking at, so the failure sits above it instead of replacing it.
+#[component]
+fn Banner(message: String, on_retry: Callback<()>) -> impl IntoView {
+    view! {
+        <div class="ui">
+            <div class="banner">
+                <span class="say">{message}</span>
+                <button class="btn sm" on:click=move |_| on_retry.run(())>
+                    Retry
+                </button>
+            </div>
+        </div>
     }
 }
