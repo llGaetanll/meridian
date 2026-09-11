@@ -19,6 +19,8 @@
 @import "./css/ledger.css";
 @import "./css/account.css";
 @import "./css/balances.css";
+/* Last: at a phone's width it stands the pages above in one column. */
+@import "./css/phone.css";
 
 :root {
   --chart-accent: theme('colors.accent.500');

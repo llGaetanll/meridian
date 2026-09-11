@@ -19,6 +19,8 @@ use crate::pages::MarketsPage;
 use crate::pages::OnboardingPage;
 use crate::pages::PaywallPage;
 use crate::pages::RecurringPage;
+use crate::phone::PhoneApp;
+use crate::phone::narrow;
 use crate::runtime_app::RuntimeApp;
 use crate::state::provide_markets;
 use crate::tab::Tab;
@@ -31,6 +33,8 @@ use crate::tab::Tab;
 #[component]
 pub fn App() -> impl IntoView {
     provide_markets();
+
+    let narrow = narrow();
 
     let runtime = RuntimeApp::new();
 
@@ -54,7 +58,12 @@ pub fn App() -> impl IntoView {
             .map(|view| view! { <PaywallPage view=view /> })
             .into_any(),
 
-        Some(Frame::Shell) => view! { <AppShell /> }.into_any(),
+        // Read here and in no other arm, so first run does not come down and
+        // go up again when the window crosses a phone's width.
+        Some(Frame::Shell) => match narrow.get() {
+            true => view! { <PhoneApp /> }.into_any(),
+            false => view! { <AppShell /> }.into_any(),
+        },
     }
 }
 
@@ -156,7 +165,7 @@ fn AppShell() -> impl IntoView {
 /// `None` if that screen is not the one showing. Once a page is up it keeps
 /// the last view it was given while the app moves elsewhere, so that it has
 /// something to hold in the moment before it comes down.
-fn follow<T>(
+pub(crate) fn follow<T>(
     screen: ReadSignal<Option<ViewScreen>>,
     pick: fn(&ViewScreen) -> Option<&T>,
 ) -> Option<Signal<T>>
@@ -178,28 +187,28 @@ where
     Some(view.into())
 }
 
-fn ledger(screen: &ViewScreen) -> Option<&ViewLedger> {
+pub(crate) fn ledger(screen: &ViewScreen) -> Option<&ViewLedger> {
     match screen {
         ViewScreen::Ledger { view } => Some(view),
         _ => None,
     }
 }
 
-fn recurring(screen: &ViewScreen) -> Option<&ViewRecurring> {
+pub(crate) fn recurring(screen: &ViewScreen) -> Option<&ViewRecurring> {
     match screen {
         ViewScreen::Recurring { view } => Some(view),
         _ => None,
     }
 }
 
-fn balances(screen: &ViewScreen) -> Option<&ViewBalances> {
+pub(crate) fn balances(screen: &ViewScreen) -> Option<&ViewBalances> {
     match screen {
         ViewScreen::Balances { view } => Some(view),
         _ => None,
     }
 }
 
-fn account(screen: &ViewScreen) -> Option<&ViewAccount> {
+pub(crate) fn account(screen: &ViewScreen) -> Option<&ViewAccount> {
     match screen {
         ViewScreen::Account { view } => Some(view),
         _ => None,

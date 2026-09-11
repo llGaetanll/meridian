@@ -5,6 +5,7 @@ mod fake;
 mod frame;
 mod io;
 mod pages;
+mod phone;
 mod runtime_app;
 mod state;
 mod tab;

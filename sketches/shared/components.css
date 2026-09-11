@@ -622,3 +622,181 @@
   font-size: 12.5px; color: var(--text-muted);
 }
 .ui .banner .say { flex: 1; min-width: 0; }
+
+/* The phone's frame.
+
+   A title, the page under it, and the dock floating over the foot of it. The
+   web draws the same frame when the window is as narrow as a phone; the
+   Swift is `swift/Sources/MeridianApp/Ui/Shell.swift`. */
+
+/* The page's name, over it. A tab has no other heading at its top: what the
+   page is about is its title, and the figure it opens on. */
+.ui .page-title {
+  padding: 10px 20px 16px;
+  background: var(--bg);
+  font-size: 30px; font-weight: 700; line-height: 1.2; letter-spacing: -0.03em;
+}
+
+/* What a page's headline becomes once it has scrolled away.
+
+   One line of it on the page's own ground, and a strong rule under it. No
+   panel and no glass: the rule is what separates it, as it separates every
+   other part of a page. What goes in differs — the Ledger's is what its filter
+   is set to, and the chevron says it opens; the others are the figure the page
+   opens on — but the height and the boundaries are the band's. */
+.ui .band {
+  display: flex; align-items: center; gap: 12px;
+  height: 45px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--bg);
+}
+.ui .band > svg { width: 14px; height: 14px; flex: none; color: var(--text-faint); }
+.ui .band.opens { gap: 10px; cursor: pointer; }
+.ui .band .chip { cursor: inherit; }
+.ui .band .cats {
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0; overflow: hidden; white-space: nowrap;
+}
+.ui .band .more { font-size: 11.5px; color: var(--text-faint); }
+.ui .band .end { flex: none; margin-left: auto; }
+.ui .band .fig { font-size: 15px; font-weight: 700; }
+.ui .band .k {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+/* A diff rather than a sentence: there is no room for the words that carry
+   the direction on a hero, so the figures carry it. */
+.ui .band .flows { display: flex; gap: 10px; font-size: 13px; }
+
+/* Glass, faked.
+
+   A backdrop blur and two inset highlights. Real glass bends what is behind
+   it, which a browser cannot do and a phone below iOS 26 cannot either, so
+   this is what both draw — and it is why the dock stands on a fade. */
+.ui .glass {
+  background:
+    linear-gradient(to bottom, rgba(255,255,255,0.10), rgba(255,255,255,0.02) 42%, rgba(255,255,255,0.05));
+  backdrop-filter: blur(28px) saturate(180%) brightness(1.25);
+  -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(1.25);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.22) inset,
+    0 -1px 0 rgba(255,255,255,0.05) inset,
+    0 18px 40px rgba(0,0,0,0.55);
+}
+
+/* The dock.
+
+   The tabs on a pane of glass at the foot of the screen, and search in a
+   circle of its own beside them, both floating over the page. Which tab is lit
+   is the machine's answer, and it sits on one pill that slides there rather
+   than one per tab that come and go.
+
+   A blur cannot hold a dark list on its own, so the page fades out under the
+   dock, down to the screen's edge, rather than showing through it
+   mid-sentence. */
+.ui .dockrow {
+  position: absolute; left: 16px; right: 16px; bottom: 22px; z-index: 3;
+  display: flex; align-items: center; gap: 10px;
+}
+.ui .dockrow::before {
+  content: "";
+  position: absolute; z-index: -1;
+  top: -28px; bottom: -22px; left: -16px; right: -16px;
+  background: linear-gradient(to bottom, transparent, var(--bg) 50%, var(--bg));
+  pointer-events: none;
+}
+/* The bar stands exactly as tall as the search circle beside it, and takes
+   the rest of the row whatever its words come to. */
+.ui .dock {
+  display: flex; align-items: center;
+  flex: 1; min-width: 0;
+  height: 62px;
+  padding: 0 6px;
+  border-radius: 31px;
+}
+.ui .dock .tabs {
+  position: relative; flex: 1;
+  display: grid; grid-template-columns: repeat(var(--tabs), 1fr); gap: 2px;
+}
+.ui .dock .tab {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 6px 2px;
+  border: 0; background: none;
+  font: inherit; font-size: 9.5px; font-weight: 500; line-height: 1.2;
+  color: rgba(255,255,255,0.62);
+  cursor: pointer;
+}
+.ui .dock .tab svg { width: 20px; height: 20px; }
+.ui .dock .tab.on { color: var(--violet-300); }
+.ui .dock .pill {
+  position: absolute; top: 0; bottom: 0; left: 0;
+  width: calc((100% - (var(--tabs) - 1) * 2px) / var(--tabs));
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--violet-400) 16%, transparent);
+  transform: translateX(calc(var(--lit) * (100% + 2px)));
+  transition: transform 320ms cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.ui .dock .pill.none { opacity: 0; }
+/* Drawn and dead: nothing has drawn the screen behind it. */
+.ui .dock-search {
+  display: grid; place-items: center; flex: none;
+  width: 62px; height: 62px;
+  padding: 0;
+  border-radius: 50%;
+  font: inherit;
+  color: rgba(255,255,255,0.82);
+}
+.ui .dock-search:disabled { opacity: 0.55; }
+.ui .dock-search svg { width: 23px; height: 23px; }
+
+/* A month strip: the month, run sideways, with a column of the month either
+   side showing at the edges.
+
+   Turning it is a drag rather than a redraw — all three months are drawn a
+   page apart and the swipe moves the lot — and the names over it travel with
+   it at a fraction of the rate, the nearest the middle brightest and largest.
+   The grid is as tall as the month in the middle, and grows or shrinks a row
+   as the months turn. `--month`, `--gap` and `--turn` are set by whatever
+   drives the drag, which is where they are decided. */
+.ui .strip { user-select: none; -webkit-user-select: none; }
+.ui .strip-names {
+  position: relative;
+  height: 26px; margin-bottom: 24px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent 2%, #000 32%, #000 68%, transparent 98%);
+          mask-image: linear-gradient(90deg, transparent 2%, #000 32%, #000 68%, transparent 98%);
+}
+.ui .strip-names span {
+  position: absolute; top: 0; left: 50%;
+  font-size: 15px; font-weight: 600; line-height: 26px; letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.ui .strip-names.turn span { transition: transform var(--turn) ease-out, opacity var(--turn) ease-out; }
+.ui .strip-names.settle span { transition: transform 200ms ease-out, opacity 200ms ease-out; }
+.ui .strip-months {
+  position: relative;
+  overflow: hidden;
+  touch-action: pan-y;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+          mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+}
+.ui .strip-months.grown { transition: height var(--turn) ease-out; }
+.ui .strip-track { position: relative; width: var(--month); margin: 0 auto; }
+.ui .strip-track.turn { transition: transform var(--turn) ease-out; }
+.ui .strip-track.settle { transition: transform 200ms ease-out; }
+.ui .strip-month.prev,
+.ui .strip-month.next { position: absolute; top: 0; width: var(--month); }
+.ui .strip-month.prev { right: calc(100% + var(--gap)); }
+.ui .strip-month.next { left: calc(100% + var(--gap)); }
+.ui .strip-wd {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  padding-bottom: 6px;
+  font-size: 10px; font-weight: 600; text-align: center;
+  color: color-mix(in srgb, var(--text-faint) 70%, transparent);
+}
+.ui .strip-days { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 8px; }
+.ui .strip .cal-day:not(.outside) { cursor: pointer; }

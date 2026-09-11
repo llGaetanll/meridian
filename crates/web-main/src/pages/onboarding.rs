@@ -20,8 +20,11 @@ pub fn OnboardingPage(view: Signal<ViewOnboarding>) -> impl IntoView {
     // window inside this call, and a browser refuses a window opened later.
     let ui = Callback::new(move |event| runtime.ui(event));
 
+    // Welcome is the one screen of the flow that the phone opens on its mark.
+    let welcome = move || view.with(|view| matches!(view, ViewOnboarding::Welcome { .. }));
+
     view! {
-        <div class="onboarding ui">
+        <div class="onboarding ui" class:welcome=welcome>
             <div class="measure">
                 <Brand />
                 <Onboarding view=view ui=ui />

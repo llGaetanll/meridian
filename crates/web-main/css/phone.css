@@ -1,0 +1,188 @@
+/* The app at the width of a phone, drawn the way the iOS app draws it. The
+   Swift screens in `swift/Sources/MeridianApp` are the drawing, and
+   `sketches/screens/phone.css` measures them. The frame and the pages are
+   `src/phone/`; the title, the band, the dock and the month strip are the
+   design language's.
+
+   Where a page is built from the components the wide layout uses, this is
+   what stands them in one column. Every row carries the page's 20px inset
+   itself, so the rules between rows run the full width of the screen.
+
+   720px is `phone/narrow.rs`'s width too, and the two have to agree. */
+
+/* The frame: the title, the body scrolling under it, and the dock floating
+   over the foot of it. */
+
+.phone-shell {
+  position: relative;
+  display: flex; flex-direction: column;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--bg);
+}
+.phone-shell .page-title { flex: none; }
+
+.phone-banner { flex: none; padding: 8px 20px 0; }
+
+/* The band slides in from above the body, and has to be out of sight up
+   there rather than over the title. */
+.phone-body { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+
+.phone-scroll {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  /* Clears the floating dock, so the last row can be scrolled up to. */
+  padding-bottom: 132px;
+  scrollbar-width: none;
+}
+.phone-scroll::-webkit-scrollbar { display: none; }
+
+.band-slot {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+  transform: translateY(-100%);
+  transition: transform 220ms ease-out;
+  pointer-events: none;
+}
+.band-slot.on { transform: none; pointer-events: auto; }
+
+/* A tab crosses into the next rather than cutting to it. */
+.phone-page,
+.phone-shell .page-title span { animation: phone-in 200ms ease-out; }
+@keyframes phone-in { from { opacity: 0; } }
+
+/* What every page shares: the figure it opens on, and the sections under
+   it. */
+
+.ui .phone-page .hero { padding: 12px 20px 22px; }
+.ui .phone-page .hero .v { margin-top: 4px; font-size: 34px; line-height: 1.15; }
+.ui .phone-page .hero .diff { gap: 16px; margin-top: 8px; }
+
+.ui .phone-page .hero .k,
+.ui .phone-page .sec-title,
+.ui .phone-page .daycard-head { letter-spacing: 0.08em; }
+
+.ui .phone-page .sec { margin-top: 24px; }
+.ui .phone-page .sec-title { padding: 0 20px; }
+/* The first section on a page sits against what is above it. */
+.ui .phone-page > [data-band-anchor] + .sec,
+.ui .phone-page > .sec:first-child { margin-top: 0; }
+
+.ui .phone-page .split-row { margin: 0 20px; }
+
+/* Ledger: the filter, always open, and the list under it. */
+
+.ui .ledger-phone .rail { display: block; padding: 14px 20px 4px; }
+.ui .ledger-phone .rail-sec + .rail-sec { padding-top: 9px; }
+.ui .ledger-phone .rail-head { margin-bottom: 9px; }
+.ui .ledger-phone .rail-title { letter-spacing: 0.09em; }
+
+.ui .ledger-phone .month { margin-top: 24px; padding: 16px 20px 0; }
+.ui .ledger-phone .list > .month:first-child { margin-top: 8px; }
+/* Not pinned: the band floats over the top of the list, and a heading
+   pinned up there would sit behind it. */
+.ui .ledger-phone .day { position: static; padding: 18px 20px 10px; }
+
+/* The merchant over its category, and the figure on the merchant's
+   baseline. The mark and the account are the wide layout's columns. */
+.ui .ledger-phone .tx {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name amt" "cat .";
+  align-items: baseline;
+  gap: 0 14px;
+  padding: 14px 20px;
+}
+.ui .ledger-phone .tx .mark,
+.ui .ledger-phone .tx-acct { display: none; }
+.ui .ledger-phone .tx-name { grid-area: name; font-size: 15px; }
+.ui .ledger-phone .tx-cat { grid-area: cat; gap: 7px; margin-top: 5px; font-weight: 500; }
+.ui .ledger-phone .tx-amt { grid-area: amt; }
+
+/* Recurring */
+
+.ui .recurring-phone .daycard { margin-top: 0; padding-top: 20px; }
+.ui .recurring-phone .daycard-head { padding: 0 20px 8px; }
+.ui .recurring-phone .dayrow { padding: 11px 20px; }
+.ui .recurring-phone .dayrow .nm,
+.ui .recurring-phone .dayrow .amt { font-size: 13.5px; }
+
+.ui .recurring-phone .rec-head { padding: 20px 20px 6px; }
+.ui .recurring-phone .sec-title + .rec-head { padding-top: 0; }
+
+.ui .recurring-phone .stream { display: flex; align-items: flex-start; gap: 13px; padding: 12px 20px; }
+.ui .recurring-phone .stream .t { flex: 1; min-width: 0; }
+.ui .recurring-phone .stream .nm {
+  font-size: 15px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ui .recurring-phone .stream .sub { margin-top: 4px; font-size: 12.5px; color: var(--text-faint); }
+.ui .recurring-phone .stream .amt { font-size: 15px; }
+
+/* Balances: what is held is the same section as the headline, so there is
+   no rule between them, only floor under the last block. */
+
+.ui .balances-phone > .blocks { padding-bottom: 30px; }
+.ui .balances-phone .conn { margin-top: 0; }
+.ui .balances-phone .conn + .conn { margin-top: 30px; }
+.ui .balances-phone .conn-head { padding: 0 20px 2px; }
+
+.ui .balances-phone .acct-row { display: flex; align-items: flex-start; gap: 12px; padding: 15px 20px; }
+.ui .balances-phone .acct-row .t { flex: 1; min-width: 0; }
+.ui .balances-phone .acct-row .nm {
+  font-size: 14.5px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ui .balances-phone .acct-row .sub { margin-top: 4px; font-size: 12.5px; color: var(--text-faint); }
+.ui .balances-phone .acct-row .amt { font-size: 14.5px; }
+
+.ui .balances-phone .conn-total { padding: 15px 20px 0; }
+
+/* Account */
+
+.ui .account-phone .banks .row { gap: 11px; padding: 13px 20px; }
+.ui .account-phone .banks .row + .row { border-top: 1px solid var(--divider); }
+.ui .account-phone .banks .row .rs { margin-top: 2px; }
+.ui .account-phone .banks-empty { padding: 0 20px; font-size: 13px; color: var(--text-faint); }
+.ui .account-phone .session { padding: 0 20px; }
+/* Nobody reads this until something is wrong, and then it is the first thing
+   we ask for. */
+.ui .account-phone .build { padding-top: 26px; text-align: center; font-size: 11.5px; color: var(--text-faint); }
+
+/* First run and the paywall, which draw no frame: the phone's column, the
+   height of the screen, with the actions on the bottom edge under the
+   thumb. */
+
+@media (max-width: 720px) {
+  .onboarding,
+  .paywall { padding: 6px 24px 30px; }
+
+  .onboarding .measure,
+  .paywall .measure {
+    display: flex; flex-direction: column;
+    max-width: none; min-height: 100%;
+    margin: 0;
+  }
+
+  .onboarding .measure > .acts,
+  .paywall .measure > .acts { margin-top: auto; padding-top: 10px; }
+
+  /* The mark alone, and only where the phone draws it: over Welcome and the
+     paywall, a way down from the top. */
+  .onboarding .brand { display: none; }
+  .onboarding.welcome .brand,
+  .paywall .brand { display: flex; margin-top: 66px; padding: 0 0 20px; }
+  .onboarding .brand span,
+  .paywall .brand span { display: none; }
+  .onboarding .brand-mark,
+  .paywall .brand-mark { width: 50px; height: 50px; }
+
+  .onboarding .back { margin: -2px 0 6px -10px; }
+
+  .onboarding .measure > .say-icon.done { margin-top: 56px; }
+  .onboarding .say-step + .say-icon.needs { width: 36px; height: 36px; margin-top: 36px; }
+
+  /* Under 16px, Safari zooms the page to a field as it takes focus, and
+     leaves it zoomed. */
+  .ui .field input { font-size: 16px; }
+}
