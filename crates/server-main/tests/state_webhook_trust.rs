@@ -33,10 +33,32 @@ fn a_webhook_signed_over_other_bytes_is_refused() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}", T0.as_secs()).0, body: b"{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\"}".to_vec() } },
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: b"{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\"}"
+                    .to_vec(),
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
     );
 }
@@ -50,10 +72,35 @@ fn a_webhook_older_than_the_replay_window_is_refused() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}", T0.as_secs() - 600).0, body: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}", T0.as_secs() - 600).1 } },
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs() - 600,
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs() - 600,
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
     );
 }
@@ -69,14 +116,54 @@ fn a_key_plaid_does_not_have_is_asked_for_once() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: None } },
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: None,
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
 
         // The same id again. Refused without asking Plaid a second time.
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}", T0.as_secs()).1 } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
         > @r#"ToRouter { request_id: 2, action: Unauthorized }"#,
     );
 }
@@ -91,15 +178,65 @@ fn a_miss_is_asked_about_again_once_it_has_expired() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: None } },
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: None,
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
 
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + WEBHOOK_KEY_MISS_GOOD_FOR_SECS) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(
+                    T0.as_secs() + WEBHOOK_KEY_MISS_GOOD_FOR_SECS,
+                ),
+            },
+        },
 
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}", T0.as_secs() + WEBHOOK_KEY_MISS_GOOD_FOR_SECS).0, body: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}", T0.as_secs() + WEBHOOK_KEY_MISS_GOOD_FOR_SECS).1 } },
-        > Action::ToSourcePlaid { call_id: 2, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs() + WEBHOOK_KEY_MISS_GOOD_FOR_SECS,
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs() + WEBHOOK_KEY_MISS_GOOD_FOR_SECS,
+                )
+                .1,
+            },
+        },
+
+        > Action::ToSourcePlaid {
+            call_id: 2,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
     );
 }

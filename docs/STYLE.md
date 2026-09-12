@@ -107,7 +107,9 @@ state machine.
 ```rust
 eval!(&mut state,
     < EventRouter::SnapshotRequested { force: false },
-    > Action::ToSource { action: ActionSource::FetchBalances { item_id: "item-1" } },
+    > Action::ToSource {
+        action: ActionSource::FetchBalances { item_id: "item-1" },
+    },
 
     < EventRouter::SnapshotRequested { force: true },
     > Action::ToRouter { action: ActionRouter::Serve },
@@ -152,7 +154,12 @@ every one of them whole.
 **A `>` line may bind and carry a block**, which runs when the action matches:
 
 ```rust
-> Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { view: ledger }, .. } } => {
+> Action::ToUi {
+    action: ActionUi::Render {
+        screen: ViewScreen::Ledger { view: ledger },
+        ..
+    },
+} => {
     assert_eq!(rows(ledger).len(), 2, "the Uber is filtered out");
 },
 ```
@@ -168,8 +175,10 @@ look up two definitions, which is worst in exactly the test somebody is reading
 because it broke. A helper is fine *around* a test — the machine it starts from,
 the screen it reads back afterwards — but not on a `<` line.
 
-**A long event may be broken across lines.** Written out in full is the rule;
-one line is not. `eval!` parses tokens, so formatting is free:
+**No `<` or `>` line runs past 80 columns.** Written out in full is the rule;
+one line is not. `eval!` parses tokens, so formatting is free, and an event that
+does not fit is broken the way `rustfmt` breaks any other literal — outermost
+first, and whatever still fits on one line stays on one:
 
 ```rust
 eval!(&mut state,
@@ -185,15 +194,41 @@ eval!(&mut state,
             }],
         },
     },
-    > Action::ToSource { call_id: 1, action: ActionSource::FetchBalances { .. } },
+    > Action::ToSource {
+        call_id: 1,
+        action: ActionSource::FetchBalances { .. },
+    },
 );
 ```
+
+A raw string on a `@` line is the one thing that cannot be broken, so those run
+as long as the `{:?}` they pin.
+
+**A call and the answer to it are written together**, with a blank line between
+one pair and the next — so the id that went out and the id that came back are
+read as the one exchange they are:
+
+```rust
+> Action::ToStore { call_id: 2, action: ActionStore::LoadUser { .. } },
+< Event::FromStore { call_id: 2, event: EventStore::UserLoaded { .. } },
+
+> Action::ToStore { call_id: 3, action: ActionStore::SaveCustomer { .. } },
+< Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+```
+
+A line with nobody to pair with stands on its own, a blank line either side of
+it. A request and its response are usually that: many turns happen in between,
+so the `<` that opens a route and the `>` that answers it are each alone.
 
 Time is not part of the syntax either: it is an event like any other, so a test
 that is *about* time sends one.
 
 ```rust
-< Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
+< Event::FromProcess {
+    event: EventProcess::Tick {
+        now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS),
+    },
+},
 ```
 
 That is what makes "we waited long enough" a test rather than a stopwatch.

@@ -36,14 +36,51 @@ fn a_sync_webhook_fetches_however_fresh_the_bank_is() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"TRANSACTIONS\",\"webhook_code\":\"SYNC_UPDATES_AVAILABLE\",\"item_id\":\"item-1\"}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"TRANSACTIONS\",\"webhook_code\":\"SYNC_UPDATES_AVAILABLE\",\"item_id\":\"item-1\"}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"TRANSACTIONS\",\"webhook_code\":\"SYNC_UPDATES_AVAILABLE\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"TRANSACTIONS\",\"webhook_code\":\"SYNC_UPDATES_AVAILABLE\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
+
         > Action::ToStore { call_id: 2, action: ActionStore::LoadItem { .. } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::ItemLoaded {
+                item: Some(ItemFacts {
+                    item_id: "item-1".to_string(),
+                    user_id: uuid::Uuid::nil(),
+                    cursor: Some("cursor-1".to_string()),
+                    synced_at: Some(T0),
+                    login_required: false,
+                }),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::ItemLoaded { item: Some(ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: false }) } },
         > @r#"ToSourcePlaid { call_id: 3, action: FetchBalances { item_id: "item-1", now: Timestamp { t: 1787097600 } } }"#,
+
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }
@@ -54,13 +91,49 @@ fn a_sync_webhook_does_not_retry_a_dead_login() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"TRANSACTIONS\",\"webhook_code\":\"SYNC_UPDATES_AVAILABLE\",\"item_id\":\"item-1\"}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"TRANSACTIONS\",\"webhook_code\":\"SYNC_UPDATES_AVAILABLE\",\"item_id\":\"item-1\"}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"TRANSACTIONS\",\"webhook_code\":\"SYNC_UPDATES_AVAILABLE\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"TRANSACTIONS\",\"webhook_code\":\"SYNC_UPDATES_AVAILABLE\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
+
         > Action::ToStore { call_id: 2, action: ActionStore::LoadItem { .. } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::ItemLoaded {
+                item: Some(ItemFacts {
+                    item_id: "item-1".to_string(),
+                    user_id: uuid::Uuid::nil(),
+                    cursor: Some("cursor-1".to_string()),
+                    synced_at: Some(T0),
+                    login_required: true,
+                }),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::ItemLoaded { item: Some(ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: Some("cursor-1".to_string()), synced_at: Some(T0), login_required: true }) } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }
@@ -73,13 +146,41 @@ fn a_sync_webhook_for_a_bank_we_do_not_hold_is_still_taken() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"TRANSACTIONS\",\"webhook_code\":\"SYNC_UPDATES_AVAILABLE\",\"item_id\":\"item-gone\"}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"TRANSACTIONS\",\"webhook_code\":\"SYNC_UPDATES_AVAILABLE\",\"item_id\":\"item-gone\"}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"TRANSACTIONS\",\"webhook_code\":\"SYNC_UPDATES_AVAILABLE\",\"item_id\":\"item-gone\"}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"TRANSACTIONS\",\"webhook_code\":\"SYNC_UPDATES_AVAILABLE\",\"item_id\":\"item-gone\"}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
+
         > Action::ToStore { call_id: 2, action: ActionStore::LoadItem { .. } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::ItemLoaded { item: None },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::ItemLoaded { item: None } },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }
@@ -92,16 +193,42 @@ fn a_dead_login_webhook_is_written_down() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"ITEM_LOGIN_REQUIRED\",\"item_id\":\"item-1\"}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"ITEM_LOGIN_REQUIRED\",\"item_id\":\"item-1\"}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"ITEM_LOGIN_REQUIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"ITEM_LOGIN_REQUIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
+
         > Action::ToProcess { action: ActionProcess::ReportLoginRequired },
+
         > @r#"ToStore { call_id: 2, action: SaveStatus { item_id: "item-1", error_code: Some("ITEM_LOGIN_REQUIRED") } }"#,
+        < Event::FromStore { call_id: 2, event: EventStore::WriteSuccess },
 
         // 7a. Taken only once the row is down, for the same reason C2's is:
         // a failure before the write is a webhook Plaid sends again.
-        < Event::FromStore { call_id: 2, event: EventStore::WriteSuccess },
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }
@@ -113,10 +240,35 @@ fn a_repaired_login_webhook_clears_it() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"LOGIN_REPAIRED\",\"item_id\":\"item-1\"}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
+
         > @r#"ToStore { call_id: 2, action: SaveStatus { item_id: "item-1", error_code: None } }"#,
     );
 }
@@ -128,10 +280,35 @@ fn an_unknown_webhook_is_taken_and_acted_on_by_nothing() {
     let mut state = state_collecting_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"ASSETS\",\"webhook_code\":\"PRODUCT_READY\"}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"ASSETS\",\"webhook_code\":\"PRODUCT_READY\"}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"ASSETS\",\"webhook_code\":\"PRODUCT_READY\"}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"ASSETS\",\"webhook_code\":\"PRODUCT_READY\"}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
+
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 }

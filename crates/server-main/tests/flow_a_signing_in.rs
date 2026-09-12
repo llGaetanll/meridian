@@ -42,28 +42,62 @@ fn a_first_run_asks_for_a_code_and_signs_in_with_it() {
 
         // 1 and 2. The hash is stored and the code is sent, as two actions:
         // only one of them may ever hold the plaintext.
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "gaetan@example.com".to_string(),
+            },
+        },
+
         > Action::ToStore { call_id: 1, action: ActionStore::SaveCode { .. } },
+
         > @r#"ToEmail { action: SendCode { email: "gaetan@example.com", code: "470977" } }"#,
 
         // 4a. Taken, once the hash is actually down — a 204 sent before it
         // would be a code the next request cannot find.
         < Event::FromStore { call_id: 1, event: EventStore::WriteSuccess },
+
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
 
         // 5. The digits that came out of the machine above, typed back in.
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "gaetan@example.com".to_string(), code: "470977".to_string() } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadCode { .. } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeSubmitted {
+                email: "gaetan@example.com".to_string(),
+                code: "470977".to_string(),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::CodeLoaded { stored: Some(StoredCode { code_sha256: hash_code("470977"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
-        > Action::ToStore { call_id: 3, action: ActionStore::CreateSession { .. } },
-        > Action::ToStore { call_id: 4, action: ActionStore::DeleteCode { .. } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadCode { .. } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::CodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("470977"),
+                    expires_at: Timestamp::from_secs(T0.as_secs() + 600),
+                    attempts: 0,
+                }),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::CreateSession { .. },
+        },
+
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::DeleteCode { .. },
+        },
 
         < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
 
         // 6a. Only now: a token that reaches the phone before its session row
         // exists is a sign-in that 401s on its own first request.
         < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
+
         > Action::ToRouter { action: ActionRouter::SignedIn { .. }, .. },
     );
 }
@@ -84,7 +118,12 @@ fn a_sign_in_asked_for_with_something_that_is_not_an_address_sends_nothing() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "alex".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested { email: "alex".to_string() },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
     );
 }
@@ -107,7 +146,14 @@ fn a_sign_in_asked_for_by_an_address_that_may_not_sign_up_sends_nothing() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "someone@example.com".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "someone@example.com".to_string(),
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
     );
 }
@@ -122,7 +168,14 @@ fn a_tag_on_the_allowed_address_is_not_the_allowed_address() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan.almela+1@gmail.com".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "gaetan.almela+1@gmail.com".to_string(),
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
     );
 }
@@ -138,8 +191,16 @@ fn the_same_seed_produces_the_same_code() {
     eval!(&mut seven,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "gaetan@example.com".to_string(),
+            },
+        },
+
         > Action::ToStore { call_id: 1, action: ActionStore::SaveCode { .. } },
+
         > @r#"ToEmail { action: SendCode { email: "gaetan@example.com", code: "470977" } }"#,
     );
 
@@ -148,8 +209,16 @@ fn the_same_seed_produces_the_same_code() {
     eval!(&mut eight,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [8; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "gaetan@example.com".to_string(),
+            },
+        },
+
         > Action::ToStore { call_id: 1, action: ActionStore::SaveCode { .. } },
+
         > @r#"ToEmail { action: SendCode { email: "gaetan@example.com", code: "751695" } }"#,
     );
 }
@@ -166,7 +235,14 @@ fn an_unseeded_machine_will_not_mint_a_code() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "gaetan@example.com".to_string(),
+            },
+        },
+
         > Action::ToRouter { action: ActionRouter::Unavailable, .. },
     );
 }
@@ -180,24 +256,61 @@ fn a_spent_code_signs_nobody_in_twice() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "gaetan@example.com".to_string(), code: "123456".to_string() } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadCode { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeSubmitted {
+                email: "gaetan@example.com".to_string(),
+                code: "123456".to_string(),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::CodeLoaded { stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::CreateSession { .. } },
-        > Action::ToStore { call_id: 3, action: ActionStore::DeleteCode { .. } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadCode { .. } },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::CodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("123456"),
+                    expires_at: Timestamp::from_secs(T0.as_secs() + 600),
+                    attempts: 0,
+                }),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::CreateSession { .. },
+        },
+
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::DeleteCode { .. },
+        },
 
         < Event::FromStore { call_id: 2, event: EventStore::WriteSuccess },
+
         < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+
         > Action::ToRouter { action: ActionRouter::SignedIn { .. }, .. },
 
         // The same six digits, replayed. The delete landed, so the read this
         // one asks for finds nothing at all — and nothing is rejected like any
         // other wrong answer.
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "gaetan@example.com".to_string(), code: "123456".to_string() } },
-        > Action::ToStore { call_id: 4, action: ActionStore::LoadCode { .. } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeSubmitted {
+                email: "gaetan@example.com".to_string(),
+                code: "123456".to_string(),
+            },
+        },
 
-        < Event::FromStore { call_id: 4, event: EventStore::CodeLoaded { stored: None } },
+        > Action::ToStore { call_id: 4, action: ActionStore::LoadCode { .. } },
+        < Event::FromStore {
+            call_id: 4,
+            event: EventStore::CodeLoaded { stored: None },
+        },
+
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -211,13 +324,33 @@ fn a_wrong_code_only_counts_a_guess() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "gaetan@example.com".to_string(), code: "654321".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeSubmitted {
+                email: "gaetan@example.com".to_string(),
+                code: "654321".to_string(),
+            },
+        },
+
         > Action::ToStore { call_id: 1, action: ActionStore::LoadCode { .. } },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::CodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("123456"),
+                    expires_at: Timestamp::from_secs(T0.as_secs() + 600),
+                    attempts: 0,
+                }),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::CodeLoaded { stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 0 }) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::RecordAttempt { .. } },
-
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::RecordAttempt { .. },
+        },
         < Event::FromStore { call_id: 2, event: EventStore::WriteSuccess },
+
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -231,13 +364,33 @@ fn an_expired_code_is_rejected_and_still_counts() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "gaetan@example.com".to_string(), code: "123456".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeSubmitted {
+                email: "gaetan@example.com".to_string(),
+                code: "123456".to_string(),
+            },
+        },
+
         > Action::ToStore { call_id: 1, action: ActionStore::LoadCode { .. } },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::CodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("123456"),
+                    expires_at: Timestamp::from_secs(T0.as_secs()),
+                    attempts: 0,
+                }),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::CodeLoaded { stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs()), attempts: 0 }) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::RecordAttempt { .. } },
-
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::RecordAttempt { .. },
+        },
         < Event::FromStore { call_id: 2, event: EventStore::WriteSuccess },
+
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -250,13 +403,33 @@ fn an_exhausted_code_rejects_the_right_answer() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "gaetan@example.com".to_string(), code: "123456".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeSubmitted {
+                email: "gaetan@example.com".to_string(),
+                code: "123456".to_string(),
+            },
+        },
+
         > Action::ToStore { call_id: 1, action: ActionStore::LoadCode { .. } },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::CodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("123456"),
+                    expires_at: Timestamp::from_secs(T0.as_secs() + 600),
+                    attempts: 5,
+                }),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::CodeLoaded { stored: Some(StoredCode { code_sha256: hash_code("123456"), expires_at: Timestamp::from_secs(T0.as_secs() + 600), attempts: 5 }) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::RecordAttempt { .. } },
-
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::RecordAttempt { .. },
+        },
         < Event::FromStore { call_id: 2, event: EventStore::WriteSuccess },
+
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -271,10 +444,21 @@ fn an_address_with_no_code_is_rejected_the_same_way() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "gaetan@example.com".to_string(), code: "123456".to_string() } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadCode { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeSubmitted {
+                email: "gaetan@example.com".to_string(),
+                code: "123456".to_string(),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::CodeLoaded { stored: None } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadCode { .. } },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::CodeLoaded { stored: None },
+        },
+
         > Action::ToRouter { action: ActionRouter::Rejected, .. },
     );
 }
@@ -296,10 +480,23 @@ fn a_store_that_will_not_answer_is_not_a_rejection() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "gaetan@example.com".to_string(), code: "123456".to_string() } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadCode { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeSubmitted {
+                email: "gaetan@example.com".to_string(),
+                code: "123456".to_string(),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::ReadError { message: "connection refused".to_string() } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadCode { .. } },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::ReadError {
+                message: "connection refused".to_string(),
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
     );
 }

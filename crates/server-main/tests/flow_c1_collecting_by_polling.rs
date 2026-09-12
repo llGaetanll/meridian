@@ -6,9 +6,10 @@
 //! collects, so that request is what goes and asks Plaid, and a sheet the user
 //! dismissed never gets here at all.
 //!
-//! Every machine in this file is `state_subscribed()`, which is the polling one. The same
-//! close on a machine Plaid calls is `flow_c2_collecting_by_webhook.rs`, and
-//! the two are independent: the last test here is the one that says so.
+//! Every machine in this file is `state_subscribed()`, which is the polling
+//! one. The same close on a machine Plaid calls is
+//! `flow_c2_collecting_by_webhook.rs`, and the two are independent: the last
+//! test here is the one that says so.
 //!
 //! C1's 6c and 6d — no session, too many closes — are `flow_e_the_ledger.rs`
 //! and `state_limits.rs`, which pin them once for every authenticated route.
@@ -34,37 +35,98 @@ fn a_closed_sheet_attaches_the_bank_and_starts_its_sync() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
 
         // 2. One call for every session this user has open, because the
         // request does not say which one closed.
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } , ..},
+        > Action::ToSourcePlaid {
+            action: ActionSourcePlaid::PollLinks { .. },
+            ..
+        },
+        < Event::FromSourcePlaid {
+            call_id: 3,
+            event: EventSourcePlaid::LinksPolled {
+                polls: vec![LinkPoll {
+                    link_token: "link-1".to_string(),
+                    finished: true,
+                    public_tokens: vec!["public-1".to_string()],
+                }],
+            },
+        },
 
         // 3a and 4. The irreversible call: in Production this spends an Item
         // slot that removing the Item does not give back.
-        < Event::FromSourcePlaid { call_id: 3, event: EventSourcePlaid::LinksPolled { polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
-        > Action::ToSourcePlaid { call_id: 4, action: ActionSourcePlaid::ExchangePublicToken { .. } },
+        > Action::ToSourcePlaid {
+            call_id: 4,
+            action: ActionSourcePlaid::ExchangePublicToken { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 4,
+            event: EventSourcePlaid::ItemLinked {
+                link_token: "link-1".to_string(),
+                item_id: "item-9".to_string(),
+            },
+        },
 
         // 5. The bank is written down and the session is closed in the same
         // turn.
-        < Event::FromSourcePlaid { call_id: 4, event: EventSourcePlaid::ItemLinked { link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         > Action::ToStore { call_id: 5, action: ActionStore::SaveItem { .. } },
-        > Action::ToStore { call_id: 6, action: ActionStore::CollectLink { .. } },
+
+        > Action::ToStore {
+            call_id: 6,
+            action: ActionStore::CollectLink { .. },
+        },
 
         // D starts on the write reporting back, because that write is what
         // resolves whose bank it is — and on a call nobody is parked on, or
         // this route stays open for the whole of the first sync.
-        < Event::FromStore { call_id: 5, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
+        < Event::FromStore {
+            call_id: 5,
+            event: EventStore::ItemSaved {
+                item: Some(ItemFacts {
+                    item_id: "item-9".to_string(),
+                    user_id: uuid::Uuid::nil(),
+                    cursor: None,
+                    synced_at: None,
+                    login_required: false,
+                }),
+            },
+        },
+
         > @r#"ToSourcePlaid { call_id: 7, action: FetchBalances { item_id: "item-9", now: Timestamp { t: 1787097600 } } }"#,
 
         // 6a. Both writes down, and the fetch still out. The count, not a
         // name: nothing knows what the bank is called yet.
         < Event::FromStore { call_id: 6, event: EventStore::WriteSuccess },
+
         > @r#"ToRouter { request_id: 1, action: Linked { count: 1 } }"#,
     );
 }
@@ -77,17 +139,55 @@ fn a_public_token_is_exchanged_even_before_the_session_finishes() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } , ..},
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 3, event: EventSourcePlaid::LinksPolled { polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec!["public-1".to_string()] }] } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::ExchangePublicToken { .. } , ..},
+        > Action::ToSourcePlaid {
+            action: ActionSourcePlaid::PollLinks { .. },
+            ..
+        },
+        < Event::FromSourcePlaid {
+            call_id: 3,
+            event: EventSourcePlaid::LinksPolled {
+                polls: vec![LinkPoll {
+                    link_token: "link-1".to_string(),
+                    finished: false,
+                    public_tokens: vec!["public-1".to_string()],
+                }],
+            },
+        },
+
+        > Action::ToSourcePlaid {
+            action: ActionSourcePlaid::ExchangePublicToken { .. },
+            ..
+        },
     );
 }
 
@@ -105,24 +205,84 @@ fn a_second_bank_in_one_session_has_its_token_dropped() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } , ..},
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 3, event: EventSourcePlaid::LinksPolled { polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string(), "public-2".to_string()] }] } },
+        > Action::ToSourcePlaid {
+            action: ActionSourcePlaid::PollLinks { .. },
+            ..
+        },
+        < Event::FromSourcePlaid {
+            call_id: 3,
+            event: EventSourcePlaid::LinksPolled {
+                polls: vec![LinkPoll {
+                    link_token: "link-1".to_string(),
+                    finished: true,
+                    public_tokens: vec![
+                        "public-1".to_string(),
+                        "public-2".to_string(),
+                    ],
+                }],
+            },
+        },
+
         > @r#"ToSourcePlaid { call_id: 4, action: ExchangePublicToken { link_token: "link-1", public_token: "public-1" } }"#,
+        < Event::FromSourcePlaid {
+            call_id: 4,
+            event: EventSourcePlaid::ItemLinked {
+                link_token: "link-1".to_string(),
+                item_id: "item-9".to_string(),
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 4, event: EventSourcePlaid::ItemLinked { link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         > Action::ToStore { call_id: 5, action: ActionStore::SaveItem { .. } },
+
         > @r#"ToStore { call_id: 6, action: CollectLink { link_token: "link-1" } }"#,
 
-        < Event::FromStore { call_id: 5, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSourcePlaid { call_id: 7, action: ActionSourcePlaid::FetchBalances { .. } },
+        < Event::FromStore {
+            call_id: 5,
+            event: EventStore::ItemSaved {
+                item: Some(ItemFacts {
+                    item_id: "item-9".to_string(),
+                    user_id: uuid::Uuid::nil(),
+                    cursor: None,
+                    synced_at: None,
+                    login_required: false,
+                }),
+            },
+        },
+
+        > Action::ToSourcePlaid {
+            call_id: 7,
+            action: ActionSourcePlaid::FetchBalances { .. },
+        },
     );
 }
 
@@ -133,19 +293,57 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } , ..},
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 3, event: EventSourcePlaid::LinksPolled { polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }] } },
-        > Action::ToStore { call_id: 4, action: ActionStore::CollectLink { .. } },
+        > Action::ToSourcePlaid {
+            action: ActionSourcePlaid::PollLinks { .. },
+            ..
+        },
+        < Event::FromSourcePlaid {
+            call_id: 3,
+            event: EventSourcePlaid::LinksPolled {
+                polls: vec![LinkPoll {
+                    link_token: "link-1".to_string(),
+                    finished: true,
+                    public_tokens: vec![],
+                }],
+            },
+        },
 
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::CollectLink { .. },
+        },
         < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
+
         > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
@@ -159,17 +357,52 @@ fn an_open_session_is_left_pending() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } , ..},
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
+
+        > Action::ToSourcePlaid {
+            action: ActionSourcePlaid::PollLinks { .. },
+            ..
+        },
+        < Event::FromSourcePlaid {
+            call_id: 3,
+            event: EventSourcePlaid::LinksPolled {
+                polls: vec![LinkPoll {
+                    link_token: "link-1".to_string(),
+                    finished: false,
+                    public_tokens: vec![],
+                }],
+            },
+        },
 
         // No `CollectLink`: an unfinished session stays standing.
-        < Event::FromSourcePlaid { call_id: 3, event: EventSourcePlaid::LinksPolled { polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: false, public_tokens: vec![] }] } },
         > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
@@ -181,13 +414,34 @@ fn closing_a_sheet_with_no_session_open_asks_nothing() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec![] } },
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded { link_tokens: vec![] },
+        },
+
         > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
@@ -202,25 +456,85 @@ fn every_open_session_is_polled_and_the_route_still_answers_once() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string(), "link-2".to_string(), "link-3".to_string()] } },
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec![
+                    "link-1".to_string(),
+                    "link-2".to_string(),
+                    "link-3".to_string(),
+                ],
+            },
+        },
+
         > @r#"ToSourcePlaid { call_id: 3, action: PollLinks { link_tokens: ["link-1", "link-2", "link-3"] } }"#,
+        < Event::FromSourcePlaid {
+            call_id: 3,
+            event: EventSourcePlaid::LinksPolled {
+                polls: vec![
+                    LinkPoll {
+                        link_token: "link-1".to_string(),
+                        finished: true,
+                        public_tokens: vec![],
+                    },
+                    LinkPoll {
+                        link_token: "link-2".to_string(),
+                        finished: true,
+                        public_tokens: vec![],
+                    },
+                    LinkPoll {
+                        link_token: "link-3".to_string(),
+                        finished: true,
+                        public_tokens: vec![],
+                    },
+                ],
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 3, event: EventSourcePlaid::LinksPolled { polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-2".to_string(), finished: true, public_tokens: vec![] }, LinkPoll { link_token: "link-3".to_string(), finished: true, public_tokens: vec![] }] } },
-        > Action::ToStore { call_id: 4, action: ActionStore::CollectLink { .. } },
-        > Action::ToStore { call_id: 5, action: ActionStore::CollectLink { .. } },
-        > Action::ToStore { call_id: 6, action: ActionStore::CollectLink { .. } },
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::CollectLink { .. },
+        },
+
+        > Action::ToStore {
+            call_id: 5,
+            action: ActionStore::CollectLink { .. },
+        },
+
+        > Action::ToStore {
+            call_id: 6,
+            action: ActionStore::CollectLink { .. },
+        },
 
         < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
 
         < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
 
         < Event::FromStore { call_id: 6, event: EventStore::WriteSuccess },
+
         > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
@@ -232,13 +546,36 @@ fn sessions_that_cannot_be_read_cannot_be_collected() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::ReadError { message: "connection refused".to_string() } },
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::ReadError {
+                message: "connection refused".to_string(),
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
     );
 }
@@ -251,14 +588,40 @@ fn a_closed_sheet_still_polls_when_we_collect_by_polling() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } , ..},
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
+
+        > Action::ToSourcePlaid {
+            action: ActionSourcePlaid::PollLinks { .. },
+            ..
+        },
     );
 }
 
@@ -268,46 +631,115 @@ fn a_bank_the_store_refused_is_written_on_the_retry() {
 
     eval!(&mut state,
         // The sheet closed.
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
         // Who is asking.
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
-
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
         // Them.
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
+
         // What they have open.
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
-
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
         // One session.
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
+
         // Ask Plaid what it came to.
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } , ..},
-
+        > Action::ToSourcePlaid {
+            action: ActionSourcePlaid::PollLinks { .. },
+            ..
+        },
         // A token to trade.
-        < Event::FromSourcePlaid { call_id: 3, event: EventSourcePlaid::LinksPolled { polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
-        // The call that spends the slot.
-        > Action::ToSourcePlaid { call_id: 4, action: ActionSourcePlaid::ExchangePublicToken { .. } },
+        < Event::FromSourcePlaid {
+            call_id: 3,
+            event: EventSourcePlaid::LinksPolled {
+                polls: vec![LinkPoll {
+                    link_token: "link-1".to_string(),
+                    finished: true,
+                    public_tokens: vec!["public-1".to_string()],
+                }],
+            },
+        },
 
+        // The call that spends the slot.
+        > Action::ToSourcePlaid {
+            call_id: 4,
+            action: ActionSourcePlaid::ExchangePublicToken { .. },
+        },
         // The bank exists at Plaid from here on.
-        < Event::FromSourcePlaid { call_id: 4, event: EventSourcePlaid::ItemLinked { link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        < Event::FromSourcePlaid {
+            call_id: 4,
+            event: EventSourcePlaid::ItemLinked {
+                link_token: "link-1".to_string(),
+                item_id: "item-9".to_string(),
+            },
+        },
+
         // Write it down.
         > Action::ToStore { call_id: 5, action: ActionStore::SaveItem { .. } },
+
         // And close the session.
-        > Action::ToStore { call_id: 6, action: ActionStore::CollectLink { .. } },
+        > Action::ToStore {
+            call_id: 6,
+            action: ActionStore::CollectLink { .. },
+        },
 
         // The session is closed. Nothing is released: the answer waits on the
         // write, not on this.
         < Event::FromStore { call_id: 6, event: EventStore::WriteSuccess },
 
         // The write is not.
-        < Event::FromStore { call_id: 5, event: EventStore::WriteError { message: "connection refused".to_string() } },
+        < Event::FromStore {
+            call_id: 5,
+            event: EventStore::WriteError {
+                message: "connection refused".to_string(),
+            },
+        },
+
         // Ask again. The access token is still in the runtime's map, so the
         // same write can land; five attempts is the bound.
         > @r#"ToStore { call_id: 7, action: SaveItem { item_id: "item-9", link_token: "link-1" } }"#,
-
         // The row exists.
-        < Event::FromStore { call_id: 7, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
+        < Event::FromStore {
+            call_id: 7,
+            event: EventStore::ItemSaved {
+                item: Some(ItemFacts {
+                    item_id: "item-9".to_string(),
+                    user_id: uuid::Uuid::nil(),
+                    cursor: None,
+                    synced_at: None,
+                    login_required: false,
+                }),
+            },
+        },
+
         // Start its first sync.
-        > Action::ToSourcePlaid { call_id: 8, action: ActionSourcePlaid::FetchBalances { .. } },
+        > Action::ToSourcePlaid {
+            call_id: 8,
+            action: ActionSourcePlaid::FetchBalances { .. },
+        },
+
         // And say the one sentence that is now true.
         > @r#"ToRouter { request_id: 1, action: Linked { count: 1 } }"#,
     );
@@ -319,56 +751,131 @@ fn a_bank_the_store_would_not_write_is_answered_an_error() {
 
     eval!(&mut state,
         // The sheet closed.
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
         // Who is asking.
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
-
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
         // Them.
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
+
         // What they have open.
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
-
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
         // One session.
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
+
         // Ask Plaid what it came to.
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } , ..},
-
+        > Action::ToSourcePlaid {
+            action: ActionSourcePlaid::PollLinks { .. },
+            ..
+        },
         // A token to trade.
-        < Event::FromSourcePlaid { call_id: 3, event: EventSourcePlaid::LinksPolled { polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
-        // The call that spends the slot.
-        > Action::ToSourcePlaid { call_id: 4, action: ActionSourcePlaid::ExchangePublicToken { .. } },
+        < Event::FromSourcePlaid {
+            call_id: 3,
+            event: EventSourcePlaid::LinksPolled {
+                polls: vec![LinkPoll {
+                    link_token: "link-1".to_string(),
+                    finished: true,
+                    public_tokens: vec!["public-1".to_string()],
+                }],
+            },
+        },
 
+        // The call that spends the slot.
+        > Action::ToSourcePlaid {
+            call_id: 4,
+            action: ActionSourcePlaid::ExchangePublicToken { .. },
+        },
         // The bank exists at Plaid from here on.
-        < Event::FromSourcePlaid { call_id: 4, event: EventSourcePlaid::ItemLinked { link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        < Event::FromSourcePlaid {
+            call_id: 4,
+            event: EventSourcePlaid::ItemLinked {
+                link_token: "link-1".to_string(),
+                item_id: "item-9".to_string(),
+            },
+        },
+
         // Write it down.
         > Action::ToStore { call_id: 5, action: ActionStore::SaveItem { .. } },
+
         // And close the session.
-        > Action::ToStore { call_id: 6, action: ActionStore::CollectLink { .. } },
+        > Action::ToStore {
+            call_id: 6,
+            action: ActionStore::CollectLink { .. },
+        },
 
         // The session is closed.
         < Event::FromStore { call_id: 6, event: EventStore::WriteSuccess },
 
         // The first attempt.
-        < Event::FromStore { call_id: 5, event: EventStore::WriteError { message: "connection refused".to_string() } },
+        < Event::FromStore {
+            call_id: 5,
+            event: EventStore::WriteError {
+                message: "connection refused".to_string(),
+            },
+        },
+
         // The second.
         > Action::ToStore { call_id: 7, action: ActionStore::SaveItem { .. } },
+        < Event::FromStore {
+            call_id: 7,
+            event: EventStore::WriteError {
+                message: "connection refused".to_string(),
+            },
+        },
 
-        < Event::FromStore { call_id: 7, event: EventStore::WriteError { message: "connection refused".to_string() } },
         // The third.
         > Action::ToStore { call_id: 8, action: ActionStore::SaveItem { .. } },
+        < Event::FromStore {
+            call_id: 8,
+            event: EventStore::WriteError {
+                message: "connection refused".to_string(),
+            },
+        },
 
-        < Event::FromStore { call_id: 8, event: EventStore::WriteError { message: "connection refused".to_string() } },
         // The fourth.
         > Action::ToStore { call_id: 9, action: ActionStore::SaveItem { .. } },
+        < Event::FromStore {
+            call_id: 9,
+            event: EventStore::WriteError {
+                message: "connection refused".to_string(),
+            },
+        },
 
-        < Event::FromStore { call_id: 9, event: EventStore::WriteError { message: "connection refused".to_string() } },
         // The fifth, and the last: a store that has refused this five times is
         // down rather than busy, and the route is holding all the while.
-        > Action::ToStore { call_id: 10, action: ActionStore::SaveItem { .. } },
-
+        //
         // `ItemSaved { item: None }` ends here too, and without the four
         // retries: nothing to attach does not become something to attach.
-        < Event::FromStore { call_id: 10, event: EventStore::WriteError { message: "connection refused".to_string() } },
+        > Action::ToStore { call_id: 10, action: ActionStore::SaveItem { .. } },
+        < Event::FromStore {
+            call_id: 10,
+            event: EventStore::WriteError {
+                message: "connection refused".to_string(),
+            },
+        },
+
         // A 500. Not `LinkAbandoned`, which is a sentence about somebody's
         // bank: this bank is live at Plaid and nothing here owns it. No
         // `FetchBalances` either, because there is no row to sync.
@@ -382,27 +889,70 @@ fn a_slow_exchange_still_attaches_its_bank() {
 
     eval!(&mut state,
         // The sheet closed.
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
         // Who is asking.
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
-
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
         // Them.
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
+
         // What they have open.
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
-
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
         // One session.
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        // Ask Plaid what it came to.
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::PollLinks { .. } , ..},
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
 
+        // Ask Plaid what it came to.
+        > Action::ToSourcePlaid {
+            action: ActionSourcePlaid::PollLinks { .. },
+            ..
+        },
         // A token to trade.
-        < Event::FromSourcePlaid { call_id: 3, event: EventSourcePlaid::LinksPolled { polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
+        < Event::FromSourcePlaid {
+            call_id: 3,
+            event: EventSourcePlaid::LinksPolled {
+                polls: vec![LinkPoll {
+                    link_token: "link-1".to_string(),
+                    finished: true,
+                    public_tokens: vec!["public-1".to_string()],
+                }],
+            },
+        },
+
         // The call that spends the slot.
-        > Action::ToSourcePlaid { call_id: 4, action: ActionSourcePlaid::ExchangePublicToken { .. } },
+        > Action::ToSourcePlaid {
+            call_id: 4,
+            action: ActionSourcePlaid::ExchangePublicToken { .. },
+        },
 
         // Thirty seconds of silence from Plaid.
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS),
+            },
+        },
+
         // The route is answered and let go of. Nobody is waiting on call 4
         // now, and call 4 is still out.
         > @r#"ToRouter { request_id: 1, action: LinkPending }"#,
@@ -410,8 +960,19 @@ fn a_slow_exchange_still_attaches_its_bank() {
         // Late, with no route left to tell. It is still the bank somebody
         // connected, and writing it down is the only thing that makes the
         // spent slot worth anything.
-        < Event::FromSourcePlaid { call_id: 4, event: EventSourcePlaid::ItemLinked { link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        < Event::FromSourcePlaid {
+            call_id: 4,
+            event: EventSourcePlaid::ItemLinked {
+                link_token: "link-1".to_string(),
+                item_id: "item-9".to_string(),
+            },
+        },
+
         > Action::ToStore { call_id: 5, action: ActionStore::SaveItem { .. } },
-        > Action::ToStore { call_id: 6, action: ActionStore::CollectLink { .. } },
+
+        > Action::ToStore {
+            call_id: 6,
+            action: ActionStore::CollectLink { .. },
+        },
     );
 }

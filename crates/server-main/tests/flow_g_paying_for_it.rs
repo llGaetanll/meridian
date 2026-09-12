@@ -50,28 +50,78 @@ fn subscribing_reads_an_address_then_asks_stripe_twice() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadUser { user_id: SUBSCRIBER } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
-        > Action::ToSourceStripe { call_id: 3, action: ActionSourceStripe::CreateCustomer { user_id: SUBSCRIBER, .. } },
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadUser { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::UserLoaded {
+                email: Some("al@example.com".to_string()),
+            },
+        },
 
-        < Event::FromSourceStripe { call_id: 3, event: EventSourceStripe::CustomerCreated { user_id: SUBSCRIBER, customer_id: "cus_1".to_string() } },
-        > Action::ToSourceStripe { call_id: 4, action: ActionSourceStripe::CreateSubscription { user_id: SUBSCRIBER, .. } },
+        > Action::ToSourceStripe {
+            call_id: 3,
+            action: ActionSourceStripe::CreateCustomer {
+                user_id: SUBSCRIBER,
+                ..
+            },
+        },
+        < Event::FromSourceStripe {
+            call_id: 3,
+            event: EventSourceStripe::CustomerCreated {
+                user_id: SUBSCRIBER,
+                customer_id: "cus_1".to_string(),
+            },
+        },
+
+        > Action::ToSourceStripe {
+            call_id: 4,
+            action: ActionSourceStripe::CreateSubscription {
+                user_id: SUBSCRIBER,
+                ..
+            },
+        },
+        < Event::FromSourceStripe {
+            call_id: 4,
+            event: EventSourceStripe::SubscriptionCreated {
+                user_id: SUBSCRIBER,
+                subscription_id: "sub_1".to_string(),
+                status: "incomplete".to_string(),
+                client_secret: Some("pi_1_secret".to_string()),
+            },
+        },
 
         // The row is written whatever happens next: the webhook that says this
         // was paid for names only the subscription, so without it there is
         // nothing to look the user up by.
-        < Event::FromSourceStripe { call_id: 4, event: EventSourceStripe::SubscriptionCreated { user_id: SUBSCRIBER, subscription_id: "sub_1".to_string(), status: "incomplete".to_string(), client_secret: Some("pi_1_secret".to_string()) } },
-        > Action::ToStore { call_id: 5, action: ActionStore::SaveCustomer { user_id: SUBSCRIBER, .. } },
+        > Action::ToStore {
+            call_id: 5,
+            action: ActionStore::SaveCustomer { user_id: SUBSCRIBER, .. },
+        },
+        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
 
         // Answered only once that write has landed. A route is released when
         // nothing it started is still out, so the row exists before the card
         // form does.
-        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
         > @r#"ToRouter { request_id: 1, action: Subscribing { client_secret: "pi_1_secret", publishable_key: "pk_test_1" } }"#,
     );
 }
@@ -109,10 +159,23 @@ fn a_machine_with_no_publishable_key_starts_no_subscription() {
     );
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
     );
 }
@@ -124,29 +187,83 @@ fn a_started_subscription_entitles_nobody() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > Action::ToStore { call_id: 2, action: ActionStore::LoadUser { .. } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::UserLoaded {
+                email: Some("al@example.com".to_string()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
-        > Action::ToSourceStripe { call_id: 3, action: ActionSourceStripe::CreateCustomer { .. } },
+        > Action::ToSourceStripe {
+            call_id: 3,
+            action: ActionSourceStripe::CreateCustomer { .. },
+        },
+        < Event::FromSourceStripe {
+            call_id: 3,
+            event: EventSourceStripe::CustomerCreated {
+                user_id: SUBSCRIBER,
+                customer_id: "cus_1".to_string(),
+            },
+        },
 
-        < Event::FromSourceStripe { call_id: 3, event: EventSourceStripe::CustomerCreated { user_id: SUBSCRIBER, customer_id: "cus_1".to_string() } },
-        > Action::ToSourceStripe { call_id: 4, action: ActionSourceStripe::CreateSubscription { .. } },
+        > Action::ToSourceStripe {
+            call_id: 4,
+            action: ActionSourceStripe::CreateSubscription { .. },
+        },
+        < Event::FromSourceStripe {
+            call_id: 4,
+            event: EventSourceStripe::SubscriptionCreated {
+                user_id: SUBSCRIBER,
+                subscription_id: "sub_1".to_string(),
+                status: "incomplete".to_string(),
+                client_secret: Some("pi_1_secret".to_string()),
+            },
+        },
 
-        < Event::FromSourceStripe { call_id: 4, event: EventSourceStripe::SubscriptionCreated { user_id: SUBSCRIBER, subscription_id: "sub_1".to_string(), status: "incomplete".to_string(), client_secret: Some("pi_1_secret".to_string()) } },
-        > Action::ToStore { call_id: 5, action: ActionStore::SaveCustomer { .. } },
-
+        > Action::ToStore {
+            call_id: 5,
+            action: ActionStore::SaveCustomer { .. },
+        },
         < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+
         > @r#"ToRouter { request_id: 1, action: Subscribing { client_secret: "pi_1_secret", publishable_key: "pk_test_1" } }"#,
 
         // The same session, asking for the thing it pays for.
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 6, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 6, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 6,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 6,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > @r#"ToRouter { request_id: 2, action: PaymentRequired { unpaid: WireUnpaid { reason: "never", ran_out: None } } }"#,
     );
 }
@@ -168,19 +285,53 @@ fn a_believed_webhook_is_what_opens_the_app() {
     eval!(&mut state,
         // The subscription has to be known before a webhook naming it can be
         // matched to a user, which is what the first conversation is for.
-        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "incomplete", None)] } },
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "incomplete",
+                    None,
+                )],
+            },
+        },
 
         // Answered in the same turn the signature checks out, before the write
         // lands: Stripe retries anything it does not hear about.
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature: signature.clone(), body: body.clone() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived {
+                signature: signature.clone(),
+                body: body.clone(),
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
-        > Action::ToStore { call_id: 1, action: ActionStore::ApplySubscriptionEvent { .. } },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
 
         // And now the app opens.
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > Action::ToStore { call_id: 3, action: ActionStore::LoadItems { .. } },
     );
 }
@@ -209,9 +360,23 @@ fn a_webhook_signed_by_somebody_else_writes_nothing() {
     );
 
     eval!(&mut state,
-        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "incomplete", None)] } },
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "incomplete",
+                    None,
+                )],
+            },
+        },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived { signature, body },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
     );
 }
@@ -241,9 +406,26 @@ fn a_webhook_edited_after_signing_is_refused() {
     );
 
     eval!(&mut state,
-        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "incomplete", None)] } },
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "incomplete",
+                    None,
+                )],
+            },
+        },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body: tampered } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived {
+                signature,
+                body: tampered,
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
     );
 }
@@ -266,9 +448,23 @@ fn a_webhook_outside_its_window_is_refused() {
     let signature = stripe_signed(&body, signed_at);
 
     eval!(&mut state,
-        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "incomplete", None)] } },
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "incomplete",
+                    None,
+                )],
+            },
+        },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived { signature, body },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
     );
 }
@@ -314,7 +510,12 @@ fn a_machine_with_no_secret_believes_nothing() {
     let signature = stripe_signed(&body, T0);
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived { signature, body },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
     );
 }
@@ -339,9 +540,18 @@ fn a_webhook_for_an_unknown_subscription_is_still_written() {
     let signature = stripe_signed(&body, T0);
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived { signature, body },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
-        > Action::ToStore { call_id: 1, action: ActionStore::ApplySubscriptionEvent { .. } },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
     );
 }
 
@@ -355,7 +565,12 @@ fn an_invoice_says_nothing_about_entitlement() {
     let signature = stripe_signed(&body, T0);
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived { signature, body },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
     );
 }
@@ -367,12 +582,34 @@ fn a_cancelled_subscription_still_opens_the_app_until_its_period_ends() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "canceled", Some(PAID_UNTIL))] } },
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "canceled",
+                    Some(PAID_UNTIL),
+                )],
+            },
+        },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > Action::ToStore { call_id: 2, action: ActionStore::LoadItems { .. } },
     );
 }
@@ -390,12 +627,34 @@ fn an_active_subscription_whose_period_ran_out_does_not() {
     let ran_out = Timestamp::from_secs(T0.as_secs() - 1);
 
     eval!(&mut state,
-        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "active", Some(ran_out))] } },
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "active",
+                    Some(ran_out),
+                )],
+            },
+        },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > @r#"ToRouter { request_id: 1, action: PaymentRequired { unpaid: WireUnpaid { reason: "unconfirmed", ran_out: Some(1787097599) } } }"#,
     );
 }
@@ -409,28 +668,81 @@ fn a_period_ends_because_a_tick_says_so() {
     let ends = Timestamp::from_secs(T0.as_secs() + 60);
 
     eval!(&mut state,
-        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "active", Some(ends))] } },
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "active",
+                    Some(ends),
+                )],
+            },
+        },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadItems { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
 
         // Finished, so the tick below has nothing of its own to give up on.
-        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![] } },
-        > Action::ToStore { call_id: 3, action: ActionStore::LoadSnapshot { .. } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadItems { .. } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::ItemsLoaded { items: vec![] },
+        },
 
-        < Event::FromStore { call_id: 3, event: EventStore::SnapshotLoaded { snapshot: server_wire::WireSnapshot::new(&[], &[], &[]) } },
-        > Action::ToRouter { request_id: 1, action: ActionRouter::Serve { .. } },
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::LoadSnapshot { .. },
+        },
+        < Event::FromStore {
+            call_id: 3,
+            event: EventStore::SnapshotLoaded {
+                snapshot: server_wire::WireSnapshot::new(&[], &[], &[]),
+            },
+        },
+
+        > Action::ToRouter {
+            request_id: 1,
+            action: ActionRouter::Serve { .. },
+        },
 
         // A minute later, and nothing else has happened.
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(ends.as_secs() + 1) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(ends.as_secs() + 1),
+            },
+        },
 
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 4, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 4, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 4,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > @r#"ToRouter { request_id: 2, action: PaymentRequired { unpaid: WireUnpaid { reason: "unconfirmed", ran_out: Some(1787097660) } } }"#,
     );
 }
@@ -443,10 +755,23 @@ fn an_unpaid_session_can_still_ask_where_it_stands() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::BillingStatusRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::BillingStatusRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > @r#"ToRouter { request_id: 1, action: BillingStatus { entitled: false, unpaid: Some(WireUnpaid { reason: "never", ran_out: None }), good_until: None, cancel_at_period_end: false } }"#,
     );
 }
@@ -457,10 +782,23 @@ fn a_paid_session_is_told_what_it_has() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::BillingStatusRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::BillingStatusRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > @r#"ToRouter { request_id: 1, action: BillingStatus { entitled: true, unpaid: None, good_until: Some(1818633600), cancel_at_period_end: false } }"#,
     );
 }
@@ -473,10 +811,23 @@ fn a_token_that_names_nobody_is_unauthorized_rather_than_unpaid() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("stale") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("stale"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: None } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: None },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
     );
 }
@@ -488,16 +839,43 @@ fn a_stripe_that_will_not_answer_is_not_a_subscription() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > Action::ToStore { call_id: 2, action: ActionStore::LoadUser { .. } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::UserLoaded {
+                email: Some("al@example.com".to_string()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
-        > Action::ToSourceStripe { call_id: 3, action: ActionSourceStripe::CreateCustomer { .. } },
+        > Action::ToSourceStripe {
+            call_id: 3,
+            action: ActionSourceStripe::CreateCustomer { .. },
+        },
+        < Event::FromSourceStripe {
+            call_id: 3,
+            event: EventSourceStripe::StripeFailed {
+                user_id: SUBSCRIBER,
+                message: "stripe said no".to_string(),
+            },
+        },
 
-        < Event::FromSourceStripe { call_id: 3, event: EventSourceStripe::StripeFailed { user_id: SUBSCRIBER, message: "stripe said no".to_string() } },
         > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
     );
 }
@@ -528,32 +906,91 @@ fn a_deleted_subscription_closes_the_app_at_once() {
     let signature = stripe_signed(&body, ended_at);
 
     eval!(&mut state,
-        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "active", Some(PAID_UNTIL))] } },
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "active",
+                    Some(PAID_UNTIL),
+                )],
+            },
+        },
 
         // Paid up, and the app opens.
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > Action::ToStore { call_id: 2, action: ActionStore::LoadItems { .. } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::ItemsLoaded { items: vec![] },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![] } },
-        > Action::ToStore { call_id: 3, action: ActionStore::LoadSnapshot { .. } },
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::LoadSnapshot { .. },
+        },
+        < Event::FromStore {
+            call_id: 3,
+            event: EventStore::SnapshotLoaded {
+                snapshot: server_wire::WireSnapshot::new(&[], &[], &[]),
+            },
+        },
 
-        < Event::FromStore { call_id: 3, event: EventStore::SnapshotLoaded { snapshot: server_wire::WireSnapshot::new(&[], &[], &[]) } },
-        > Action::ToRouter { request_id: 1, action: ActionRouter::Serve { .. } },
+        > Action::ToRouter {
+            request_id: 1,
+            action: ActionRouter::Serve { .. },
+        },
 
         // The subscription is deleted.
         < Event::FromProcess { event: EventProcess::Tick { now: ended_at } },
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived { signature, body },
+        },
+
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
-        > Action::ToStore { call_id: 4, action: ActionStore::ApplySubscriptionEvent { .. } },
+
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
 
         // And the app is shut, in the same second — not in a month.
-        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 5, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 3,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 5, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 5,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 5,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > @r#"ToRouter { request_id: 3, action: PaymentRequired { unpaid: WireUnpaid { reason: "ended", ran_out: Some(1787097660) } } }"#,
     );
 }
@@ -569,14 +1006,30 @@ fn a_session_whose_user_is_gone_starts_nothing_at_stripe() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadUser { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
 
         // No such user. The claim is the `ToSourceStripe` that does not come.
-        < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: None } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadUser { .. } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::UserLoaded { email: None },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unauthorized }"#,
     );
 }
@@ -593,22 +1046,63 @@ fn a_subscription_with_no_secret_is_still_written_down() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > Action::ToStore { call_id: 2, action: ActionStore::LoadUser { .. } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::UserLoaded {
+                email: Some("al@example.com".to_string()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
-        > Action::ToSourceStripe { call_id: 3, action: ActionSourceStripe::CreateCustomer { .. } },
+        > Action::ToSourceStripe {
+            call_id: 3,
+            action: ActionSourceStripe::CreateCustomer { .. },
+        },
+        < Event::FromSourceStripe {
+            call_id: 3,
+            event: EventSourceStripe::CustomerCreated {
+                user_id: SUBSCRIBER,
+                customer_id: "cus_1".to_string(),
+            },
+        },
 
-        < Event::FromSourceStripe { call_id: 3, event: EventSourceStripe::CustomerCreated { user_id: SUBSCRIBER, customer_id: "cus_1".to_string() } },
-        > Action::ToSourceStripe { call_id: 4, action: ActionSourceStripe::CreateSubscription { .. } },
+        > Action::ToSourceStripe {
+            call_id: 4,
+            action: ActionSourceStripe::CreateSubscription { .. },
+        },
+        < Event::FromSourceStripe {
+            call_id: 4,
+            event: EventSourceStripe::SubscriptionCreated {
+                user_id: SUBSCRIBER,
+                subscription_id: "sub_1".to_string(),
+                status: "incomplete".to_string(),
+                client_secret: None,
+            },
+        },
 
-        < Event::FromSourceStripe { call_id: 4, event: EventSourceStripe::SubscriptionCreated { user_id: SUBSCRIBER, subscription_id: "sub_1".to_string(), status: "incomplete".to_string(), client_secret: None } },
-        > Action::ToStore { call_id: 5, action: ActionStore::SaveCustomer { .. } },
-
+        > Action::ToStore {
+            call_id: 5,
+            action: ActionStore::SaveCustomer { .. },
+        },
         < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+
         > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
     );
 }
@@ -624,19 +1118,55 @@ fn a_stripe_that_refuses_the_subscription_still_answers() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > Action::ToStore { call_id: 2, action: ActionStore::LoadUser { .. } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::UserLoaded {
+                email: Some("al@example.com".to_string()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
-        > Action::ToSourceStripe { call_id: 3, action: ActionSourceStripe::CreateCustomer { .. } },
+        > Action::ToSourceStripe {
+            call_id: 3,
+            action: ActionSourceStripe::CreateCustomer { .. },
+        },
+        < Event::FromSourceStripe {
+            call_id: 3,
+            event: EventSourceStripe::CustomerCreated {
+                user_id: SUBSCRIBER,
+                customer_id: "cus_1".to_string(),
+            },
+        },
 
-        < Event::FromSourceStripe { call_id: 3, event: EventSourceStripe::CustomerCreated { user_id: SUBSCRIBER, customer_id: "cus_1".to_string() } },
-        > Action::ToSourceStripe { call_id: 4, action: ActionSourceStripe::CreateSubscription { .. } },
+        > Action::ToSourceStripe {
+            call_id: 4,
+            action: ActionSourceStripe::CreateSubscription { .. },
+        },
+        < Event::FromSourceStripe {
+            call_id: 4,
+            event: EventSourceStripe::StripeFailed {
+                user_id: SUBSCRIBER,
+                message: "stripe said no".to_string(),
+            },
+        },
 
-        < Event::FromSourceStripe { call_id: 4, event: EventSourceStripe::StripeFailed { user_id: SUBSCRIBER, message: "stripe said no".to_string() } },
         > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
     );
 }
@@ -655,7 +1185,12 @@ fn a_believed_body_that_is_not_an_event_is_taken_and_dropped() {
     let signature = stripe_signed(&body, T0);
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived { signature, body },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
     );
 }
@@ -672,12 +1207,34 @@ fn a_past_due_subscription_still_opens_the_app() {
     let mut state = state();
 
     eval!(&mut state,
-        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "past_due", Some(PAID_UNTIL))] } },
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "past_due",
+                    Some(PAID_UNTIL),
+                )],
+            },
+        },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > Action::ToStore { call_id: 2, action: ActionStore::LoadItems { .. } },
     );
 }
@@ -704,16 +1261,47 @@ fn an_unpaid_subscription_closes_the_app() {
     let signature = stripe_signed(&body, T0);
 
     eval!(&mut state,
-        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "active", Some(PAID_UNTIL))] } },
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "active",
+                    Some(PAID_UNTIL),
+                )],
+            },
+        },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived { signature, body },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
-        > Action::ToStore { call_id: 1, action: ActionStore::ApplySubscriptionEvent { .. } },
 
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadSession { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > @r#"ToRouter { request_id: 2, action: PaymentRequired { unpaid: WireUnpaid { reason: "declined", ran_out: Some(1787097600) } } }"#,
     );
 }
@@ -741,27 +1329,75 @@ fn a_renewal_moves_the_period_forward() {
     let signature = stripe_signed(&body, first_end);
 
     eval!(&mut state,
-        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "active", Some(first_end))] } },
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "active",
+                    Some(first_end),
+                )],
+            },
+        },
 
         // A minute on, and the period has run out.
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(first_end.as_secs() + 1) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(first_end.as_secs() + 1),
+            },
+        },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > @r#"ToRouter { request_id: 1, action: PaymentRequired { unpaid: WireUnpaid { reason: "unconfirmed", ran_out: Some(1787097660) } } }"#,
 
         // The renewal lands.
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived { signature, body },
+        },
+
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
-        > Action::ToStore { call_id: 2, action: ActionStore::ApplySubscriptionEvent { .. } },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
 
         // And the app is open again, on the same session.
-        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 3, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 3,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 3, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 3,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > Action::ToStore { call_id: 4, action: ActionStore::LoadItems { .. } },
     );
 }
@@ -807,80 +1443,253 @@ fn an_abandoned_attempt_does_not_close_the_app_on_the_one_that_was_paid() {
         // The first press. The card is declined after the form closes, which
         // is not something the server hears about, so `sub_1` is the last of
         // it until Stripe gives up on it.
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadUser { user_id: SUBSCRIBER } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
-        > Action::ToSourceStripe { call_id: 3, action: ActionSourceStripe::CreateCustomer { user_id: SUBSCRIBER, .. } },
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadUser { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::UserLoaded {
+                email: Some("al@example.com".to_string()),
+            },
+        },
 
-        < Event::FromSourceStripe { call_id: 3, event: EventSourceStripe::CustomerCreated { user_id: SUBSCRIBER, customer_id: "cus_1".to_string() } },
-        > Action::ToSourceStripe { call_id: 4, action: ActionSourceStripe::CreateSubscription { user_id: SUBSCRIBER, .. } },
+        > Action::ToSourceStripe {
+            call_id: 3,
+            action: ActionSourceStripe::CreateCustomer {
+                user_id: SUBSCRIBER,
+                ..
+            },
+        },
+        < Event::FromSourceStripe {
+            call_id: 3,
+            event: EventSourceStripe::CustomerCreated {
+                user_id: SUBSCRIBER,
+                customer_id: "cus_1".to_string(),
+            },
+        },
 
-        < Event::FromSourceStripe { call_id: 4, event: EventSourceStripe::SubscriptionCreated { user_id: SUBSCRIBER, subscription_id: "sub_1".to_string(), status: "incomplete".to_string(), client_secret: Some("pi_1_secret".to_string()) } },
-        > Action::ToStore { call_id: 5, action: ActionStore::SaveCustomer { user_id: SUBSCRIBER, .. } },
+        > Action::ToSourceStripe {
+            call_id: 4,
+            action: ActionSourceStripe::CreateSubscription {
+                user_id: SUBSCRIBER,
+                ..
+            },
+        },
+        < Event::FromSourceStripe {
+            call_id: 4,
+            event: EventSourceStripe::SubscriptionCreated {
+                user_id: SUBSCRIBER,
+                subscription_id: "sub_1".to_string(),
+                status: "incomplete".to_string(),
+                client_secret: Some("pi_1_secret".to_string()),
+            },
+        },
 
+        > Action::ToStore {
+            call_id: 5,
+            action: ActionStore::SaveCustomer { user_id: SUBSCRIBER, .. },
+        },
         < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+
         > @r#"ToRouter { request_id: 1, action: Subscribing { client_secret: "pi_1_secret", publishable_key: "pk_test_1" } }"#,
 
         // The second press, with a card that works.
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 6, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 6, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > Action::ToStore { call_id: 7, action: ActionStore::LoadUser { user_id: SUBSCRIBER } },
+        > Action::ToStore {
+            call_id: 6,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 6,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
 
-        < Event::FromStore { call_id: 7, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
-        > Action::ToSourceStripe { call_id: 8, action: ActionSourceStripe::CreateCustomer { user_id: SUBSCRIBER, .. } },
+        > Action::ToStore {
+            call_id: 7,
+            action: ActionStore::LoadUser { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 7,
+            event: EventStore::UserLoaded {
+                email: Some("al@example.com".to_string()),
+            },
+        },
 
-        < Event::FromSourceStripe { call_id: 8, event: EventSourceStripe::CustomerCreated { user_id: SUBSCRIBER, customer_id: "cus_2".to_string() } },
-        > Action::ToSourceStripe { call_id: 9, action: ActionSourceStripe::CreateSubscription { user_id: SUBSCRIBER, .. } },
+        > Action::ToSourceStripe {
+            call_id: 8,
+            action: ActionSourceStripe::CreateCustomer {
+                user_id: SUBSCRIBER,
+                ..
+            },
+        },
+        < Event::FromSourceStripe {
+            call_id: 8,
+            event: EventSourceStripe::CustomerCreated {
+                user_id: SUBSCRIBER,
+                customer_id: "cus_2".to_string(),
+            },
+        },
 
-        < Event::FromSourceStripe { call_id: 9, event: EventSourceStripe::SubscriptionCreated { user_id: SUBSCRIBER, subscription_id: "sub_2".to_string(), status: "incomplete".to_string(), client_secret: Some("pi_2_secret".to_string()) } },
-        > Action::ToStore { call_id: 10, action: ActionStore::SaveCustomer { user_id: SUBSCRIBER, .. } },
+        > Action::ToSourceStripe {
+            call_id: 9,
+            action: ActionSourceStripe::CreateSubscription {
+                user_id: SUBSCRIBER,
+                ..
+            },
+        },
+        < Event::FromSourceStripe {
+            call_id: 9,
+            event: EventSourceStripe::SubscriptionCreated {
+                user_id: SUBSCRIBER,
+                subscription_id: "sub_2".to_string(),
+                status: "incomplete".to_string(),
+                client_secret: Some("pi_2_secret".to_string()),
+            },
+        },
 
+        > Action::ToStore {
+            call_id: 10,
+            action: ActionStore::SaveCustomer { user_id: SUBSCRIBER, .. },
+        },
         < Event::FromStore { call_id: 10, event: EventStore::WriteSuccess },
+
         > @r#"ToRouter { request_id: 2, action: Subscribing { client_secret: "pi_2_secret", publishable_key: "pk_test_1" } }"#,
 
         // That one is paid for, and the app opens. Both requests are seen
         // through to the end so that the tick below has nothing of its own to
         // give up on.
-        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature: paid_signature, body: paid } },
-        > @r#"ToRouter { request_id: 3, action: Accepted }"#,
-        > Action::ToStore { call_id: 11, action: ActionStore::ApplySubscriptionEvent { .. } },
+        < Event::FromRouter {
+            request_id: 3,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived {
+                signature: paid_signature,
+                body: paid,
+            },
+        },
 
+        > @r#"ToRouter { request_id: 3, action: Accepted }"#,
+
+        > Action::ToStore {
+            call_id: 11,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
         < Event::FromStore { call_id: 11, event: EventStore::WriteSuccess },
 
-        < Event::FromRouter { request_id: 4, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 12, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 4,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 12, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > Action::ToStore { call_id: 13, action: ActionStore::LoadItems { .. } },
+        > Action::ToStore {
+            call_id: 12,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 12,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
 
-        < Event::FromStore { call_id: 13, event: EventStore::ItemsLoaded { items: vec![] } },
-        > Action::ToStore { call_id: 14, action: ActionStore::LoadSnapshot { .. } },
+        > Action::ToStore {
+            call_id: 13,
+            action: ActionStore::LoadItems { .. },
+        },
+        < Event::FromStore {
+            call_id: 13,
+            event: EventStore::ItemsLoaded { items: vec![] },
+        },
 
-        < Event::FromStore { call_id: 14, event: EventStore::SnapshotLoaded { snapshot: server_wire::WireSnapshot::new(&[], &[], &[]) } },
-        > Action::ToRouter { request_id: 4, action: ActionRouter::Serve { .. } },
+        > Action::ToStore {
+            call_id: 14,
+            action: ActionStore::LoadSnapshot { .. },
+        },
+        < Event::FromStore {
+            call_id: 14,
+            event: EventStore::SnapshotLoaded {
+                snapshot: server_wire::WireSnapshot::new(&[], &[], &[]),
+            },
+        },
+
+        > Action::ToRouter {
+            request_id: 4,
+            action: ActionRouter::Serve { .. },
+        },
 
         // A day on. The sweep is the machine's own housekeeping, which is all
         // a tick this far out brings with it.
         < Event::FromProcess { event: EventProcess::Tick { now: expired_at } },
-        > Action::ToStore { call_id: 15, action: ActionStore::SweepSessions { .. } },
+
+        > Action::ToStore {
+            call_id: 15,
+            action: ActionStore::SweepSessions { .. },
+        },
 
         // Stripe gives up on the one nobody paid.
-        < Event::FromRouter { request_id: 5, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature: expired_signature, body: expired } },
+        < Event::FromRouter {
+            request_id: 5,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived {
+                signature: expired_signature,
+                body: expired,
+            },
+        },
+
         > @r#"ToRouter { request_id: 5, action: Accepted }"#,
-        > Action::ToStore { call_id: 16, action: ActionStore::ApplySubscriptionEvent { .. } },
+
+        > Action::ToStore {
+            call_id: 16,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
 
         // And the app is still open, because the subscription that was paid
         // for runs for another year.
-        < Event::FromRouter { request_id: 6, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 17, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 6,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 17, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
-        > Action::ToStore { call_id: 18, action: ActionStore::LoadItems { .. } },
+        > Action::ToStore {
+            call_id: 17,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 17,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToStore {
+            call_id: 18,
+            action: ActionStore::LoadItems { .. },
+        },
     );
 }

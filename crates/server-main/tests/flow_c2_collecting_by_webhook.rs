@@ -34,38 +34,113 @@ fn an_outcome_that_arrives_first_is_waiting_when_the_phone_asks() {
     let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
+
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
 
         // 5. The same irreversible call C1 makes at its own step 4.
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
-        > Action::ToSourcePlaid { call_id: 2, action: ActionSourcePlaid::ExchangePublicToken { .. } },
+        > Action::ToSourcePlaid {
+            call_id: 2,
+            action: ActionSourcePlaid::ExchangePublicToken { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 2,
+            event: EventSourcePlaid::ItemLinked {
+                link_token: "link-1".to_string(),
+                item_id: "item-9".to_string(),
+            },
+        },
 
         // No `CollectLink`: the session has to stay standing, because a
         // collected one is a session `/link/finish` can no longer see.
-        < Event::FromSourcePlaid { call_id: 2, event: EventSourcePlaid::ItemLinked { link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
         > Action::ToStore { call_id: 3, action: ActionStore::SaveItem { .. } },
+        < Event::FromStore {
+            call_id: 3,
+            event: EventStore::ItemSaved {
+                item: Some(ItemFacts {
+                    item_id: "item-9".to_string(),
+                    user_id: uuid::Uuid::nil(),
+                    cursor: None,
+                    synced_at: None,
+                    login_required: false,
+                }),
+            },
+        },
 
         // 7a. Plaid is owed nothing beyond "taken", and it is owed it only
         // once the exchange has landed and been written — which is what makes
         // a failure mid-exchange a webhook Plaid sends again rather than a
         // bank quietly lost. D starts on the same event, because that write is
         // what resolves whose bank it is.
-        < Event::FromStore { call_id: 3, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSourcePlaid { call_id: 4, action: ActionSourcePlaid::FetchBalances { .. } },
+        > Action::ToSourcePlaid {
+            call_id: 4,
+            action: ActionSourcePlaid::FetchBalances { .. },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
 
         // 1 and 8a. The phone catches up, and is told what it came to.
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 5, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 5, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 6, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 5,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 5,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 6, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        > Action::ToStore { call_id: 7, action: ActionStore::CollectLink { .. } },
+        > Action::ToStore {
+            call_id: 6,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 6,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
 
+        > Action::ToStore {
+            call_id: 7,
+            action: ActionStore::CollectLink { .. },
+        },
         < Event::FromStore { call_id: 7, event: EventStore::WriteSuccess },
+
         > @r#"ToRouter { request_id: 2, action: Linked { count: 1 } }"#,
     );
 }
@@ -78,33 +153,109 @@ fn a_close_that_arrives_first_waits_for_the_outcome() {
 
     eval!(&mut state,
         // Nothing at all comes back. Not an empty answer — no answer yet.
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
 
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 3, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 3, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
-        > Action::ToSourcePlaid { call_id: 4, action: ActionSourcePlaid::ExchangePublicToken { .. } },
+        > Action::ToSourcePlaid {
+            call_id: 3,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 3,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 4, event: EventSourcePlaid::ItemLinked { link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
-        > Action::ToStore { call_id: 5, action: ActionStore::SaveItem { .. } },
+        > Action::ToSourcePlaid {
+            call_id: 4,
+            action: ActionSourcePlaid::ExchangePublicToken { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 4,
+            event: EventSourcePlaid::ItemLinked {
+                link_token: "link-1".to_string(),
+                item_id: "item-9".to_string(),
+            },
+        },
 
         // The write is what the session came to, so it is the write that
         // reaches the parked route and closes the session.
-        < Event::FromStore { call_id: 5, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSourcePlaid { call_id: 6, action: ActionSourcePlaid::FetchBalances { .. } },
-        > Action::ToStore { call_id: 7, action: ActionStore::CollectLink { .. } },
+        > Action::ToStore { call_id: 5, action: ActionStore::SaveItem { .. } },
+        < Event::FromStore {
+            call_id: 5,
+            event: EventStore::ItemSaved {
+                item: Some(ItemFacts {
+                    item_id: "item-9".to_string(),
+                    user_id: uuid::Uuid::nil(),
+                    cursor: None,
+                    synced_at: None,
+                    login_required: false,
+                }),
+            },
+        },
+
+        > Action::ToSourcePlaid {
+            call_id: 6,
+            action: ActionSourcePlaid::FetchBalances { .. },
+        },
+
+        > Action::ToStore {
+            call_id: 7,
+            action: ActionStore::CollectLink { .. },
+        },
+
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
 
         // 8a. The route that was waiting, answered once the session it is
         // being told about has actually been closed.
         < Event::FromStore { call_id: 7, event: EventStore::WriteSuccess },
+
         > @r#"ToRouter { request_id: 1, action: Linked { count: 1 } }"#,
     );
 }
@@ -118,11 +269,37 @@ fn every_token_a_session_produced_is_exchanged() {
     let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\", \"public-2\"]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\", \"public-2\"]}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\", \"public-2\"]}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\", \"public-2\"]}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
+
         > @r#"ToSourcePlaid { call_id: 2, action: ExchangePublicToken { link_token: "link-1", public_token: "public-1" } }"#,
+
         > @r#"ToSourcePlaid { call_id: 3, action: ExchangePublicToken { link_token: "link-1", public_token: "public-2" } }"#,
     );
 }
@@ -134,22 +311,73 @@ fn a_session_that_ends_with_nothing_is_said_rather_than_inferred() {
     let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
 
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 3, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 3, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
+        > Action::ToSourcePlaid {
+            call_id: 3,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 3,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
+
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
-        > Action::ToStore { call_id: 4, action: ActionStore::CollectLink { .. } },
 
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::CollectLink { .. },
+        },
         < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
+
         > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
     );
 }
@@ -161,25 +389,84 @@ fn an_exchange_that_fails_settles_the_session_too() {
     let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
 
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 3, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 3, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
-        > Action::ToSourcePlaid { call_id: 4, action: ActionSourcePlaid::ExchangePublicToken { .. } },
+        > Action::ToSourcePlaid {
+            call_id: 3,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 3,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 4, event: EventSourcePlaid::LinkAbandoned { link_token: "link-1".to_string() } },
+        > Action::ToSourcePlaid {
+            call_id: 4,
+            action: ActionSourcePlaid::ExchangePublicToken { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 4,
+            event: EventSourcePlaid::LinkAbandoned {
+                link_token: "link-1".to_string(),
+            },
+        },
+
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
-        > Action::ToStore { call_id: 5, action: ActionStore::CollectLink { .. } },
 
+        > Action::ToStore {
+            call_id: 5,
+            action: ActionStore::CollectLink { .. },
+        },
         < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+
         > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
     );
 }
@@ -195,15 +482,44 @@ fn a_session_nobody_reports_on_is_answered_pending_exactly_once() {
     let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string(), "link-2".to_string()] } },
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string(), "link-2".to_string()],
+            },
+        },
 
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(
+                    T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS,
+                ),
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: LinkPending }"#,
     );
 }
@@ -216,25 +532,85 @@ fn an_outcome_nobody_comes_back_for_expires() {
     let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
+
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
 
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + OUTCOME_GOOD_FOR_SECS) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + OUTCOME_GOOD_FOR_SECS),
+            },
+        },
 
         // Nothing recorded any more, so this parks rather than being answered
         // from a record about a sheet closed ten minutes ago.
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 3, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 3, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 3,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
 
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + OUTCOME_GOOD_FOR_SECS + LINK_ANSWER_GOOD_FOR_SECS) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(
+                    T0.as_secs()
+                        + OUTCOME_GOOD_FOR_SECS
+                        + LINK_ANSWER_GOOD_FOR_SECS,
+                ),
+            },
+        },
+
         > Action::ToRouter { action: ActionRouter::LinkPending, .. },
     );
 }
@@ -246,13 +622,34 @@ fn a_close_with_no_session_open_is_answered_at_once() {
     let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec![] } },
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded { link_tokens: vec![] },
+        },
+
         > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
     );
 }
@@ -264,32 +661,120 @@ fn the_session_that_attached_a_bank_is_the_one_reported() {
     let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[]}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
+
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
 
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-2\",\"public_tokens\":[\"public-2\"]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-2\",\"public_tokens\":[\"public-2\"]}", T0.as_secs()).1 } },
-        > Action::ToSourcePlaid { call_id: 2, action: ActionSourcePlaid::ExchangePublicToken { .. } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-2\",\"public_tokens\":[\"public-2\"]}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-2\",\"public_tokens\":[\"public-2\"]}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 2, event: EventSourcePlaid::ItemLinked { link_token: "link-2".to_string(), item_id: "item-9".to_string() } },
+        > Action::ToSourcePlaid {
+            call_id: 2,
+            action: ActionSourcePlaid::ExchangePublicToken { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 2,
+            event: EventSourcePlaid::ItemLinked {
+                link_token: "link-2".to_string(),
+                item_id: "item-9".to_string(),
+            },
+        },
+
         > Action::ToStore { call_id: 3, action: ActionStore::SaveItem { .. } },
+        < Event::FromStore {
+            call_id: 3,
+            event: EventStore::ItemSaved {
+                item: Some(ItemFacts {
+                    item_id: "item-9".to_string(),
+                    user_id: uuid::Uuid::nil(),
+                    cursor: None,
+                    synced_at: None,
+                    login_required: false,
+                }),
+            },
+        },
 
-        < Event::FromStore { call_id: 3, event: EventStore::ItemSaved { item: Some(ItemFacts { item_id: "item-9".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }) } },
-        > Action::ToSourcePlaid { call_id: 4, action: ActionSourcePlaid::FetchBalances { .. } },
+        > Action::ToSourcePlaid {
+            call_id: 4,
+            action: ActionSourcePlaid::FetchBalances { .. },
+        },
+
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
 
-        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 5, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 3,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 5, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 6, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 5,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 5,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 6, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string(), "link-2".to_string()] } },
+        > Action::ToStore {
+            call_id: 6,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 6,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string(), "link-2".to_string()],
+            },
+        },
+
         > @r#"ToStore { call_id: 7, action: CollectLink { link_token: "link-2" } }"#,
-
         < Event::FromStore { call_id: 7, event: EventStore::WriteSuccess },
+
         > @r#"ToRouter { request_id: 3, action: Linked { count: 1 } }"#,
     );
 }
@@ -300,61 +785,151 @@ fn a_bank_the_store_would_not_write_is_not_taken_from_plaid() {
 
     eval!(&mut state,
         // Plaid says the session is finished, with a token on it.
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}", T0.as_secs()).1 } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
+
         // The key the signature names.
-        > Action::ToSourcePlaid { call_id: 1, action: ActionSourcePlaid::FetchWebhookKey { .. } },
-
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
         // Believed.
-        < Event::FromSourcePlaid { call_id: 1, event: EventSourcePlaid::WebhookKeyLoaded { kid: "kid-1".to_string(), key: Some(webhook_jwk()) } },
-        // The call that spends the slot.
-        > Action::ToSourcePlaid { call_id: 2, action: ActionSourcePlaid::ExchangePublicToken { .. } },
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
 
+        // The call that spends the slot.
+        > Action::ToSourcePlaid {
+            call_id: 2,
+            action: ActionSourcePlaid::ExchangePublicToken { .. },
+        },
         // The bank exists at Plaid from here on.
-        < Event::FromSourcePlaid { call_id: 2, event: EventSourcePlaid::ItemLinked { link_token: "link-1".to_string(), item_id: "item-9".to_string() } },
+        < Event::FromSourcePlaid {
+            call_id: 2,
+            event: EventSourcePlaid::ItemLinked {
+                link_token: "link-1".to_string(),
+                item_id: "item-9".to_string(),
+            },
+        },
+
         // Write it down. No `CollectLink`: the session stands until
         // `/link/finish` reports it.
         > Action::ToStore { call_id: 3, action: ActionStore::SaveItem { .. } },
-
         // The first attempt.
-        < Event::FromStore { call_id: 3, event: EventStore::WriteError { message: "connection refused".to_string() } },
+        < Event::FromStore {
+            call_id: 3,
+            event: EventStore::WriteError {
+                message: "connection refused".to_string(),
+            },
+        },
+
         // The second.
         > Action::ToStore { call_id: 4, action: ActionStore::SaveItem { .. } },
+        < Event::FromStore {
+            call_id: 4,
+            event: EventStore::WriteError {
+                message: "connection refused".to_string(),
+            },
+        },
 
-        < Event::FromStore { call_id: 4, event: EventStore::WriteError { message: "connection refused".to_string() } },
         // The third.
         > Action::ToStore { call_id: 5, action: ActionStore::SaveItem { .. } },
+        < Event::FromStore {
+            call_id: 5,
+            event: EventStore::WriteError {
+                message: "connection refused".to_string(),
+            },
+        },
 
-        < Event::FromStore { call_id: 5, event: EventStore::WriteError { message: "connection refused".to_string() } },
         // The fourth.
         > Action::ToStore { call_id: 6, action: ActionStore::SaveItem { .. } },
+        < Event::FromStore {
+            call_id: 6,
+            event: EventStore::WriteError {
+                message: "connection refused".to_string(),
+            },
+        },
 
-        < Event::FromStore { call_id: 6, event: EventStore::WriteError { message: "connection refused".to_string() } },
         // The fifth, and the last.
         > Action::ToStore { call_id: 7, action: ActionStore::SaveItem { .. } },
+        < Event::FromStore {
+            call_id: 7,
+            event: EventStore::WriteError {
+                message: "connection refused".to_string(),
+            },
+        },
 
-        < Event::FromStore { call_id: 7, event: EventStore::WriteError { message: "connection refused".to_string() } },
         // A 503, so Plaid sends the webhook again. `Accepted` is a 204 meaning
         // taken, and taken is what stops it. The session is left unsettled,
         // which is what the close below then reads.
         > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
 
         // The phone catches up.
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
         // Who is asking.
-        > Action::ToStore { call_id: 8, action: ActionStore::LoadSession { .. } },
-
+        > Action::ToStore {
+            call_id: 8,
+            action: ActionStore::LoadSession { .. },
+        },
         // Them.
-        < Event::FromStore { call_id: 8, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        // What they have open.
-        > Action::ToStore { call_id: 9, action: ActionStore::LoadPendingLinks { .. } },
+        < Event::FromStore {
+            call_id: 8,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        // One session, with no outcome recorded against it, so the route parks.
-        < Event::FromStore { call_id: 9, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
+        // What they have open.
+        > Action::ToStore {
+            call_id: 9,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        // One session, with no outcome recorded against it, so the route
+        // parks.
+        < Event::FromStore {
+            call_id: 9,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
 
         // Ten seconds of nobody saying anything.
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(
+                    T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS,
+                ),
+            },
+        },
+
         // Neither `Linked` nor `Nothing`, both of which are false: the bank is
-        // live at Plaid, and Plaid's re-send may yet be the turn that writes it.
+        // live at Plaid, and Plaid's re-send may yet be the turn that writes
+        // it.
         > @r#"ToRouter { request_id: 2, action: LinkPending }"#,
     );
 }

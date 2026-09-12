@@ -208,18 +208,57 @@ fn a_burst_of_refreshes_is_rate_limited() {
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 31, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 11,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 31, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 32, action: ActionStore::LoadItems { .. } },
+        > Action::ToStore {
+            call_id: 31,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 31,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
         // Stale, and asked for anyway — and no call to Plaid comes out. Served
         // what the store already holds instead.
-        < Event::FromStore { call_id: 32, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: Some("cursor-1".to_string()), synced_at: Some(Timestamp::from_secs(T0.as_secs() - FRESH_FOR_SECS)), login_required: false }] } },
-        > Action::ToStore { call_id: 33, action: ActionStore::LoadSnapshot { .. } },
+        > Action::ToStore {
+            call_id: 32,
+            action: ActionStore::LoadItems { .. },
+        },
+        < Event::FromStore {
+            call_id: 32,
+            event: EventStore::ItemsLoaded {
+                items: vec![ItemFacts {
+                    item_id: "item-1".to_string(),
+                    user_id: uuid::Uuid::nil(),
+                    cursor: Some("cursor-1".to_string()),
+                    synced_at: Some(Timestamp::from_secs(
+                        T0.as_secs() - FRESH_FOR_SECS,
+                    )),
+                    login_required: false,
+                }],
+            },
+        },
 
-        < Event::FromStore { call_id: 33, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
+        > Action::ToStore {
+            call_id: 33,
+            action: ActionStore::LoadSnapshot { .. },
+        },
+        < Event::FromStore {
+            call_id: 33,
+            event: EventStore::SnapshotLoaded {
+                snapshot: WireSnapshot::default(),
+            },
+        },
+
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
@@ -243,14 +282,46 @@ fn the_rate_limit_is_per_bank() {
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 11, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 31, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 11,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 31, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 32, action: ActionStore::LoadItems { .. } },
+        > Action::ToStore {
+            call_id: 31,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 31,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 32, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-2".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToSourcePlaid { action: ActionSourcePlaid::FetchBalances { .. }, .. },
+        > Action::ToStore {
+            call_id: 32,
+            action: ActionStore::LoadItems { .. },
+        },
+        < Event::FromStore {
+            call_id: 32,
+            event: EventStore::ItemsLoaded {
+                items: vec![ItemFacts {
+                    item_id: "item-2".to_string(),
+                    user_id: uuid::Uuid::nil(),
+                    cursor: None,
+                    synced_at: None,
+                    login_required: false,
+                }],
+            },
+        },
+
+        > Action::ToSourcePlaid {
+            action: ActionSourcePlaid::FetchBalances { .. },
+            ..
+        },
     );
 }
 
@@ -268,10 +339,25 @@ fn a_caller_past_its_budget_is_refused() {
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 61, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 21,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 61, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore {
+            call_id: 61,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 61,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
+
         > @r#"ToRouter { request_id: 21, action: TooMany }"#,
     );
 }
@@ -287,25 +373,73 @@ fn the_budget_returns_when_the_window_passes() {
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 61, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 21,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 61, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore {
+            call_id: 61,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 61,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
+
         > Action::ToRouter { action: ActionRouter::TooMany, .. },
 
         // A minute passes. Nothing else happens in it.
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 61) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 61),
+            },
+        },
 
-        < Event::FromRouter { request_id: 22, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 62, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 22,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 62, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 63, action: ActionStore::LoadItems { .. } },
+        > Action::ToStore {
+            call_id: 62,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 62,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 63, event: EventStore::ItemsLoaded { items: vec![] } },
-        > Action::ToStore { call_id: 64, action: ActionStore::LoadSnapshot { .. } },
+        > Action::ToStore {
+            call_id: 63,
+            action: ActionStore::LoadItems { .. },
+        },
+        < Event::FromStore {
+            call_id: 63,
+            event: EventStore::ItemsLoaded { items: vec![] },
+        },
 
-        < Event::FromStore { call_id: 64, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
+        > Action::ToStore {
+            call_id: 64,
+            action: ActionStore::LoadSnapshot { .. },
+        },
+        < Event::FromStore {
+            call_id: 64,
+            event: EventStore::SnapshotLoaded {
+                snapshot: WireSnapshot::default(),
+            },
+        },
+
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
@@ -329,7 +463,14 @@ fn a_refused_request_starts_nothing() {
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 6, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "al@example.com".to_string() } },
+        < Event::FromRouter {
+            request_id: 6,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "al@example.com".to_string(),
+            },
+        },
+
         > @r#"ToRouter { request_id: 6, action: TooMany }"#,
     );
 }
@@ -351,15 +492,30 @@ fn one_caller_over_its_budget_does_not_refuse_the_next() {
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 6, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "al@example.com".to_string() } },
+        < Event::FromRouter {
+            request_id: 6,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "al@example.com".to_string(),
+            },
+        },
+
         > Action::ToRouter { action: ActionRouter::TooMany, .. },
 
         // A different address asking for a different inbox goes through. Both
         // have to differ: the same inbox from a new address is the mailbomb
         // the test below is about. The `Accepted` that follows is held until
         // the write lands and belongs to `flow_a_signing_in.rs`.
-        < Event::FromRouter { request_id: 7, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
-        > Action::ToStore { action: ActionStore::SaveCode { .. } , ..},
+        < Event::FromRouter {
+            request_id: 7,
+            client: Client { ip: ClientIp::new("198.51.100.4"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "gaetan@example.com".to_string(),
+            },
+        },
+
+        > Action::ToStore { action: ActionStore::SaveCode { .. }, .. },
+
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
     );
 }
@@ -393,7 +549,14 @@ fn a_botnet_cannot_mailbomb_one_inbox() {
     eval!(&mut state,
         // A sixth machine, and a tag on the address to go with it. Neither
         // buys another message: it is one inbox.
-        < Event::FromRouter { request_id: 6, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::CodeRequested { email: "al+signup@example.com".to_string() } },
+        < Event::FromRouter {
+            request_id: 6,
+            client: Client { ip: ClientIp::new("198.51.100.4"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "al+signup@example.com".to_string(),
+            },
+        },
+
         > @r#"ToRouter { request_id: 6, action: TooMany }"#,
     );
 }
@@ -432,7 +595,15 @@ fn a_caller_working_through_codes_runs_out_of_tries() {
 
     eval!(&mut state,
         // No `LoadCode`: refused before the store is asked anything at all.
-        < Event::FromRouter { request_id: 21, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeSubmitted { email: "al@example.com".to_string(), code: "000000".to_string() } },
+        < Event::FromRouter {
+            request_id: 21,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeSubmitted {
+                email: "al@example.com".to_string(),
+                code: "000000".to_string(),
+            },
+        },
+
         > @r#"ToRouter { request_id: 21, action: TooMany }"#,
     );
 }
@@ -452,7 +623,23 @@ fn webhooks_are_not_rate_limited() {
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 101, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"NEW_ACCOUNTS_AVAILABLE\"}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"ITEM\",\"webhook_code\":\"NEW_ACCOUNTS_AVAILABLE\"}", T0.as_secs()).1 } },
+        < Event::FromRouter {
+            request_id: 101,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"NEW_ACCOUNTS_AVAILABLE\"}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"ITEM\",\"webhook_code\":\"NEW_ACCOUNTS_AVAILABLE\"}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
+
         > @r#"ToRouter { request_id: 101, action: Accepted }"#,
     );
 }
@@ -565,7 +752,23 @@ fn the_exchange_past_the_budget_produces_no_action() {
     spend_the_exchanges(&mut state);
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::WebhookReceived { jwt: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-11\",\"public_tokens\":[\"public-11\"]}", T0.as_secs()).0, body: signed("{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-11\",\"public_tokens\":[\"public-11\"]}", T0.as_secs()).1 } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-11\",\"public_tokens\":[\"public-11\"]}",
+                    T0.as_secs(),
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-11\",\"public_tokens\":[\"public-11\"]}",
+                    T0.as_secs(),
+                )
+                .1,
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
     );
 }
@@ -590,10 +793,26 @@ fn opening_bank_sign_ins_faster_than_the_budget_allows_is_refused() {
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 31, client: Client { ip: ClientIp::new("198.51.100.4"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1"), origin: None } },
-        > Action::ToStore { call_id: 61, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 31,
+            client: Client { ip: ClientIp::new("198.51.100.4"), user: None },
+            event: EventRouter::LinkRequested {
+                token_sha256: hash_token("session-1"),
+                origin: None,
+            },
+        },
 
-        < Event::FromStore { call_id: 61, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::from_u128(31)) } },
+        > Action::ToStore {
+            call_id: 61,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 61,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::from_u128(31)),
+            },
+        },
+
         > @r#"ToRouter { request_id: 31, action: TooMany }"#,
     );
 }
@@ -726,16 +945,51 @@ fn a_token_polled_back_past_the_budget_is_not_exchanged() {
     }
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 21, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 21, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToStore { call_id: 22, action: ActionStore::LoadPendingLinks { .. } },
+        > Action::ToStore {
+            call_id: 21,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 21,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromStore { call_id: 22, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-11".to_string()] } },
-        > Action::ToSourcePlaid { call_id: 23, action: ActionSourcePlaid::PollLinks { .. } },
+        > Action::ToStore {
+            call_id: 22,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 22,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-11".to_string()],
+            },
+        },
 
-        < Event::FromSourcePlaid { call_id: 23, event: EventSourcePlaid::LinksPolled { polls: vec![LinkPoll { link_token: "link-11".to_string(), public_tokens: vec!["public-11".to_string()], finished: true }] } },
+        > Action::ToSourcePlaid {
+            call_id: 23,
+            action: ActionSourcePlaid::PollLinks { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 23,
+            event: EventSourcePlaid::LinksPolled {
+                polls: vec![LinkPoll {
+                    link_token: "link-11".to_string(),
+                    public_tokens: vec!["public-11".to_string()],
+                    finished: true,
+                }],
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: TooMany }"#,
     );
 }
@@ -779,8 +1033,15 @@ fn starting_subscriptions_faster_than_the_budget_allows_is_refused() {
     let next = allowed + 1;
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: next, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { action: ActionStore::LoadSession { .. } , ..},
+        < Event::FromRouter {
+            request_id: next,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore { action: ActionStore::LoadSession { .. }, .. },
     );
 
     let mut actions = Vec::new();

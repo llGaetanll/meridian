@@ -33,12 +33,14 @@ fn a_server_asks_who_has_paid_as_it_starts() {
         < Event::FromProcess {
             event: EventProcess::Started {
                 collect: PlaidCollect::Poll,
-                web_origins: WebOrigins::parse("http://127.0.0.1:8080").expect("a literal origin"),
+                web_origins: WebOrigins::parse("http://127.0.0.1:8080")
+                    .expect("a literal origin"),
                 stripe_webhook_secret: None,
                 stripe_publishable_key: None,
                 apple_environment: None,
             },
         },
+
         > @r#"ToStore { call_id: 0, action: LoadSubscriptions }"#,
     );
 }
@@ -52,15 +54,44 @@ fn a_subscriber_is_not_told_they_never_paid_while_the_server_starts() {
     let mut state = state_starting();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
 
-        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: vec![fixtures::subscription(SUBSCRIBER, "active", Some(fixtures::PAID_UNTIL))] } },
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "active",
+                    Some(fixtures::PAID_UNTIL),
+                )],
+            },
+        },
 
-        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
         > Action::ToStore { call_id: 2, action: ActionStore::LoadItems { .. } },
     );
 }
@@ -82,7 +113,12 @@ fn a_payment_webhook_is_sent_again_rather_than_taken_while_the_server_starts() {
     let signature = fixtures::stripe_signed(&body, T0);
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature, body } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived { signature, body },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
     );
 }
@@ -96,9 +132,19 @@ fn a_startup_read_the_store_refused_is_asked_again() {
     let mut state = state_starting();
 
     eval!(&mut state,
-        < Event::FromStore { call_id: 0, event: EventStore::ReadError { message: "connection refused".to_string() } },
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::ReadError {
+                message: "connection refused".to_string(),
+            },
+        },
 
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 1) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 1),
+            },
+        },
+
         > @r#"ToStore { call_id: 0, action: LoadSubscriptions }"#,
     );
 }
@@ -110,7 +156,14 @@ fn an_apple_notification_is_sent_again_rather_than_taken_while_the_server_starts
     let mut state = state_starting();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::AppleNotificationReceived { signed: "a.signed.payload".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::AppleNotificationReceived {
+                signed: "a.signed.payload".to_string(),
+            },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Unavailable }"#,
     );
 }
@@ -124,8 +177,16 @@ fn signing_in_is_served_while_the_server_starts() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "gaetan@example.com".to_string(),
+            },
+        },
+
         > Action::ToStore { call_id: 1, action: ActionStore::SaveCode { .. } },
+
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
     );
 }
@@ -137,7 +198,11 @@ fn a_tick_while_the_server_starts_does_not_ask_again() {
     let mut state = state_starting();
 
     eval!(&mut state,
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 1) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 1),
+            },
+        },
     );
 }
 
@@ -149,13 +214,19 @@ fn a_signal_while_the_server_starts_stops_it() {
 
     eval!(&mut state,
         < Event::FromTerminal { event: EventTerminal::SigInt },
+
         > Action::ToProcess { action: ActionProcess::Shutdown },
     );
 
     assert!(state.stopped(), "the startup read is nobody's request");
 
     eval!(&mut state,
-        < Event::FromStore { call_id: 0, event: EventStore::SubscriptionsLoaded { subscriptions: Vec::new() } },
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: Vec::new(),
+            },
+        },
     );
 
     assert!(
@@ -171,7 +242,11 @@ fn a_tick_on_a_quiet_server_does_nothing() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 1) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 1),
+            },
+        },
     );
 }
 
@@ -184,16 +259,42 @@ fn expired_sessions_are_swept_on_the_hour() {
 
     eval!(&mut state,
         // Not yet. The clock is what decides, and a second short is short.
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS - 1) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(
+                    T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS - 1,
+                ),
+            },
+        },
 
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS) } },
-        > Action::ToStore { action: ActionStore::SweepSessions { .. } , ..},
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(
+                    T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS,
+                ),
+            },
+        },
+
+        > Action::ToStore { action: ActionStore::SweepSessions { .. }, .. },
 
         // And not again on the tick after it.
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS + 1) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(
+                    T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS + 1,
+                ),
+            },
+        },
 
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 2 * SWEEP_SESSIONS_EVERY_SECS) } },
-        > Action::ToStore { action: ActionStore::SweepSessions { .. } , ..},
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(
+                    T0.as_secs() + 2 * SWEEP_SESSIONS_EVERY_SECS,
+                ),
+            },
+        },
+
+        > Action::ToStore { action: ActionStore::SweepSessions { .. }, .. },
     );
 }
 
@@ -206,9 +307,16 @@ fn a_stopping_server_does_not_sweep() {
 
     eval!(&mut state,
         < Event::FromTerminal { event: EventTerminal::SigInt },
+
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(
+                    T0.as_secs() + SWEEP_SESSIONS_EVERY_SECS,
+                ),
+            },
+        },
     );
 }
 
@@ -220,22 +328,68 @@ fn a_call_that_never_answers_is_given_up_on() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
+
         > Action::ToStore { call_id: 2, action: ActionStore::LoadItems { .. } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::ItemsLoaded {
+                items: vec![ItemFacts {
+                    item_id: "item-1".to_string(),
+                    user_id: uuid::Uuid::nil(),
+                    cursor: None,
+                    synced_at: None,
+                    login_required: false,
+                }],
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToSourcePlaid { call_id: 3, action: ActionSourcePlaid::FetchBalances { .. } },
+        > Action::ToSourcePlaid {
+            call_id: 3,
+            action: ActionSourcePlaid::FetchBalances { .. },
+        },
 
         // Plaid says nothing. Time passes and nothing else arrives.
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + 1) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 1),
+            },
+        },
 
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
-        > Action::ToStore { call_id: 4, action: ActionStore::LoadSnapshot { .. } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS),
+            },
+        },
 
-        < Event::FromStore { call_id: 4, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::LoadSnapshot { .. },
+        },
+        < Event::FromStore {
+            call_id: 4,
+            event: EventStore::SnapshotLoaded {
+                snapshot: WireSnapshot::default(),
+            },
+        },
+
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 }
@@ -248,13 +402,37 @@ fn a_route_with_nothing_decided_is_told_it_cannot_be_answered() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkRequested { token_sha256: hash_token("session-1"), origin: None } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkRequested {
+                token_sha256: hash_token("session-1"),
+                origin: None,
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
-        > Action::ToSourcePlaid { call_id: 2, action: ActionSourcePlaid::OpenLink { .. } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
 
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
+        > Action::ToSourcePlaid {
+            call_id: 2,
+            action: ActionSourcePlaid::OpenLink { .. },
+        },
+
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS),
+            },
+        },
+
         > Action::ToRouter { action: ActionRouter::Unavailable, .. },
     );
 }
@@ -270,6 +448,7 @@ fn a_signal_on_an_idle_server_stops_it_at_once() {
 
     eval!(&mut state,
         < Event::FromTerminal { event: EventTerminal::SigInt },
+
         > Action::ToProcess { action: ActionProcess::Shutdown },
     );
 
@@ -288,11 +467,20 @@ fn a_signal_with_a_call_out_waits_for_it() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "gaetan@example.com".to_string(),
+            },
+        },
+
         > Action::ToStore { call_id: 1, action: ActionStore::SaveCode { .. } },
+
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
 
         < Event::FromTerminal { event: EventTerminal::SigInt },
+
         > Action::ToProcess { action: ActionProcess::Shutdown },
     );
 
@@ -300,6 +488,7 @@ fn a_signal_with_a_call_out_waits_for_it() {
 
     eval!(&mut state,
         < Event::FromStore { call_id: 1, event: EventStore::WriteSuccess },
+
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 
@@ -321,15 +510,29 @@ fn a_shutdown_does_not_wait_forever_on_a_quiet_source() {
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "gaetan@example.com".to_string(),
+            },
+        },
+
         > Action::ToStore { call_id: 1, action: ActionStore::SaveCode { .. } },
+
         > Action::ToEmail { action: ActionEmail::SendCode { .. } },
 
         < Event::FromTerminal { event: EventTerminal::SigInt },
+
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
         // The store never answers. Time passes and the route is let go of.
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS),
+            },
+        },
+
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
     );
 
@@ -344,7 +547,9 @@ fn a_second_signal_is_ignored() {
 
     eval!(&mut state,
         < Event::FromTerminal { event: EventTerminal::SigInt },
+
         < Event::FromTerminal { event: EventTerminal::SigTerm },
+
         > Action::ToProcess { action: ActionProcess::Shutdown },
     );
 }
@@ -358,18 +563,53 @@ fn shutting_down_stops_new_work() {
 
     eval!(&mut state,
         < Event::FromTerminal { event: EventTerminal::SigInt },
+
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
 
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
+
         > Action::ToStore { call_id: 2, action: ActionStore::LoadItems { .. } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::ItemsLoaded {
+                items: vec![ItemFacts {
+                    item_id: "item-1".to_string(),
+                    user_id: uuid::Uuid::nil(),
+                    cursor: None,
+                    synced_at: None,
+                    login_required: false,
+                }],
+            },
+        },
 
-        < Event::FromStore { call_id: 2, event: EventStore::ItemsLoaded { items: vec![ItemFacts { item_id: "item-1".to_string(), user_id: uuid::Uuid::nil(), cursor: None, synced_at: None, login_required: false }] } },
-        > Action::ToStore { call_id: 3, action: ActionStore::LoadSnapshot { .. } },
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::LoadSnapshot { .. },
+        },
+        < Event::FromStore {
+            call_id: 3,
+            event: EventStore::SnapshotLoaded {
+                snapshot: WireSnapshot::default(),
+            },
+        },
 
-        < Event::FromStore { call_id: 3, event: EventStore::SnapshotLoaded { snapshot: WireSnapshot::default() } },
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
     );
 
@@ -386,10 +626,19 @@ fn a_draining_machine_mints_nothing() {
 
     eval!(&mut state,
         < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
+
         < Event::FromTerminal { event: EventTerminal::SigInt },
+
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::CodeRequested { email: "gaetan@example.com".to_string() } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "gaetan@example.com".to_string(),
+            },
+        },
+
         > Action::ToRouter { action: ActionRouter::Unavailable, .. },
     );
 }
@@ -400,33 +649,77 @@ fn a_drain_does_not_give_up_on_the_exchange() {
 
     eval!(&mut state,
         // The sheet closed.
-        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::LinkClosed { token_sha256: hash_token("session-1") } },
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
         // Who is asking.
-        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
-
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
         // Them.
-        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(uuid::Uuid::nil()) } },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
+
         // What they have open.
-        > Action::ToStore { call_id: 2, action: ActionStore::LoadPendingLinks { .. } },
-
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
         // One session.
-        < Event::FromStore { call_id: 2, event: EventStore::PendingLinksLoaded { link_tokens: vec!["link-1".to_string()] } },
-        // Ask Plaid what it came to.
-        > Action::ToSourcePlaid { call_id: 3, action: ActionSourcePlaid::PollLinks { .. } },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                link_tokens: vec!["link-1".to_string()],
+            },
+        },
 
+        // Ask Plaid what it came to.
+        > Action::ToSourcePlaid {
+            call_id: 3,
+            action: ActionSourcePlaid::PollLinks { .. },
+        },
         // A token to trade.
-        < Event::FromSourcePlaid { call_id: 3, event: EventSourcePlaid::LinksPolled { polls: vec![LinkPoll { link_token: "link-1".to_string(), finished: true, public_tokens: vec!["public-1".to_string()] }] } },
+        < Event::FromSourcePlaid {
+            call_id: 3,
+            event: EventSourcePlaid::LinksPolled {
+                polls: vec![LinkPoll {
+                    link_token: "link-1".to_string(),
+                    finished: true,
+                    public_tokens: vec!["public-1".to_string()],
+                }],
+            },
+        },
+
         // The call that spends the slot, now out.
-        > Action::ToSourcePlaid { call_id: 4, action: ActionSourcePlaid::ExchangePublicToken { .. } },
+        > Action::ToSourcePlaid {
+            call_id: 4,
+            action: ActionSourcePlaid::ExchangePublicToken { .. },
+        },
 
         // ^C.
         < Event::FromTerminal { event: EventTerminal::SigInt },
+
         // Start winding down: stop accepting, and exit once what is in flight
         // is done. `stopped()` is what ends the process, not this.
         > Action::ToProcess { action: ActionProcess::Shutdown },
 
         // Thirty seconds of silence from Plaid.
-        < Event::FromProcess { event: EventProcess::Tick { now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS) } },
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + CALL_GOOD_FOR_SECS),
+            },
+        },
+
         // The route is let go of, because it cannot be held forever. The call
         // is not: a slow or lost response says nothing about whether Plaid
         // made the Item, and its answer carries the only access token there
