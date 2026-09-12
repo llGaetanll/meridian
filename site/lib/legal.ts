@@ -10,8 +10,8 @@ export const legal = {
   based: "New York, United States",
   jurisdiction: "the State of New York, United States",
   courts: "the state and federal courts located in New York",
-  effective: "[effective date]",
-  updated: "[last updated]",
+  effective: "September 11, 2026",
+  updated: "September 11, 2026",
 
   /// Who the ledger is built from. Named here because both documents refer to
   /// them and a list that disagrees with itself is the one thing a privacy

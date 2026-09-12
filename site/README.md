@@ -29,12 +29,10 @@ starts, so colour never comes from it.
 
 ## Before this goes live
 
-`lib/legal.ts` holds the facts the code cannot know. Every value in square
-brackets is a blank, and the pages render them as written — a policy naming the
-wrong company or the wrong court is worse than one that admits it is unfinished.
-
-- `effective` and `updated` — the two dates at the top of each document, set
-  on the day they are published.
+`lib/legal.ts` holds the facts the code cannot know, and they are all answered:
+Meridian, based in New York, under New York law, dated 11 September 2026.
+`updated` moves whenever either document changes in a way a reader would want
+to know about.
 
 The pages name no person and no street address. Meridian is run by a sole
 proprietor, whose name and address Stripe and Plaid hold privately; the pages
