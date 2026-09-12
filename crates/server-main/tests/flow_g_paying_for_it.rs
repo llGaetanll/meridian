@@ -765,3 +765,122 @@ fn a_renewal_moves_the_period_forward() {
         > Action::ToStore { call_id: 4, action: ActionStore::LoadItems { .. } },
     );
 }
+
+/// Two presses of Subscribe, and the attempt somebody abandoned takes the app
+/// away from the one they paid for.
+///
+/// Every press starts a brand new subscription at Stripe, and the machine
+/// files every one of them under the same user — so whichever one Stripe last
+/// said something about is read as the truth about whether that person has
+/// paid. A card declined once and paid on the second try leaves `sub_1`
+/// sitting unpaid behind it; Stripe expires that one 23 hours later, says so,
+/// and the person who paid loses the app until the process restarts and reads
+/// the row back.
+#[test]
+fn an_abandoned_attempt_does_not_close_the_app_on_the_one_that_was_paid() {
+    let mut state = state();
+
+    let paid = stripe_subscription_event(
+        "evt_paid",
+        T0.as_secs(),
+        "sub_2",
+        "active",
+        PAID_UNTIL.as_secs(),
+    );
+    let paid_signature = stripe_signed(&paid, T0);
+
+    // Stripe's 23 hours, after which a first payment that never landed is
+    // terminal.
+    let expired_at = Timestamp::from_secs(T0.as_secs() + 23 * 60 * 60);
+
+    let expired = stripe_subscription_event(
+        "evt_expired",
+        expired_at.as_secs(),
+        "sub_1",
+        "incomplete_expired",
+        // The month it never bought, which is what Stripe still reports.
+        expired_at.as_secs() + 30 * 24 * 60 * 60,
+    );
+    let expired_signature = stripe_signed(&expired, expired_at);
+
+    eval!(&mut state,
+        // The first press. The card is declined after the form closes, which
+        // is not something the server hears about, so `sub_1` is the last of
+        // it until Stripe gives up on it.
+        < Event::FromRouter { request_id: 1, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore { call_id: 2, action: ActionStore::LoadUser { user_id: SUBSCRIBER } },
+
+        < Event::FromStore { call_id: 2, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
+        > Action::ToSourceStripe { call_id: 3, action: ActionSourceStripe::CreateCustomer { user_id: SUBSCRIBER, .. } },
+
+        < Event::FromSourceStripe { call_id: 3, event: EventSourceStripe::CustomerCreated { user_id: SUBSCRIBER, customer_id: "cus_1".to_string() } },
+        > Action::ToSourceStripe { call_id: 4, action: ActionSourceStripe::CreateSubscription { user_id: SUBSCRIBER, .. } },
+
+        < Event::FromSourceStripe { call_id: 4, event: EventSourceStripe::SubscriptionCreated { user_id: SUBSCRIBER, subscription_id: "sub_1".to_string(), status: "incomplete".to_string(), client_secret: Some("pi_1_secret".to_string()) } },
+        > Action::ToStore { call_id: 5, action: ActionStore::SaveCustomer { user_id: SUBSCRIBER, .. } },
+
+        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+        > @r#"ToRouter { request_id: 1, action: Subscribing { client_secret: "pi_1_secret", publishable_key: "pk_test_1" } }"#,
+
+        // The second press, with a card that works.
+        < Event::FromRouter { request_id: 2, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SubscribeRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { call_id: 6, action: ActionStore::LoadSession { .. } },
+
+        < Event::FromStore { call_id: 6, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore { call_id: 7, action: ActionStore::LoadUser { user_id: SUBSCRIBER } },
+
+        < Event::FromStore { call_id: 7, event: EventStore::UserLoaded { email: Some("al@example.com".to_string()) } },
+        > Action::ToSourceStripe { call_id: 8, action: ActionSourceStripe::CreateCustomer { user_id: SUBSCRIBER, .. } },
+
+        < Event::FromSourceStripe { call_id: 8, event: EventSourceStripe::CustomerCreated { user_id: SUBSCRIBER, customer_id: "cus_2".to_string() } },
+        > Action::ToSourceStripe { call_id: 9, action: ActionSourceStripe::CreateSubscription { user_id: SUBSCRIBER, .. } },
+
+        < Event::FromSourceStripe { call_id: 9, event: EventSourceStripe::SubscriptionCreated { user_id: SUBSCRIBER, subscription_id: "sub_2".to_string(), status: "incomplete".to_string(), client_secret: Some("pi_2_secret".to_string()) } },
+        > Action::ToStore { call_id: 10, action: ActionStore::SaveCustomer { user_id: SUBSCRIBER, .. } },
+
+        < Event::FromStore { call_id: 10, event: EventStore::WriteSuccess },
+        > @r#"ToRouter { request_id: 2, action: Subscribing { client_secret: "pi_2_secret", publishable_key: "pk_test_1" } }"#,
+
+        // That one is paid for, and the app opens. Both requests are seen
+        // through to the end so that the tick below has nothing of its own to
+        // give up on.
+        < Event::FromRouter { request_id: 3, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature: paid_signature, body: paid } },
+        > @r#"ToRouter { request_id: 3, action: Accepted }"#,
+        > Action::ToStore { call_id: 11, action: ActionStore::ApplySubscriptionEvent { .. } },
+
+        < Event::FromStore { call_id: 11, event: EventStore::WriteSuccess },
+
+        < Event::FromRouter { request_id: 4, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { call_id: 12, action: ActionStore::LoadSession { .. } },
+
+        < Event::FromStore { call_id: 12, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore { call_id: 13, action: ActionStore::LoadItems { .. } },
+
+        < Event::FromStore { call_id: 13, event: EventStore::ItemsLoaded { items: vec![] } },
+        > Action::ToStore { call_id: 14, action: ActionStore::LoadSnapshot { .. } },
+
+        < Event::FromStore { call_id: 14, event: EventStore::SnapshotLoaded { snapshot: server_wire::WireSnapshot::new(&[], &[], &[]) } },
+        > Action::ToRouter { request_id: 4, action: ActionRouter::Serve { .. } },
+
+        // A day on. The sweep is the machine's own housekeeping, which is all
+        // a tick this far out brings with it.
+        < Event::FromProcess { event: EventProcess::Tick { now: expired_at } },
+        > Action::ToStore { call_id: 15, action: ActionStore::SweepSessions { .. } },
+
+        // Stripe gives up on the one nobody paid.
+        < Event::FromRouter { request_id: 5, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::StripeWebhookReceived { signature: expired_signature, body: expired } },
+        > @r#"ToRouter { request_id: 5, action: Accepted }"#,
+        > Action::ToStore { call_id: 16, action: ActionStore::ApplySubscriptionEvent { .. } },
+
+        // And the app is still open, because the subscription that was paid
+        // for runs for another year.
+        < Event::FromRouter { request_id: 6, client: Client { ip: ClientIp::new("203.0.113.7"), user: None }, event: EventRouter::SnapshotRequested { token_sha256: hash_token("session-1") } },
+        > Action::ToStore { call_id: 17, action: ActionStore::LoadSession { .. } },
+
+        < Event::FromStore { call_id: 17, event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) } },
+        > Action::ToStore { call_id: 18, action: ActionStore::LoadItems { .. } },
+    );
+}
