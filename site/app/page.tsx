@@ -261,6 +261,27 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="sec" id="price">
+        <div className="wrap split">
+          <div>
+            <div className="eyebrow">Price</div>
+            <h2>One price, and nothing else to choose.</h2>
+            <p className="lede">
+              Everybody pays the same, and it buys the whole app — every account
+              you connect, every tool on the markets side, and the assistant.
+              There is nothing above this and nothing below it.
+            </p>
+            <p className="lede">
+              No free tier paid for by what it learns about you, and no upgrade
+              you find out about the week you need it. Cancel whenever you like
+              and it runs to the end of the period you have paid for.
+            </p>
+          </div>
+
+          <Price />
+        </div>
+      </section>
+
       <section className="close">
         <div className="wrap">
           <div className="eyebrow">Meridian</div>
@@ -279,6 +300,44 @@ export default function Home() {
         </div>
       </section>
     </main>
+  );
+}
+
+/// The price: the figure in the app's money face, and the facts under it in the
+/// app's rows.
+///
+/// A panel rather than one of a row of cards. There is one price, so there is
+/// nothing to compare it against and no grid to put it in — the shape a pricing
+/// page usually takes is an argument between three columns, and this page has no
+/// argument to stage.
+function Price() {
+  return (
+    <div className="price">
+      <div className="price-fig">
+        <span className="money">$5.99</span>
+        <span className="per">a month</span>
+      </div>
+
+      <div className="rows">
+        <div className="row flat">
+          <span className="rt">Included</span>
+          <span className="rv hard">Every account, every tool</span>
+        </div>
+        <div className="row flat">
+          <span className="rt">Billed</span>
+          <span className="rv hard">Monthly, by card</span>
+        </div>
+        <div className="row flat">
+          <span className="rt">Cancel</span>
+          <span className="rv hard">Whenever you like</span>
+        </div>
+      </div>
+
+      <div className="price-note">
+        Payments are taken by Stripe. Your card goes to them and never reaches
+        Meridian.
+      </div>
+    </div>
   );
 }
 

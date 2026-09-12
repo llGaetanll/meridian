@@ -26,6 +26,7 @@ export function SiteFoot() {
               <Link href="/#tools">Tooling</Link>
               <Link href="/#assistant">Assistant</Link>
               <Link href="/#data">Your data</Link>
+              <Link href="/#price">Price</Link>
             </div>
           </div>
 

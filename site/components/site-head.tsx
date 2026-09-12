@@ -18,6 +18,7 @@ export function SiteHead() {
           <Link href="/#coverage">Coverage</Link>
           <Link href="/#tools">Tooling</Link>
           <Link href="/#data">Your data</Link>
+          <Link href="/#price">Price</Link>
         </nav>
 
         <div className="head-right">

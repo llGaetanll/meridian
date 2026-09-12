@@ -268,6 +268,31 @@
   .points { grid-template-columns: repeat(2, 1fr); gap: 0 44px; }
 }
 
+/* The price.
+
+   The figure is the app's `.money` at the size of a headline, because it is a
+   figure and every figure in Meridian is set in that face. Under it the facts
+   are `.row.flat` — a name and a value read down a column — which is what the
+   paywall the app draws uses for the same three lines. */
+.price {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  padding: 26px;
+}
+/* On the baseline, so "a month" sits on the line the figure stands on rather
+   than in the middle of its height. */
+.price-fig { display: flex; align-items: baseline; gap: 10px; }
+.price-fig .money { font-size: 46px; line-height: 1; letter-spacing: -0.03em; }
+.price-fig .per { font-size: 15px; color: var(--text-muted); }
+.price .rows { margin-top: 22px; border-top: 1px solid var(--divider); }
+/* Who takes the money, in the same faint line the assistant's panel ends on. */
+.price-note {
+  margin-top: 18px; padding-top: 14px;
+  border-top: 1px solid var(--divider);
+  font-size: 12.5px; color: var(--text-faint);
+}
+
 /* The closing line, and the only place on the page the accent button appears
    twice. It is the same action as the bar's, which is the point of it. */
 .close { padding: 96px 0 108px; text-align: center; }
