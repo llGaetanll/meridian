@@ -15,7 +15,6 @@
 //! them.
 
 use std::collections::BTreeMap;
-use std::collections::HashMap;
 
 use api_common::Timestamp;
 use api_common::ratelimit::RateLimiter;
@@ -136,19 +135,19 @@ pub struct StateServer {
 
     /// How far each running fetch has got, by item. Kept because a fetch is
     /// over by the time anything could read what it did; empty means idle.
-    syncing: HashMap<String, Syncing>,
+    syncing: BTreeMap<String, Syncing>,
 
     /// Who is being written to, and on whose behalf. Keyed by the connection
     /// so that letting one go is a removal, and capped per user by
     /// [`WATCHERS_AT_MOST`].
-    watchers: HashMap<ConnId, Uuid>,
+    watchers: BTreeMap<ConnId, Uuid>,
 
     /// When the current batch is being handled.
     now: Timestamp,
 
     /// What is known about each webhook signing key, by the `kid` a token
     /// named. Swept on the tick: these names come from strangers.
-    keys: HashMap<String, CachedKey>,
+    keys: BTreeMap<String, CachedKey>,
 }
 
 impl StateServer {

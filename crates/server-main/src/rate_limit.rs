@@ -5,8 +5,7 @@
 //! counting only the session hands it to anyone willing to sign up twice; the
 //! third window is the inbox — see [`ServerRateCtx::mailing`].
 
-use std::collections::HashMap;
-use std::hash::Hash;
+use std::collections::BTreeMap;
 
 use api_common::Timestamp;
 use api_common::ratelimit::RateLimiter;
@@ -55,7 +54,7 @@ const QUARTER_HOUR: u64 = 15 * 60;
 ///
 /// One variant per route that dispatches, so a new route cannot forget to be
 /// limited — see [`EventRouter::route`](crate::EventRouter::route).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Route {
     /// `GET /snapshot`
     Snapshot,
@@ -196,9 +195,9 @@ fn inbox_of(email: &str) -> String {
 /// against the address *and* the account, and the two age out independently.
 #[derive(Debug, Default)]
 pub struct ServerRateLimiter {
-    by_ip: HashMap<(Route, ClientIp), Window>,
-    by_user: HashMap<(Route, Uuid), Window>,
-    by_inbox: HashMap<(Route, String), Window>,
+    by_ip: BTreeMap<(Route, ClientIp), Window>,
+    by_user: BTreeMap<(Route, Uuid), Window>,
+    by_inbox: BTreeMap<(Route, String), Window>,
 }
 
 impl ServerRateLimiter {
@@ -292,8 +291,8 @@ impl RateLimiter for ServerRateLimiter {
 }
 
 /// Whether one window has room, opening it if this key has not called before.
-fn allows<K: Eq + Hash>(
-    windows: &mut HashMap<K, Window>,
+fn allows<K: Ord>(
+    windows: &mut BTreeMap<K, Window>,
     key: K,
     limit: u32,
     window_secs: u64,

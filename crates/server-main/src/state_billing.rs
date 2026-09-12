@@ -14,7 +14,7 @@
 //! entitlement — a checkout that appeared to work is not a payment, because
 //! the card can fail after the form closes.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use api_common::Timestamp;
 use uuid::Uuid;
@@ -60,14 +60,10 @@ pub struct StateBilling {
     /// Which user each Stripe customer is, so a webhook naming `cus_…` can be
     /// turned into a row. Populated at startup and added to as customers are
     /// created.
-    ///
-    /// `BTreeMap` would be the rule for anything iterated; this is only ever
-    /// looked up by key, and never walked, so the order it holds is not
-    /// something any action can depend on.
-    customers: HashMap<String, Uuid>,
+    customers: BTreeMap<String, Uuid>,
 
     /// The same for subscriptions, which is what most webhooks actually name.
-    subscriptions: HashMap<String, Uuid>,
+    subscriptions: BTreeMap<String, Uuid>,
 
     /// Which App Store this build sells in, read out of the environment on
     /// [`EventProcess::Started`](crate::EventProcess).

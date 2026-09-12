@@ -8,7 +8,7 @@
 //! sent, which is what lets it live inside a state machine. See
 //! `api_common::ratelimit::RateLimiter`.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use api_common::Timestamp;
 use api_common::ratelimit::RateLimiter;
@@ -19,7 +19,7 @@ use api_common::ratelimit::Window;
 /// Plaid documents these per Item per minute. They are deliberately a little
 /// under the published numbers: being throttled costs a user-visible failure,
 /// and the headroom costs nothing at this scale.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum PlaidEndpoint {
     /// `/transactions/sync` — 30/min per Item.
     TransactionsSync,
@@ -103,7 +103,7 @@ impl PlaidRateCtx {
 /// One sliding window per endpoint per Item.
 #[derive(Debug, Default)]
 pub struct PlaidRateLimiter {
-    windows: HashMap<(PlaidEndpoint, Option<String>), Window>,
+    windows: BTreeMap<(PlaidEndpoint, Option<String>), Window>,
 }
 
 impl PlaidRateLimiter {

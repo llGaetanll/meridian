@@ -25,7 +25,7 @@ use uuid::Uuid;
 /// system rotates through the addresses inside a delegated /64 on a timer, so
 /// counted whole a v6 caller has a fresh budget per request; anything wider
 /// would charge one customer for what their neighbour did.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ClientIp(String);
 
 impl ClientIp {

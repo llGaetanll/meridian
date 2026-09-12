@@ -20,7 +20,7 @@
 //! ids from the same counter, so an event log still replays to the same
 //! numbers.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use api_common::Timestamp;
 use api_common::ratelimit::RateLimiter;
@@ -127,7 +127,7 @@ pub struct StateSignup {
     /// `link_token` that `SESSION_FINISHED` carries. Always empty under
     /// `PLAID_COLLECT=poll`, where the close causes the collection and nothing
     /// races.
-    sessions: HashMap<String, LinkSession>,
+    sessions: BTreeMap<String, LinkSession>,
 
     /// The next [`CallId`] to hand out. A counter rather than anything drawn,
     /// so the same log replays to the same numbers.
@@ -135,12 +135,12 @@ pub struct StateSignup {
 
     /// Which route, if any, is parked on the answer to each call in flight.
     /// An absent entry is a call nobody is waiting on — a sync on a timer.
-    waiting: HashMap<CallId, Waiting>,
+    waiting: BTreeMap<CallId, Waiting>,
 
     /// Every route in flight, at the step it has reached. Entered on the turn
     /// a request arrives and left on the turn it is answered, so what a
     /// request was doing outlives the turn it arrived in.
-    requests: HashMap<RequestId, Pending>,
+    requests: BTreeMap<RequestId, Pending>,
 
     /// The exchanges out, and when each went out.
     ///
@@ -148,13 +148,13 @@ pub struct StateSignup {
     /// route asking can be let go of and this call cannot. Every entry is an
     /// Item slot that may already be spent, and an access token nothing else
     /// holds a copy of.
-    exchanging: HashMap<CallId, Timestamp>,
+    exchanging: BTreeMap<CallId, Timestamp>,
 
     /// Each bank whose write is in flight, keyed by the call it is out on.
     /// Its own table rather than a [`Pending`] step, because the route that
     /// caused it is not always the one waiting on it: a webhook attaches a
     /// bank that `/link/finish` is the one to hear about.
-    attaching: HashMap<CallId, Attaching>,
+    attaching: BTreeMap<CallId, Attaching>,
 }
 
 impl StateSignup {
