@@ -116,6 +116,9 @@ out to be wrong — edit the body. Never add a comment saying what the body now
 gets wrong, because that leaves a reader two accounts to reconcile and the
 stale one is on top.
 
+**`blocking:ios` means the iOS app cannot be released until the issue is
+resolved.** That is the only ranking. Never give an issue a priority.
+
 ## Plaid
 
 `docs/PLAID.md` explains how the bank connection works. The rule that matters:
