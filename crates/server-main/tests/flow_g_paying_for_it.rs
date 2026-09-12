@@ -1402,18 +1402,25 @@ fn a_renewal_moves_the_period_forward() {
     );
 }
 
-/// Two presses of Subscribe, and the attempt somebody abandoned takes the app
-/// away from the one they paid for.
+/// Somebody who paid on their second try is told a day later that their
+/// payment was declined, and loses the app.
 ///
-/// Every press starts a brand new subscription at Stripe, and the machine
-/// files every one of them under the same user — so whichever one Stripe last
-/// said something about is read as the truth about whether that person has
-/// paid. A card declined once and paid on the second try leaves `sub_1`
-/// sitting unpaid behind it; Stripe expires that one 23 hours later, says so,
-/// and the person who paid loses the app until the process restarts and reads
-/// the row back.
+/// Every press of Subscribe starts a brand new subscription at Stripe, and the
+/// machine files every one of them under the same user — so whichever one
+/// Stripe last said something about is read as the truth about whether that
+/// person has paid. A card declined once and paid on the second try leaves
+/// `sub_1` sitting behind it, never paid for. Stripe expires that one 23 hours
+/// later and says so, and the word `incomplete_expired` about a subscription
+/// nobody bought lands on the person who bought the other one.
+///
+/// The two claims at the end are the two routes that read entitlement, and
+/// they are what the person actually meets: an account screen saying the
+/// payment was declined, and a paywall where their ledger should be. Both are
+/// wrong until the process restarts — the store row is keyed by subscription,
+/// so the write for `sub_1` matches nothing and the database still says they
+/// paid for the year.
 #[test]
-fn an_abandoned_attempt_does_not_close_the_app_on_the_one_that_was_paid() {
+fn an_abandoned_attempt_does_not_take_the_app_from_somebody_who_paid() {
     let mut state = state();
 
     let paid = stripe_subscription_event(
@@ -1668,12 +1675,15 @@ fn an_abandoned_attempt_does_not_close_the_app_on_the_one_that_was_paid() {
             action: ActionStore::ApplySubscriptionEvent { .. },
         },
 
-        // And the app is still open, because the subscription that was paid
-        // for runs for another year.
+        // The harm, in the words the account screen draws: this person is
+        // paid up until `1818633600`, a year out, because that is the month
+        // they bought. What comes out instead is `entitled: false`, the
+        // paywall reason `declined`, and a date a day after they paid — the
+        // moment the attempt they gave up on expired.
         < Event::FromRouter {
             request_id: 6,
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
-            event: EventRouter::SnapshotRequested {
+            event: EventRouter::BillingStatusRequested {
                 token_sha256: hash_token("session-1"),
             },
         },
@@ -1687,8 +1697,29 @@ fn an_abandoned_attempt_does_not_close_the_app_on_the_one_that_was_paid() {
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 
+        > @r#"ToRouter { request_id: 6, action: BillingStatus { entitled: true, unpaid: None, good_until: Some(1818633600), cancel_at_period_end: false } }"#,
+
+        // And the same thing where it costs them the app: the ledger is
+        // served rather than the paywall.
+        < Event::FromRouter {
+            request_id: 7,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
         > Action::ToStore {
             call_id: 18,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 18,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToStore {
+            call_id: 19,
             action: ActionStore::LoadItems { .. },
         },
     );
