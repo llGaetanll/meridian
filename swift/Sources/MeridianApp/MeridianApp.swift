@@ -14,19 +14,24 @@ import SwiftUI
 /// also claim from being handed to a bank session that is not waiting for it.
 private let handbackPath = "/link/oauth"
 
-/// Give an OAuth bank's handback to the Link session waiting for it.
+/// Record that an OAuth bank handed the sign-in back.
 ///
-/// A link that is not the handback, or one that arrives with no session
-/// waiting, is dropped. Neither is an error worth showing: the first is not
-/// this flow, and the second is a stale link opened long after the sheet it
-/// belonged to closed.
+/// The link is dropped either way, because there is nothing to do with it:
+/// `ASWebAuthenticationSession` offers no way to give a running session a URL,
+/// and the Link session is the only thing that could finish the sign-in. All
+/// this leaves is the log line, which says whether the session outlived the
+/// trip to the bank's app — the one fact a device test of an OAuth bank needs
+/// and the only one this can observe.
+///
+/// A link that is not the handback is not this flow and is dropped silently.
 @MainActor
 private func handback(_ url: URL) {
     guard url.path == handbackPath else { return }
 
-    if !BankLink.resume(url) {
-        NSLog("MERIDIAN handback with no Link session waiting")
-    }
+    NSLog(
+        "MERIDIAN handback, Link session %@",
+        BankLink.waiting == nil ? "gone" : "open"
+    )
 }
 
 @main

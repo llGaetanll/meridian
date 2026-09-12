@@ -75,42 +75,28 @@ enum BankLink {
                 return
             }
 
-            // After `start`, because a session that refused to open is not one
-            // a handback should be given to.
+            // After `start`, because a session that refused to open is not
+            // one that is waiting for anything.
             waiting = session
         }
     }
 
-    /// The session currently waiting, if one is.
+    /// Whether a Link session is open, for the app to read when an OAuth
+    /// bank's handback arrives.
     ///
     /// An OAuth bank leaves for its own app part way through the sign-in and
-    /// returns by opening the Universal Link. That arrives at the *app*, while
-    /// the session above is still suspended waiting for its callback — so
-    /// something has to carry the handback from `MeridianApp` back to the
-    /// session that is waiting for it, and this is that.
+    /// returns by opening the Universal Link, which arrives at the *app* while
+    /// the session above is still suspended waiting for its callback. Nothing
+    /// carries it across: `ASWebAuthenticationSession` has `start`, `cancel`
+    /// and `canStart`, and no way at all to give a running session a URL. So a
+    /// handback the app receives is a handback the session cannot be told
+    /// about, and whether the session finishes on its own on the far side of
+    /// the bank's app is untested.
     ///
     /// Weak, so a session that ends by any other route is not kept alive by
-    /// being remembered here.
+    /// being remembered here — which is what makes a `nil` here mean the
+    /// session is gone rather than merely forgotten.
     private(set) static weak var waiting: ASWebAuthenticationSession?
-
-    /// Hand an OAuth bank's handback to the session waiting for it.
-    ///
-    /// `true` when a session took it. `false` means the link arrived with
-    /// nothing waiting — a stale one opened from elsewhere, which is not this
-    /// flow and has nothing to resume.
-    ///
-    /// The URL is not inspected. Its path is the only thing that identified it
-    /// as ours, `MeridianApp` has already checked that, and what the session
-    /// does with the query is Plaid's business rather than ours.
-    @discardableResult
-    static func resume(_ url: URL) -> Bool {
-        guard let session = waiting else { return false }
-
-        // `resume` is the API's own word for this: the session goes back to
-        // the page it left, on the far side of the bank's app, and finishes
-        // there. It is not a second session and not a redirect we perform.
-        return session.resume(with: url)
-    }
 
     /// Which window the sheet hangs off. Held rather than made per call, since
     /// `ASWebAuthenticationSession` keeps only a weak reference to it and a
