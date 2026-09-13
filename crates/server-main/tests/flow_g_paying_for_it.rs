@@ -105,7 +105,7 @@ fn subscribing_reads_an_address_then_asks_stripe_twice() {
             event: EventSourceStripe::SubscriptionCreated {
                 user_id: SUBSCRIBER,
                 subscription_id: "sub_1".to_string(),
-                status: "incomplete".to_string(),
+                status: src_stripe::StripeStatus::Incomplete,
                 client_secret: Some("pi_1_secret".to_string()),
             },
         },
@@ -233,7 +233,7 @@ fn a_started_subscription_entitles_nobody() {
             event: EventSourceStripe::SubscriptionCreated {
                 user_id: SUBSCRIBER,
                 subscription_id: "sub_1".to_string(),
-                status: "incomplete".to_string(),
+                status: src_stripe::StripeStatus::Incomplete,
                 client_secret: Some("pi_1_secret".to_string()),
             },
         },
@@ -1092,7 +1092,7 @@ fn a_subscription_with_no_secret_is_still_written_down() {
             event: EventSourceStripe::SubscriptionCreated {
                 user_id: SUBSCRIBER,
                 subscription_id: "sub_1".to_string(),
-                status: "incomplete".to_string(),
+                status: src_stripe::StripeStatus::Incomplete,
                 client_secret: None,
             },
         },
@@ -1402,54 +1402,31 @@ fn a_renewal_moves_the_period_forward() {
     );
 }
 
-/// Somebody who paid on their second try is told a day later that their
-/// payment was declined, and loses the app.
+/// Somebody who opened the card form, walked away, and came back gets the
+/// same subscription rather than a second one.
 ///
-/// Every press of Subscribe starts a brand new subscription at Stripe, and the
-/// machine files every one of them under the same user — so whichever one
-/// Stripe last said something about is read as the truth about whether that
-/// person has paid. A card declined once and paid on the second try leaves
-/// `sub_1` sitting behind it, never paid for. Stripe expires that one 23 hours
-/// later and says so, and the word `incomplete_expired` about a subscription
-/// nobody bought lands on the person who bought the other one.
+/// This is what #107 was: every press started a brand new subscription, and a
+/// person ended up with several, all filed under them. The one they abandoned
+/// expired a day later, Stripe said so, and the server read that as the truth
+/// about whether they had paid.
 ///
-/// The two claims at the end are the two routes that read entitlement, and
-/// they are what the person actually meets: an account screen saying the
-/// payment was declined, and a paywall where their ledger should be. Both are
-/// wrong until the process restarts — the store row is keyed by subscription,
-/// so the write for `sub_1` matches nothing and the database still says they
-/// paid for the year.
+/// The claim is the two actions that do not come out — no customer and no
+/// subscription created — and the secret that does: the same one the first
+/// press handed over, because it is the same invoice waiting to be paid.
 #[test]
-fn an_abandoned_attempt_does_not_take_the_app_from_somebody_who_paid() {
+fn coming_back_to_an_abandoned_card_form_picks_up_the_same_subscription() {
     let mut state = state();
 
-    let paid = stripe_subscription_event(
-        "evt_paid",
-        T0.as_secs(),
-        "sub_2",
-        "active",
-        PAID_UNTIL.as_secs(),
-    );
-    let paid_signature = stripe_signed(&paid, T0);
-
-    // Stripe's 23 hours, after which a first payment that never landed is
-    // terminal.
-    let expired_at = Timestamp::from_secs(T0.as_secs() + 23 * 60 * 60);
-
-    let expired = stripe_subscription_event(
-        "evt_expired",
-        expired_at.as_secs(),
-        "sub_1",
-        "incomplete_expired",
-        // The month it never bought, which is what Stripe still reports.
-        expired_at.as_secs() + 30 * 24 * 60 * 60,
-    );
-    let expired_signature = stripe_signed(&expired, expired_at);
-
     eval!(&mut state,
-        // The first press. The card is declined after the form closes, which
-        // is not something the server hears about, so `sub_1` is the last of
-        // it until Stripe gives up on it.
+        // The row a first press left behind, which is what the machine would
+        // have in hand after a restart.
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(SUBSCRIBER, "incomplete", None)],
+            },
+        },
+
         < Event::FromRouter {
             request_id: 1,
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
@@ -1467,60 +1444,47 @@ fn an_abandoned_attempt_does_not_take_the_app_from_somebody_who_paid() {
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 
-        > Action::ToStore {
-            call_id: 2,
-            action: ActionStore::LoadUser { user_id: SUBSCRIBER },
-        },
-        < Event::FromStore {
-            call_id: 2,
-            event: EventStore::UserLoaded {
-                email: Some("al@example.com".to_string()),
-            },
-        },
+        // Not the address, and not a customer: the subscription this person
+        // already has, read back.
+        > @r#"ToSourceStripe { call_id: 2, action: LoadSubscription { user_id: 00000000-0000-0000-0000-000000000000, subscription_id: "sub_1" } }"#,
 
-        > Action::ToSourceStripe {
-            call_id: 3,
-            action: ActionSourceStripe::CreateCustomer {
-                user_id: SUBSCRIBER,
-                ..
-            },
-        },
         < Event::FromSourceStripe {
-            call_id: 3,
-            event: EventSourceStripe::CustomerCreated {
-                user_id: SUBSCRIBER,
-                customer_id: "cus_1".to_string(),
-            },
-        },
-
-        > Action::ToSourceStripe {
-            call_id: 4,
-            action: ActionSourceStripe::CreateSubscription {
-                user_id: SUBSCRIBER,
-                ..
-            },
-        },
-        < Event::FromSourceStripe {
-            call_id: 4,
-            event: EventSourceStripe::SubscriptionCreated {
+            call_id: 2,
+            event: EventSourceStripe::SubscriptionLoaded {
                 user_id: SUBSCRIBER,
                 subscription_id: "sub_1".to_string(),
-                status: "incomplete".to_string(),
+                status: src_stripe::StripeStatus::Incomplete,
                 client_secret: Some("pi_1_secret".to_string()),
             },
         },
 
-        > Action::ToStore {
-            call_id: 5,
-            action: ActionStore::SaveCustomer { user_id: SUBSCRIBER, .. },
-        },
-        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
-
+        // Answered from that alone. No write either: the row already says
+        // this, and nothing about it has changed.
         > @r#"ToRouter { request_id: 1, action: Subscribing { client_secret: "pi_1_secret", publishable_key: "pk_test_1" } }"#,
+    );
+}
 
-        // The second press, with a card that works.
+/// A subscription that expired without ever being paid is replaced, against
+/// the customer we already have.
+///
+/// The other half of coming back: 23 hours on, Stripe has given up on the
+/// invoice and there is nothing left to confirm against. A new subscription is
+/// right here — and a new *customer* is not, which is the second action that
+/// does not come out.
+#[test]
+fn a_subscription_that_expired_unpaid_is_replaced() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(SUBSCRIBER, "incomplete", None)],
+            },
+        },
+
         < Event::FromRouter {
-            request_id: 2,
+            request_id: 1,
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
             event: EventRouter::SubscribeRequested {
                 token_sha256: hash_token("session-1"),
@@ -1528,70 +1492,197 @@ fn an_abandoned_attempt_does_not_take_the_app_from_somebody_who_paid() {
         },
 
         > Action::ToStore {
-            call_id: 6,
+            call_id: 1,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 6,
+            call_id: 1,
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 
-        > Action::ToStore {
-            call_id: 7,
-            action: ActionStore::LoadUser { user_id: SUBSCRIBER },
+        > Action::ToSourceStripe {
+            call_id: 2,
+            action: ActionSourceStripe::LoadSubscription { .. },
         },
-        < Event::FromStore {
-            call_id: 7,
-            event: EventStore::UserLoaded {
-                email: Some("al@example.com".to_string()),
+        < Event::FromSourceStripe {
+            call_id: 2,
+            event: EventSourceStripe::SubscriptionLoaded {
+                user_id: SUBSCRIBER,
+                subscription_id: "sub_1".to_string(),
+                status: src_stripe::StripeStatus::IncompleteExpired,
+                client_secret: None,
             },
         },
 
-        > Action::ToSourceStripe {
-            call_id: 8,
-            action: ActionSourceStripe::CreateCustomer {
-                user_id: SUBSCRIBER,
-                ..
-            },
-        },
-        < Event::FromSourceStripe {
-            call_id: 8,
-            event: EventSourceStripe::CustomerCreated {
-                user_id: SUBSCRIBER,
-                customer_id: "cus_2".to_string(),
-            },
-        },
+        // The customer the dead subscription hung off, reused.
+        > @r#"ToSourceStripe { call_id: 3, action: CreateSubscription { user_id: 00000000-0000-0000-0000-000000000000, customer_id: "cus_00000000-0000-0000-0000-000000000000" } }"#,
 
-        > Action::ToSourceStripe {
-            call_id: 9,
-            action: ActionSourceStripe::CreateSubscription {
-                user_id: SUBSCRIBER,
-                ..
-            },
-        },
         < Event::FromSourceStripe {
-            call_id: 9,
+            call_id: 3,
             event: EventSourceStripe::SubscriptionCreated {
                 user_id: SUBSCRIBER,
                 subscription_id: "sub_2".to_string(),
-                status: "incomplete".to_string(),
+                status: src_stripe::StripeStatus::Incomplete,
                 client_secret: Some("pi_2_secret".to_string()),
             },
         },
 
         > Action::ToStore {
-            call_id: 10,
+            call_id: 4,
             action: ActionStore::SaveCustomer { user_id: SUBSCRIBER, .. },
         },
-        < Event::FromStore { call_id: 10, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
 
-        > @r#"ToRouter { request_id: 2, action: Subscribing { client_secret: "pi_2_secret", publishable_key: "pk_test_1" } }"#,
+        > @r#"ToRouter { request_id: 1, action: Subscribing { client_secret: "pi_2_secret", publishable_key: "pk_test_1" } }"#,
+    );
+}
 
-        // That one is paid for, and the app opens. Both requests are seen
-        // through to the end so that the tick below has nothing of its own to
-        // give up on.
+/// Somebody who already pays is told so, rather than sold a second
+/// subscription.
+///
+/// The refusal that costs money if it is missing: two live subscriptions is
+/// one card charged twice for one app. `past_due` and `unpaid` land here too —
+/// Stripe is still issuing invoices against those, so they are not free to
+/// replace either.
+#[test]
+fn somebody_who_already_pays_is_told_so() {
+    let mut state = state_subscribed();
+
+    eval!(&mut state,
         < Event::FromRouter {
-            request_id: 3,
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToSourceStripe {
+            call_id: 2,
+            action: ActionSourceStripe::LoadSubscription { .. },
+        },
+        < Event::FromSourceStripe {
+            call_id: 2,
+            event: EventSourceStripe::SubscriptionLoaded {
+                user_id: SUBSCRIBER,
+                subscription_id: "sub_1".to_string(),
+                status: src_stripe::StripeStatus::Active,
+                client_secret: None,
+            },
+        },
+
+        > @r#"ToRouter { request_id: 1, action: Subscribed }"#,
+    );
+}
+
+/// And the lockout itself, gone: a late delivery about a subscription that was
+/// replaced is news about nothing.
+///
+/// The residue of #107. One subscription per person means the one that was
+/// replaced is nobody's, so nothing it says reaches anybody's entitlement —
+/// which matters because Stripe retries a delivery for days, and a retry can
+/// land after the subscription that replaced it was paid for.
+///
+/// The write still goes out, and is meant to: it is keyed by the subscription
+/// rather than the user, so it finds the row only if the row still names that
+/// subscription — and this one names the subscription that replaced it. The
+/// claim is the account screen afterwards, still saying what the person
+/// actually bought.
+#[test]
+fn a_late_delivery_about_a_replaced_subscription_takes_nothing_away() {
+    let mut state = state();
+
+    let paid = stripe_subscription_event(
+        "evt_paid",
+        T0.as_secs(),
+        "sub_2",
+        "active",
+        PAID_UNTIL.as_secs(),
+    );
+    let paid_signature = stripe_signed(&paid, T0);
+
+    let expired = stripe_subscription_event(
+        "evt_expired",
+        T0.as_secs(),
+        "sub_1",
+        "incomplete_expired",
+        PAID_UNTIL.as_secs(),
+    );
+    let expired_signature = stripe_signed(&expired, T0);
+
+    eval!(&mut state,
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(SUBSCRIBER, "incomplete", None)],
+            },
+        },
+
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToSourceStripe {
+            call_id: 2,
+            action: ActionSourceStripe::LoadSubscription { .. },
+        },
+        < Event::FromSourceStripe {
+            call_id: 2,
+            event: EventSourceStripe::SubscriptionLoaded {
+                user_id: SUBSCRIBER,
+                subscription_id: "sub_1".to_string(),
+                status: src_stripe::StripeStatus::IncompleteExpired,
+                client_secret: None,
+            },
+        },
+
+        > Action::ToSourceStripe {
+            call_id: 3,
+            action: ActionSourceStripe::CreateSubscription { .. },
+        },
+        < Event::FromSourceStripe {
+            call_id: 3,
+            event: EventSourceStripe::SubscriptionCreated {
+                user_id: SUBSCRIBER,
+                subscription_id: "sub_2".to_string(),
+                status: src_stripe::StripeStatus::Incomplete,
+                client_secret: Some("pi_2_secret".to_string()),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::SaveCustomer { .. },
+        },
+        < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
+
+        > @r#"ToRouter { request_id: 1, action: Subscribing { client_secret: "pi_2_secret", publishable_key: "pk_test_1" } }"#,
+
+        // That one is paid for.
+        < Event::FromRouter {
+            request_id: 2,
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
             event: EventRouter::StripeWebhookReceived {
                 signature: paid_signature,
@@ -1599,68 +1690,19 @@ fn an_abandoned_attempt_does_not_take_the_app_from_somebody_who_paid() {
             },
         },
 
-        > @r#"ToRouter { request_id: 3, action: Accepted }"#,
+        > @r#"ToRouter { request_id: 2, action: Accepted }"#,
 
         > Action::ToStore {
-            call_id: 11,
+            call_id: 5,
             action: ActionStore::ApplySubscriptionEvent { .. },
         },
-        < Event::FromStore { call_id: 11, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
 
+        // And the delivery about the one it replaced arrives. Taken, because
+        // the signature was ours and refusing it only asks Stripe to send it
+        // again — and acted on no further.
         < Event::FromRouter {
-            request_id: 4,
-            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
-            event: EventRouter::SnapshotRequested {
-                token_sha256: hash_token("session-1"),
-            },
-        },
-
-        > Action::ToStore {
-            call_id: 12,
-            action: ActionStore::LoadSession { .. },
-        },
-        < Event::FromStore {
-            call_id: 12,
-            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
-        },
-
-        > Action::ToStore {
-            call_id: 13,
-            action: ActionStore::LoadItems { .. },
-        },
-        < Event::FromStore {
-            call_id: 13,
-            event: EventStore::ItemsLoaded { items: vec![] },
-        },
-
-        > Action::ToStore {
-            call_id: 14,
-            action: ActionStore::LoadSnapshot { .. },
-        },
-        < Event::FromStore {
-            call_id: 14,
-            event: EventStore::SnapshotLoaded {
-                snapshot: server_wire::WireSnapshot::new(&[], &[], &[]),
-            },
-        },
-
-        > Action::ToRouter {
-            request_id: 4,
-            action: ActionRouter::Serve { .. },
-        },
-
-        // A day on. The sweep is the machine's own housekeeping, which is all
-        // a tick this far out brings with it.
-        < Event::FromProcess { event: EventProcess::Tick { now: expired_at } },
-
-        > Action::ToStore {
-            call_id: 15,
-            action: ActionStore::SweepSessions { .. },
-        },
-
-        // Stripe gives up on the one nobody paid.
-        < Event::FromRouter {
-            request_id: 5,
+            request_id: 3,
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
             event: EventRouter::StripeWebhookReceived {
                 signature: expired_signature,
@@ -1668,20 +1710,19 @@ fn an_abandoned_attempt_does_not_take_the_app_from_somebody_who_paid() {
             },
         },
 
-        > @r#"ToRouter { request_id: 5, action: Accepted }"#,
+        > @r#"ToRouter { request_id: 3, action: Accepted }"#,
 
+        // Keyed by the subscription, so it matches no row: this user's names
+        // `sub_2` now. Sent anyway, because a row can exist in the store that
+        // this process has not got in hand.
         > Action::ToStore {
-            call_id: 16,
+            call_id: 6,
             action: ActionStore::ApplySubscriptionEvent { .. },
         },
 
-        // The harm, in the words the account screen draws: this person is
-        // paid up until `1818633600`, a year out, because that is the month
-        // they bought. What comes out instead is `entitled: false`, the
-        // paywall reason `declined`, and a date a day after they paid — the
-        // moment the attempt they gave up on expired.
+        // Still paid up for the year they bought.
         < Event::FromRouter {
-            request_id: 6,
+            request_id: 4,
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
             event: EventRouter::BillingStatusRequested {
                 token_sha256: hash_token("session-1"),
@@ -1689,38 +1730,14 @@ fn an_abandoned_attempt_does_not_take_the_app_from_somebody_who_paid() {
         },
 
         > Action::ToStore {
-            call_id: 17,
+            call_id: 7,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 17,
+            call_id: 7,
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 
-        > @r#"ToRouter { request_id: 6, action: BillingStatus { entitled: true, unpaid: None, good_until: Some(1818633600), cancel_at_period_end: false } }"#,
-
-        // And the same thing where it costs them the app: the ledger is
-        // served rather than the paywall.
-        < Event::FromRouter {
-            request_id: 7,
-            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
-            event: EventRouter::SnapshotRequested {
-                token_sha256: hash_token("session-1"),
-            },
-        },
-
-        > Action::ToStore {
-            call_id: 18,
-            action: ActionStore::LoadSession { .. },
-        },
-        < Event::FromStore {
-            call_id: 18,
-            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
-        },
-
-        > Action::ToStore {
-            call_id: 19,
-            action: ActionStore::LoadItems { .. },
-        },
+        > @r#"ToRouter { request_id: 4, action: BillingStatus { entitled: true, unpaid: None, good_until: Some(1818633600), cancel_at_period_end: false } }"#,
     );
 }

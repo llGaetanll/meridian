@@ -437,6 +437,7 @@ enum RuntimeIo {
             case .answered(let status):
                 switch status {
                 case 401: return .signedOut
+                case 409: return .subscribed
                 case 429: return .tooMany
                 default: return .server(status: UInt16(clamping: status))
                 }

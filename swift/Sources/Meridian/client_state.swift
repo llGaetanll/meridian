@@ -4651,6 +4651,14 @@ public enum LoadFailure: Equatable, Hashable {
      */
     case tooMany
     /**
+     * Asked to subscribe by somebody the server already has a subscription
+     * for. **409.**
+     *
+     * Not a failure either: there is nothing to buy, and whether the app
+     * opens is what asking for a snapshot answers.
+     */
+    case subscribed
+    /**
      * Any other answer, which is the server's problem rather than this
      * session's.
      */
@@ -4690,10 +4698,12 @@ public struct FfiConverterTypeLoadFailure: FfiConverterRustBuffer {
         
         case 4: return .tooMany
         
-        case 5: return .server(status: try FfiConverterUInt16.read(from: &buf)
+        case 5: return .subscribed
+        
+        case 6: return .server(status: try FfiConverterUInt16.read(from: &buf)
         )
         
-        case 6: return .unreadable
+        case 7: return .unreadable
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4720,13 +4730,17 @@ public struct FfiConverterTypeLoadFailure: FfiConverterRustBuffer {
             writeInt(&buf, Int32(4))
         
         
-        case let .server(status):
+        case .subscribed:
             writeInt(&buf, Int32(5))
+        
+        
+        case let .server(status):
+            writeInt(&buf, Int32(6))
             FfiConverterUInt16.write(status, into: &buf)
             
         
         case .unreadable:
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(7))
         
         }
     }

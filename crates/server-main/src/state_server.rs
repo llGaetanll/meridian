@@ -29,6 +29,7 @@ use src_plaid::PlaidRateLimiter;
 use src_plaid::PlaidWebhook;
 use src_plaid::PlaidWebhookJwt;
 use src_plaid::PlaidWebhookKind;
+use src_stripe::StripeStatus;
 use uuid::Uuid;
 
 use crate::Action;
@@ -62,6 +63,7 @@ use crate::Pending;
 use crate::RequestId;
 use crate::StateBilling;
 use crate::StateSignup;
+use crate::StripePayer;
 use crate::Syncing;
 use crate::WebhookFacts;
 use crate::entitlement;
@@ -421,7 +423,7 @@ impl StateServer {
         // Acted on only for a payer this process knows about. One it does not
         // is a purchase made against another database — a sandbox tester on a
         // server that has been reset, or an account since deleted.
-        let Some(user_id) = self.billing.user_for_customer(&facts.customer_id) else {
+        let Some(user_id) = self.billing.user_for_apple_payer(&facts.customer_id) else {
             tracing::warn!(
                 customer = facts.customer_id,
                 "a notification named a payer this process does not know",
@@ -449,7 +451,7 @@ impl StateServer {
 
         // So the next notification, which names the payer and not the user,
         // finds whose row to move.
-        self.billing.customer_created(&facts.customer_id, user_id);
+        self.billing.apple_payer(&facts.customer_id, user_id);
 
         actions.push(Action::ToStore {
             call_id: self.signup.calling(request_id, self.now),
@@ -559,10 +561,6 @@ impl StateServer {
                 });
             }
 
-            // The address is what Stripe emails a receipt to, and the machine
-            // does not hold one: nothing it keeps says who a user is besides
-            // their id. So the store is asked, and the conversation with
-            // Stripe starts a turn later.
             Authenticated::SubscribeRequested => {
                 // Refused before Stripe is asked for anything: a secret with
                 // no key to open a card form with is a subscription nobody can
@@ -576,18 +574,73 @@ impl StateServer {
                     return;
                 }
 
-                self.signup.waits_on(
-                    request_id,
-                    Pending::Loading {
-                        user_id,
-                        event: event.clone(),
-                    },
-                );
+                // What this press means depends on what Stripe has already
+                // been asked for, and asking that first is what stops a
+                // second subscription being made for somebody who is halfway
+                // through one. Every arm here answers the same route; they
+                // differ in how much of the conversation is already done.
+                match self.billing.payer(user_id).cloned() {
+                    // A subscription already exists. Read it back rather than
+                    // making another: one somebody walked away from is still
+                    // waiting for a card, and its own invoice is what they
+                    // should be handed when they come back.
+                    Some(StripePayer {
+                        subscription_id: Some(subscription_id),
+                        ..
+                    }) => {
+                        self.signup
+                            .waits_on(request_id, Pending::Subscribing { user_id });
 
-                actions.push(Action::ToStore {
-                    call_id: self.signup.calling(request_id, self.now),
-                    action: ActionStore::LoadUser { user_id },
-                });
+                        actions.push(Action::ToSourceStripe {
+                            call_id: self.signup.calling(request_id, self.now),
+                            action: ActionSourceStripe::LoadSubscription {
+                                user_id,
+                                subscription_id,
+                            },
+                        });
+                    }
+
+                    // A customer with nothing against it: Stripe took the
+                    // first call and refused the second. The address has
+                    // already been spent, so this picks up where that left
+                    // off.
+                    Some(StripePayer { customer_id, .. }) => {
+                        self.signup.waits_on(
+                            request_id,
+                            Pending::SubscribingTo {
+                                user_id,
+                                customer_id: customer_id.clone(),
+                            },
+                        );
+
+                        actions.push(Action::ToSourceStripe {
+                            call_id: self.signup.calling(request_id, self.now),
+                            action: ActionSourceStripe::CreateSubscription {
+                                user_id,
+                                customer_id,
+                            },
+                        });
+                    }
+
+                    // Nobody Stripe has heard of. The address is what Stripe
+                    // emails a receipt to and the machine does not hold one,
+                    // so the store is asked and the conversation with Stripe
+                    // starts a turn later.
+                    None => {
+                        self.signup.waits_on(
+                            request_id,
+                            Pending::Loading {
+                                user_id,
+                                event: event.clone(),
+                            },
+                        );
+
+                        actions.push(Action::ToStore {
+                            call_id: self.signup.calling(request_id, self.now),
+                            action: ActionStore::LoadUser { user_id },
+                        });
+                    }
+                }
             }
 
             // Answered from what the machine holds. Nothing to read: the
@@ -619,7 +672,7 @@ impl StateServer {
                 // rather than arriving as a failed write. Somebody signed into
                 // the wrong account can do something about this; a 500 tells
                 // them nothing.
-                match self.billing.user_for_customer(&facts.customer_id) {
+                match self.billing.user_for_apple_payer(&facts.customer_id) {
                     Some(owner) if owner != user_id => {
                         tracing::warn!(
                             customer = facts.customer_id,
@@ -695,7 +748,11 @@ impl StateServer {
         // subscription whose period has run out is still one Stripe would
         // renew, and skipping it because access had lapsed is how somebody
         // keeps being charged for an account that is gone.
-        let Some(subscription_id) = self.billing.subscription_for_user(user_id) else {
+        let Some(subscription_id) = self
+            .billing
+            .subscription_for_user(user_id)
+            .map(str::to_string)
+        else {
             self.read_tokens_to_delete(request_id, user_id, actions);
 
             return;
@@ -1287,44 +1344,119 @@ impl StateServer {
                     actions,
                 );
 
-                // No secret is a subscription with nothing to pay, which on a
-                // freshly created one means Stripe answered in a shape this
-                // build did not expect. Nothing to hand a card form, so the
-                // caller is told it is unavailable rather than given a secret
-                // that is not one.
-                let Some(client_secret) = client_secret else {
-                    tracing::error!(
-                        subscription_id,
-                        "stripe created a subscription with nothing to confirm against"
-                    );
-
-                    self.signup
-                        .answer(request_id, ActionRouter::Unavailable, self.now, actions);
-
-                    return;
-                };
-
-                // Checked when the route arrived, and never taken away since.
-                let Some(publishable_key) = self.billing.publishable_key() else {
-                    tracing::error!(
-                        "a subscription was started with no publishable key to hand out"
-                    );
-
-                    self.signup
-                        .answer(request_id, ActionRouter::Unavailable, self.now, actions);
-
-                    return;
-                };
-
-                self.signup.answer(
+                self.hand_over_the_card_form(
                     request_id,
-                    ActionRouter::Subscribing {
-                        client_secret: client_secret.clone(),
-                        publishable_key: publishable_key.to_string(),
-                    },
-                    self.now,
+                    subscription_id,
+                    client_secret.as_deref(),
                     actions,
                 );
+            }
+
+            // The subscription this user already had. What to do about it is
+            // one decision over its status, which is why it arrives as a
+            // value rather than as Stripe's spelling of one.
+            EventSourceStripe::SubscriptionLoaded {
+                user_id,
+                subscription_id,
+                status,
+                client_secret,
+            } => {
+                let Some(request_id) = self.signup.answered(call_id) else {
+                    return;
+                };
+
+                let Some(Pending::Subscribing { user_id: waiting }) =
+                    self.signup.resumed(request_id)
+                else {
+                    tracing::error!("a subscription read answered a request nobody is waiting on");
+
+                    return;
+                };
+
+                debug_assert_eq!(
+                    waiting, *user_id,
+                    "a subscription read answered another user's request"
+                );
+
+                match status {
+                    // Still waiting for a card, which is somebody who opened
+                    // the form and walked away. They get that same invoice
+                    // back — no second subscription, and nothing left behind
+                    // at Stripe.
+                    StripeStatus::Incomplete => {
+                        self.hand_over_the_card_form(
+                            request_id,
+                            subscription_id,
+                            client_secret.as_deref(),
+                            actions,
+                        );
+                    }
+
+                    // Dead, and it bought nothing. `incomplete_expired` is a
+                    // first payment that never landed inside Stripe's 23
+                    // hours; `canceled` is one that has stopped and whose
+                    // period is over, because a cancellation still inside its
+                    // period is worth something and lands below. Either way
+                    // there is nothing to pick up, so a fresh subscription
+                    // goes against the customer we already have.
+                    StripeStatus::IncompleteExpired
+                    | StripeStatus::Canceled => {
+                        let Some(payer) = self.billing.payer(*user_id).cloned() else {
+                            tracing::error!(
+                                %user_id,
+                                "a subscription was read for a user with no customer",
+                            );
+
+                            self.signup.answer(
+                                request_id,
+                                ActionRouter::Unavailable,
+                                self.now,
+                                actions,
+                            );
+
+                            return;
+                        };
+
+                        tracing::info!(
+                            subscription_id,
+                            status = status.as_str(),
+                            "replacing a subscription that bought nothing",
+                        );
+
+                        self.signup.waits_on(
+                            request_id,
+                            Pending::SubscribingTo {
+                                user_id: *user_id,
+                                customer_id: payer.customer_id.clone(),
+                            },
+                        );
+
+                        actions.push(Action::ToSourceStripe {
+                            call_id: self.signup.calling(request_id, self.now),
+                            action: ActionSourceStripe::CreateSubscription {
+                                user_id: *user_id,
+                                customer_id: payer.customer_id,
+                            },
+                        });
+                    }
+
+                    // Everything else is a subscription worth something, and
+                    // there is nothing to sell somebody who is already
+                    // paying. `past_due` and `unpaid` are here on purpose:
+                    // Stripe is still issuing invoices against them, so a
+                    // second subscription would charge the same card twice
+                    // for one app.
+                    _ => {
+                        tracing::info!(
+                            subscription_id,
+                            status = status.as_str(),
+                            "asked to subscribe by somebody who already is",
+                        );
+
+                        self.signup
+                            .answer(request_id, ActionRouter::Subscribed, self.now, actions);
+                    }
+                }
             }
 
             EventSourceStripe::SubscriptionCancelled {
@@ -1371,6 +1503,59 @@ impl StateServer {
                     .answer(request_id, ActionRouter::Unavailable, self.now, actions);
             }
         }
+    }
+
+    /// Answer the route with what a card form needs, or say why there is
+    /// nothing to open one with.
+    ///
+    /// Both doors end here — a subscription just created and one read back
+    /// after somebody walked away from it — because what a waiting invoice
+    /// hands over does not depend on which of them found it.
+    ///
+    /// No secret is a subscription with nothing to pay. On a freshly created
+    /// one that means Stripe answered in a shape this build did not expect;
+    /// on one read back it means the invoice it was waiting on is gone.
+    /// Either way there is nothing to hand a card form, and the caller is
+    /// told the machine cannot answer rather than given a secret that is not
+    /// one.
+    fn hand_over_the_card_form(
+        &mut self,
+        request_id: RequestId,
+        subscription_id: &str,
+        client_secret: Option<&str>,
+        actions: &mut Vec<Action>,
+    ) {
+        let Some(client_secret) = client_secret else {
+            tracing::error!(
+                subscription_id,
+                "a subscription with nothing to confirm against",
+            );
+
+            self.signup
+                .answer(request_id, ActionRouter::Unavailable, self.now, actions);
+
+            return;
+        };
+
+        // Checked when the route arrived, and never taken away since.
+        let Some(publishable_key) = self.billing.publishable_key() else {
+            tracing::error!("a subscription was started with no publishable key to hand out");
+
+            self.signup
+                .answer(request_id, ActionRouter::Unavailable, self.now, actions);
+
+            return;
+        };
+
+        self.signup.answer(
+            request_id,
+            ActionRouter::Subscribing {
+                client_secret: client_secret.to_string(),
+                publishable_key: publishable_key.to_string(),
+            },
+            self.now,
+            actions,
+        );
     }
 
     fn handle_event_source(

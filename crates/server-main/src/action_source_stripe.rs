@@ -16,6 +16,18 @@ pub enum ActionSourceStripe {
     /// charged: the customer has given no card yet.
     CreateSubscription { user_id: Uuid, customer_id: String },
 
+    /// Read back the subscription this user already has.
+    ///
+    /// Asked before making a second one. A subscription somebody started and
+    /// walked away from is still waiting to be paid, and its invoice still
+    /// has a secret a card form can confirm against — so the answer decides
+    /// whether this press picks that one up, replaces a dead one, or tells
+    /// somebody they are already paying.
+    LoadSubscription {
+        user_id: Uuid,
+        subscription_id: String,
+    },
+
     /// Stop the subscription at the end of the period already paid for.
     ///
     /// `cancel_at_period_end`, not a delete: the terms promise the period is

@@ -41,7 +41,24 @@ pub async fn create_subscription(
 
     Ok(Subscription {
         id: subscription.id.clone(),
-        status: subscription.status.clone(),
+        status: subscription.status(),
+        client_secret: subscription.client_secret().map(str::to_string),
+    })
+}
+
+/// Read one back, for a press of Subscribe by somebody who already started.
+///
+/// The same shape as creating one, because what the machine decides from is
+/// the same three facts either way.
+pub async fn get_subscription(
+    client: &StripeClient,
+    subscription_id: &str,
+) -> Result<Subscription, StripeError> {
+    let subscription = src_stripe::get_subscription(client, subscription_id).await?;
+
+    Ok(Subscription {
+        id: subscription.id.clone(),
+        status: subscription.status(),
         client_secret: subscription.client_secret().map(str::to_string),
     })
 }
@@ -49,7 +66,7 @@ pub async fn create_subscription(
 /// A newly created subscription, reduced to what the machine acts on.
 pub struct Subscription {
     pub id: String,
-    pub status: String,
+    pub status: src_stripe::StripeStatus,
 
     /// What the card form confirms against. `None` is a subscription with
     /// nothing to pay, which on a freshly created one is Stripe answering in a

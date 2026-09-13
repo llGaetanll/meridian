@@ -30,6 +30,7 @@ use crate::ActionStore;
 use crate::AppleFacts;
 use crate::CallId;
 use crate::Entitlement;
+use crate::StripePayer;
 
 /// The app a purchase has to have been made in.
 ///
@@ -57,13 +58,29 @@ pub struct StateBilling {
     /// it confirms against. Not a credential: Stripe makes it to be in a page.
     publishable_key: Option<String>,
 
-    /// Which user each Stripe customer is, so a webhook naming `cus_…` can be
-    /// turned into a row. Populated at startup and added to as customers are
-    /// created.
-    customers: BTreeMap<String, Uuid>,
+    /// What Stripe has been asked for on each user's behalf.
+    ///
+    /// **Keyed by the user, and that is the whole of the rule this file
+    /// exists to keep.** One person has one subscription, so pressing
+    /// Subscribe again replaces what is here rather than adding a second
+    /// thing that Stripe will later have opinions about. Filed the other way
+    /// round — subscription to user, which is the direction a webhook is read
+    /// in — a person accumulated a subscription per press, and news about any
+    /// of them was taken as the truth about whether they had paid.
+    ///
+    /// Read backwards by walking, on a webhook. That is a walk per delivery
+    /// over the people who have ever paid, and the alternative is a second
+    /// index to keep in step with this one.
+    stripe: BTreeMap<Uuid, StripePayer>,
 
-    /// The same for subscriptions, which is what most webhooks actually name.
-    subscriptions: BTreeMap<String, Uuid>,
+    /// Which user each Apple payer is, so a notification naming an
+    /// `originalTransactionId` can be turned into a row.
+    ///
+    /// Its own index rather than a field beside the Stripe customer. Apple's
+    /// identity is a transaction with no subscription next to it, and a
+    /// purchase is a fact about somebody who may never have paid us any other
+    /// way — so there is nothing here for the Stripe half to say.
+    apple: BTreeMap<String, Uuid>,
 
     /// Which App Store this build sells in, read out of the environment on
     /// [`EventProcess::Started`](crate::EventProcess).
@@ -96,16 +113,25 @@ impl StateBilling {
 
     /// Take what the store held, at startup.
     ///
-    /// Both indexes come from the same rows, so they are filled together and
-    /// cannot end up disagreeing about which user a subscription belongs to.
+    /// The row says which rail it is, so each one lands in exactly one index
+    /// and neither can end up holding half of the other's.
     pub fn loaded(&mut self, subscriptions: &[src_postgres::StoredSubscription]) {
         for stored in subscriptions {
-            self.customers
-                .insert(stored.customer_id.clone(), stored.user_id);
+            match stored.provider {
+                BillingProvider::Stripe => {
+                    self.stripe.insert(
+                        stored.user_id,
+                        StripePayer {
+                            customer_id: stored.customer_id.clone(),
+                            subscription_id: stored.subscription_id.clone(),
+                        },
+                    );
+                }
 
-            if let Some(subscription_id) = &stored.subscription_id {
-                self.subscriptions
-                    .insert(subscription_id.clone(), stored.user_id);
+                BillingProvider::Apple => {
+                    self.apple
+                        .insert(stored.customer_id.clone(), stored.user_id);
+                }
             }
         }
     }
@@ -117,37 +143,70 @@ impl StateBilling {
         self.apple_environment = None;
     }
 
-    /// Whose subscription this is, if we know.
+    /// Whose subscription this is, if it is anybody's *now*.
+    ///
+    /// A subscription this process has since replaced — one somebody gave up
+    /// on before paying on a second try — is nobody's, and its webhooks are
+    /// news about nothing. That is what stops an attempt that expired a day
+    /// later from being read as the truth about whether the person who paid
+    /// has paid.
     pub fn user_for_subscription(&self, subscription_id: &str) -> Option<Uuid> {
-        self.subscriptions.get(subscription_id).copied()
+        self.stripe
+            .iter()
+            .find(|(_, payer)| payer.subscription_id.as_deref() == Some(subscription_id))
+            .map(|(user_id, _)| *user_id)
     }
 
-    /// Whose customer this is, if we know.
-    pub fn user_for_customer(&self, customer_id: &str) -> Option<Uuid> {
-        self.customers.get(customer_id).copied()
+    /// Whose Apple payer this is, if we know.
+    pub fn user_for_apple_payer(&self, customer_id: &str) -> Option<Uuid> {
+        self.apple.get(customer_id).copied()
+    }
+
+    /// What Stripe has been asked for on this user's behalf, if anything.
+    pub fn payer(&self, user_id: Uuid) -> Option<&StripePayer> {
+        self.stripe.get(&user_id)
     }
 
     /// Remember a customer that has just been created.
+    ///
+    /// Only ever reached for a user who had none: a press of Subscribe by
+    /// somebody who already has a customer reuses it rather than asking
+    /// Stripe for a second one.
     pub fn customer_created(&mut self, customer_id: &str, user_id: Uuid) {
-        self.customers.insert(customer_id.to_string(), user_id);
+        self.stripe.insert(
+            user_id,
+            StripePayer {
+                customer_id: customer_id.to_string(),
+                subscription_id: None,
+            },
+        );
+    }
+
+    /// Remember an Apple payer that has just paid.
+    pub fn apple_payer(&mut self, customer_id: &str, user_id: Uuid) {
+        self.apple.insert(customer_id.to_string(), user_id);
     }
 
     /// Remember a subscription that has just been created.
+    ///
+    /// Replaces whatever this user's subscription was. The one it replaces is
+    /// dead — expired unpaid, or cancelled — because a subscription that was
+    /// worth anything is not one this machine asks Stripe to make a second
+    /// of.
     pub fn subscription_created(&mut self, subscription_id: &str, user_id: Uuid) {
-        self.subscriptions
-            .insert(subscription_id.to_string(), user_id);
+        match self.stripe.get_mut(&user_id) {
+            Some(payer) => payer.subscription_id = Some(subscription_id.to_string()),
+            None => tracing::error!(
+                subscription_id,
+                %user_id,
+                "a subscription was created for a user with no customer",
+            ),
+        }
     }
 
     /// Which subscription is this user's, if this process knows of one.
-    ///
-    /// The reverse of [`user_for_subscription`](Self::user_for_subscription),
-    /// walked rather than indexed: it is asked once when an account is being
-    /// deleted, and a second map would be a second thing to keep in step.
-    pub fn subscription_for_user(&self, user_id: Uuid) -> Option<String> {
-        self.subscriptions
-            .iter()
-            .find(|(_, owner)| **owner == user_id)
-            .map(|(subscription_id, _)| subscription_id.clone())
+    pub fn subscription_for_user(&self, user_id: Uuid) -> Option<&str> {
+        self.stripe.get(&user_id)?.subscription_id.as_deref()
     }
 
     /// Forget everything about a user whose account is gone.
@@ -155,8 +214,8 @@ impl StateBilling {
     /// Both indexes, because a webhook arriving after the account was deleted
     /// must not find a user id that no longer names anybody.
     pub fn forget(&mut self, user_id: Uuid) {
-        self.customers.retain(|_, owner| *owner != user_id);
-        self.subscriptions.retain(|_, owner| *owner != user_id);
+        self.stripe.remove(&user_id);
+        self.apple.retain(|_, owner| *owner != user_id);
     }
 
     /// Whether a webhook is really Stripe's.
@@ -245,7 +304,7 @@ impl StateBilling {
         user_id: Uuid,
         customer_id: &str,
         subscription_id: &str,
-        status: &str,
+        status: &src_stripe::StripeStatus,
         call_id: CallId,
         actions: &mut Vec<Action>,
     ) {
@@ -258,7 +317,7 @@ impl StateBilling {
                 provider: BillingProvider::Stripe,
                 customer_id: customer_id.to_string(),
                 subscription_id: Some(subscription_id.to_string()),
-                status: status.to_string(),
+                status: status.as_str().to_string(),
             },
         });
     }

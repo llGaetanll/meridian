@@ -477,6 +477,7 @@ impl RuntimeServer {
         let user_id = match action {
             ActionSourceStripe::CreateCustomer { user_id, .. }
             | ActionSourceStripe::CreateSubscription { user_id, .. }
+            | ActionSourceStripe::LoadSubscription { user_id, .. }
             | ActionSourceStripe::CancelSubscription { user_id, .. } => *user_id,
         };
 
@@ -518,6 +519,22 @@ impl RuntimeServer {
                 Ok(good_until) => EventSourceStripe::SubscriptionCancelled {
                     user_id: *user_id,
                     good_until: good_until.and_then(|secs| u64::try_from(secs).ok()),
+                },
+                Err(e) => EventSourceStripe::StripeFailed {
+                    user_id: *user_id,
+                    message: e.to_string(),
+                },
+            },
+
+            ActionSourceStripe::LoadSubscription {
+                user_id,
+                subscription_id,
+            } => match runtime_stripe::get_subscription(client, subscription_id).await {
+                Ok(subscription) => EventSourceStripe::SubscriptionLoaded {
+                    user_id: *user_id,
+                    subscription_id: subscription.id,
+                    status: subscription.status,
+                    client_secret: subscription.client_secret,
                 },
                 Err(e) => EventSourceStripe::StripeFailed {
                     user_id: *user_id,

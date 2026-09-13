@@ -134,10 +134,12 @@ pub(crate) fn failure(failure: &LoadFailure) -> String {
 
         LoadFailure::Unreadable => "The server sent something Meridian can't read.".to_string(),
 
-        // Neither reaches a banner: one is first run and the other is the
-        // paywall, both decided in `StateApp`.
+        // None of these reaches a banner: one is first run, one is the
+        // paywall, and one asks for a snapshot instead — all decided in
+        // `StateApp`.
         LoadFailure::SignedOut => "You've been signed out.".to_string(),
         LoadFailure::Unpaid { .. } => "Meridian is a subscription.".to_string(),
+        LoadFailure::Subscribed => "You already have a subscription.".to_string(),
     }
 }
 

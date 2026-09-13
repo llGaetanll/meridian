@@ -67,6 +67,26 @@ impl StatePayment {
         }
     }
 
+    /// The server already has a subscription for this person, so there was
+    /// nothing to start.
+    ///
+    /// Skips to asking whether the server has heard of a payment, which is
+    /// the step this would have reached anyway had a card been taken. If that
+    /// subscription is paid for, the snapshot is served and the app opens; if
+    /// it is one whose card stopped working, the paywall comes back saying so.
+    pub(crate) fn already(&mut self, now: Timestamp, actions: &mut Vec<Action>) {
+        if let Self::Starting = self {
+            *self = Self::Confirming {
+                since: now,
+                asked: now,
+            };
+
+            actions.push(Action::ToSource {
+                action: ActionSource::LoadSnapshot,
+            });
+        }
+    }
+
     /// Pay, with the card in the form.
     pub(crate) fn pay(&mut self, actions: &mut Vec<Action>) {
         if let Self::Card { .. } = self {

@@ -26,6 +26,13 @@ pub enum LoadFailure {
     /// Asked for too much, too fast. **429.**
     TooMany,
 
+    /// Asked to subscribe by somebody the server already has a subscription
+    /// for. **409.**
+    ///
+    /// Not a failure either: there is nothing to buy, and whether the app
+    /// opens is what asking for a snapshot answers.
+    Subscribed,
+
     /// Any other answer, which is the server's problem rather than this
     /// session's.
     Server { status: u16 },

@@ -90,6 +90,14 @@ pub enum ActionRouter {
     /// purchase that went wrong.
     Claimed,
 
+    /// This person already has a subscription that is worth something.
+    ///
+    /// Its own refusal for the same reason [`Claimed`](Self::Claimed) is: it
+    /// is not a failure, and the caller can act on it. There is nothing to
+    /// sell somebody who is already paying, and selling them a second
+    /// subscription would charge their card twice for one app.
+    Subscribed,
+
     /// A subscription has been started, and this is what the card form
     /// confirms against, and the key it opens Stripe.js with.
     ///

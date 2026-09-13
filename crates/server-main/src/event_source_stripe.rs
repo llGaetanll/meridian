@@ -1,5 +1,6 @@
 //! Stripe answered, or failed to.
 
+use src_stripe::StripeStatus;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -15,7 +16,20 @@ pub enum EventSourceStripe {
     SubscriptionCreated {
         user_id: Uuid,
         subscription_id: String,
-        status: String,
+        status: StripeStatus,
+        client_secret: Option<String>,
+    },
+
+    /// The subscription this user already had, as Stripe has it now.
+    ///
+    /// The status is the whole point: `incomplete` is an invoice still waiting
+    /// for a card, and `client_secret` is what confirms it. Anything terminal
+    /// is a subscription to replace, and anything worth something means this
+    /// person is already paying.
+    SubscriptionLoaded {
+        user_id: Uuid,
+        subscription_id: String,
+        status: StripeStatus,
         client_secret: Option<String>,
     },
 

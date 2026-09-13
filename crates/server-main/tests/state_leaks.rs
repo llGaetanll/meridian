@@ -564,7 +564,7 @@ fn starting_a_subscription_leaves_nothing_behind() {
             event: EventSourceStripe::SubscriptionCreated {
                 user_id: uuid::Uuid::nil(),
                 subscription_id: "sub_1".to_string(),
-                status: "incomplete".to_string(),
+                status: src_stripe::StripeStatus::Incomplete,
                 client_secret: Some("pi_1_secret".to_string()),
             },
         },

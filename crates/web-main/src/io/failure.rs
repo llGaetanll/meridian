@@ -48,6 +48,7 @@ impl Failure {
             Self::NoSession => LoadFailure::SignedOut,
 
             Self::Answered(401) => LoadFailure::SignedOut,
+            Self::Answered(409) => LoadFailure::Subscribed,
             Self::Answered(429) => LoadFailure::TooMany,
             Self::Answered(status) => LoadFailure::Server { status: *status },
         }

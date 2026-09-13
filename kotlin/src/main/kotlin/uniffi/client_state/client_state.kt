@@ -5132,6 +5132,15 @@ sealed class LoadFailure {
     object TooMany : LoadFailure()
 
     /**
+     * Asked to subscribe by somebody the server already has a subscription
+     * for. **409.**
+     *
+     * Not a failure either: there is nothing to buy, and whether the app
+     * opens is what asking for a snapshot answers.
+     */
+    object Subscribed : LoadFailure()
+
+    /**
      * Any other answer, which is the server's problem rather than this
      * session's.
      */
@@ -5174,12 +5183,16 @@ public object FfiConverterTypeLoadFailure : FfiConverterRustBuffer<LoadFailure> 
             }
 
             5 -> {
+                LoadFailure.Subscribed
+            }
+
+            6 -> {
                 LoadFailure.Server(
                     FfiConverterUShort.read(buf),
                 )
             }
 
-            6 -> {
+            7 -> {
                 LoadFailure.Unreadable
             }
 
@@ -5213,6 +5226,13 @@ public object FfiConverterTypeLoadFailure : FfiConverterRustBuffer<LoadFailure> 
             }
 
             is LoadFailure.TooMany -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
+            is LoadFailure.Subscribed -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
                     4UL
@@ -5261,14 +5281,19 @@ public object FfiConverterTypeLoadFailure : FfiConverterRustBuffer<LoadFailure> 
                 Unit
             }
 
-            is LoadFailure.Server -> {
+            is LoadFailure.Subscribed -> {
                 buf.putInt(5)
+                Unit
+            }
+
+            is LoadFailure.Server -> {
+                buf.putInt(6)
                 FfiConverterUShort.write(value.`status`, buf)
                 Unit
             }
 
             is LoadFailure.Unreadable -> {
-                buf.putInt(6)
+                buf.putInt(7)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }

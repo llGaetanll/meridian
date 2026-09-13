@@ -611,6 +611,17 @@ impl StateApp {
                     self.render(actions);
                 }
 
+                // Nothing to buy: the server has a subscription for this
+                // person already. Whether the app opens is the snapshot's to
+                // say, so it is asked rather than a banner drawn — a card
+                // form over a subscription that exists is the second one this
+                // is here to stop.
+                LoadFailure::Subscribed => {
+                    self.payment.already(self.device_now, actions);
+
+                    self.render(actions);
+                }
+
                 LoadFailure::Offline
                 | LoadFailure::TooMany
                 | LoadFailure::Server { .. }
