@@ -574,6 +574,19 @@ impl StateServer {
                     return;
                 }
 
+                // A press while the last one is still being answered. Stripe
+                // is asked nothing: the one in flight is the subscription
+                // this person gets, and it is theirs to pick up once it
+                // exists.
+                if self.signup.subscribing(user_id) {
+                    tracing::info!(%user_id, "asked to subscribe while a subscribe is in flight");
+
+                    self.signup
+                        .answer(request_id, ActionRouter::Subscribed, self.now, actions);
+
+                    return;
+                }
+
                 // What this press means depends on what Stripe has already
                 // been asked for, and asking that first is what stops a
                 // second subscription being made for somebody who is halfway
@@ -1399,8 +1412,7 @@ impl StateServer {
                     // period is worth something and lands below. Either way
                     // there is nothing to pick up, so a fresh subscription
                     // goes against the customer we already have.
-                    StripeStatus::IncompleteExpired
-                    | StripeStatus::Canceled => {
+                    StripeStatus::IncompleteExpired | StripeStatus::Canceled => {
                         let Some(payer) = self.billing.payer(*user_id).cloned() else {
                             tracing::error!(
                                 %user_id,

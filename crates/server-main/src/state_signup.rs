@@ -1074,6 +1074,28 @@ impl StateSignup {
         });
     }
 
+    /// Whether a subscribe for this user is already being answered.
+    ///
+    /// A walk over the routes in flight, on a press of Subscribe. Two presses
+    /// answered side by side would each see a user Stripe has never heard of
+    /// and make a customer and a subscription apiece, and the machine keeps
+    /// only the later one.
+    pub fn subscribing(&self, user_id: Uuid) -> bool {
+        self.requests.values().any(|step| match step {
+            Pending::Loading {
+                user_id: loading,
+                event: Authenticated::SubscribeRequested,
+            } => *loading == user_id,
+
+            Pending::Subscribing { user_id: waiting }
+            | Pending::SubscribingTo {
+                user_id: waiting, ..
+            } => *waiting == user_id,
+
+            _ => false,
+        })
+    }
+
     /// Note the step a request has reached, replacing the one it was at.
     pub fn waits_on(&mut self, request_id: RequestId, step: Pending) {
         self.requests.insert(request_id, step);

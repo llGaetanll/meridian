@@ -126,6 +126,74 @@ fn subscribing_reads_an_address_then_asks_stripe_twice() {
     );
 }
 
+/// A second press while the first is still being answered asks Stripe for
+/// nothing. Both requests would otherwise see a user Stripe has never heard
+/// of and make a customer and a subscription each, and the machine would
+/// remember only the later one — so a card paid in the first tab would be a
+/// webhook naming a subscription nobody knows.
+#[test]
+fn a_second_press_while_one_is_in_flight_is_refused() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadUser { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::UserLoaded {
+                email: Some("al@example.com".to_string()),
+            },
+        },
+
+        > Action::ToSourceStripe {
+            call_id: 3,
+            action: ActionSourceStripe::CreateCustomer {
+                user_id: SUBSCRIBER,
+                ..
+            },
+        },
+
+        // The same person, from another tab, before Stripe has answered.
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 4,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToRouter { request_id: 2, action: ActionRouter::Subscribed },
+    );
+}
+
 /// A process with no publishable key asks Stripe for nothing. A secret with no
 /// key to open a card form with is a subscription nobody can pay, left behind
 /// in Stripe.

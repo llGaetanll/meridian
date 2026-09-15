@@ -171,9 +171,9 @@ async fn billing_subscribe(
         })),
         Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
 
-        // Already paying. Its own code because it is the one refusal here
-        // somebody can act on: there is nothing to buy, and the app they are
-        // looking at is already theirs.
+        // Already paying, or already being answered. Its own code because it
+        // is the one refusal here somebody can act on: there is nothing to
+        // buy, and the app they are looking at is already theirs.
         Some(ActionRouter::Subscribed) => Err(StatusCode::CONFLICT.into()),
 
         _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),

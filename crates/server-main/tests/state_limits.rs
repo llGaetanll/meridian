@@ -1024,37 +1024,15 @@ fn starting_subscriptions_faster_than_the_budget_allows_is_refused() {
          object at Stripe that nothing removes",
     );
 
+    // Every press spends the budget, including one refused because the press
+    // before it is still being answered.
     for request_id in 1..=allowed {
         start_a_subscription(&mut state, request_id);
     }
 
     // The next one is refused, and starts nothing: the claim is the
     // `LoadUser` that does not come after the session resolves.
-    let next = allowed + 1;
-
-    eval!(&mut state,
-        < Event::FromRouter {
-            request_id: next,
-            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
-            event: EventRouter::SubscribeRequested {
-                token_sha256: hash_token("session-1"),
-            },
-        },
-
-        > Action::ToStore { action: ActionStore::LoadSession { .. }, .. },
-    );
-
-    let mut actions = Vec::new();
-
-    state.handle_events(
-        &[Event::FromStore {
-            call_id: allowed * 2 + 1,
-            event: EventStore::SessionResolved {
-                user_id: Some(uuid::Uuid::nil()),
-            },
-        }],
-        &mut actions,
-    );
+    let actions = start_a_subscription(&mut state, allowed + 1);
 
     assert!(
         matches!(
@@ -1068,10 +1046,11 @@ fn starting_subscriptions_faster_than_the_budget_allows_is_refused() {
     );
 }
 
-/// Ask for one subscription and drop what comes of it, as the `n`th caller to
-/// do so. Only the session is answered — the point is that the budget was
-/// spent, not what Stripe would have said.
-fn start_a_subscription(state: &mut StateServer, request_id: u64) {
+/// Ask for one subscription as the `n`th caller to do so, answer the session,
+/// and hand back what the machine did with it. Nothing past the session is
+/// answered — the point is that the budget was spent, not what Stripe would
+/// have said.
+fn start_a_subscription(state: &mut StateServer, request_id: u64) -> Vec<Action> {
     let mut actions = Vec::new();
 
     state.handle_events(
@@ -1105,5 +1084,9 @@ fn start_a_subscription(state: &mut StateServer, request_id: u64) {
         })
         .collect();
 
-    state.handle_events(&answers, &mut Vec::new());
+    let mut answered = Vec::new();
+
+    state.handle_events(&answers, &mut answered);
+
+    answered
 }

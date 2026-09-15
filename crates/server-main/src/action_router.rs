@@ -90,7 +90,8 @@ pub enum ActionRouter {
     /// purchase that went wrong.
     Claimed,
 
-    /// This person already has a subscription that is worth something.
+    /// This person already has a subscription that is worth something, or one
+    /// is being started for them on another request.
     ///
     /// Its own refusal for the same reason [`Claimed`](Self::Claimed) is: it
     /// is not a failure, and the caller can act on it. There is nothing to

@@ -27,7 +27,7 @@ pub enum LoadFailure {
     TooMany,
 
     /// Asked to subscribe by somebody the server already has a subscription
-    /// for. **409.**
+    /// for, or is starting one for. **409.**
     ///
     /// Not a failure either: there is nothing to buy, and whether the app
     /// opens is what asking for a snapshot answers.
