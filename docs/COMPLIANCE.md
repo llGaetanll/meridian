@@ -29,8 +29,8 @@ paying users can be stranded that way.
 The membership is team `U5PF7N9778`, type Individual. That is enough to build
 and run on a device (#68) and not enough to release. To release:
 
-- A legal entity. Apple does not accept DBAs, trade names or sole
-  proprietorships under a business name
+- A legal entity: Meridian Studios LLC. Apple does not accept DBAs, trade
+  names or sole proprietorships under a business name
 - A D-U-N-S number for it (free)
 - An email address at `meridiancash.io`, and a real website there. A registrar
   placeholder or a thin page is refused
@@ -56,14 +56,13 @@ too.
 
 ## The web
 
-No store and no reviewer, so no rule about who publishes. The website can run
-under a person's own name.
+No store and no reviewer, so no rule about who publishes.
 
-- **Plaid** accepts a person's own name as the legal entity. Leaving the Trial
-  plan means a compliance review that asks about "your business"
-- **Stripe** accepts a sole proprietor, signed up with a Social Security number
-- **Trading as "Meridian"** rather than under one's own name means an assumed
-  name certificate from the county clerk, for a small fee (?)
+- **Plaid** and **Stripe** take the LLC as the business, with its EIN. Leaving
+  Plaid's Trial plan means a compliance review that asks about "your business"
+- **Trading as "Meridian"** rather than "Meridian Studios LLC" may need a
+  Certificate of Assumed Name, which an LLC files with the Department of
+  State (?)
 - **No store commission.** Stripe's fee is the whole cut, which is what
   `BUSINESS.md` assumes
 
@@ -72,32 +71,32 @@ under a person's own name.
 Store policy decides who may publish; the law decides what the product owes
 its users, and it does not care which platform they used.
 
-- **A privacy policy and terms.** Written in `site/`, not yet hosted (#56).
-  The operator is blank in `site/lib/legal.ts`, and a person's own name is a
-  valid answer until there is an entity
+- **A privacy policy and terms.** Live at `meridiancash.io/terms` and
+  `/privacy`, naming Meridian Studios LLC as the operator
 - **New York's SHIELD Act** asks for reasonable safeguards over New York
   residents' private information, which can include bank account data (?)
 - **The FTC Safeguards Rule** and **the CFPB's open-banking rule (1033)** may
   reach a product that aggregates bank data. 1033 is being reconsidered and
   its dates are in flux (?)
-- **Liability.** Without an entity, a leak of other people's bank data is the
-  owner's personal liability. That is the case for an entity that has nothing
-  to do with any store
+- **Liability.** A leak of other people's bank data is the LLC's liability
+  rather than the owner's personal one. That is the case for the entity that
+  has nothing to do with any store
 
 ## The entity
 
-Not decided. What each shape costs is in `BUSINESS.md`. The rules that decide
-between them:
+**Meridian Studios LLC**, a New York LLC filed 2026-09-14. Its filing names
+Albany County, at its registered agent's address: 418 Broadway, Ste N, Albany,
+NY 12207. What it costs is in `BUSINESS.md`.
 
-- **A New York LLC** publishes a notice in two newspapers for six weeks, within
-  120 days, in the county named on its filing. Not publishing suspends its
+- **The newspaper notice has not started.** It runs for six weeks in the two
+  papers the Albany County Clerk names, and the Certificate of Publication is
+  due by **2027-01-12**, 120 days after filing. Missing it suspends the LLC's
   authority to do business in New York, including suing in its courts; it
   does not dissolve it
-- **An LLC formed in another state** — Florida, Delaware, Wyoming — and run
-  from New York must still register here ($250) and publish the same notice.
-  Its profit is still taxed where the owner lives
-- **A New York corporation** publishes nothing, but files its own tax return
-  every year, where a single-member LLC is a line on a personal one
+- **Nothing else waits on the notice.** The LLC exists from the filing, so the
+  EIN, the bank account, the D-U-N-S number, Apple and Plaid can all go ahead
+- **Once the notice has run**, a Certificate of Change ($30) can move the
+  county to New York County without a second notice (?)
 
 ## Confirm these
 
@@ -106,7 +105,8 @@ between them:
       apple-app-site-association file all change
 - [ ] Google Play: whether its Organization rule covers a budgeting app, or
       only banking, loans and trading
-- [ ] New York: the assumed name certificate fee in New York County
+- [ ] New York: whether the LLC needs a Certificate of Assumed Name to trade
+      as "Meridian", and its fee
 - [ ] A lawyer or accountant: whether SHIELD, the FTC Safeguards Rule and
       1033 reach Meridian, and what each would ask of it
 

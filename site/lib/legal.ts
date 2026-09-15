@@ -5,13 +5,14 @@
 /// or the wrong court, which is worse than a page that admits it is unfinished.
 /// `site/README.md` lists them.
 export const legal = {
-  /// Where Meridian is run from. No name and no street address: Meridian is a
-  /// sole proprietorship, and Stripe and Plaid hold both privately.
+  /// The company that runs Meridian, and the address on its New York filing.
+  operator: "Meridian Studios LLC",
+  address: "418 Broadway, Ste N, Albany, NY 12207",
   based: "New York, United States",
   jurisdiction: "the State of New York, United States",
   courts: "the state and federal courts located in New York",
   effective: "September 11, 2026",
-  updated: "September 11, 2026",
+  updated: "September 14, 2026",
 
   /// Who the ledger is built from. Named here because both documents refer to
   /// them and a list that disagrees with itself is the one thing a privacy

@@ -28,10 +28,10 @@ box says so, which is not soon.
 will not either.** The website has no such rule. Why, and what else applies,
 is in [COMPLIANCE.md](COMPLIANCE.md).
 
-Living in Manhattan, the entity is a New York LLC, and New York makes a new LLC
-**publish a notice in two newspapers for six weeks**, within 120 days, in the
-county named on its filing. That notice is most of the cost, and the county is
-the whole difference:
+The entity is **Meridian Studios LLC**, a New York LLC filed 2026-09-14 with an
+Albany address. New York makes a new LLC **publish a notice in two newspapers
+for six weeks**, within 120 days, in the county named on its filing. That
+notice is most of the cost, and the county is the whole difference:
 
 | Line | Manhattan | Albany address | Note |
 | --- | --- | --- | --- |
@@ -43,7 +43,9 @@ the whole difference:
 | **One-time** | **~2,050** | **~775** | |
 
 - **An Albany address is the usual way round it** and is what registered
-  agents sell it for. Confirm with an accountant before filing.
+  agents sell it for. Confirm with an accountant.
+- **The notice has not started.** The Certificate of Publication is due by
+  2027-01-12.
 - **Delaware or Wyoming saves nothing.** Run from New York, the LLC still has
   to register here ($250) and still publish.
 - **A New York corporation has no notice** ($125 to form), but it files its

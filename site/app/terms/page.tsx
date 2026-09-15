@@ -18,8 +18,9 @@ const SECTIONS: LegalSection[] = [
     body: (
       <>
         <p>
-          These Terms of Service are the agreement between you and Meridian,
-          based in {legal.based} (&ldquo;we&rdquo;, &ldquo;us&rdquo;), covering
+          These Terms of Service are the agreement between you and{" "}
+          {legal.operator}, a limited liability company based in {legal.based}{" "}
+          (&ldquo;Meridian&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;), covering
           your use of the Meridian applications, the website at {site.domain},
           and the API behind them (together, the &ldquo;Service&rdquo;).
         </p>
@@ -376,7 +377,8 @@ const SECTIONS: LegalSection[] = [
         </li>
         <li>
           Notices to you go to the email address on your account. Notices to us
-          go to <a href={`mailto:${site.support}`}>{site.support}</a>.
+          go to <a href={`mailto:${site.support}`}>{site.support}</a>, or by
+          post to {legal.operator}, {legal.address}.
         </li>
       </ul>
     ),

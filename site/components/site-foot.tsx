@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Mark } from "@/components/mark";
+import { legal } from "@/lib/legal";
 import { site } from "@/lib/site";
 
 /// The footer, and the only place the disclaimer is stated on every page.
@@ -49,7 +50,7 @@ export function SiteFoot() {
 
         <div className="foot-note">
           <span>
-            &copy; {new Date().getFullYear()} {site.name}
+            &copy; {new Date().getFullYear()} {legal.operator}
           </span>
           <span>
             Meridian shows you your money. It is not a bank, a broker or an

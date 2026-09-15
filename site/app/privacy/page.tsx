@@ -19,7 +19,7 @@ const SECTIONS: LegalSection[] = [
       <>
         <p>
           This policy covers the Meridian applications, the website at{" "}
-          {site.domain}, and the API behind them. Meridian, based in{" "}
+          {site.domain}, and the API behind them. {legal.operator}, based in{" "}
           {legal.based}, is the controller of the personal data described here.
         </p>
         <p>

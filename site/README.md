@@ -30,13 +30,12 @@ starts, so colour never comes from it.
 ## Before this goes live
 
 `lib/legal.ts` holds the facts the code cannot know, and they are all answered:
-Meridian, based in New York, under New York law, dated 11 September 2026.
-`updated` moves whenever either document changes in a way a reader would want
-to know about.
+Meridian Studios LLC, based in New York, under New York law, dated 11 September
+2026. `updated` moves whenever either document changes in a way a reader would
+want to know about.
 
-The pages name no person and no street address. Meridian is run by a sole
-proprietor, whose name and address Stripe and Plaid hold privately; the pages
-say only that it is based in New York, and give the support address.
+The pages name the LLC and no person. The only street address is the one on
+the LLC's New York filing, which is its registered agent's in Albany.
 
 The documents also assume things that are true today and have to stay true:
 connections are read-only, nothing is sold, there is no analytics on this site,
