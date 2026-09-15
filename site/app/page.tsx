@@ -328,6 +328,10 @@ function Price() {
           <span className="rv hard">Monthly, by card</span>
         </div>
         <div className="row flat">
+          <span className="rt">Tax</span>
+          <span className="rv hard">Included, not added at the end</span>
+        </div>
+        <div className="row flat">
           <span className="rt">Cancel</span>
           <span className="rv hard">Whenever you like</span>
         </div>

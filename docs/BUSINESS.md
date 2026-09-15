@@ -95,6 +95,26 @@ sign-in emails per user per month against a 3,000/mo allowance.
 
 ## Payments
 
+**$5.99 includes sales tax.** New York taxes SaaS as prewritten software, and
+the LLC is a New York one, so the tax is owed on New York customers from the
+first sale. The price is the figure the customer is charged, so the tax comes
+out of it rather than going on top of it.
+
+At New York City's 8.875%, $5.99 is $5.50 of revenue and $0.49 of tax. Stripe's
+fee is charged on the whole $5.99, not on the $5.50, so it is paid on money that
+was never ours:
+
+```
+  5.99 − 0.49 tax − 0.474 Stripe = 5.03
+```
+
+Outside the city the rate is lower and the same arithmetic leaves more. Apple is
+the merchant of record for In-App Purchase and handles the tax itself, so this
+applies to the web rail only.
+
+The tables below are still written against a $5 price and do not subtract tax.
+They understate the fee and overstate the contribution.
+
 Stripe takes **2.9% + $0.30** per charge. At $5/mo that is $0.445 — 8.9%, and
 almost all of it the flat 30¢.
 

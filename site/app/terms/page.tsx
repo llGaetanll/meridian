@@ -139,8 +139,8 @@ const SECTIONS: LegalSection[] = [
         <p>
           Paid plans are billed in advance for the period you choose, and renew
           automatically at the end of each period until you cancel. Prices are
-          shown before you subscribe and exclude any tax we are required to
-          collect.
+          shown before you subscribe and include any tax we are required to
+          collect, so the figure you see is the figure you are charged.
         </p>
         <ul>
           <li>
