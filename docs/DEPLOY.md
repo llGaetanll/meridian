@@ -86,9 +86,52 @@ It is the slowest thing here, so on a new domain it still wants starting first.
 code to the log and sends nothing, which is enough to walk a sign-in.
 
 DMARC is the one record not in the set above and Resend does not require it,
-but without it neither SPF nor DKIM is enforceable by a receiver. A
-`v=DMARC1; p=none; rua=…` at `_dmarc.meridiancash.io` covers the `mail.`
-subdomain too, since a receiver falls back to the organizational domain.
+but without it neither SPF nor DKIM is enforceable by a receiver. It is in
+place: `v=DMARC1; p=none; rua=mailto:support@meridiancash.io` at `_dmarc`,
+which covers the `mail.` subdomain too, since a receiver falls back to the
+organizational domain.
+
+The host is `_dmarc`, not `_dmarc.meridiancash.io`. Namecheap appends the
+domain to whatever is typed, so the longer form answers at
+`_dmarc.meridiancash.io.meridiancash.io` and no receiver ever finds it. The
+same goes for every host in the tables below.
+
+**The support mailbox.** Resend only sends. Mail *to* the domain is a separate
+service: Namecheap Private Email, Launch plan, one mailbox — `support@` — with
+`privacy@` as an alias on it rather than a second mailbox. The plan carries one
+mailbox and ten aliases, so a second published address is free and a second
+mailbox is not. Both are published by `site/lib/site.ts`, and
+`docs/COMPLIANCE.md` needs an address at the domain for an App Store release,
+so neither may bounce.
+
+Its records sit at the apex and do not touch Resend's, which live under
+`mail.`:
+
+| Type | Host | Value | Priority |
+| --- | --- | --- | --- |
+| `MX` | `@` | `mx1.privateemail.com.` | 10 |
+| `MX` | `@` | `mx2.privateemail.com.` | 10 |
+| `TXT` | `@` | `v=spf1 include:spf.privateemail.com ~all` | |
+| `TXT` | `privateemail._domainkey` | the DKIM key, from the subscription page | |
+
+Buying the subscription and creating the mailbox are two steps, and the
+subscription page reports itself active after the first. `dig` cannot tell them
+apart either, since the MX answers either way. What does:
+
+```sh
+python3 -c 'import smtplib;s=smtplib.SMTP("mx1.privateemail.com",25);s.ehlo("meridiancash.io");s.mail("postmaster@meridiancash.io");print(s.rcpt("support@meridiancash.io"))'
+```
+
+`250` is a mailbox. `450 unverified address` is the subscription without one.
+Ask after a name that cannot exist too — a `250` for that is a catch-all, which
+this domain does not have and should not.
+
+Aliases are added from the subscription page, in the dropdown beside the
+mailbox's `LOGIN` button — not in the webmail's own settings, which is the
+mailbox user's view and has no alias section at all.
+
+That page also shows a standing banner asking for the MX and SPF records it
+already has. It is stale, not a check; believe `dig`.
 
 **Nothing in the Plaid dashboard yet.** The redirect URI and the webhook both
 name `api.meridiancash.io`, which is fine to register before it resolves. The
