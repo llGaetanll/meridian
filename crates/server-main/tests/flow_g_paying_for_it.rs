@@ -557,6 +557,12 @@ fn a_webhook_for_an_unknown_subscription_is_still_written() {
 
 /// An event about something that is not a subscription is taken and acted on
 /// no further. Refusing it only asks Stripe to send it again.
+///
+/// An invoice, because it is the one that looks as if it should count. It
+/// does not: the endpoint is not subscribed to invoice events, and a renewal
+/// arrives as a subscription event carrying the new period whether the
+/// invoice was paid or not — so one that turns up anyway is the same shrug
+/// as any other object.
 #[test]
 fn an_invoice_says_nothing_about_entitlement() {
     let mut state = state();

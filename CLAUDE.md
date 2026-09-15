@@ -126,6 +126,13 @@ resolved.** That is the only ranking. Never give an issue a priority.
 The account is capped at 10 Production Items and removing an Item does not free
 the slot, so a careless connection is permanent.
 
+## Stripe
+
+`docs/STRIPE.md` explains how a subscription is paid for and what the webhooks
+say. The rule that matters: **only ever use Stripe test mode unless the user
+explicitly says otherwise.** `STRIPE_ENV` names the mode, and a live key
+charges a real card.
+
 ## Compliance
 
 `docs/COMPLIANCE.md` says who may publish Meridian on each platform and what

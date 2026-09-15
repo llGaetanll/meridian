@@ -43,5 +43,4 @@ pub use stripe_webhook::TOLERANCE_SECS;
 pub use stripe_webhook::verify;
 pub use stripe_webhook_event::StripeWebhookData;
 pub use stripe_webhook_event::StripeWebhookEvent;
-pub use stripe_webhook_event::StripeWebhookInvoice;
 pub use stripe_webhook_event::StripeWebhookObject;

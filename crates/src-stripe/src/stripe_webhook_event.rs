@@ -32,30 +32,23 @@ pub struct StripeWebhookData {
     pub object: StripeWebhookObject,
 }
 
-/// The object itself, in the few shapes this app subscribes to.
+/// The object itself: a subscription, or something this app does not read.
 ///
-/// Untagged, keyed off `object`, and with a catch-all last: Stripe sends
-/// events nobody asked for, and an unrecognised one must be a shrug rather
-/// than a parse failure that fails the whole delivery.
+/// Keyed off `object`, with a catch-all: Stripe sends events nobody asked
+/// for, and an unrecognised one must be a shrug rather than a parse failure
+/// that fails the whole delivery.
+///
+/// **The subscription is the only object entitlement is read from.** A
+/// renewal, paid or failed, arrives as a `customer.subscription.updated`
+/// carrying the new period and the status, so the invoice events beside it
+/// say nothing this one does not — which is why the endpoint is not
+/// subscribed to them. `docs/STRIPE.md` has the observed order.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "object")]
 pub enum StripeWebhookObject {
     #[serde(rename = "subscription")]
     Subscription(StripeSubscription),
 
-    #[serde(rename = "invoice")]
-    Invoice(StripeWebhookInvoice),
-
     #[serde(other)]
     Other,
-}
-
-/// An invoice, cut down to what says which subscription it settles.
-#[derive(Debug, Clone, Deserialize)]
-pub struct StripeWebhookInvoice {
-    pub id: String,
-
-    /// `cus_…`.
-    #[serde(default)]
-    pub customer: Option<String>,
 }
