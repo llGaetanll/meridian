@@ -81,6 +81,16 @@ sentence, and it changes the date in two cases: `unpaid` and
 period was paid for, and the ordinary cause is an expired card that a smart
 retry fixes within the hour.
 
+`incomplete` is a subscription started and not paid for: a card form opened
+and left, or a 3D Secure challenge closed before the bank answered. Stripe
+holds its invoice open for 23 hours and then sends `incomplete_expired`. In
+that window `/billing/subscribe` hands the same invoice's secret back rather
+than starting a second subscription, so the paywall says the subscription is
+unfinished and Subscribe picks the form back up. The invoice events Stripe
+sends around a challenge (`invoice.payment_action_required`) say nothing the
+client did not already learn from the card form, and the endpoint does not
+subscribe to them.
+
 ## Webhooks
 
 The endpoint is registered for three events and no others:

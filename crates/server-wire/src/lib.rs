@@ -355,7 +355,7 @@ impl SyncStage {
 /// set of arms in every app. The server maps; the wire carries our word.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WireUnpaid {
-    /// `"never"`, `"declined"`, `"ended"` or `"unconfirmed"`.
+    /// `"never"`, `"declined"`, `"ended"`, `"unfinished"` or `"unconfirmed"`.
     pub reason: String,
 
     /// The end of the period that was paid for, in seconds. Always in the
@@ -375,7 +375,7 @@ impl WireUnpaid {
 
 /// Why somebody signed in is not being served.
 ///
-/// Four words, and they are the four different things a paywall has to say.
+/// Five words, and they are the five different things a paywall has to say.
 /// There is no "paid" arm: this is carried by a refusal, and a session being
 /// served never produces one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -390,6 +390,10 @@ pub enum UnpaidReason {
     /// A subscription that ended, and the period it paid for has passed.
     Ended,
 
+    /// A subscription that was started and has not been paid for. Nothing
+    /// was charged, and the card form picks it back up.
+    Unfinished,
+
     /// We cannot tell. A payment still in flight, or a provider that believes
     /// this person is paying while the date we hold says otherwise.
     ///
@@ -402,10 +406,11 @@ pub enum UnpaidReason {
 }
 
 impl UnpaidReason {
-    pub const ALL: [UnpaidReason; 4] = [
+    pub const ALL: [UnpaidReason; 5] = [
         UnpaidReason::Never,
         UnpaidReason::Declined,
         UnpaidReason::Ended,
+        UnpaidReason::Unfinished,
         UnpaidReason::Unconfirmed,
     ];
 }
@@ -417,6 +422,7 @@ pub fn unpaid_reason_name(reason: UnpaidReason) -> &'static str {
         UnpaidReason::Never => "never",
         UnpaidReason::Declined => "declined",
         UnpaidReason::Ended => "ended",
+        UnpaidReason::Unfinished => "unfinished",
         UnpaidReason::Unconfirmed => "unconfirmed",
     }
 }
@@ -554,7 +560,7 @@ mod tests {
         );
     }
 
-    /// Every client switches on these three words to decide which paywall it
+    /// Every client switches on these words to decide which paywall it
     /// draws, so they are a wire contract and are pinned here as text. A word
     /// changed on one side and not the other tells somebody whose card was
     /// declined that they have never subscribed.
@@ -563,6 +569,7 @@ mod tests {
         assert_eq!(unpaid_reason_name(UnpaidReason::Never), "never");
         assert_eq!(unpaid_reason_name(UnpaidReason::Declined), "declined");
         assert_eq!(unpaid_reason_name(UnpaidReason::Ended), "ended");
+        assert_eq!(unpaid_reason_name(UnpaidReason::Unfinished), "unfinished");
         assert_eq!(unpaid_reason_name(UnpaidReason::Unconfirmed), "unconfirmed");
 
         assert_eq!(unpaid_reason_from_name("declined"), UnpaidReason::Declined);

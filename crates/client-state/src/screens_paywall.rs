@@ -25,7 +25,7 @@ const AMOUNT: &str = "$5.99";
 /// The paywall, worded for what the server said and for how far paying has
 /// got.
 ///
-/// Four refusals rather than one, because "you have never subscribed" and
+/// Five refusals rather than one, because "you have never subscribed" and
 /// "your card stopped working" are different news and only one of them is
 /// about a card. The provider's own vocabulary does not reach here: [`Unpaid`]
 /// is our words, and mapping a provider's onto them is the server's job.
@@ -104,6 +104,12 @@ fn refusal(unpaid: &Unpaid) -> (&'static str, &'static str) {
              Subscribing again opens the app back up.",
         ),
 
+        Unpaid::Unfinished => (
+            "You haven't finished subscribing",
+            "A subscription was started and no payment went through, so nothing has \
+             been charged. Subscribing again on the web picks up where it left off.",
+        ),
+
         Unpaid::Unconfirmed => (
             "We can't confirm your subscription",
             "If you have just paid, give it a minute and pull to refresh. Nothing here \
@@ -168,7 +174,7 @@ fn refused_because(refusal: PaymentRefusal) -> &'static str {
 /// When the period that was paid for ended, where there was one.
 fn ran_out(unpaid: &Unpaid) -> Option<Timestamp> {
     match unpaid {
-        Unpaid::Never | Unpaid::Unconfirmed => None,
+        Unpaid::Never | Unpaid::Unfinished | Unpaid::Unconfirmed => None,
         Unpaid::Declined { ran_out } | Unpaid::Ended { ran_out } => {
             ran_out.map(Timestamp::from_secs)
         }

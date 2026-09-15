@@ -57,7 +57,7 @@ impl Entitlement {
 /// Why a session is being refused, for the paywall the client draws.
 ///
 /// The one place a provider's vocabulary stops. Stripe's eight words and
-/// Apple's own map onto three of ours here, so a client never learns either
+/// Apple's own map onto four of ours here, so a client never learns either
 /// dictionary and a third provider is another arm in this function rather than
 /// a release of every app.
 ///
@@ -101,10 +101,11 @@ fn from_stripe(status: &str) -> UnpaidReason {
 
         StripeStatus::Canceled => UnpaidReason::Ended,
 
-        // A first payment still in flight — a 3D Secure challenge open, inside
-        // Stripe's window. Nothing has been refused and no period has ever
-        // run out, so neither `Declined` nor `Ended` is true yet.
-        StripeStatus::Incomplete => UnpaidReason::Unconfirmed,
+        // Started and not paid for: a card form opened and left, or a 3D
+        // Secure challenge closed. Stripe holds the invoice open for 23 hours
+        // and the same subscription is handed back to the next press of
+        // Subscribe, so the way in is the form again — not waiting.
+        StripeStatus::Incomplete => UnpaidReason::Unfinished,
 
         // Stripe believes this person is paying and the date we hold says they
         // are not. That is a webhook we never received, and it may land a
@@ -138,7 +139,7 @@ fn from_stripe(status: &str) -> UnpaidReason {
 mod tests {
     use super::*;
 
-    /// The fold from Stripe's eight words to our four. It is the only place a
+    /// The fold from Stripe's eight words to our five. It is the only place a
     /// provider's vocabulary is read, so what each one becomes is written down
     /// here rather than inferred from the flow tests that happen to cross it.
     #[test]
@@ -152,8 +153,9 @@ mod tests {
 
         assert_eq!(from_stripe("canceled"), UnpaidReason::Ended);
 
-        // Nothing has been refused yet, and no period has run out.
-        assert_eq!(from_stripe("incomplete"), UnpaidReason::Unconfirmed);
+        // Nothing has been charged and nothing is on its way: the card form
+        // was left open, and finishing it is the answer.
+        assert_eq!(from_stripe("incomplete"), UnpaidReason::Unfinished);
 
         // Stripe believes this person is paying and our date says otherwise,
         // which is a webhook that has not arrived. Telling them it ended would

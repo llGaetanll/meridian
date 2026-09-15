@@ -5135,7 +5135,7 @@ public func FfiConverterTypeScreen_lower(_ value: Screen) -> RustBuffer {
 /**
  * What the server said about a subscription it is not honouring.
  *
- * Our three words rather than the payment provider's. Stripe says `past_due`
+ * Our words rather than the payment provider's. Stripe says `past_due`
  * and Apple says something else again, so a client matching on either
  * vocabulary is a client that has learned one provider's — and a second
  * provider is then a second set of arms in every app.
@@ -5167,10 +5167,15 @@ public enum Unpaid: Equatable, Hashable {
     case ended(ranOut: UInt64?
     )
     /**
+     * A subscription that was started and never paid for. Nothing was
+     * charged, and subscribing again picks up the same card form.
+     */
+    case unfinished
+    /**
      * The server cannot tell. A payment still in flight, or a provider that
      * believes this person is paying while the date says otherwise.
      *
-     * Its own arm rather than folded into one of the three above, because
+     * Its own arm rather than folded into one of the four above, because
      * each of those names a cause and this is the case where none of them is
      * known to be true. Somebody mid-payment told their subscription has
      * ended is being lied to.
@@ -5205,7 +5210,9 @@ public struct FfiConverterTypeUnpaid: FfiConverterRustBuffer {
         case 3: return .ended(ranOut: try FfiConverterOptionUInt64.read(from: &buf)
         )
         
-        case 4: return .unconfirmed
+        case 4: return .unfinished
+        
+        case 5: return .unconfirmed
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -5229,8 +5236,12 @@ public struct FfiConverterTypeUnpaid: FfiConverterRustBuffer {
             FfiConverterOptionUInt64.write(ranOut, into: &buf)
             
         
-        case .unconfirmed:
+        case .unfinished:
             writeInt(&buf, Int32(4))
+        
+        
+        case .unconfirmed:
+            writeInt(&buf, Int32(5))
         
         }
     }

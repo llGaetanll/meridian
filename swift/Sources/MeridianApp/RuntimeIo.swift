@@ -465,7 +465,7 @@ enum RuntimeIo {
     /// Why a 402 was answered.
     ///
     /// A body we cannot read reads as `never`, which is the only one of the
-    /// four that claims nothing about what came before — so an old app meeting
+    /// five that claims nothing about what came before — so an old app meeting
     /// a word it has never heard of says less rather than something untrue.
     private static func unpaid(_ body: Data) -> Unpaid {
         guard let said = try? JSONDecoder().decode(UnpaidBody.self, from: body) else {
@@ -475,6 +475,7 @@ enum RuntimeIo {
         switch said.reason {
         case "declined": return .declined(ranOut: said.ran_out)
         case "ended": return .ended(ranOut: said.ran_out)
+        case "unfinished": return .unfinished
         case "unconfirmed": return .unconfirmed
         default: return .never
         }

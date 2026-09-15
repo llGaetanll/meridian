@@ -5576,7 +5576,7 @@ public object FfiConverterTypeScreen : FfiConverterRustBuffer<Screen> {
 /**
  * What the server said about a subscription it is not honouring.
  *
- * Our three words rather than the payment provider's. Stripe says `past_due`
+ * Our words rather than the payment provider's. Stripe says `past_due`
  * and Apple says something else again, so a client matching on either
  * vocabulary is a client that has learned one provider's — and a second
  * provider is then a second set of arms in every app.
@@ -5615,10 +5615,16 @@ sealed class Unpaid {
     }
 
     /**
+     * A subscription that was started and never paid for. Nothing was
+     * charged, and subscribing again picks up the same card form.
+     */
+    object Unfinished : Unpaid()
+
+    /**
      * The server cannot tell. A payment still in flight, or a provider that
      * believes this person is paying while the date says otherwise.
      *
-     * Its own arm rather than folded into one of the three above, because
+     * Its own arm rather than folded into one of the four above, because
      * each of those names a cause and this is the case where none of them is
      * known to be true. Somebody mid-payment told their subscription has
      * ended is being lied to.
@@ -5651,6 +5657,10 @@ public object FfiConverterTypeUnpaid : FfiConverterRustBuffer<Unpaid> {
             }
 
             4 -> {
+                Unpaid.Unfinished
+            }
+
+            5 -> {
                 Unpaid.Unconfirmed
             }
 
@@ -5684,6 +5694,13 @@ public object FfiConverterTypeUnpaid : FfiConverterRustBuffer<Unpaid> {
                 )
             }
 
+            is Unpaid.Unfinished -> {
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                (
+                    4UL
+                )
+            }
+
             is Unpaid.Unconfirmed -> {
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 (
@@ -5714,8 +5731,13 @@ public object FfiConverterTypeUnpaid : FfiConverterRustBuffer<Unpaid> {
                 Unit
             }
 
-            is Unpaid.Unconfirmed -> {
+            is Unpaid.Unfinished -> {
                 buf.putInt(4)
+                Unit
+            }
+
+            is Unpaid.Unconfirmed -> {
+                buf.putInt(5)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }

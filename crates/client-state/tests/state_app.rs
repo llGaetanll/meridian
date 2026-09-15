@@ -328,6 +328,23 @@ fn a_declined_card_is_not_a_missing_subscription() {
     );
 }
 
+/// A subscription started and never paid for is neither a missing one nor a
+/// payment waiting to be confirmed: nothing was charged, and the way in is
+/// the card form again. There is no date, because no period was ever bought.
+#[test]
+fn an_unfinished_subscription_is_a_card_form_left_open() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Unpaid { reason: Unpaid::Unfinished } } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { view: paywall }, .. } } => {
+            assert_eq!(paywall.title, "You haven't finished subscribing");
+            assert_eq!(paywall.rows.len(), 1, "a price, and no period to have run out");
+            assert!(matches!(paywall.step, ViewPaywallStep::Offer { .. }), "Subscribe picks the form back up");
+        },
+    );
+}
+
 /// Every route that feeds a screen is refused for a session that has not
 /// paid, and the bank step of first run is one of them. So the paywall stands
 /// in front of first run rather than beside it.

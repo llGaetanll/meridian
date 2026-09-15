@@ -665,6 +665,46 @@ fn an_active_subscription_whose_period_ran_out_does_not() {
     );
 }
 
+/// A subscription that was started and never paid for is refused as exactly
+/// that. It is not a payment nobody has confirmed: nothing was charged, and
+/// what opens the app is finishing the card form.
+#[test]
+fn an_unfinished_subscription_is_refused_as_unfinished() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "incomplete",
+                    None,
+                )],
+            },
+        },
+
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > @r#"ToRouter { request_id: 1, action: PaymentRequired { unpaid: WireUnpaid { reason: "unfinished", ran_out: None } } }"#,
+    );
+}
+
 /// Entitlement lapses because the clock moved, and nothing sweeps it. The same
 /// user, the same row, one tick either side of the period ending.
 #[test]

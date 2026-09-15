@@ -71,7 +71,7 @@ impl Failure {
 /// Why a 402 was answered.
 ///
 /// A body that does not parse reads as `Never`, which is the only one of the
-/// four that claims nothing about what came before — so an old app meeting a
+/// five that claims nothing about what came before — so an old app meeting a
 /// word it has never heard of says less rather than something untrue.
 fn unpaid(body: &str) -> Unpaid {
     let Ok(said) = serde_json::from_str::<WireUnpaid>(body) else {
@@ -86,6 +86,7 @@ fn unpaid(body: &str) -> Unpaid {
         UnpaidReason::Ended => Unpaid::Ended {
             ran_out: said.ran_out,
         },
+        UnpaidReason::Unfinished => Unpaid::Unfinished,
         UnpaidReason::Unconfirmed => Unpaid::Unconfirmed,
     }
 }
