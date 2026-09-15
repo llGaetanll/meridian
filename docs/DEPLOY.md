@@ -334,6 +334,16 @@ RESEND_FROM=noreply@mail.meridiancash.io
 # else — a laptop's `http://127.0.0.1:8080` here would be a value that matches
 # no browser on the internet and blocks the real one.
 WEB_ORIGINS=https://app.meridiancash.io
+
+# The switch to real cards is these five lines, changed together. A price and
+# a webhook endpoint each exist in one mode only, so a half switch is a server
+# that talks to live Stripe about a test price. STRIPE_ENV names the mode,
+# and a key whose prefix disagrees with it stops the server on the way up.
+STRIPE_ENV=test
+STRIPE_SECRET_KEY=…       # `sk_test_` or `sk_live_`, matching STRIPE_ENV
+STRIPE_PUBLISHABLE_KEY=…  # `pk_test_` or `pk_live_`, the same
+STRIPE_PRICE_ID=…         # the price in this mode
+STRIPE_WEBHOOK_SECRET=…   # the endpoint registered in this mode
 ```
 
 `chmod 600 .env`. It holds the Plaid secret, which grants access to every Item

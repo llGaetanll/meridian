@@ -3,6 +3,7 @@ use api_trace::Source;
 use api_trace::scrub;
 use serde::de::DeserializeOwned;
 
+use crate::StripeEnv;
 use crate::StripeError;
 
 /// What this client is called in the logs.
@@ -32,38 +33,61 @@ const BASE_URL: &str = "https://api.stripe.com/v1/";
 /// does. #88 registers the endpoint with `api_version` set to this.
 pub const API_VERSION: &str = "2026-08-26.dahlia";
 
-/// The key, and the price it sells.
+/// The key, the price it sells, and the mode both belong to.
+///
+/// The mode travels with the key rather than being read off it. A key alone
+/// would make a live key in a test `.env` a server that charges real cards
+/// and says nothing; the mode beside it makes that a server that does not
+/// start.
 pub struct StripeCredentials {
-    /// `sk_test_…`. Never `sk_live_…` while the app is not taking real money.
+    /// `sk_test_…` or `sk_live_…`, and it has to agree with `env`.
     pub secret_key: String,
 
     /// The recurring price a subscription is created against. `price_…`, not
     /// `prod_…` — a product can carry several prices, so the product names no
     /// particular amount.
     pub price_id: String,
+
+    /// Which Stripe these belong to.
+    pub env: StripeEnv,
 }
 
 impl StripeCredentials {
+    /// Credentials from `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID` and
+    /// `STRIPE_ENV`.
+    ///
+    /// All three are required, and the key's prefix has to agree with the
+    /// mode. A price belongs to one mode too, but its id does not say which,
+    /// so that one is Stripe's to refuse.
     pub fn from_env() -> Result<Self, StripeError> {
         let var = |key: &str| {
             std::env::var(key).map_err(|_| StripeError::Config(format!("{key} is not set")))
         };
 
+        let env = StripeEnv::from_env()?;
         let secret_key = var("STRIPE_SECRET_KEY")?;
 
-        // A live key is a real card and a real charge. Refused here because
-        // this is the one place every call passes through, and because the
-        // mistake is silent otherwise: a live key works perfectly.
-        if secret_key.starts_with("sk_live_") {
-            return Err(StripeError::Config(
-                "STRIPE_SECRET_KEY is a live key, and this build only takes test keys".to_string(),
-            ));
-        }
+        Self::check_key("STRIPE_SECRET_KEY", &secret_key, env)?;
 
         Ok(Self {
             secret_key,
             price_id: var("STRIPE_PRICE_ID")?,
+            env,
         })
+    }
+
+    /// Whether a key is one of `env`'s. A key from the other mode, or a
+    /// string that is not a key, is a configuration error naming `name`.
+    pub fn check_key(name: &str, key: &str, env: StripeEnv) -> Result<(), StripeError> {
+        match StripeEnv::of_key(key) {
+            Some(of_key) if of_key == env => Ok(()),
+            Some(of_key) => Err(StripeError::Config(format!(
+                "{name} is a {} key and STRIPE_ENV is `{}`",
+                of_key.as_str(),
+                env.as_str(),
+            ))),
+            None => Err(StripeError::Config(format!("{name} is not a Stripe key",))),
+        }
     }
 }
 
@@ -72,10 +96,24 @@ pub struct StripeClient {
     base_url: reqwest::Url,
     secret_key: String,
     price_id: String,
+
+    /// Which Stripe this talks to. Kept so that a caller holding only the
+    /// client can still say which one it is.
+    env: StripeEnv,
 }
 
 impl StripeClient {
+    /// A client for the mode the credentials name.
     pub fn new(credentials: &StripeCredentials) -> Result<Self, StripeError> {
+        // Which mode a session ran in is the first thing worth knowing when
+        // a charge looks wrong, and the last thing anyone remembers to write
+        // down.
+        tracing::info!(
+            env = credentials.env.as_str(),
+            base_url = BASE_URL,
+            "stripe client"
+        );
+
         Self::with_base_url(BASE_URL, credentials)
     }
 
@@ -95,7 +133,13 @@ impl StripeClient {
             base_url,
             secret_key: credentials.secret_key.clone(),
             price_id: credentials.price_id.clone(),
+            env: credentials.env,
         })
+    }
+
+    /// Which Stripe this client talks to.
+    pub fn env(&self) -> StripeEnv {
+        self.env
     }
 
     /// The price a subscription is created against.

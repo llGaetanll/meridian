@@ -168,14 +168,6 @@ impl RuntimeServer {
             tracing::warn!("no stripe webhook secret: every stripe webhook will be refused");
         }
 
-        let stripe_publishable_key = std::env::var("STRIPE_PUBLISHABLE_KEY")
-            .ok()
-            .filter(|key| !key.is_empty());
-
-        if stripe_publishable_key.is_none() {
-            tracing::warn!("no stripe publishable key: nothing can be sold on the web");
-        }
-
         // Said out loud or not at all, the way `PLAID_ENV` is. A fact from the
         // edge: whether a purchase can be believed is the machine's decision,
         // and a build that has not said which store it sells in refuses every
@@ -210,6 +202,32 @@ impl RuntimeServer {
                 None
             }
         };
+
+        // Handed to the card form, so it has to be the same mode as the key
+        // the subscription was made with: a form opened with the other mode's
+        // key cannot confirm the secret it was given, and the failure is in
+        // the browser with nothing in this log.
+        let stripe_publishable_key = std::env::var("STRIPE_PUBLISHABLE_KEY")
+            .ok()
+            .filter(|key| !key.is_empty())
+            .filter(|key| match stripe_client.as_ref() {
+                Some(client) => {
+                    match StripeCredentials::check_key("STRIPE_PUBLISHABLE_KEY", key, client.env())
+                    {
+                        Ok(()) => true,
+                        Err(e) => {
+                            tracing::error!(error = %e, "the publishable key is refused");
+
+                            false
+                        }
+                    }
+                }
+                None => true,
+            });
+
+        if stripe_publishable_key.is_none() {
+            tracing::warn!("no stripe publishable key: nothing can be sold on the web");
+        }
         let collect = PlaidCollect::from_env()?;
 
         // Required in webhook mode and meaningless in poll mode. Read here so

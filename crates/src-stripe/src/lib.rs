@@ -9,6 +9,7 @@
 //! server from a phone is Apple's word for a purchase rather than a card.
 
 mod stripe_client;
+mod stripe_env;
 mod stripe_error;
 mod stripe_rejection;
 mod stripe_request_customer;
@@ -22,6 +23,7 @@ mod stripe_webhook_event;
 pub use stripe_client::API_VERSION;
 pub use stripe_client::StripeClient;
 pub use stripe_client::StripeCredentials;
+pub use stripe_env::StripeEnv;
 pub use stripe_error::StripeError;
 pub use stripe_request_customer::create_customer;
 pub use stripe_request_subscription::cancel_subscription;
