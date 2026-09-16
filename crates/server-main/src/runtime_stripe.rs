@@ -46,21 +46,15 @@ pub async fn create_subscription(
     })
 }
 
-/// Read one back, for a press of Subscribe by somebody who already started.
+/// Read a subscription back, whole.
 ///
-/// The same shape as creating one, because what the machine decides from is
-/// the same three facts either way.
+/// Not reduced the way a created one is: what comes back is believed the way
+/// a webhook is, and a webhook carries the whole object.
 pub async fn get_subscription(
     client: &StripeClient,
     subscription_id: &str,
-) -> Result<Subscription, StripeError> {
-    let subscription = src_stripe::get_subscription(client, subscription_id).await?;
-
-    Ok(Subscription {
-        id: subscription.id.clone(),
-        status: subscription.status(),
-        client_secret: subscription.client_secret().map(str::to_string),
-    })
+) -> Result<src_stripe::StripeSubscription, StripeError> {
+    src_stripe::get_subscription(client, subscription_id).await
 }
 
 /// A newly created subscription, reduced to what the machine acts on.

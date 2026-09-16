@@ -379,27 +379,17 @@ impl StateServer {
         // Sent whatever the lookup said. The row may exist in the store even
         // where this process has not got it in hand, and the query is keyed by
         // the subscription rather than the user.
-        let call_id = self.signup.calling(request_id, self.now);
+        let event_at = u64::try_from(event.created)
+            .map(Timestamp::from_secs)
+            .unwrap_or(self.now);
 
-        actions.push(Action::ToStore {
-            call_id,
-            action: ActionStore::ApplySubscriptionEvent {
-                subscription_id: subscription.id.clone(),
-                status: subscription.status.clone(),
-                // What the store keeps is the date entitlement is decided
-                // from, which is `ended_at` where a subscription stopped
-                // outright — see `StripeSubscription::good_until`.
-                current_period_end: subscription
-                    .good_until(self.now.as_secs() as i64)
-                    .and_then(|secs| u64::try_from(secs).ok())
-                    .map(Timestamp::from_secs),
-                cancel_at_period_end: subscription.cancel_at_period_end,
-                event_id: event.id.clone(),
-                event_at: u64::try_from(event.created)
-                    .map(Timestamp::from_secs)
-                    .unwrap_or(self.now),
-            },
-        });
+        self.write_subscription(
+            request_id,
+            subscription,
+            event.id.clone(),
+            event_at,
+            actions,
+        );
     }
 
     /// Whether a notification is really Apple's, and what to do about it.
@@ -1370,9 +1360,7 @@ impl StateServer {
             // value rather than as Stripe's spelling of one.
             EventSourceStripe::SubscriptionLoaded {
                 user_id,
-                subscription_id,
-                status,
-                client_secret,
+                subscription,
             } => {
                 let Some(request_id) = self.signup.answered(call_id) else {
                     return;
@@ -1391,6 +1379,25 @@ impl StateServer {
                     "a subscription read answered another user's request"
                 );
 
+                // Believed the way a webhook is, before anything is decided
+                // from it. This is what repairs a webhook that never arrived:
+                // somebody who paid and was never let in presses Subscribe,
+                // and what Stripe says now is written and held. A read has no
+                // event of its own, so it is filed under the moment it was
+                // read — a webhook made before that moment is older news.
+                self.entitled.insert(
+                    *user_id,
+                    StateBilling::entitlement_of(subscription, self.now),
+                );
+
+                let read_id = format!("read_{}_{}", subscription.id, self.now.as_secs());
+
+                self.write_subscription(request_id, subscription, read_id, self.now, actions);
+
+                let subscription_id = subscription.id.as_str();
+                let status = subscription.status();
+                let client_secret = subscription.client_secret();
+
                 match status {
                     // Still waiting for a card, which is somebody who opened
                     // the form and walked away. They get that same invoice
@@ -1400,7 +1407,7 @@ impl StateServer {
                         self.hand_over_the_card_form(
                             request_id,
                             subscription_id,
-                            client_secret.as_deref(),
+                            client_secret,
                             actions,
                         );
                     }
@@ -1530,6 +1537,40 @@ impl StateServer {
     /// Either way there is nothing to hand a card form, and the caller is
     /// told the machine cannot answer rather than given a secret that is not
     /// one.
+    /// Write what Stripe said about a subscription, on behalf of a route.
+    ///
+    /// The same write for a webhook and for a read: the query refuses a
+    /// delivery that is a repeat or older than what is there, so it is safe
+    /// to send for everything believed. What the store keeps is the date
+    /// entitlement is decided from, which is `ended_at` where a subscription
+    /// stopped outright and nothing at all for one never paid for — see
+    /// `StripeSubscription::good_until`.
+    fn write_subscription(
+        &mut self,
+        request_id: RequestId,
+        subscription: &src_stripe::StripeSubscription,
+        event_id: String,
+        event_at: Timestamp,
+        actions: &mut Vec<Action>,
+    ) {
+        let call_id = self.signup.calling(request_id, self.now);
+
+        actions.push(Action::ToStore {
+            call_id,
+            action: ActionStore::ApplySubscriptionEvent {
+                subscription_id: subscription.id.clone(),
+                status: subscription.status.clone(),
+                current_period_end: subscription
+                    .good_until(self.now.as_secs() as i64)
+                    .and_then(|secs| u64::try_from(secs).ok())
+                    .map(Timestamp::from_secs),
+                cancel_at_period_end: subscription.cancel_at_period_end,
+                event_id,
+                event_at,
+            },
+        });
+    }
+
     fn hand_over_the_card_form(
         &mut self,
         request_id: RequestId,

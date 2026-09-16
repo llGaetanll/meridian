@@ -1,6 +1,7 @@
 //! Stripe answered, or failed to.
 
 use src_stripe::StripeStatus;
+use src_stripe::StripeSubscription;
 use uuid::Uuid;
 
 #[derive(Debug)]
@@ -22,15 +23,15 @@ pub enum EventSourceStripe {
 
     /// The subscription this user already had, as Stripe has it now.
     ///
-    /// The status is the whole point: `incomplete` is an invoice still waiting
-    /// for a card, and `client_secret` is what confirms it. Anything terminal
+    /// The whole object, because it is believed the way a webhook is: what
+    /// Stripe says now is the truth about entitlement, and a webhook that
+    /// never arrived is repaired by reading. Then its status is one decision:
+    /// `incomplete` is an invoice still waiting for a card, anything terminal
     /// is a subscription to replace, and anything worth something means this
     /// person is already paying.
     SubscriptionLoaded {
         user_id: Uuid,
-        subscription_id: String,
-        status: StripeStatus,
-        client_secret: Option<String>,
+        subscription: StripeSubscription,
     },
 
     /// A call to Stripe produced no answer — it refused, or it was never made.

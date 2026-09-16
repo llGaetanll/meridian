@@ -1632,14 +1632,40 @@ fn coming_back_to_an_abandoned_card_form_picks_up_the_same_subscription() {
             call_id: 2,
             event: EventSourceStripe::SubscriptionLoaded {
                 user_id: SUBSCRIBER,
-                subscription_id: "sub_1".to_string(),
-                status: src_stripe::StripeStatus::Incomplete,
-                client_secret: Some("pi_1_secret".to_string()),
+                subscription: src_stripe::StripeSubscription {
+                    id: "sub_1".to_string(),
+                    status: "incomplete".to_string(),
+                    customer: "cus_1".to_string(),
+                    cancel_at_period_end: false,
+                    ended_at: None,
+                    items: src_stripe::StripeSubscriptionItems {
+                        data: vec![src_stripe::StripeSubscriptionItem {
+                            current_period_start: 0,
+                            current_period_end: PAID_UNTIL.as_secs() as i64,
+                        }],
+                    },
+                    latest_invoice: Some(src_stripe::StripeExpandable::Expanded(
+                        src_stripe::StripeInvoice {
+                            id: "in_1".to_string(),
+                            confirmation_secret: Some(
+                                src_stripe::StripeConfirmationSecret {
+                                    client_secret: "pi_1_secret".to_string(),
+                                },
+                            ),
+                        },
+                    )),
+                },
             },
         },
 
-        // Answered from that alone. No write either: the row already says
-        // this, and nothing about it has changed.
+        // What Stripe said is written like a webhook, and the same invoice's
+        // secret is handed back once it has landed.
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
+        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+
         > @r#"ToRouter { request_id: 1, action: Subscribing { client_secret: "pi_1_secret", publishable_key: "pk_test_1" } }"#,
     );
 }
@@ -1688,17 +1714,34 @@ fn a_subscription_that_expired_unpaid_is_replaced() {
             call_id: 2,
             event: EventSourceStripe::SubscriptionLoaded {
                 user_id: SUBSCRIBER,
-                subscription_id: "sub_1".to_string(),
-                status: src_stripe::StripeStatus::IncompleteExpired,
-                client_secret: None,
+                subscription: src_stripe::StripeSubscription {
+                    id: "sub_1".to_string(),
+                    status: "incomplete_expired".to_string(),
+                    customer: "cus_1".to_string(),
+                    cancel_at_period_end: false,
+                    ended_at: Some(T0.as_secs() as i64),
+                    items: src_stripe::StripeSubscriptionItems {
+                        data: vec![src_stripe::StripeSubscriptionItem {
+                            current_period_start: 0,
+                            current_period_end: PAID_UNTIL.as_secs() as i64,
+                        }],
+                    },
+                    latest_invoice: None,
+                },
             },
         },
 
-        // The customer the dead subscription hung off, reused.
-        > @r#"ToSourceStripe { call_id: 3, action: CreateSubscription { user_id: 00000000-0000-0000-0000-000000000000, customer_id: "cus_00000000-0000-0000-0000-000000000000" } }"#,
-
-        < Event::FromSourceStripe {
+        // What Stripe said is written like a webhook, and the customer the
+        // dead subscription hung off is reused.
+        > Action::ToStore {
             call_id: 3,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
+        > @r#"ToSourceStripe { call_id: 4, action: CreateSubscription { user_id: 00000000-0000-0000-0000-000000000000, customer_id: "cus_00000000-0000-0000-0000-000000000000" } }"#,
+
+        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+        < Event::FromSourceStripe {
+            call_id: 4,
             event: EventSourceStripe::SubscriptionCreated {
                 user_id: SUBSCRIBER,
                 subscription_id: "sub_2".to_string(),
@@ -1708,10 +1751,10 @@ fn a_subscription_that_expired_unpaid_is_replaced() {
         },
 
         > Action::ToStore {
-            call_id: 4,
+            call_id: 5,
             action: ActionStore::SaveCustomer { user_id: SUBSCRIBER, .. },
         },
-        < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
 
         > @r#"ToRouter { request_id: 1, action: Subscribing { client_secret: "pi_2_secret", publishable_key: "pk_test_1" } }"#,
     );
@@ -1754,13 +1797,120 @@ fn somebody_who_already_pays_is_told_so() {
             call_id: 2,
             event: EventSourceStripe::SubscriptionLoaded {
                 user_id: SUBSCRIBER,
-                subscription_id: "sub_1".to_string(),
-                status: src_stripe::StripeStatus::Active,
-                client_secret: None,
+                subscription: src_stripe::StripeSubscription {
+                    id: "sub_1".to_string(),
+                    status: "active".to_string(),
+                    customer: "cus_1".to_string(),
+                    cancel_at_period_end: false,
+                    ended_at: None,
+                    items: src_stripe::StripeSubscriptionItems {
+                        data: vec![src_stripe::StripeSubscriptionItem {
+                            current_period_start: 0,
+                            current_period_end: PAID_UNTIL.as_secs() as i64,
+                        }],
+                    },
+                    latest_invoice: None,
+                },
             },
         },
 
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
+        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+
         > @r#"ToRouter { request_id: 1, action: Subscribed }"#,
+    );
+}
+
+/// A webhook that never arrived is repaired by the read. Somebody who paid
+/// and was never let in presses Subscribe, Stripe says `active`, and that is
+/// believed the way the webhook would have been: written, and the same
+/// session is served.
+#[test]
+fn a_subscription_read_back_from_stripe_is_believed_like_a_webhook() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(SUBSCRIBER, "incomplete", None)],
+            },
+        },
+
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SubscribeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToSourceStripe {
+            call_id: 2,
+            action: ActionSourceStripe::LoadSubscription { .. },
+        },
+        < Event::FromSourceStripe {
+            call_id: 2,
+            event: EventSourceStripe::SubscriptionLoaded {
+                user_id: SUBSCRIBER,
+                subscription: src_stripe::StripeSubscription {
+                    id: "sub_1".to_string(),
+                    status: "active".to_string(),
+                    customer: "cus_1".to_string(),
+                    cancel_at_period_end: false,
+                    ended_at: None,
+                    items: src_stripe::StripeSubscriptionItems {
+                        data: vec![src_stripe::StripeSubscriptionItem {
+                            current_period_start: 0,
+                            current_period_end: PAID_UNTIL.as_secs() as i64,
+                        }],
+                    },
+                    latest_invoice: None,
+                },
+            },
+        },
+
+        // Written before the route is answered, the same write a webhook
+        // makes, so a restart reads the repair back.
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
+        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+
+        > @r#"ToRouter { request_id: 1, action: Subscribed }"#,
+
+        // And the session that was shut out is served.
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 4,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToStore { call_id: 5, action: ActionStore::LoadItems { .. } },
     );
 }
 
@@ -1832,18 +1982,34 @@ fn a_late_delivery_about_a_replaced_subscription_takes_nothing_away() {
             call_id: 2,
             event: EventSourceStripe::SubscriptionLoaded {
                 user_id: SUBSCRIBER,
-                subscription_id: "sub_1".to_string(),
-                status: src_stripe::StripeStatus::IncompleteExpired,
-                client_secret: None,
+                subscription: src_stripe::StripeSubscription {
+                    id: "sub_1".to_string(),
+                    status: "incomplete_expired".to_string(),
+                    customer: "cus_1".to_string(),
+                    cancel_at_period_end: false,
+                    ended_at: Some(T0.as_secs() as i64),
+                    items: src_stripe::StripeSubscriptionItems {
+                        data: vec![src_stripe::StripeSubscriptionItem {
+                            current_period_start: 0,
+                            current_period_end: PAID_UNTIL.as_secs() as i64,
+                        }],
+                    },
+                    latest_invoice: None,
+                },
             },
         },
 
-        > Action::ToSourceStripe {
+        > Action::ToStore {
             call_id: 3,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
+        > Action::ToSourceStripe {
+            call_id: 4,
             action: ActionSourceStripe::CreateSubscription { .. },
         },
+        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
         < Event::FromSourceStripe {
-            call_id: 3,
+            call_id: 4,
             event: EventSourceStripe::SubscriptionCreated {
                 user_id: SUBSCRIBER,
                 subscription_id: "sub_2".to_string(),
@@ -1853,10 +2019,10 @@ fn a_late_delivery_about_a_replaced_subscription_takes_nothing_away() {
         },
 
         > Action::ToStore {
-            call_id: 4,
+            call_id: 5,
             action: ActionStore::SaveCustomer { .. },
         },
-        < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
 
         > @r#"ToRouter { request_id: 1, action: Subscribing { client_secret: "pi_2_secret", publishable_key: "pk_test_1" } }"#,
 
@@ -1873,10 +2039,10 @@ fn a_late_delivery_about_a_replaced_subscription_takes_nothing_away() {
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
 
         > Action::ToStore {
-            call_id: 5,
+            call_id: 6,
             action: ActionStore::ApplySubscriptionEvent { .. },
         },
-        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 6, event: EventStore::WriteSuccess },
 
         // And the delivery about the one it replaced arrives. Taken, because
         // the signature was ours and refusing it only asks Stripe to send it
@@ -1896,7 +2062,7 @@ fn a_late_delivery_about_a_replaced_subscription_takes_nothing_away() {
         // `sub_2` now. Sent anyway, because a row can exist in the store that
         // this process has not got in hand.
         > Action::ToStore {
-            call_id: 6,
+            call_id: 7,
             action: ActionStore::ApplySubscriptionEvent { .. },
         },
 
@@ -1910,11 +2076,11 @@ fn a_late_delivery_about_a_replaced_subscription_takes_nothing_away() {
         },
 
         > Action::ToStore {
-            call_id: 7,
+            call_id: 8,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 7,
+            call_id: 8,
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 

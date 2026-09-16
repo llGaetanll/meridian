@@ -550,9 +550,7 @@ impl RuntimeServer {
             } => match runtime_stripe::get_subscription(client, subscription_id).await {
                 Ok(subscription) => EventSourceStripe::SubscriptionLoaded {
                     user_id: *user_id,
-                    subscription_id: subscription.id,
-                    status: subscription.status,
-                    client_secret: subscription.client_secret,
+                    subscription,
                 },
                 Err(e) => EventSourceStripe::StripeFailed {
                     user_id: *user_id,

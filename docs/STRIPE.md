@@ -60,7 +60,15 @@ client: Stripe Elements confirms the card  the card never touches our server
 stripe: POST /stripe/webhook             -> customer.subscription.updated
 ```
 
-**A subscription's truth arrives by webhook and nowhere else.** The card form
+**A subscription's truth arrives by webhook, or by asking.** A press of
+Subscribe by somebody with a subscription on file reads it back from Stripe
+first, and what comes back is believed and written exactly as a webhook would
+be, filed under the moment it was read. That is how a webhook that never
+arrived is repaired: the person who paid and was never let in presses
+Subscribe, Stripe says `active`, and the next snapshot is served. Nothing else
+asks — a poll on every refused request would be a call per app open.
+
+**Nothing else is the truth.** The card form
 closing says a card was accepted, which is not the same thing: the card can
 fail after the form closes, the renewal can fail a month later, and a
 chargeback can undo one that worked. So `/billing/subscribe` writes the
