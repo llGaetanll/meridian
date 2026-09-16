@@ -176,6 +176,24 @@ mod ending {
         );
     }
 
+    /// A first payment that has not landed. Stripe already reports the period
+    /// a month out on the `created` event, and believing that opens the app
+    /// for somebody who has paid nothing.
+    #[test]
+    fn an_incomplete_subscription_has_no_date_at_all() {
+        let body = r#"{
+          "id": "sub_1",
+          "status": "incomplete",
+          "customer": "cus_1",
+          "cancel_at_period_end": false,
+          "items": { "data": [ { "current_period_start": 0, "current_period_end": 9000 } ] }
+        }"#;
+
+        let subscription: StripeSubscription = serde_json::from_str(body).expect("it parses");
+
+        assert_eq!(subscription.good_until(NOW), None);
+    }
+
     /// A first payment that never landed. Terminal, and it never bought
     /// anything.
     #[test]

@@ -114,10 +114,15 @@ impl StripeSubscription {
         )
     }
 
-    /// When this subscription stops being worth anything.
+    /// When this subscription stops being worth anything, or `None` for one
+    /// that has never been worth anything.
     ///
-    /// Three cases, and the reason this is not just `current_period_end`:
+    /// Four cases, and the reason this is not just `current_period_end`:
     ///
+    /// - **`incomplete`.** Started and not paid for. Stripe reports the period
+    ///   a month out from the moment it is created, before any card, and
+    ///   believing that opens the app for somebody who has paid nothing. So
+    ///   there is no date at all.
     /// - **Cancelled at period end.** `ended_at` is null while it runs, so the
     ///   period end stands and access continues to the day paid for — which
     ///   is what `site/app/terms` promises.
@@ -130,6 +135,10 @@ impl StripeSubscription {
     ///   Worth nothing from now, so `now` is the answer — which the caller
     ///   supplies, because a machine that read a clock here would be doing IO.
     pub fn good_until(&self, now: i64) -> Option<i64> {
+        if self.status() == StripeStatus::Incomplete {
+            return None;
+        }
+
         if self.status_ends_it() {
             return Some(now);
         }

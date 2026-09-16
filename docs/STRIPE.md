@@ -75,9 +75,11 @@ One date: the end of the period paid for, read off the subscription's item.
 that is what cancelling at period end means and the terms promise it.
 
 The status is kept beside the date for the account screen and the paywall's
-sentence, and it changes the date in two cases: `unpaid` and
-`incomplete_expired` are worth nothing from now, whatever the period says.
-`past_due` is deliberately not one of them — Stripe is still retrying, the
+sentence, and it changes the date in three cases: `unpaid` and
+`incomplete_expired` are worth nothing from now, whatever the period says, and
+`incomplete` has no date at all — Stripe reports its period a month out from
+the moment it is created, before any card, and the `created` webhook carries
+exactly that. `past_due` is deliberately not one of them — Stripe is still retrying, the
 period was paid for, and the ordinary cause is an expired card that a smart
 retry fixes within the hour.
 

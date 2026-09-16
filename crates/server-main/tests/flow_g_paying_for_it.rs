@@ -404,6 +404,72 @@ fn a_believed_webhook_is_what_opens_the_app() {
     );
 }
 
+/// The `created` webhook carries `incomplete` with a period already a month
+/// out, and nothing has been paid. The date alone would open the app, so an
+/// `incomplete` subscription has to be worth nothing whatever period it
+/// reports.
+#[test]
+fn an_incomplete_subscription_opens_nothing_whatever_its_period_says() {
+    let mut state = state();
+
+    let body = stripe_subscription_event(
+        "evt_1",
+        T0.as_secs(),
+        "sub_1",
+        "incomplete",
+        PAID_UNTIL.as_secs(),
+    );
+    let signature = stripe_signed(&body, T0);
+
+    eval!(&mut state,
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "incomplete",
+                    None,
+                )],
+            },
+        },
+
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived {
+                signature: signature.clone(),
+                body: body.clone(),
+            },
+        },
+
+        > @r#"ToRouter { request_id: 1, action: Accepted }"#,
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
+
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > @r#"ToRouter { request_id: 2, action: PaymentRequired { unpaid: WireUnpaid { reason: "unfinished", ran_out: None } } }"#,
+    );
+}
+
 /// A signature that does not check out is refused, and **nothing is written**.
 ///
 /// What the claim is about is the action that does not come out: a forged
