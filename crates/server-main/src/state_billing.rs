@@ -476,11 +476,11 @@ impl StateBilling {
 
     /// What a believed webhook says about somebody's subscription.
     ///
-    /// Answers the entitlement it implies, for the parent to hold. The write
-    /// to the store goes out beside it, and the ordering guard there is what
-    /// makes a repeat or an out-of-order delivery harmless.
+    /// Answers the entitlement it implies, for the parent to hold, dated
+    /// `event_at` so a stale delivery can be told from a new fact.
     pub fn entitlement_of(
         subscription: &src_stripe::StripeSubscription,
+        event_at: Timestamp,
         now: Timestamp,
     ) -> Entitlement {
         Entitlement {
@@ -491,6 +491,7 @@ impl StateBilling {
                 .and_then(|secs| u64::try_from(secs).ok())
                 .map(Timestamp::from_secs),
             cancel_at_period_end: subscription.cancel_at_period_end,
+            event_at: Some(event_at),
         }
     }
 }

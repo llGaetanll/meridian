@@ -46,6 +46,7 @@ impl AppleFacts {
             status: self.status.as_str().to_string(),
             good_until: self.good_until,
             cancel_at_period_end: false,
+            event_at: Some(self.event_at),
         }
     }
 }

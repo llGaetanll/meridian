@@ -470,6 +470,100 @@ fn an_incomplete_subscription_opens_nothing_whatever_its_period_says() {
     );
 }
 
+/// Stripe says outright that events are not delivered in order. A delivery
+/// older than the one already believed says nothing new, and the machine's
+/// copy holds the same rule the store's query does — otherwise the two
+/// disagree until the next restart, and the machine's is the one every
+/// snapshot reads.
+#[test]
+fn a_stale_delivery_after_a_newer_one_moves_nothing() {
+    let mut state = state();
+
+    let paid = stripe_subscription_event(
+        "evt_2",
+        T0.as_secs() + 60,
+        "sub_1",
+        "active",
+        PAID_UNTIL.as_secs(),
+    );
+    let paid_signature = stripe_signed(&paid, T0);
+
+    // The `created` event, a minute older, delivered late.
+    let created = stripe_subscription_event(
+        "evt_1",
+        T0.as_secs(),
+        "sub_1",
+        "incomplete",
+        PAID_UNTIL.as_secs(),
+    );
+    let created_signature = stripe_signed(&created, T0);
+
+    eval!(&mut state,
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![fixtures::subscription(
+                    SUBSCRIBER,
+                    "incomplete",
+                    None,
+                )],
+            },
+        },
+
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived {
+                signature: paid_signature,
+                body: paid,
+            },
+        },
+
+        > @r#"ToRouter { request_id: 1, action: Accepted }"#,
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
+
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived {
+                signature: created_signature,
+                body: created,
+            },
+        },
+
+        > @r#"ToRouter { request_id: 2, action: Accepted }"#,
+
+        // Sent anyway: the query refuses it for itself.
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
+
+        < Event::FromRouter {
+            request_id: 3,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::BillingStatusRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 3,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > @r#"ToRouter { request_id: 3, action: BillingStatus { entitled: true, unpaid: None, good_until: Some(1818633600), cancel_at_period_end: false } }"#,
+    );
+}
+
 /// A signature that does not check out is refused, and **nothing is written**.
 ///
 /// What the claim is about is the action that does not come out: a forged

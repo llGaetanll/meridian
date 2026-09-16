@@ -167,8 +167,10 @@ invoice's line.
 Stripe says so outright, and `created` is only accurate to the second. The
 write takes an event only if its id is new and its timestamp is not older
 than what is stored — `<=`, so two events sharing a second both land. The
-route answers in the turn the signature checks out, before the write, because
-Stripe retries anything not answered in about twenty seconds.
+machine's copy in memory holds the same rule, dated by the event it was read
+from, so a stale delivery moves neither. The route answers in the turn the
+signature checks out, before the write, because Stripe retries anything not
+answered in about twenty seconds.
 
 ### Believing one
 

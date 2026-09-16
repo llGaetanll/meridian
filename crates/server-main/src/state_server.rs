@@ -359,14 +359,18 @@ impl StateServer {
             return;
         };
 
-        let entitlement = StateBilling::entitlement_of(subscription, self.now);
+        let event_at = u64::try_from(event.created)
+            .map(Timestamp::from_secs)
+            .unwrap_or(self.now);
+
+        let entitlement = StateBilling::entitlement_of(subscription, event_at, self.now);
 
         // Held only for a user this process knows about. One it does not is a
         // subscription created against another database — a test key pointed
         // at a live server, or a customer from before this table existed.
         match self.billing.user_for_subscription(&subscription.id) {
             Some(user_id) => {
-                self.entitled.insert(user_id, entitlement);
+                self.entitle(user_id, entitlement);
             }
             None => {
                 tracing::warn!(
@@ -379,10 +383,6 @@ impl StateServer {
         // Sent whatever the lookup said. The row may exist in the store even
         // where this process has not got it in hand, and the query is keyed by
         // the subscription rather than the user.
-        let event_at = u64::try_from(event.created)
-            .map(Timestamp::from_secs)
-            .unwrap_or(self.now);
-
         self.write_subscription(
             request_id,
             subscription,
@@ -437,7 +437,7 @@ impl StateServer {
         facts: &AppleFacts,
         actions: &mut Vec<Action>,
     ) {
-        self.entitled.insert(user_id, facts.entitlement());
+        self.entitle(user_id, facts.entitlement());
 
         // So the next notification, which names the payer and not the user,
         // finds whose row to move.
@@ -1385,9 +1385,9 @@ impl StateServer {
                 // and what Stripe says now is written and held. A read has no
                 // event of its own, so it is filed under the moment it was
                 // read — a webhook made before that moment is older news.
-                self.entitled.insert(
+                self.entitle(
                     *user_id,
-                    StateBilling::entitlement_of(subscription, self.now),
+                    StateBilling::entitlement_of(subscription, self.now, self.now),
                 );
 
                 let read_id = format!("read_{}_{}", subscription.id, self.now.as_secs());
@@ -1537,6 +1537,28 @@ impl StateServer {
     /// Either way there is nothing to hand a card form, and the caller is
     /// told the machine cannot answer rather than given a secret that is not
     /// one.
+    /// Hold what a provider said about a user's subscription, unless what is
+    /// held came from a newer event.
+    ///
+    /// The same rule the store's query applies, so the copy every snapshot
+    /// reads cannot disagree with the row until the next restart. Stripe says
+    /// outright that events are not delivered in order.
+    fn entitle(&mut self, user_id: Uuid, entitlement: Entitlement) {
+        if let Some(held) = self.entitled.get(&user_id)
+            && !entitlement.newer_than(held)
+        {
+            tracing::info!(
+                %user_id,
+                status = entitlement.status,
+                "a delivery older than what is held says nothing new",
+            );
+
+            return;
+        }
+
+        self.entitled.insert(user_id, entitlement);
+    }
+
     /// Write what Stripe said about a subscription, on behalf of a route.
     ///
     /// The same write for a webhook and for a read: the query refuses a
@@ -2024,6 +2046,7 @@ impl StateServer {
                             status: stored.status.clone(),
                             good_until: stored.current_period_end,
                             cancel_at_period_end: stored.cancel_at_period_end,
+                            event_at: stored.last_event_at,
                         },
                     );
                 }

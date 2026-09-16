@@ -31,6 +31,13 @@ pub struct Entitlement {
 
     /// Whether it stops at the end of that period.
     pub cancel_at_period_end: bool,
+
+    /// When the event this was read from was made. What tells a stale
+    /// delivery from a new fact: the store's query refuses anything older
+    /// than the row's last event, and [`Entitlement::newer_than`] is the same
+    /// rule held here, so the two copies cannot disagree. `None` is a row
+    /// written before anything was.
+    pub event_at: Option<Timestamp>,
 }
 
 impl Entitlement {
@@ -51,6 +58,19 @@ impl Entitlement {
     pub fn allows(&self, now: Timestamp) -> bool {
         self.good_until
             .is_some_and(|until| now.as_secs() < until.as_secs())
+    }
+
+    /// Whether this is at least as new as `held`, and so replaces it.
+    ///
+    /// `<=` rather than `<`, the same as the query: Stripe's `created` is
+    /// accurate to the second, and two events sharing a second both land.
+    /// Anything undated is older than everything.
+    pub fn newer_than(&self, held: &Entitlement) -> bool {
+        match (self.event_at, held.event_at) {
+            (Some(mine), Some(theirs)) => theirs.as_secs() <= mine.as_secs(),
+            (Some(_), None) => true,
+            (None, _) => false,
+        }
     }
 }
 
