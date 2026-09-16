@@ -16,7 +16,8 @@ use crate::PlaidRequest;
 /// platform-specific has to be integrated to connect a bank. See
 /// `docs/PLAID.md`.
 pub struct LinkTokenRequest {
-    /// What Link calls us on its own page. Plaid caps it at 30 characters.
+    /// What Link calls us on its own page — [`CLIENT_NAME`], and the
+    /// constraint that comes with it.
     pub client_name: String,
 
     pub language: String,
@@ -72,6 +73,13 @@ pub struct LinkTokenRequest {
     pub url_lifetime_seconds: Option<u32>,
 }
 
+/// What Plaid's consent screen calls us — "Meridian would like to connect to
+/// your account". It must match the app name in the Plaid dashboard profile
+/// exactly, and no API exposes that profile, so keeping the two the same is a
+/// hand check: a change here is a change there. Plaid caps it at 30
+/// characters.
+pub const CLIENT_NAME: &str = "Meridian";
+
 /// The only product the app uses. Balances and recurring both come off the
 /// Item that `transactions` creates, so naming them again would only widen
 /// what the user is asked to consent to.
@@ -81,7 +89,7 @@ impl LinkTokenRequest {
     /// Attach a bank that is not attached yet.
     pub fn hosted(client_user_id: impl Into<String>) -> Self {
         Self {
-            client_name: String::from("Meridian"),
+            client_name: String::from(CLIENT_NAME),
             language: String::from("en"),
             country_codes: vec![String::from("US")],
             client_user_id: client_user_id.into(),
