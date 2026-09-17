@@ -100,27 +100,25 @@ can say to Plaid. Mapped onto the shapes above:
 | --- | --- | --- |
 | `/transactions/sync` | Subscription | **Zero** — the Item is paid for whether we sync or not |
 | `/transactions/recurring/get` | Subscription (separate) | **Zero**, same reasoning |
-| `/accounts/balance/get` | Per request | **Billed. The only call in the app where usage is money** |
+| `/accounts/get` | Free | Zero — balances from Plaid's cache, refreshed about daily |
 | `/link/token/create`, `/link/token/get` | Free | Zero |
 | `/item/public_token/exchange` | Free | Zero, but creates a subscription and spends a Trial slot |
 | `/webhook_verification_key/get` | Free | Zero |
 | `/item/remove` | Free | Zero, but the slot does not come back |
 
-And what we notably do *not* call: `/accounts/get`, which returns the same
-balances `/accounts/balance/get` does, from a cache Plaid refreshes about
-daily on any Item with Transactions, **for free**. Plaid's own guidance is
-that `/accounts/balance/get` is for the moment before moving money;
-a personal-finance display is what the cached number is for.
+And what we notably do *not* call: `/accounts/balance/get`, which asks the
+bank live and bills per successful call. Plaid's own guidance is that it is
+for the moment before moving money; a personal-finance display is what the
+cached number from `/accounts/get` is for, and that is the one the sync path
+uses.
 
 ## What this means
 
 Two consequences fall straight out of the table:
 
-- **A user's marginal cost is one call: balance.** Everything else we do is
-  either free or already paid for by the subscription. `FRESH_FOR_SECS`
-  gating `/transactions/sync` protects a rate limit; the same constant gating
-  `/accounts/balance/get` protects the bill. One number is doing two jobs
-  with different stakes — that is #51.
+- **A user's marginal cost is zero.** Every call the app makes is either free
+  or already paid for by the subscription, so `FRESH_FOR_SECS` protects rate
+  limits rather than a bill.
 - **The cost that actually scales with users is the subscription**, not any
   call we make: Transactions plus Recurring, per Item, per month, from
   exchange until removal. The BUSINESS.md contribution table is right to be

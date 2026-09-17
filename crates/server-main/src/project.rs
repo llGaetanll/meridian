@@ -14,7 +14,7 @@ use api_ledger::Position;
 use api_ledger::Stream;
 use api_ledger::Tx;
 use api_ledger::initials;
-use src_plaid::BalancesResponse;
+use src_plaid::AccountsResponse;
 use src_plaid::PlaidAccount;
 use src_plaid::PlaidStream;
 use src_plaid::PlaidTransaction;
@@ -60,7 +60,7 @@ pub fn entry(tx: &PlaidTransaction) -> Entry {
 }
 
 /// The whole connection: the institution, its accounts, and its health.
-pub fn connection(balances: &BalancesResponse, synced_at: api_common::Timestamp) -> Connection {
+pub fn connection(balances: &AccountsResponse, synced_at: api_common::Timestamp) -> Connection {
     let name = balances
         .item
         .institution_name
@@ -181,7 +181,7 @@ mod tests {
         serde_json::from_str(include_str!("../fixtures/sync.json")).expect("fixture parses")
     }
 
-    fn balances() -> BalancesResponse {
+    fn balances() -> AccountsResponse {
         serde_json::from_str(include_str!("../fixtures/balances.json")).expect("fixture parses")
     }
 

@@ -6,7 +6,7 @@ Real Plaid **Sandbox** responses, captured 2026-08-19 from institution
 | File | Endpoint |
 | --- | --- |
 | `sync.json` | `/transactions/sync` |
-| `balances.json` | `/accounts/balance/get` |
+| `balances.json` | `/accounts/get` |
 | `recurring.json` | `/transactions/recurring/get` |
 
 Captured with a throwaway Sandbox Item, so there are no real credentials and

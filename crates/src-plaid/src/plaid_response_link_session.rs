@@ -2,7 +2,7 @@
 //!
 //! Deliberately shallow. The session record carries the accounts chosen, the
 //! institution, and a good deal else that we would only be re-reading from
-//! `/accounts/balance/get` a moment later — so this parses the one field that
+//! `/accounts/get` a moment later — so this parses the one field that
 //! exists nowhere else, and lets serde discard the rest.
 
 use serde::Deserialize;

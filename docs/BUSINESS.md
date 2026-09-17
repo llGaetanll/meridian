@@ -69,7 +69,7 @@ Three billing shapes, and which one a product uses is the whole of its cost:
 | Shape | Charged | What Meridian uses |
 | --- | --- | --- |
 | Subscription | Monthly, per Item, for as long as the Item exists | `/transactions/sync`, `/transactions/recurring/get` |
-| Per request | Per successful call | `/accounts/balance/get` |
+| Per request | Per successful call | none |
 | One-time | Once per Item, at link | none |
 
 **Plaid publishes no rates.** The pricing page is a contact-sales page; the
@@ -82,10 +82,11 @@ Three things follow regardless of the rate:
 
 - **A subscription bills until the Item is removed**, not until the user stops
   using it. A cancelled account means `/item/remove` the same day.
-- **Balance is the only cost a user can run up by using the app.** Uncached,
-  one call per app open makes a daily user cost several times a light user.
-  `api-cache` exists for this; the cache TTL is a pricing decision, not a
-  performance one.
+- **No call the app makes bills per use.** Balances come from `/accounts/get`,
+  Plaid's free cache, rather than the billed `/accounts/balance/get` — so a
+  daily user and a light user cost the same, and the per-request column stays
+  empty unless somebody adds a call to it. `docs/PLAID_API.md` is where to
+  check before adding one.
 - **The Trial plan allows 10 Production Items and `/item/remove` does not free
   the slot.** That is a hard ceiling of a handful of users. Moving off Trial
   comes before the first paying customer, not after.

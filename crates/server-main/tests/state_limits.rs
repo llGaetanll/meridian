@@ -203,7 +203,7 @@ fn deliver(state: &mut StateServer, request_id: u64, body: &str) {
 /// Plaid meters per endpoint, and a rejected call still counts against the
 /// budget — so a burst has to be refused here rather than sent and bounced.
 ///
-/// `BalanceGet` allows ten a minute and each refresh is its own route, so the
+/// `AccountsGet` allows ten a minute and each refresh is its own route, so the
 /// budget runs out in front of you: ten fetches, and then the eleventh is
 /// answered from the store instead of asking Plaid again. The bank is stale
 /// every time, so nothing but the limit can be what stops it.

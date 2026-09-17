@@ -23,9 +23,9 @@ use api_common::ratelimit::Window;
 pub enum PlaidEndpoint {
     /// `/transactions/sync` — 30/min per Item.
     TransactionsSync,
-    /// `/accounts/balance/get` — the strict one. Plaid meters it hard because
-    /// it goes to the bank rather than to a cache.
-    BalanceGet,
+    /// `/accounts/get` — accounts and cached balances. The free one; the app
+    /// deliberately never calls `/accounts/balance/get`, which bills per call.
+    AccountsGet,
     /// `/transactions/recurring/get`.
     RecurringGet,
     /// `/link/token/create` — the page somebody signs in to their bank on.
@@ -50,7 +50,7 @@ impl PlaidEndpoint {
         match self {
             PlaidEndpoint::TransactionsSync => 25,
             // 15/min published; 10 leaves room for a retry without tipping over.
-            PlaidEndpoint::BalanceGet => 10,
+            PlaidEndpoint::AccountsGet => 10,
             PlaidEndpoint::RecurringGet => 10,
             // Both are one request per sheet, and a sheet is a person doing
             // something. Far more than that is something in a loop.
@@ -162,7 +162,7 @@ mod tests {
     #[test]
     fn it_allows_calls_up_to_the_endpoint_limit() {
         let mut limiter = PlaidRateLimiter::new();
-        let ctx = ctx(PlaidEndpoint::BalanceGet);
+        let ctx = ctx(PlaidEndpoint::AccountsGet);
 
         for i in 0..10 {
             assert!(limiter.can_send(T0, &ctx), "call {i} should be allowed");
@@ -172,16 +172,16 @@ mod tests {
     }
 
     /// The whole reason the context carries an endpoint: a burst of syncs must
-    /// not use up the balance budget.
+    /// not use up the accounts budget.
     #[test]
     fn endpoints_have_separate_budgets() {
         let mut limiter = PlaidRateLimiter::new();
 
         for _ in 0..10 {
-            limiter.can_send(T0, &ctx(PlaidEndpoint::BalanceGet));
+            limiter.can_send(T0, &ctx(PlaidEndpoint::AccountsGet));
         }
 
-        assert!(!limiter.can_send(T0, &ctx(PlaidEndpoint::BalanceGet)));
+        assert!(!limiter.can_send(T0, &ctx(PlaidEndpoint::AccountsGet)));
         assert!(
             limiter.can_send(T0, &ctx(PlaidEndpoint::TransactionsSync)),
             "a different endpoint has its own window",
@@ -193,8 +193,8 @@ mod tests {
     fn items_have_separate_budgets() {
         let mut limiter = PlaidRateLimiter::new();
 
-        let first = PlaidRateCtx::new(PlaidEndpoint::BalanceGet, "item-1");
-        let second = PlaidRateCtx::new(PlaidEndpoint::BalanceGet, "item-2");
+        let first = PlaidRateCtx::new(PlaidEndpoint::AccountsGet, "item-1");
+        let second = PlaidRateCtx::new(PlaidEndpoint::AccountsGet, "item-2");
 
         for _ in 0..10 {
             limiter.can_send(T0, &first);
@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn the_budget_refills_over_a_minute() {
         let mut limiter = PlaidRateLimiter::new();
-        let ctx = ctx(PlaidEndpoint::BalanceGet);
+        let ctx = ctx(PlaidEndpoint::AccountsGet);
 
         for _ in 0..10 {
             limiter.can_send(T0, &ctx);
@@ -225,7 +225,7 @@ mod tests {
         let mut limiter = PlaidRateLimiter::new();
 
         for i in 0..50 {
-            let ctx = PlaidRateCtx::new(PlaidEndpoint::BalanceGet, format!("item-{i}"));
+            let ctx = PlaidRateCtx::new(PlaidEndpoint::AccountsGet, format!("item-{i}"));
 
             limiter.can_send(T0, &ctx);
         }
@@ -264,7 +264,7 @@ mod tests {
     #[test]
     fn it_says_when_the_next_call_is_allowed() {
         let mut limiter = PlaidRateLimiter::new();
-        let ctx = ctx(PlaidEndpoint::BalanceGet);
+        let ctx = ctx(PlaidEndpoint::AccountsGet);
 
         for _ in 0..10 {
             limiter.can_send(T0, &ctx);

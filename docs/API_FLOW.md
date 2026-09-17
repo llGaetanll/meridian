@@ -177,7 +177,7 @@ request, answered like any other — which is what lets a caller with no session
 be refused before a byte of the body has gone out. Everything after the first
 message is the server talking unprompted.
 
-1. `server` -> `plaid` - `POST /accounts/balance/get`: *The first of three, started without anybody asking rather than waiting for a `/snapshot` to trigger it. Each of the three is one action of the server's state machine and one answer back, so the order below, and every rule about it, is decided in one place.*
+1. `server` -> `plaid` - `POST /accounts/get`: *The first of three, started without anybody asking rather than waiting for a `/snapshot` to trigger it. Each of the three is one action of the server's state machine and one answer back, so the order below, and every rule about it, is decided in one place.*
 2. `server` <- `plaid` - `200` accounts and balances: *The first place the bank's name exists. It is in neither the Link session nor the exchange.*
 3. `phone` -> `server` - `GET /sync/status` with `Authorization: Bearer <token>` and `Accept: text/event-stream`: *Opened once, on the news that a bank landed, and held for as long as the sync screen is up.*
 4. `phone` <- `server` - one of:

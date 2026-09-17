@@ -7,7 +7,7 @@
 //! here is started by the store reporting the bank rather than by a request:
 //! nobody asks for D to begin.
 //!
-//! The three calls are the machine's own — `/accounts/balance/get`,
+//! The three calls are the machine's own — `/accounts/get`,
 //! `/transactions/sync`, `/transactions/recurring/get` — one action and one
 //! answer each, in that order, with each answer deciding what is asked next.
 //! So D1 through D8 are read here as the actions and events they are.

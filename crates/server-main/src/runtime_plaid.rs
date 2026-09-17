@@ -43,9 +43,9 @@ pub async fn fetch_balances(
     access_token: &str,
     now: api_common::Timestamp,
 ) -> Result<Connection, PlaidError> {
-    let balances = src_plaid::fetch_balances(client, access_token).await?;
+    let accounts = src_plaid::fetch_accounts(client, access_token).await?;
 
-    Ok(project::connection(&balances, now))
+    Ok(project::connection(&accounts, now))
 }
 
 /// Everything that changed on one bank since `cursor`, one page of it.
@@ -254,7 +254,7 @@ pub fn fetch_fixtures(now: api_common::Timestamp) -> Fetched {
     }
 
     let sync: src_plaid::SyncResponse = parse("sync", include_str!("../fixtures/sync.json"));
-    let balances: src_plaid::BalancesResponse =
+    let balances: src_plaid::AccountsResponse =
         parse("balances", include_str!("../fixtures/balances.json"));
     let recurring: src_plaid::RecurringResponse =
         parse("recurring", include_str!("../fixtures/recurring.json"));

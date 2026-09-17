@@ -27,7 +27,7 @@ mod plaid_http_request;
 mod plaid_ratelimit;
 mod plaid_rejection;
 mod plaid_request;
-mod plaid_request_balances;
+mod plaid_request_accounts;
 mod plaid_request_exchange;
 mod plaid_request_link_session;
 mod plaid_request_link_token;
@@ -36,7 +36,7 @@ mod plaid_request_remove;
 mod plaid_request_sandbox_public_token;
 mod plaid_request_sync;
 mod plaid_request_webhook_key;
-mod plaid_response_balances;
+mod plaid_response_accounts;
 mod plaid_response_exchange;
 mod plaid_response_link_session;
 mod plaid_response_link_token;
@@ -57,7 +57,7 @@ pub use plaid_http_request::*;
 pub use plaid_ratelimit::*;
 pub use plaid_rejection::*;
 pub use plaid_request::*;
-pub use plaid_request_balances::*;
+pub use plaid_request_accounts::*;
 pub use plaid_request_exchange::*;
 pub use plaid_request_link_session::*;
 pub use plaid_request_link_token::*;
@@ -66,7 +66,7 @@ pub use plaid_request_remove::*;
 pub use plaid_request_sandbox_public_token::*;
 pub use plaid_request_sync::*;
 pub use plaid_request_webhook_key::*;
-pub use plaid_response_balances::*;
+pub use plaid_response_accounts::*;
 pub use plaid_response_exchange::*;
 pub use plaid_response_link_session::*;
 pub use plaid_response_link_token::*;
@@ -217,13 +217,13 @@ pub async fn sync_transactions(
     Ok(res)
 }
 
-/// Every account's balance, straight from the bank.
-pub async fn fetch_balances(
+/// Every account and its balance, from Plaid's cache.
+pub async fn fetch_accounts(
     client: &PlaidClient,
     access_token: &str,
-) -> Result<BalancesResponse, PlaidError> {
+) -> Result<AccountsResponse, PlaidError> {
     client
-        .send_request(&BalancesRequest::new(access_token))
+        .send_request(&AccountsRequest::new(access_token))
         .await
 }
 

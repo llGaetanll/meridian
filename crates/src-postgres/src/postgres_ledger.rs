@@ -50,7 +50,7 @@ pub(crate) fn seconds(at: DateTime<Utc>) -> Timestamp {
 
 /// Replace an Item's accounts with what the bank just said.
 ///
-/// Wholesale rather than a diff, because `/accounts/balance/get` answers with
+/// Wholesale rather than a diff, because `/accounts/get` answers with
 /// every account every time — there is no "changed since" to apply. In one
 /// transaction, so nothing ever reads a connection with half its accounts.
 pub async fn save_accounts(

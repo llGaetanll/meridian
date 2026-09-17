@@ -1,9 +1,9 @@
-//! What `/accounts/balance/get` answers with.
+//! What `/accounts/get` answers with.
 
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct BalancesResponse {
+pub struct AccountsResponse {
     pub accounts: Vec<PlaidAccount>,
 
     /// Which Item these accounts belong to, and whether it is healthy.
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn parses_balances() {
-        let res: BalancesResponse = serde_json::from_str(BODY).unwrap();
+        let res: AccountsResponse = serde_json::from_str(BODY).unwrap();
 
         assert_eq!(res.accounts.len(), 2);
         assert_eq!(
@@ -163,7 +163,7 @@ mod tests {
             }
         }"#;
 
-        let res: BalancesResponse = serde_json::from_str(body).unwrap();
+        let res: AccountsResponse = serde_json::from_str(body).unwrap();
 
         assert_eq!(
             res.item.error.unwrap().error_code.as_deref(),

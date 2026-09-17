@@ -70,9 +70,12 @@ use crate::entitlement;
 use crate::rate_limit::ServerRateCtx;
 use crate::rate_limit::ServerRateLimiter;
 
-/// How long a sync is good for before Plaid is asked again. Plaid
-/// rate-limits `/accounts/balance/get` hard, and thirty seconds is short
-/// enough that a pull-to-refresh still feels live.
+/// How long a sync is good for before Plaid is asked again.
+///
+/// Every call the window gates is free at the margin — the two transaction
+/// calls ride the per-Item subscription and `/accounts/get` answers from
+/// Plaid's cache — so this protects rate limits rather than a bill, and
+/// thirty seconds is short enough that a pull-to-refresh still feels live.
 pub const FRESH_FOR_SECS: u64 = 30;
 
 /// How long a `kid` Plaid would not answer for is remembered as a miss.
@@ -2507,7 +2510,7 @@ impl StateServer {
 
         [
             PlaidEndpoint::TransactionsSync,
-            PlaidEndpoint::BalanceGet,
+            PlaidEndpoint::AccountsGet,
             PlaidEndpoint::RecurringGet,
         ]
         .iter()
