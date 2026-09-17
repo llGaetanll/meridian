@@ -1,5 +1,6 @@
 //! A sync that is running, and whose it is.
 
+use api_common::Timestamp;
 use server_wire::SyncStage;
 use server_wire::WireSyncStatus;
 use uuid::Uuid;
@@ -35,6 +36,16 @@ pub struct Syncing {
     pub accounts: u32,
     pub transactions: u32,
     pub streams: u32,
+
+    /// When to ask for the transactions again, set when Plaid answered
+    /// `PRODUCT_NOT_READY` — a fresh Item generates its history
+    /// asynchronously, so the first ask can come too early. The tick is what
+    /// reads it.
+    pub retry_at: Option<Timestamp>,
+
+    /// How many of those retries have gone out, which is what decides the
+    /// next wait — and when there is no next.
+    pub retries: u32,
 }
 
 impl Syncing {
@@ -49,6 +60,8 @@ impl Syncing {
             accounts: 0,
             transactions: 0,
             streams: 0,
+            retry_at: None,
+            retries: 0,
         }
     }
 

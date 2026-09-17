@@ -15,6 +15,7 @@
 //! them.
 
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 use api_common::Timestamp;
 use api_common::ratelimit::RateLimiter;
@@ -77,6 +78,15 @@ use crate::rate_limit::ServerRateLimiter;
 /// Plaid's cache — so this protects rate limits rather than a bill, and
 /// thirty seconds is short enough that a pull-to-refresh still feels live.
 pub const FRESH_FOR_SECS: u64 = 30;
+
+/// How long after each `PRODUCT_NOT_READY` the transactions are asked for
+/// again, and — by running out — when a sync stops being asked for at all.
+///
+/// A fresh Item generates its history asynchronously, usually within
+/// seconds, so the waits start short and grow. The call is covered by the
+/// per-Item subscription, so the schedule is a rate-limit courtesy rather
+/// than a cost.
+pub const NOT_READY_RETRY_SECS: [u64; 4] = [5, 15, 30, 60];
 
 /// How long a `kid` Plaid would not answer for is remembered as a miss.
 ///
@@ -1957,6 +1967,29 @@ impl StateServer {
                     return;
                 }
 
+                // Not ready is not failure: a fresh Item generates its
+                // history asynchronously, so the transactions are asked for
+                // again on the tick and the sync stays something to watch.
+                // Only until the schedule runs out — after that it is the
+                // failure it reads as, and falls through with the rest.
+                if *fault == PlaidFault::NotReady
+                    && *stage == SyncStage::Transactions
+                    && let Some(syncing) = self.syncing.get_mut(item_id)
+                {
+                    if let Some(wait) = NOT_READY_RETRY_SECS.get(syncing.retries as usize) {
+                        syncing.retry_at = Some(self.now + Duration::from_secs(*wait));
+                        syncing.retries += 1;
+
+                        tracing::info!(item_id, wait, "transactions not ready; will ask again");
+
+                        self.signup.landed(call_id, self.now, actions);
+
+                        return;
+                    }
+
+                    tracing::warn!(item_id, "transactions never became ready");
+                }
+
                 self.sync_stopped(item_id, actions);
 
                 if *fault == PlaidFault::LoginRequired {
@@ -2050,6 +2083,7 @@ impl StateServer {
                 // Nothing new starts once we are on the way out.
                 if !self.shutting_down() {
                     self.signup.sweep_sessions(self.now, actions);
+                    self.retry_not_ready(actions);
                 }
             }
         }
@@ -2518,6 +2552,36 @@ impl StateServer {
             self.limiter
                 .can_send(now, &PlaidRateCtx::new(*endpoint, item_id))
         })
+    }
+
+    /// Ask again for the transactions a fresh bank had not generated yet.
+    ///
+    /// Run on the tick, which is the machine's only clock: the waits in
+    /// [`NOT_READY_RETRY_SECS`] are rules, and a sleep in the runtime would
+    /// be behaviour no replay of the events reproduces. A retry the budget
+    /// refuses stays scheduled and the next tick asks about it again.
+    fn retry_not_ready(&mut self, actions: &mut Vec<Action>) {
+        let due: Vec<(String, Option<String>)> = self
+            .syncing
+            .iter()
+            .filter(|(_, syncing)| syncing.retry_at.is_some_and(|at| at <= self.now))
+            .map(|(item_id, syncing)| (item_id.clone(), syncing.cursor.clone()))
+            .collect();
+
+        for (item_id, cursor) in due {
+            if !self.may_call(PlaidEndpoint::TransactionsSync, Some(&item_id)) {
+                continue;
+            }
+
+            if let Some(syncing) = self.syncing.get_mut(&item_id) {
+                syncing.retry_at = None;
+            }
+
+            actions.push(Action::ToSourcePlaid {
+                call_id: self.signup.call(),
+                action: ActionSourcePlaid::SyncTransactions { item_id, cursor },
+            });
+        }
     }
 
     /// How much the machine is holding. See [`CensusServer`].

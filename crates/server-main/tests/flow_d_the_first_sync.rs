@@ -407,6 +407,176 @@ fn a_failed_recurring_call_leaves_the_sync_finished() {
     );
 }
 
+/// D6b. Sandbox generates transactions asynchronously, so a first sync's
+/// `/transactions/sync` can answer `PRODUCT_NOT_READY`. The machine asks
+/// again — at 5, 15, 30 and 60 seconds, on the tick — and the sync stays
+/// something to watch the whole time, because "the bank is attached and its
+/// history has not arrived yet" is not finished. When the last retry fails
+/// too, the sync is marked failed the way any dead fetch is: dropped, and the
+/// watcher told it is over.
+#[test]
+fn a_transactions_call_that_is_not_ready_is_asked_again() {
+    let mut state = state_subscribed();
+
+    eval!(&mut state,
+        < Event::FromStore {
+            call_id: 99,
+            event: EventStore::ItemSaved {
+                item: Some(ItemFacts {
+                    item_id: "item-9".to_string(),
+                    user_id: AL,
+                    cursor: None,
+                    synced_at: None,
+                    login_required: false,
+                }),
+            },
+        },
+
+        > Action::ToSourcePlaid {
+            call_id: 1,
+            action: ActionSourcePlaid::FetchBalances { .. },
+        },
+
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SyncWatchRequested {
+                conn_id: 1,
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::SessionResolved { user_id: Some(AL) },
+        },
+
+        > Action::ToRouter { action: ActionRouter::Watching { .. }, .. },
+
+        < Event::FromSourcePlaid {
+            call_id: 1,
+            event: EventSourcePlaid::BalancesLoaded {
+                item_id: "item-9".to_string(),
+                connection: Connection {
+                    id: "item-9".to_string(),
+                    name: "First Platypus Bank".to_string(),
+                    initials: "FP".to_string(),
+                    status: api_ledger::ConnectionStatus::Ok { synced_at: T0 },
+                    accounts: vec![],
+                },
+            },
+        },
+
+        > Action::ToSocket { action: ActionSocket::Send { .. } },
+
+        > Action::ToStore { action: ActionStore::SaveAccounts { .. }, .. },
+
+        > Action::ToSourcePlaid {
+            call_id: 4,
+            action: ActionSourcePlaid::SyncTransactions { .. },
+        },
+
+        // Not ready is not failure: the sync keeps running and the watcher
+        // hears nothing, because nothing it is told about has changed.
+        < Event::FromSourcePlaid {
+            call_id: 4,
+            event: EventSourcePlaid::PlaidFailed {
+                item_id: "item-9".to_string(),
+                stage: server_wire::SyncStage::Transactions,
+                fault: src_plaid::PlaidFault::NotReady,
+            },
+        },
+
+        // A tick before the five seconds are up asks nothing.
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 4),
+            },
+        },
+
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 5),
+            },
+        },
+
+        > @r#"ToSourcePlaid { call_id: 5, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
+        < Event::FromSourcePlaid {
+            call_id: 5,
+            event: EventSourcePlaid::PlaidFailed {
+                item_id: "item-9".to_string(),
+                stage: server_wire::SyncStage::Transactions,
+                fault: src_plaid::PlaidFault::NotReady,
+            },
+        },
+
+        // The wait grows: fifteen seconds this time, measured from the
+        // failure rather than from the first ask.
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 5 + 14),
+            },
+        },
+
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 5 + 15),
+            },
+        },
+
+        > @r#"ToSourcePlaid { call_id: 6, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
+        < Event::FromSourcePlaid {
+            call_id: 6,
+            event: EventSourcePlaid::PlaidFailed {
+                item_id: "item-9".to_string(),
+                stage: server_wire::SyncStage::Transactions,
+                fault: src_plaid::PlaidFault::NotReady,
+            },
+        },
+
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 20 + 30),
+            },
+        },
+
+        > @r#"ToSourcePlaid { call_id: 7, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
+        < Event::FromSourcePlaid {
+            call_id: 7,
+            event: EventSourcePlaid::PlaidFailed {
+                item_id: "item-9".to_string(),
+                stage: server_wire::SyncStage::Transactions,
+                fault: src_plaid::PlaidFault::NotReady,
+            },
+        },
+
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 50 + 60),
+            },
+        },
+
+        > @r#"ToSourcePlaid { call_id: 8, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
+
+        // The fourth retry was the last. This failure is a failure, and the
+        // watcher is told the sync is over the way any dead fetch says it.
+        < Event::FromSourcePlaid {
+            call_id: 8,
+            event: EventSourcePlaid::PlaidFailed {
+                item_id: "item-9".to_string(),
+                stage: server_wire::SyncStage::Transactions,
+                fault: src_plaid::PlaidFault::NotReady,
+            },
+        },
+
+        > @r#"ToSocket { action: Send { conn_id: 1, status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
+    );
+}
+
 /// D4a for somebody who has never linked a bank. Nothing running is an answer
 /// and not a missing resource: they are told so and left connected, because a
 /// bank landing a moment later is exactly what they are waiting for.
