@@ -188,7 +188,7 @@ message is the server talking unprompted.
 5. `server` -> `plaid` - `POST /transactions/sync`: *One page of the history, as a diff from the cursor. A bank attached seconds ago has no cursor, so this is the long one.*
 6. `server` <- `plaid` - one of:
    a. `200` added, modified, removed, a `next_cursor` and `has_more`: *Written to Postgres, cursor last and separately, so a failure earlier in the page means the next sync re-reads rather than skipping. `has_more` sends 5 again with this page's cursor, until it does not — a page beyond the first spends a slot of Plaid's per-minute budget, and running out stops the history where it is rather than being throttled.*
-   b. `400 PRODUCT_NOT_READY`: *Sandbox generates transactions asynchronously, so the first seconds after linking can answer this. Ask again.*
+   b. `400 PRODUCT_NOT_READY`: *Sandbox generates transactions asynchronously, so the first seconds after linking can answer this. The sync stays running and the machine asks again on the tick — 5, 15, 30 and 60 seconds after each refusal (`NOT_READY_RETRY_SECS`) — and only when the last retry is refused too does the sync fail.*
 7. `server` -> `plaid` - `POST /transactions/recurring/get`: *The recurring streams.*
 8. `server` <- `plaid` - one of:
    a. `200` streams: *Thin or empty on a fresh Item, because Plaid derives them from transactions that have only just landed. That is a thin screen, not a failed sync.*
