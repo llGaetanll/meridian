@@ -218,9 +218,9 @@ fn a_session_plaid_would_not_open_is_not_a_page() {
             },
         },
 
-        > @r#"ToStore { call_id: 3, action: CollectLink { link_token: "" } }"#,
-        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
-
+        // Answered on the same turn, and nothing goes to the store: a token
+        // that never existed is not a session to collect, and a Plaid outage
+        // should not cost a trip to Postgres before the caller hears.
         > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
     );
 }

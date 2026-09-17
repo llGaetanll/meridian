@@ -956,9 +956,22 @@ impl StateSignup {
     ) {
         self.exchanged(call_id);
 
+        // No token means `/link/start` failed before there was a session —
+        // B4d. There is nothing to collect and nothing to write, so the
+        // caller hears on this turn rather than after a trip to Postgres.
+        if link_token.is_empty() {
+            if let Some(request_id) = self.waiter(call_id) {
+                self.answer(request_id, ActionRouter::LinkAbandoned, now, actions);
+            }
+
+            self.landed(call_id, now, actions);
+
+            return;
+        }
+
         // An exchange that failed, on a session Plaid told us about: nothing
         // came of it, and somebody is waiting to hear that.
-        if self.collects_by_webhook() && !link_token.is_empty() {
+        if self.collects_by_webhook() {
             if let Some(request_id) = self.waiter(call_id) {
                 self.answer(request_id, ActionRouter::Accepted, now, actions);
             }

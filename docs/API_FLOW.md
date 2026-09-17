@@ -92,7 +92,7 @@ and runs again unchanged for Try again and for Add another bank later on.
    b. `401 Unauthorized`: *No bearer token, or one the server no longer honours.*
    c. `429 Too Many Requests`: *Too many sessions opened from this caller, or too many opened for the account this minute. The second budget is Plaid's rather than ours, so it sits under the caller's own window: several people at once can reach it where one cannot.*
    d. `500 Internal Server Error`: *The session this caller holds could not be read. Not `502`: that points at Plaid, and this went wrong here.*
-   e. `502 Bad Gateway`: *Plaid refused, was unreachable, or answered a `link_token` with no hosted URL. All three become one abandoned session inside.*
+   e. `502 Bad Gateway`: *Plaid refused, was unreachable, or answered a `link_token` with no hosted URL. All three are answered as one abandoned link, and nothing is written down — there was never a session.*
 5. `sheet` -> `plaid` - `GET https://secure.plaid.com/hl/...`: *Plaid's own page, where the user picks a bank and signs into it. Nothing of ours is in this exchange.*
 6. `sheet` <- `plaid` - one of:
    a. `302 meridian://linked`: *Closes the sheet. It carries no token and is not proof a bank was connected, but it is the one signal that separates a finished flow from a dismissed one, which is what decides whether the phone asks the next question at all. On the web it is `302 <origin>/linked.html`, which closes the popup, and the web app asks C's question whenever the popup closes.*
