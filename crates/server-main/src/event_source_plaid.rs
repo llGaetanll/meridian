@@ -61,10 +61,15 @@ pub enum EventSourcePlaid {
     },
 
     /// A Link session is open, and this is the page that hosts it.
+    ///
+    /// `repair_of` is the Item an update-mode session repairs, and `None` is
+    /// the ordinary session that attaches. It rides on the event because the
+    /// session row has to record it: a repair's finish must not be exchanged.
     LinkOpened {
         user_id: uuid::Uuid,
         link_token: String,
         hosted_link_url: String,
+        repair_of: Option<String>,
     },
 
     /// What every Link session polled together has come to, one

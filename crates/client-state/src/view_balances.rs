@@ -41,6 +41,12 @@ pub struct ViewBalances {
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewConnection {
     pub id: String,
+
+    /// Plaid's id for the connection, as a repair names it. Unlike
+    /// [`id`](ViewConnection::id) it is never suffixed: the held and owed
+    /// halves of one bank are one connection.
+    pub item_id: String,
+
     pub name: String,
     pub initials: String,
 
@@ -49,6 +55,11 @@ pub struct ViewConnection {
 
     /// Whether the user has to sign in again.
     pub needs_reconnect: bool,
+
+    /// Whether a repair for this connection is under way — the tap has
+    /// happened and Plaid's page has not answered — so the button waits
+    /// instead of taking another.
+    pub reconnecting: bool,
 
     /// Whether these balances are owed rather than held.
     pub is_debts: bool,

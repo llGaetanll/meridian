@@ -20,6 +20,15 @@ pub enum Authenticated {
         origin: Option<String>,
     },
 
+    /// Repairing a bank whose login has expired — Plaid's update mode. The
+    /// `origin` plays the same part as on
+    /// [`LinkRequested`](Authenticated::LinkRequested); the Item is checked
+    /// against the caller's banks once they are loaded.
+    RepairRequested {
+        origin: Option<String>,
+        item_id: String,
+    },
+
     LinkClosed,
 
     /// The stream this request opens, carried through the session read so the
@@ -58,6 +67,12 @@ impl Authenticated {
             EventRouter::LinkRequested { origin, .. } => Some(Authenticated::LinkRequested {
                 origin: origin.clone(),
             }),
+            EventRouter::RepairRequested {
+                origin, item_id, ..
+            } => Some(Authenticated::RepairRequested {
+                origin: origin.clone(),
+                item_id: item_id.clone(),
+            }),
             EventRouter::LinkClosed { .. } => Some(Authenticated::LinkClosed),
             EventRouter::SyncWatchRequested { conn_id, .. } => {
                 Some(Authenticated::SyncWatchRequested { conn_id: *conn_id })
@@ -81,6 +96,7 @@ impl Authenticated {
     pub fn route(&self) -> Route {
         match self {
             Authenticated::LinkRequested { .. } => Route::LinkStart,
+            Authenticated::RepairRequested { .. } => Route::LinkRepair,
             Authenticated::LinkClosed => Route::LinkFinish,
             Authenticated::SyncWatchRequested { .. } => Route::SyncStatus,
             Authenticated::SnapshotRequested => Route::Snapshot,
@@ -115,6 +131,7 @@ impl Authenticated {
             | Authenticated::DeleteRequested => false,
 
             Authenticated::LinkRequested { .. }
+            | Authenticated::RepairRequested { .. }
             | Authenticated::LinkClosed
             | Authenticated::SyncWatchRequested { .. }
             | Authenticated::SnapshotRequested => true,

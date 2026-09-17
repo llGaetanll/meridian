@@ -123,6 +123,40 @@ pub async fn open_link(
     Ok((res.link_token, res.hosted_link_url))
 }
 
+/// Open an update-mode Link session — repair an Item whose login has expired
+/// — and answer with the token and the page that hosts it.
+///
+/// The same call as [`open_link`] with one difference, and it is the one that
+/// matters: the request carries the Item's access token and names no
+/// products, so nothing this session can do creates an Item or spends a slot.
+/// The token stays the same afterwards; what changes is that the bank starts
+/// answering for it again.
+pub async fn open_repair(
+    client: &PlaidClient,
+    client_user_id: &str,
+    access_token: &str,
+    completion_redirect: &str,
+    webhook: Option<&str>,
+    handback: Option<&OauthRedirect>,
+) -> Result<(String, Option<String>), PlaidError> {
+    let request = src_plaid::LinkTokenRequest::update(client_user_id, access_token)
+        .redirecting_to(completion_redirect);
+
+    let request = match handback {
+        Some(handback) => request.handing_back_to(handback.as_str()),
+        None => request,
+    };
+
+    let request = match webhook {
+        Some(webhook) => request.notifying(webhook),
+        None => request,
+    };
+
+    let res = src_plaid::create_link_token(client, &request).await?;
+
+    Ok((res.link_token, res.hosted_link_url))
+}
+
 /// What became of a Link session: whether it has ended, and what it produced.
 pub async fn poll_link(
     client: &PlaidClient,

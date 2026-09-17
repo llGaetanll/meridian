@@ -9,13 +9,6 @@ use crate::ItemFacts;
 /// person. One that failed verification never becomes one of these.
 #[derive(Debug)]
 pub enum WebhookFacts {
-    /// A Link session ended, and this is what it produced. Empty tokens is the
-    /// ordinary outcome of somebody closing the sheet.
-    SessionFinished {
-        link_token: String,
-        public_tokens: Vec<String>,
-    },
-
     /// One bank has transactions we have not read.
     ///
     /// `item` is what the store holds for it, or `None` for a bank we have no

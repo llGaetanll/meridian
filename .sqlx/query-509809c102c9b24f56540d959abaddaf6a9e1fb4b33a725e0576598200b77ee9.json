@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO link_sessions (link_token, user_id, item_id) VALUES ($1, $2, $3)\n         ON CONFLICT (link_token) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "509809c102c9b24f56540d959abaddaf6a9e1fb4b33a725e0576598200b77ee9"
+}

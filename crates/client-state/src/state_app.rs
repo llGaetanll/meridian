@@ -115,6 +115,11 @@ pub struct StateApp {
     /// [`unpaid`](Self::unpaid) is `None`, and is put back to the start
     /// whenever that is cleared.
     payment: StatePayment,
+
+    /// The bank being repaired, from the Reconnect tap until the sign-in
+    /// reports. `Some` is that bank's button waiting instead of taking
+    /// another tap.
+    reconnecting: Option<String>,
 }
 
 impl Default for StateApp {
@@ -136,6 +141,7 @@ impl Default for StateApp {
             watch_asked: None,
             onboarding: Some(StateOnboarding::new()),
             payment: StatePayment::default(),
+            reconnecting: None,
         }
     }
 }
@@ -354,6 +360,20 @@ impl StateApp {
                 }
             }
 
+            EventUi::BankReconnectRequested { item_id } => {
+                // First run has no Reconnect to tap, and a second tap while
+                // one repair is under way would open a second sheet.
+                if self.onboarding.is_none() && self.reconnecting.is_none() {
+                    self.reconnecting = Some(item_id.clone());
+
+                    actions.push(Action::ToSource {
+                        action: ActionSource::StartBankRepair {
+                            item_id: item_id.clone(),
+                        },
+                    });
+                }
+            }
+
             EventUi::OnboardingFinished => {
                 // Nothing has to be lifted out of the flow first: what first
                 // run produced is a credential, and that is the runtime's.
@@ -475,6 +495,14 @@ impl StateApp {
                     flow.bank_linked();
                 }
 
+                // A repair that worked: the server has cleared the error, and
+                // a fresh snapshot is what takes the amber off the screen.
+                if self.reconnecting.take().is_some() {
+                    actions.push(Action::ToSource {
+                        action: ActionSource::LoadSnapshot,
+                    });
+                }
+
                 self.render(actions);
             }
 
@@ -485,6 +513,15 @@ impl StateApp {
                     flow.bank_pending(now);
                 }
 
+                // The server has not said yet. The next snapshot decides, so
+                // one is asked for rather than leaving the button waiting on
+                // news that arrives by no other route.
+                if self.reconnecting.take().is_some() {
+                    actions.push(Action::ToSource {
+                        action: ActionSource::LoadSnapshot,
+                    });
+                }
+
                 self.render(actions);
             }
 
@@ -493,6 +530,10 @@ impl StateApp {
                     flow.bank_abandoned();
                 }
 
+                // They closed the sheet without signing in. Nothing changed
+                // and the button goes back to being tappable.
+                self.reconnecting = None;
+
                 self.render(actions);
             }
 
@@ -500,6 +541,8 @@ impl StateApp {
                 if let Some(flow) = &mut self.onboarding {
                     flow.bank_blocked();
                 }
+
+                self.reconnecting = None;
 
                 self.render(actions);
             }
@@ -743,6 +786,11 @@ impl StateApp {
     /// stop moving between fetches.
     pub(crate) fn now(&self) -> Timestamp {
         self.device_now
+    }
+
+    /// The bank being repaired, if a Reconnect tap is still being answered.
+    pub(crate) fn reconnecting(&self) -> Option<&str> {
+        self.reconnecting.as_deref()
     }
 
     pub(crate) fn masked(&self) -> bool {

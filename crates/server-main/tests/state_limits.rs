@@ -161,26 +161,42 @@ fn deliver(state: &mut StateServer, request_id: u64, body: &str) {
         &mut actions,
     );
 
-    let keys: Vec<Event> = actions
-        .iter()
-        .filter_map(|action| match action {
-            Action::ToSourcePlaid {
-                call_id,
-                action: ActionSourcePlaid::FetchWebhookKey { kid },
-            } => Some(Event::FromSourcePlaid {
-                call_id: *call_id,
-                event: EventSourcePlaid::WebhookKeyLoaded {
-                    kid: kid.clone(),
-                    key: Some(webhook_jwk()),
-                },
-            }),
+    // The key fetch and the repair lookup are answered for as long as either
+    // keeps being asked: the key only on the first delivery, the lookup on
+    // every one.
+    loop {
+        let answers: Vec<Event> = actions
+            .iter()
+            .filter_map(|action| match action {
+                Action::ToSourcePlaid {
+                    call_id,
+                    action: ActionSourcePlaid::FetchWebhookKey { kid },
+                } => Some(Event::FromSourcePlaid {
+                    call_id: *call_id,
+                    event: EventSourcePlaid::WebhookKeyLoaded {
+                        kid: kid.clone(),
+                        key: Some(webhook_jwk()),
+                    },
+                }),
 
-            _ => None,
-        })
-        .collect();
+                Action::ToStore {
+                    call_id,
+                    action: ActionStore::LoadLinkRepair { .. },
+                } => Some(Event::FromStore {
+                    call_id: *call_id,
+                    event: EventStore::LinkRepairLoaded { repair_of: None },
+                }),
 
-    if !keys.is_empty() {
-        state.handle_events(&keys, &mut Vec::new());
+                _ => None,
+            })
+            .collect();
+
+        if answers.is_empty() {
+            break;
+        }
+
+        actions = Vec::new();
+        state.handle_events(&answers, &mut actions);
     }
 }
 
@@ -769,6 +785,15 @@ fn the_exchange_past_the_budget_produces_no_action() {
             },
         },
 
+        > Action::ToStore {
+            call_id: 12,
+            action: ActionStore::LoadLinkRepair { .. },
+        },
+        < Event::FromStore {
+            call_id: 12,
+            event: EventStore::LinkRepairLoaded { repair_of: None },
+        },
+
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,
     );
 }
@@ -902,7 +927,10 @@ fn link_by_polling(state: &mut StateServer, request_id: u64, n: u32) {
                 } => Some(Event::FromStore {
                     call_id: *call_id,
                     event: EventStore::PendingLinksLoaded {
-                        link_tokens: vec![format!("link-{n}")],
+                        links: vec![PendingLinkFacts {
+                            link_token: format!("link-{n}"),
+                            repair_of: None,
+                        }],
                     },
                 }),
 
@@ -971,7 +999,12 @@ fn a_token_polled_back_past_the_budget_is_not_exchanged() {
         < Event::FromStore {
             call_id: 22,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-11".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-11".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 

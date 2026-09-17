@@ -61,7 +61,12 @@ fn a_closed_sheet_attaches_the_bank_and_starts_its_sync() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
@@ -165,7 +170,12 @@ fn a_public_token_is_exchanged_even_before_the_session_finishes() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
@@ -231,7 +241,12 @@ fn a_second_bank_in_one_session_has_its_token_dropped() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
@@ -319,7 +334,12 @@ fn a_session_that_ends_with_nothing_is_collected_and_reported() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
@@ -383,7 +403,12 @@ fn an_open_session_is_left_pending() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
@@ -439,7 +464,7 @@ fn closing_a_sheet_with_no_session_open_asks_nothing() {
         },
         < Event::FromStore {
             call_id: 2,
-            event: EventStore::PendingLinksLoaded { link_tokens: vec![] },
+            event: EventStore::PendingLinksLoaded { links: vec![] },
         },
 
         > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
@@ -482,10 +507,19 @@ fn every_open_session_is_polled_and_the_route_still_answers_once() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec![
-                    "link-1".to_string(),
-                    "link-2".to_string(),
-                    "link-3".to_string(),
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                    PendingLinkFacts {
+                        link_token: "link-2".to_string(),
+                        repair_of: None,
+                    },
+                    PendingLinkFacts {
+                        link_token: "link-3".to_string(),
+                        repair_of: None,
+                    },
                 ],
             },
         },
@@ -614,7 +648,12 @@ fn a_closed_sheet_still_polls_when_we_collect_by_polling() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
@@ -661,7 +700,12 @@ fn a_bank_the_store_refused_is_written_on_the_retry() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
@@ -781,7 +825,12 @@ fn a_bank_the_store_would_not_write_is_answered_an_error() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
@@ -919,7 +968,12 @@ fn a_slow_exchange_still_attaches_its_bank() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 

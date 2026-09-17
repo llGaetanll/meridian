@@ -63,13 +63,24 @@ fn an_outcome_that_arrives_first_is_waiting_when_the_phone_asks() {
             },
         },
 
+        // Whether the session repairs an Item is asked first, because it is
+        // what says the tokens may be exchanged at all.
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadLinkRepair { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::LinkRepairLoaded { repair_of: None },
+        },
+
         // 5. The same irreversible call C1 makes at its own step 4.
         > Action::ToSourcePlaid {
-            call_id: 2,
+            call_id: 3,
             action: ActionSourcePlaid::ExchangePublicToken { .. },
         },
         < Event::FromSourcePlaid {
-            call_id: 2,
+            call_id: 3,
             event: EventSourcePlaid::ItemLinked {
                 link_token: "link-1".to_string(),
                 item_id: "item-9".to_string(),
@@ -78,9 +89,9 @@ fn an_outcome_that_arrives_first_is_waiting_when_the_phone_asks() {
 
         // No `CollectLink`: the session has to stay standing, because a
         // collected one is a session `/link/finish` can no longer see.
-        > Action::ToStore { call_id: 3, action: ActionStore::SaveItem { .. } },
+        > Action::ToStore { call_id: 4, action: ActionStore::SaveItem { .. } },
         < Event::FromStore {
-            call_id: 3,
+            call_id: 4,
             event: EventStore::ItemSaved {
                 item: Some(ItemFacts {
                     item_id: "item-9".to_string(),
@@ -98,7 +109,7 @@ fn an_outcome_that_arrives_first_is_waiting_when_the_phone_asks() {
         // bank quietly lost. D starts on the same event, because that write is
         // what resolves whose bank it is.
         > Action::ToSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             action: ActionSourcePlaid::FetchBalances { .. },
         },
 
@@ -114,32 +125,37 @@ fn an_outcome_that_arrives_first_is_waiting_when_the_phone_asks() {
         },
 
         > Action::ToStore {
-            call_id: 5,
+            call_id: 6,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 5,
+            call_id: 6,
             event: EventStore::SessionResolved {
                 user_id: Some(uuid::Uuid::nil()),
             },
         },
 
         > Action::ToStore {
-            call_id: 6,
+            call_id: 7,
             action: ActionStore::LoadPendingLinks { .. },
         },
         < Event::FromStore {
-            call_id: 6,
+            call_id: 7,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
         > Action::ToStore {
-            call_id: 7,
+            call_id: 8,
             action: ActionStore::CollectLink { .. },
         },
-        < Event::FromStore { call_id: 7, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 8, event: EventStore::WriteSuccess },
 
         > @r#"ToRouter { request_id: 2, action: Linked { count: 1 } }"#,
     );
@@ -179,7 +195,12 @@ fn a_close_that_arrives_first_waits_for_the_outcome() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
@@ -212,12 +233,21 @@ fn a_close_that_arrives_first_waits_for_the_outcome() {
             },
         },
 
-        > Action::ToSourcePlaid {
+        > Action::ToStore {
             call_id: 4,
+            action: ActionStore::LoadLinkRepair { .. },
+        },
+        < Event::FromStore {
+            call_id: 4,
+            event: EventStore::LinkRepairLoaded { repair_of: None },
+        },
+
+        > Action::ToSourcePlaid {
+            call_id: 5,
             action: ActionSourcePlaid::ExchangePublicToken { .. },
         },
         < Event::FromSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             event: EventSourcePlaid::ItemLinked {
                 link_token: "link-1".to_string(),
                 item_id: "item-9".to_string(),
@@ -226,9 +256,9 @@ fn a_close_that_arrives_first_waits_for_the_outcome() {
 
         // The write is what the session came to, so it is the write that
         // reaches the parked route and closes the session.
-        > Action::ToStore { call_id: 5, action: ActionStore::SaveItem { .. } },
+        > Action::ToStore { call_id: 6, action: ActionStore::SaveItem { .. } },
         < Event::FromStore {
-            call_id: 5,
+            call_id: 6,
             event: EventStore::ItemSaved {
                 item: Some(ItemFacts {
                     item_id: "item-9".to_string(),
@@ -241,12 +271,12 @@ fn a_close_that_arrives_first_waits_for_the_outcome() {
         },
 
         > Action::ToSourcePlaid {
-            call_id: 6,
+            call_id: 7,
             action: ActionSourcePlaid::FetchBalances { .. },
         },
 
         > Action::ToStore {
-            call_id: 7,
+            call_id: 8,
             action: ActionStore::CollectLink { .. },
         },
 
@@ -254,7 +284,7 @@ fn a_close_that_arrives_first_waits_for_the_outcome() {
 
         // 8a. The route that was waiting, answered once the session it is
         // being told about has actually been closed.
-        < Event::FromStore { call_id: 7, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 8, event: EventStore::WriteSuccess },
 
         > @r#"ToRouter { request_id: 1, action: Linked { count: 1 } }"#,
     );
@@ -298,9 +328,18 @@ fn every_token_a_session_produced_is_exchanged() {
             },
         },
 
-        > @r#"ToSourcePlaid { call_id: 2, action: ExchangePublicToken { link_token: "link-1", public_token: "public-1" } }"#,
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadLinkRepair { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::LinkRepairLoaded { repair_of: None },
+        },
 
-        > @r#"ToSourcePlaid { call_id: 3, action: ExchangePublicToken { link_token: "link-1", public_token: "public-2" } }"#,
+        > @r#"ToSourcePlaid { call_id: 3, action: ExchangePublicToken { link_token: "link-1", public_token: "public-1" } }"#,
+
+        > @r#"ToSourcePlaid { call_id: 4, action: ExchangePublicToken { link_token: "link-1", public_token: "public-2" } }"#,
     );
 }
 
@@ -337,7 +376,12 @@ fn a_session_that_ends_with_nothing_is_said_rather_than_inferred() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
@@ -370,13 +414,22 @@ fn a_session_that_ends_with_nothing_is_said_rather_than_inferred() {
             },
         },
 
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::LoadLinkRepair { .. },
+        },
+        < Event::FromStore {
+            call_id: 4,
+            event: EventStore::LinkRepairLoaded { repair_of: None },
+        },
+
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
 
         > Action::ToStore {
-            call_id: 4,
+            call_id: 5,
             action: ActionStore::CollectLink { .. },
         },
-        < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
 
         > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
     );
@@ -415,7 +468,12 @@ fn an_exchange_that_fails_settles_the_session_too() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
@@ -448,12 +506,21 @@ fn an_exchange_that_fails_settles_the_session_too() {
             },
         },
 
-        > Action::ToSourcePlaid {
+        > Action::ToStore {
             call_id: 4,
+            action: ActionStore::LoadLinkRepair { .. },
+        },
+        < Event::FromStore {
+            call_id: 4,
+            event: EventStore::LinkRepairLoaded { repair_of: None },
+        },
+
+        > Action::ToSourcePlaid {
+            call_id: 5,
             action: ActionSourcePlaid::ExchangePublicToken { .. },
         },
         < Event::FromSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             event: EventSourcePlaid::LinkAbandoned {
                 link_token: "link-1".to_string(),
             },
@@ -462,10 +529,10 @@ fn an_exchange_that_fails_settles_the_session_too() {
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
 
         > Action::ToStore {
-            call_id: 5,
+            call_id: 6,
             action: ActionStore::CollectLink { .. },
         },
-        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 6, event: EventStore::WriteSuccess },
 
         > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
     );
@@ -508,7 +575,16 @@ fn a_session_nobody_reports_on_is_answered_pending_exactly_once() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string(), "link-2".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                    PendingLinkFacts {
+                        link_token: "link-2".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
@@ -561,6 +637,15 @@ fn an_outcome_nobody_comes_back_for_expires() {
             },
         },
 
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadLinkRepair { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::LinkRepairLoaded { repair_of: None },
+        },
+
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
 
         < Event::FromProcess {
@@ -580,24 +665,29 @@ fn an_outcome_nobody_comes_back_for_expires() {
         },
 
         > Action::ToStore {
-            call_id: 2,
+            call_id: 3,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 2,
+            call_id: 3,
             event: EventStore::SessionResolved {
                 user_id: Some(uuid::Uuid::nil()),
             },
         },
 
         > Action::ToStore {
-            call_id: 3,
+            call_id: 4,
             action: ActionStore::LoadPendingLinks { .. },
         },
         < Event::FromStore {
-            call_id: 3,
+            call_id: 4,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
@@ -647,7 +737,7 @@ fn a_close_with_no_session_open_is_answered_at_once() {
         },
         < Event::FromStore {
             call_id: 2,
-            event: EventStore::PendingLinksLoaded { link_tokens: vec![] },
+            event: EventStore::PendingLinksLoaded { links: vec![] },
         },
 
         > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
@@ -690,6 +780,15 @@ fn the_session_that_attached_a_bank_is_the_one_reported() {
             },
         },
 
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadLinkRepair { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::LinkRepairLoaded { repair_of: None },
+        },
+
         > Action::ToRouter { action: ActionRouter::Accepted, .. },
 
         < Event::FromRouter {
@@ -709,21 +808,30 @@ fn the_session_that_attached_a_bank_is_the_one_reported() {
             },
         },
 
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::LoadLinkRepair { .. },
+        },
+        < Event::FromStore {
+            call_id: 3,
+            event: EventStore::LinkRepairLoaded { repair_of: None },
+        },
+
         > Action::ToSourcePlaid {
-            call_id: 2,
+            call_id: 4,
             action: ActionSourcePlaid::ExchangePublicToken { .. },
         },
         < Event::FromSourcePlaid {
-            call_id: 2,
+            call_id: 4,
             event: EventSourcePlaid::ItemLinked {
                 link_token: "link-2".to_string(),
                 item_id: "item-9".to_string(),
             },
         },
 
-        > Action::ToStore { call_id: 3, action: ActionStore::SaveItem { .. } },
+        > Action::ToStore { call_id: 5, action: ActionStore::SaveItem { .. } },
         < Event::FromStore {
-            call_id: 3,
+            call_id: 5,
             event: EventStore::ItemSaved {
                 item: Some(ItemFacts {
                     item_id: "item-9".to_string(),
@@ -736,7 +844,7 @@ fn the_session_that_attached_a_bank_is_the_one_reported() {
         },
 
         > Action::ToSourcePlaid {
-            call_id: 4,
+            call_id: 6,
             action: ActionSourcePlaid::FetchBalances { .. },
         },
 
@@ -751,29 +859,38 @@ fn the_session_that_attached_a_bank_is_the_one_reported() {
         },
 
         > Action::ToStore {
-            call_id: 5,
+            call_id: 7,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 5,
+            call_id: 7,
             event: EventStore::SessionResolved {
                 user_id: Some(uuid::Uuid::nil()),
             },
         },
 
         > Action::ToStore {
-            call_id: 6,
+            call_id: 8,
             action: ActionStore::LoadPendingLinks { .. },
         },
         < Event::FromStore {
-            call_id: 6,
+            call_id: 8,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string(), "link-2".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                    PendingLinkFacts {
+                        link_token: "link-2".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
-        > @r#"ToStore { call_id: 7, action: CollectLink { link_token: "link-2" } }"#,
-        < Event::FromStore { call_id: 7, event: EventStore::WriteSuccess },
+        > @r#"ToStore { call_id: 9, action: CollectLink { link_token: "link-2" } }"#,
+        < Event::FromStore { call_id: 9, event: EventStore::WriteSuccess },
 
         > @r#"ToRouter { request_id: 3, action: Linked { count: 1 } }"#,
     );
@@ -816,14 +933,24 @@ fn a_bank_the_store_would_not_write_is_not_taken_from_plaid() {
             },
         },
 
+        // Not a repair, so the token is for exchanging.
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadLinkRepair { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::LinkRepairLoaded { repair_of: None },
+        },
+
         // The call that spends the slot.
         > Action::ToSourcePlaid {
-            call_id: 2,
+            call_id: 3,
             action: ActionSourcePlaid::ExchangePublicToken { .. },
         },
         // The bank exists at Plaid from here on.
         < Event::FromSourcePlaid {
-            call_id: 2,
+            call_id: 3,
             event: EventSourcePlaid::ItemLinked {
                 link_token: "link-1".to_string(),
                 item_id: "item-9".to_string(),
@@ -832,17 +959,8 @@ fn a_bank_the_store_would_not_write_is_not_taken_from_plaid() {
 
         // Write it down. No `CollectLink`: the session stands until
         // `/link/finish` reports it.
-        > Action::ToStore { call_id: 3, action: ActionStore::SaveItem { .. } },
-        // The first attempt.
-        < Event::FromStore {
-            call_id: 3,
-            event: EventStore::WriteError {
-                message: "connection refused".to_string(),
-            },
-        },
-
-        // The second.
         > Action::ToStore { call_id: 4, action: ActionStore::SaveItem { .. } },
+        // The first attempt.
         < Event::FromStore {
             call_id: 4,
             event: EventStore::WriteError {
@@ -850,7 +968,7 @@ fn a_bank_the_store_would_not_write_is_not_taken_from_plaid() {
             },
         },
 
-        // The third.
+        // The second.
         > Action::ToStore { call_id: 5, action: ActionStore::SaveItem { .. } },
         < Event::FromStore {
             call_id: 5,
@@ -859,7 +977,7 @@ fn a_bank_the_store_would_not_write_is_not_taken_from_plaid() {
             },
         },
 
-        // The fourth.
+        // The third.
         > Action::ToStore { call_id: 6, action: ActionStore::SaveItem { .. } },
         < Event::FromStore {
             call_id: 6,
@@ -868,10 +986,19 @@ fn a_bank_the_store_would_not_write_is_not_taken_from_plaid() {
             },
         },
 
-        // The fifth, and the last.
+        // The fourth.
         > Action::ToStore { call_id: 7, action: ActionStore::SaveItem { .. } },
         < Event::FromStore {
             call_id: 7,
+            event: EventStore::WriteError {
+                message: "connection refused".to_string(),
+            },
+        },
+
+        // The fifth, and the last.
+        > Action::ToStore { call_id: 8, action: ActionStore::SaveItem { .. } },
+        < Event::FromStore {
+            call_id: 8,
             event: EventStore::WriteError {
                 message: "connection refused".to_string(),
             },
@@ -893,12 +1020,12 @@ fn a_bank_the_store_would_not_write_is_not_taken_from_plaid() {
 
         // Who is asking.
         > Action::ToStore {
-            call_id: 8,
+            call_id: 9,
             action: ActionStore::LoadSession { .. },
         },
         // Them.
         < Event::FromStore {
-            call_id: 8,
+            call_id: 9,
             event: EventStore::SessionResolved {
                 user_id: Some(uuid::Uuid::nil()),
             },
@@ -906,15 +1033,20 @@ fn a_bank_the_store_would_not_write_is_not_taken_from_plaid() {
 
         // What they have open.
         > Action::ToStore {
-            call_id: 9,
+            call_id: 10,
             action: ActionStore::LoadPendingLinks { .. },
         },
         // One session, with no outcome recorded against it, so the route
         // parks.
         < Event::FromStore {
-            call_id: 9,
+            call_id: 10,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 

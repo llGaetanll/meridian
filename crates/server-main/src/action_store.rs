@@ -86,10 +86,21 @@ pub enum ActionStore {
     /// Written before the URL reaches them, so no session can be finished that
     /// we have no record of asking for — which is what stops one account
     /// collecting another's bank.
+    ///
+    /// `repair_of` is the Item an update-mode session repairs, written down so
+    /// its finish is never exchanged for a new Item.
     SaveLink {
         link_token: String,
         user_id: uuid::Uuid,
+        repair_of: Option<String>,
     },
+
+    /// Which Item this Link session repairs, if it repairs one.
+    ///
+    /// Asked before a finished session's tokens are exchanged, because the
+    /// answer is what says whether they may be: exchanging a repair's finish
+    /// would spend an Item slot on a bank we already hold.
+    LoadLinkRepair { link_token: String },
 
     /// Mark a Link session done, whatever it came to. Set on an empty one too:
     /// a session that stays open forever is one we would poll forever.

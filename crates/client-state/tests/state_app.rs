@@ -1733,3 +1733,102 @@ fn the_app_draws_against_the_devices_clock() {
         },
     );
 }
+
+/// Reconnect, on a bank that has stopped answering. The tap starts Plaid's
+/// update mode against that bank, and the button waits so a second tap
+/// cannot open a second sheet.
+#[test]
+fn tapping_reconnect_starts_a_repair_and_the_button_waits() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "connections":[{"id":"item-9","name":"Citi","initials":"CI","status":"login_required","accounts":[
+                {"id":"acc","name":"Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi {
+            event: EventUi::BankReconnectRequested {
+                item_id: "item-9".to_string(),
+            },
+        },
+        > @r#"ToSource { action: StartBankRepair { item_id: "item-9" } }"#,
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            assert!(balances.connections[0].needs_reconnect);
+            assert!(balances.connections[0].reconnecting, "the button waits");
+        },
+
+        < Event::FromUi {
+            event: EventUi::BankReconnectRequested {
+                item_id: "item-9".to_string(),
+            },
+        },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+    );
+}
+
+/// The sign-in worked. The server has already cleared the bank's error, so a
+/// fresh snapshot is what takes the amber off the screen — and the button
+/// stops waiting either way.
+#[test]
+fn a_repair_that_worked_asks_for_a_fresh_snapshot() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "connections":[{"id":"item-9","name":"Citi","initials":"CI","status":"login_required","accounts":[
+                {"id":"acc","name":"Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi {
+            event: EventUi::BankReconnectRequested {
+                item_id: "item-9".to_string(),
+            },
+        },
+        > Action::ToSource { action: ActionSource::StartBankRepair { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource { event: EventSource::BankLinked },
+        > @r#"ToSource { action: LoadSnapshot }"#,
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            assert!(!balances.connections[0].reconnecting, "the button stops waiting");
+        },
+    );
+}
+
+/// They closed the sheet without signing in. Nothing changed on the server,
+/// so nothing is fetched — the button just goes back to being tappable.
+#[test]
+fn a_repair_they_backed_out_of_frees_the_button() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "connections":[{"id":"item-9","name":"Citi","initials":"CI","status":"login_required","accounts":[
+                {"id":"acc","name":"Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi {
+            event: EventUi::BankReconnectRequested {
+                item_id: "item-9".to_string(),
+            },
+        },
+        > Action::ToSource { action: ActionSource::StartBankRepair { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource { event: EventSource::BankAbandoned },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
+            assert!(balances.connections[0].needs_reconnect, "the bank is still dead");
+            assert!(!balances.connections[0].reconnecting, "and the button is tappable again");
+        },
+    );
+}

@@ -643,6 +643,12 @@ impl RuntimeServer {
                 self.open_link(call_id, *user_id, opener).await
             }
 
+            ActionSourcePlaid::OpenRepair {
+                user_id,
+                item_id,
+                opener,
+            } => self.open_repair(call_id, *user_id, item_id, opener).await,
+
             ActionSourcePlaid::PollLinks { link_tokens } => {
                 self.poll_links(call_id, link_tokens).await
             }
@@ -698,6 +704,7 @@ impl RuntimeServer {
                 user_id,
                 link_token,
                 hosted_link_url,
+                repair_of: None,
             },
 
             // A link token with no hosted URL means the request did not ask for
@@ -710,6 +717,66 @@ impl RuntimeServer {
 
             Err(e) => {
                 tracing::warn!(error = %e, "could not open a link session");
+
+                EventSourcePlaid::LinkAbandoned {
+                    link_token: String::new(),
+                }
+            }
+        };
+
+        vec![Event::FromSourcePlaid { call_id, event }]
+    }
+
+    /// Open an update-mode Link session against one bank, and report the page
+    /// that hosts it.
+    ///
+    /// The access token is looked up here and goes no further: the action
+    /// names the Item, and the credential stays beside the others.
+    async fn open_repair(
+        &self,
+        call_id: CallId,
+        user_id: Uuid,
+        item_id: &str,
+        opener: &LinkOpener,
+    ) -> Vec<Event> {
+        let Some(access_token) = self.token_for(item_id) else {
+            tracing::error!(item_id, "asked to repair a bank with no token held for it");
+
+            return vec![Event::FromSourcePlaid {
+                call_id,
+                event: EventSourcePlaid::LinkAbandoned {
+                    link_token: String::new(),
+                },
+            }];
+        };
+
+        let handback = self.handback.as_ref().filter(|_| opener.hands_back());
+
+        let event = match runtime_plaid::open_repair(
+            &self.plaid_client,
+            &user_id.to_string(),
+            &access_token,
+            &opener.completion_redirect(),
+            self.webhook.as_deref(),
+            handback,
+        )
+        .await
+        {
+            Ok((link_token, Some(hosted_link_url))) => EventSourcePlaid::LinkOpened {
+                user_id,
+                link_token,
+                hosted_link_url,
+                repair_of: Some(item_id.to_string()),
+            },
+
+            Ok((link_token, None)) => {
+                tracing::error!("plaid answered a link token with no hosted url");
+
+                EventSourcePlaid::LinkAbandoned { link_token }
+            }
+
+            Err(e) => {
+                tracing::warn!(error = %e, "could not open a repair session");
 
                 EventSourcePlaid::LinkAbandoned {
                     link_token: String::new(),
@@ -814,6 +881,8 @@ impl RuntimeServer {
                 self.load_pending_links(*user_id).await
             }
 
+            ActionStore::LoadLinkRepair { link_token } => self.load_link_repair(link_token).await,
+
             ActionStore::LoadSnapshot { user_id, .. } => EventStore::SnapshotLoaded {
                 snapshot: self.project_snapshot(*user_id).await,
             },
@@ -878,8 +947,27 @@ impl RuntimeServer {
     }
 
     async fn load_pending_links(&self, user_id: Uuid) -> EventStore {
-        match self.pending_links(user_id).await {
-            Ok(link_tokens) => EventStore::PendingLinksLoaded { link_tokens },
+        match src_postgres::pending_links(&self.db, user_id).await {
+            Ok(links) => EventStore::PendingLinksLoaded {
+                links: links
+                    .into_iter()
+                    .map(|link| crate::PendingLinkFacts {
+                        link_token: link.link_token,
+                        repair_of: link.repair_of,
+                    })
+                    .collect(),
+            },
+
+            Err(e) => EventStore::ReadError {
+                message: e.to_string(),
+            },
+        }
+    }
+
+    /// Which Item a Link session repairs, as the store holds it.
+    async fn load_link_repair(&self, link_token: &str) -> EventStore {
+        match src_postgres::repair_for_link(&self.db, link_token).await {
+            Ok(repair_of) => EventStore::LinkRepairLoaded { repair_of },
 
             Err(e) => EventStore::ReadError {
                 message: e.to_string(),
@@ -1079,8 +1167,9 @@ impl RuntimeServer {
             ActionStore::SaveLink {
                 link_token,
                 user_id,
+                repair_of,
             } => {
-                src_postgres::save_link(db, link_token, *user_id).await?;
+                src_postgres::save_link(db, link_token, *user_id, repair_of.as_deref()).await?;
             }
 
             ActionStore::CollectLink { link_token } => {
@@ -1098,6 +1187,7 @@ impl RuntimeServer {
             | ActionStore::LoadItem { .. }
             | ActionStore::LoadItems { .. }
             | ActionStore::LoadPendingLinks { .. }
+            | ActionStore::LoadLinkRepair { .. }
             | ActionStore::LoadSnapshot { .. }
             | ActionStore::LoadCode { .. }
             | ActionStore::LoadSubscriptions
@@ -1199,21 +1289,6 @@ impl RuntimeServer {
         }
 
         Ok(connections)
-    }
-
-    /// The Link sessions this user has open and has not collected.
-    ///
-    /// A session is collected by whatever *reports* it, so an open one is one
-    /// nobody has been told about.
-    async fn pending_links(
-        &self,
-        user_id: Uuid,
-    ) -> Result<Vec<String>, src_postgres::PostgresError> {
-        Ok(src_postgres::pending_links(&self.db, user_id)
-            .await?
-            .into_iter()
-            .map(|link| link.link_token)
-            .collect())
     }
 
     /// One bank, by the id Plaid names it with, and its token remembered.
@@ -1334,6 +1409,7 @@ impl RuntimeServer {
             | ActionStore::LoadItem { .. }
             | ActionStore::LoadItems { .. }
             | ActionStore::LoadPendingLinks { .. }
+            | ActionStore::LoadLinkRepair { .. }
             | ActionStore::LoadSnapshot { .. }
             | ActionStore::LoadCode { .. }
             | ActionStore::SaveCode { .. }

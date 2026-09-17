@@ -32,6 +32,15 @@ pub enum Pending {
     /// A believed webhook waiting on the bank it names.
     WebhookItem { item_id: String },
 
+    /// A believed `SESSION_FINISHED` waiting to hear whether its session
+    /// repairs an Item. Held whole, because what is done with the tokens —
+    /// exchanged, or deliberately not — is decided by the answer.
+    WebhookLink {
+        link_token: String,
+        public_tokens: Vec<String>,
+        exited: bool,
+    },
+
     /// A request whose caller is known, waiting on the rows it decides from.
     Loading { user_id: Uuid, event: Authenticated },
 
@@ -39,7 +48,13 @@ pub enum Pending {
     Opening,
 
     /// Waiting on Plaid to say what the caller's open Link sessions came to.
-    Polling,
+    ///
+    /// `repairs` is which of them repair an Item rather than attach one,
+    /// `link_token` to `item_id`. Held here because the poll's answer does not
+    /// say, and a repair's finish must not be exchanged.
+    Polling {
+        repairs: std::collections::BTreeMap<String, String>,
+    },
 
     /// Waiting on Plaid to trade a `public_token` for a bank, on a route that
     /// asked for the exchange itself.

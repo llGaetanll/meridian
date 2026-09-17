@@ -34,6 +34,7 @@ pub fn BalancesPage(view: Signal<ViewBalances>) -> impl IntoView {
 
     let masked = Signal::derive(move || view.with(|v| v.masked));
     let toggle = Callback::new(move |()| runtime.ui(EventUi::MaskToggled));
+    let ui = Callback::new(move |event| runtime.ui(event));
 
     view! {
         <div class="page">
@@ -51,12 +52,12 @@ pub fn BalancesPage(view: Signal<ViewBalances>) -> impl IntoView {
                 </Hero>
 
                 <div class="accounts">
-                    <ConnectionBlocks connections=held />
+                    <ConnectionBlocks connections=held ui=ui />
                 </div>
 
                 <Show when=move || owed.with(|owed| !owed.is_empty())>
                     <Sec title=text(|v| &v.owed_label) value=text(|v| &v.owed_total) tone=Tone::Down>
-                        <ConnectionBlocks connections=owed />
+                        <ConnectionBlocks connections=owed ui=ui />
                     </Sec>
                 </Show>
             </div>

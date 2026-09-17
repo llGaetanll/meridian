@@ -57,6 +57,19 @@ pub enum ActionSourcePlaid {
         opener: LinkOpener,
     },
 
+    /// Open an update-mode Link session against a bank that has stopped
+    /// answering, and get the page that hosts it.
+    ///
+    /// Names the Item and not its access token, like every action here: the
+    /// runtime holds the credential and this says which one to use. A repair
+    /// leaves the token as it was and creates no Item, so this is as free to
+    /// repeat as [`OpenLink`](ActionSourcePlaid::OpenLink).
+    OpenRepair {
+        user_id: uuid::Uuid,
+        item_id: String,
+        opener: LinkOpener,
+    },
+
     /// Ask what became of every Link session this user has open.
     ///
     /// All of them in one action: fanning out to N calls is the runtime's

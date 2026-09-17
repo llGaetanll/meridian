@@ -40,12 +40,14 @@ use crate::ActionStore;
 use crate::Attaching;
 use crate::Authenticated;
 use crate::CallId;
+use crate::ItemFacts;
 use crate::LinkOpener;
 use crate::LinkOutcome;
 use crate::LinkPoll;
 use crate::LinkSession;
 use crate::Owed;
 use crate::Pending;
+use crate::PendingLinkFacts;
 use crate::PlaidCollect;
 use crate::RequestId;
 use crate::StoredCode;
@@ -375,6 +377,69 @@ impl StateSignup {
         });
     }
 
+    /// Somebody wants a bank they already connected repaired — Plaid's update
+    /// mode. Decided from their own banks, which the caller loaded first: a
+    /// repair session carries the Item's access token, so whose Item it is has
+    /// to be settled before Plaid is asked for anything.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "an event, its facts, and the machine's plumbing"
+    )]
+    pub fn repair_requested(
+        &mut self,
+        request_id: RequestId,
+        user_id: Uuid,
+        item_id: &str,
+        origin: Option<&str>,
+        items: &[ItemFacts],
+        limiter: &mut PlaidRateLimiter,
+        now: Timestamp,
+        actions: &mut Vec<Action>,
+    ) {
+        // Not this caller's bank and no such bank are one answer, for the same
+        // reason a wrong code and no code are: telling them apart says which
+        // Items exist.
+        let Some(item) = items.iter().find(|item| item.item_id == item_id) else {
+            tracing::warn!(%user_id, item_id, "a repair was asked for a bank the caller does not hold");
+
+            self.answer(request_id, ActionRouter::Rejected, now, actions);
+
+            return;
+        };
+
+        // A healthy bank has nothing to repair. Refused rather than opened,
+        // because the session would ask somebody to sign in for no reason.
+        if !item.login_required {
+            tracing::warn!(%user_id, item_id, "a repair was asked for a bank that answers");
+
+            self.answer(request_id, ActionRouter::Rejected, now, actions);
+
+            return;
+        }
+
+        if !may_send(limiter, PlaidEndpoint::LinkTokenCreate, now) {
+            tracing::warn!(%user_id, "a repair was not opened: too many this minute");
+
+            self.answer(request_id, ActionRouter::TooMany, now, actions);
+
+            return;
+        }
+
+        self.waits_on(request_id, Pending::Opening);
+
+        actions.push(Action::ToSourcePlaid {
+            call_id: self.calling(request_id, now),
+            action: ActionSourcePlaid::OpenRepair {
+                user_id,
+                item_id: item_id.to_string(),
+                opener: self
+                    .web_origins
+                    .as_ref()
+                    .map_or(LinkOpener::App, |web| LinkOpener::of(origin, web)),
+            },
+        });
+    }
+
     /// A sheet closed. Which sessions this caller has open decides what that
     /// means, so the store is asked first.
     pub fn link_closing(
@@ -402,15 +467,17 @@ impl StateSignup {
     pub fn pending_links_loaded(
         &mut self,
         request_id: RequestId,
-        link_tokens: &[String],
+        links: &[PendingLinkFacts],
         limiter: &mut PlaidRateLimiter,
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) {
+        let link_tokens: Vec<String> = links.iter().map(|link| link.link_token.clone()).collect();
+
         // Collection already happens unprompted, so this route asks rather
         // than triggers: Plaid would charge a call for a token already gone.
         if self.collects_by_webhook() {
-            self.closed_by_webhook(request_id, link_tokens, now, actions);
+            self.closed_by_webhook(request_id, &link_tokens, now, actions);
 
             return;
         }
@@ -432,13 +499,23 @@ impl StateSignup {
             return;
         }
 
-        self.waits_on(request_id, Pending::Polling);
+        // Which of them repair rather than attach rides on the wait: the
+        // poll's answer does not say, and a repair's finish must not be
+        // exchanged.
+        let repairs = links
+            .iter()
+            .filter_map(|link| {
+                link.repair_of
+                    .as_ref()
+                    .map(|item_id| (link.link_token.clone(), item_id.clone()))
+            })
+            .collect();
+
+        self.waits_on(request_id, Pending::Polling { repairs });
 
         actions.push(Action::ToSourcePlaid {
             call_id: self.calling(request_id, now),
-            action: ActionSourcePlaid::PollLinks {
-                link_tokens: link_tokens.to_vec(),
-            },
+            action: ActionSourcePlaid::PollLinks { link_tokens },
         });
     }
 
@@ -571,12 +648,20 @@ impl StateSignup {
     }
 
     /// Plaid has a page for somebody to sign in to their bank on.
+    ///
+    /// `repair_of` is the Item an update-mode session repairs, written onto
+    /// the session row so its finish is never exchanged for a new Item.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "an event, its facts, and the machine's plumbing"
+    )]
     pub fn link_opened(
         &mut self,
         request_id: RequestId,
         user_id: Uuid,
         link_token: &str,
         hosted_link_url: &str,
+        repair_of: Option<&str>,
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) {
@@ -587,6 +672,7 @@ impl StateSignup {
             action: ActionStore::SaveLink {
                 link_token: link_token.to_string(),
                 user_id,
+                repair_of: repair_of.map(str::to_string),
             },
         });
 
@@ -602,19 +688,26 @@ impl StateSignup {
 
     /// What Plaid says about the sessions this caller had open, on a server
     /// Plaid does not call.
+    ///
+    /// `repairs` is which of them repair an Item rather than attach one. A
+    /// repair's finish is never exchanged — the exchange is the call that
+    /// spends an Item slot, and the bank it would buy is one we already hold.
     pub fn links_polled(
         &mut self,
         request_id: RequestId,
         polls: &[LinkPoll],
+        repairs: &BTreeMap<String, String>,
         limiter: &mut PlaidRateLimiter,
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) {
         // A token is the answer whether or not the session says it has
         // finished. The first wins and the rest wait for the next close,
-        // because the route can be told about one.
+        // because the route can be told about one. Never a repair session's:
+        // whatever one carries, there is no Item to buy with it.
         let exchangeable = polls
             .iter()
+            .filter(|poll| !repairs.contains_key(&poll.link_token))
             .find_map(|poll| Some((poll.link_token.clone(), poll.public_tokens.first()?.clone())));
 
         if let Some((link_token, public_token)) = exchangeable {
@@ -643,6 +736,26 @@ impl StateSignup {
             return;
         }
 
+        // A finished repair is the bank answering again. The session record
+        // does not say whether they signed in or closed the sheet, so the
+        // error is cleared on finish either way: cleared wrongly, the next
+        // sync is refused again and writes it back.
+        let repaired: Vec<String> = polls
+            .iter()
+            .filter(|poll| poll.finished)
+            .filter_map(|poll| repairs.get(&poll.link_token).cloned())
+            .collect();
+
+        for item_id in &repaired {
+            actions.push(Action::ToStore {
+                call_id: self.calling(request_id, now),
+                action: ActionStore::SaveStatus {
+                    item_id: item_id.clone(),
+                    error_code: None,
+                },
+            });
+        }
+
         // They closed the sheet, and it is marked done so it is not polled
         // forever. One still running is somebody typing.
         let finished: Vec<String> = polls
@@ -658,7 +771,18 @@ impl StateSignup {
             });
         }
 
-        self.answer(request_id, ActionRouter::LinkAbandoned, now, actions);
+        if repaired.is_empty() {
+            self.answer(request_id, ActionRouter::LinkAbandoned, now, actions);
+        } else {
+            self.answer(
+                request_id,
+                ActionRouter::Linked {
+                    count: repaired.len() as u32,
+                },
+                now,
+                actions,
+            );
+        }
     }
 
     /// A bank is attached at Plaid, and the write that attaches it here goes
@@ -858,6 +982,43 @@ impl StateSignup {
         if let Some(request_id) = self.waiter(collect) {
             self.answer(request_id, ActionRouter::LinkAbandoned, now, actions);
         }
+    }
+
+    /// Plaid says an update-mode Link session is over — a repair, so nothing
+    /// is exchanged whatever the session produced.
+    ///
+    /// `exited` is Plaid's word for how it ended, and it is the only word
+    /// there is: a repair creates no Item, so success produces no token to
+    /// read it from.
+    pub fn repair_finished(
+        &mut self,
+        request_id: RequestId,
+        link_token: &str,
+        item_id: &str,
+        exited: bool,
+        now: Timestamp,
+        actions: &mut Vec<Action>,
+    ) {
+        if exited {
+            self.answer(request_id, ActionRouter::Accepted, now, actions);
+
+            self.settled(link_token, LinkOutcome::Nothing, now, actions);
+
+            return;
+        }
+
+        // The bank answers again, and the row is what `should_fetch` reads.
+        actions.push(Action::ToStore {
+            call_id: self.calling(request_id, now),
+            action: ActionStore::SaveStatus {
+                item_id: item_id.to_string(),
+                error_code: None,
+            },
+        });
+
+        self.answer(request_id, ActionRouter::Accepted, now, actions);
+
+        self.settled(link_token, LinkOutcome::Linked, now, actions);
     }
 
     /// Plaid says a Link session is over, and hands us what it produced.

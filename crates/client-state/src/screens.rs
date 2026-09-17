@@ -499,6 +499,7 @@ fn connection_views(state: &StateApp) -> Vec<ViewConnection> {
                 &held,
                 state.masked(),
                 false,
+                state.reconnecting() == Some(connection.id.as_str()),
                 state.now(),
             ));
         }
@@ -514,6 +515,7 @@ fn connection_views(state: &StateApp) -> Vec<ViewConnection> {
                 &owed,
                 state.masked(),
                 true,
+                state.reconnecting() == Some(connection.id.as_str()),
                 state.now(),
             ));
         }
@@ -527,6 +529,7 @@ fn connection_view(
     accounts: &[&Account],
     masked: bool,
     is_debts: bool,
+    reconnecting: bool,
     now: Timestamp,
 ) -> ViewConnection {
     let total: f64 = accounts
@@ -538,6 +541,7 @@ fn connection_view(
 
     ViewConnection {
         id: format!("{}{}", connection.id, if is_debts { "-owed" } else { "" }),
+        item_id: connection.id.clone(),
         name: connection.name.clone(),
         initials: connection.initials.clone(),
         synced: match &connection.status {
@@ -545,6 +549,7 @@ fn connection_view(
             ConnectionStatus::LoginRequired => String::new(),
         },
         needs_reconnect,
+        reconnecting,
         is_debts,
         accounts: accounts.iter().map(|a| account_row(a, masked)).collect(),
         total_label: format!(

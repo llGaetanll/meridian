@@ -31,6 +31,15 @@ pub enum EventRouter {
         origin: Option<String>,
     },
 
+    /// Somebody wants a bank they already connected repaired — Plaid's update
+    /// mode, for an Item whose login has expired. Names the Item, which is the
+    /// one thing [`LinkRequested`](EventRouter::LinkRequested) does not carry.
+    RepairRequested {
+        token_sha256: Vec<u8>,
+        origin: Option<String>,
+        item_id: String,
+    },
+
     /// Somebody wants to be told how their sync is going, for as long as it
     /// goes on.
     ///
@@ -102,6 +111,7 @@ impl EventRouter {
     pub fn token(&self) -> Option<&[u8]> {
         match self {
             EventRouter::LinkRequested { token_sha256, .. }
+            | EventRouter::RepairRequested { token_sha256, .. }
             | EventRouter::LinkClosed { token_sha256 }
             | EventRouter::SyncWatchRequested { token_sha256, .. }
             | EventRouter::SnapshotRequested { token_sha256 }
@@ -132,6 +142,7 @@ impl EventRouter {
             EventRouter::CodeRequested { .. } => Some(Route::AuthRequest),
             EventRouter::CodeSubmitted { .. } => Some(Route::AuthVerify),
             EventRouter::LinkRequested { .. } => Some(Route::LinkStart),
+            EventRouter::RepairRequested { .. } => Some(Route::LinkRepair),
             EventRouter::LinkClosed { .. } => Some(Route::LinkFinish),
             EventRouter::SyncWatchRequested { .. } => Some(Route::SyncStatus),
             EventRouter::SubscribeRequested { .. } => Some(Route::BillingSubscribe),
@@ -157,6 +168,7 @@ impl EventRouter {
             EventRouter::SnapshotRequested { .. }
             | EventRouter::CodeSubmitted { .. }
             | EventRouter::LinkRequested { .. }
+            | EventRouter::RepairRequested { .. }
             | EventRouter::LinkClosed { .. }
             | EventRouter::SyncWatchRequested { .. }
             | EventRouter::WebhookReceived { .. }

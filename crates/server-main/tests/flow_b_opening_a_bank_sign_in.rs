@@ -62,6 +62,7 @@ fn connecting_a_bank_opens_a_session_and_hands_over_its_page() {
                 link_token: "link-1".to_string(),
                 hosted_link_url: "https://secure.plaid.com/hl/link-1"
                     .to_string(),
+                repair_of: None,
             },
         },
 

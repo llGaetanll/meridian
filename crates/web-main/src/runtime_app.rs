@@ -218,6 +218,7 @@ impl RuntimeApp {
             ActionSource::SendCode { email } => self.send_code(email),
             ActionSource::VerifyCode { email, code } => self.verify_code(email, code),
             ActionSource::StartBankLink => self.start_bank_link(),
+            ActionSource::StartBankRepair { item_id } => self.start_bank_repair(item_id),
             ActionSource::WatchSync => self.watch_sync(),
             ActionSource::StopWatchingSync => self.stop_watching_sync(),
             ActionSource::StartSubscription => self.start_subscription(),
@@ -350,6 +351,57 @@ impl RuntimeApp {
             };
 
             let page = match server.start_link(&token).await {
+                Ok(page) => page,
+                Err(failure) => {
+                    popup.close();
+
+                    runtime.abandoned(failure);
+
+                    return;
+                }
+            };
+
+            popup.show(&page);
+            popup.gone().await;
+
+            match server.finish_link(&token).await {
+                Ok(LinkOutcome::Linked) => runtime.source(EventSource::BankLinked),
+                Ok(LinkOutcome::Abandoned) => runtime.source(EventSource::BankAbandoned),
+                Ok(LinkOutcome::Pending) => runtime.source(EventSource::BankPending),
+                Err(failure) => runtime.abandoned(failure),
+            }
+        });
+    }
+
+    /// The bank repair, the same end to end shape as
+    /// [`start_bank_link`](Self::start_bank_link): open an update-mode
+    /// session against the named bank, put Plaid's page in front of the user,
+    /// then ask the server what it came to. `/link/finish` answers for both
+    /// kinds of session, so the tail is the same three outcomes.
+    fn start_bank_repair(&self, item_id: String) {
+        let Some(token) = self.token.get_value() else {
+            tracing::error!("asked to repair a bank with no session");
+
+            self.source(EventSource::BankAbandoned);
+
+            return;
+        };
+
+        let popup = Popup::open();
+
+        let runtime = *self;
+        let server = self.server.get_value();
+
+        spawn_local(async move {
+            let Some(popup) = popup else {
+                tracing::warn!("the browser would not open a window for the bank");
+
+                runtime.source(EventSource::BankBlocked);
+
+                return;
+            };
+
+            let page = match server.repair_link(&token, &item_id).await {
                 Ok(page) => page,
                 Err(failure) => {
                     popup.close();

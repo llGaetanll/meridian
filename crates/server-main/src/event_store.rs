@@ -27,7 +27,11 @@ pub enum EventStore {
 
     /// The Link sessions this user has open. Empty is a sheet closed on a
     /// session we have no record of, or one already collected.
-    PendingLinksLoaded { link_tokens: Vec<String> },
+    PendingLinksLoaded { links: Vec<crate::PendingLinkFacts> },
+
+    /// Which Item a Link session repairs. `None` is an ordinary session that
+    /// attaches, or one we have no row for — neither may skip the exchange.
+    LinkRepairLoaded { repair_of: Option<String> },
 
     /// The ledger a snapshot is about to be answered with, as a value: nothing
     /// outside the machine reads the store.

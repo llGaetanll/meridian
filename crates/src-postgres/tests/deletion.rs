@@ -127,7 +127,7 @@ async fn a_full_account(db: &PgPool, email: &str) -> Uuid {
     .await
     .expect("the subscription is written");
 
-    src_postgres::save_link(db, "link-1", user_id)
+    src_postgres::save_link(db, "link-1", user_id, None)
         .await
         .expect("the link session is written");
 

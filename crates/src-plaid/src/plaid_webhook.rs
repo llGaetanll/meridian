@@ -37,6 +37,14 @@ pub struct PlaidWebhook {
     #[serde(default)]
     pub public_tokens: Vec<String>,
 
+    /// How a `SESSION_FINISHED` session ended: `SUCCESS` or `EXITED`.
+    ///
+    /// Redundant on an ordinary link, where the tokens say the same thing, and
+    /// the only word there is on an update-mode session — a repair creates no
+    /// Item, so success there produces no token to read it from.
+    #[serde(default)]
+    pub status: Option<String>,
+
     /// The error a `ITEM: ERROR` webhook is about. Its `error_code` is the
     /// only part worth matching on.
     #[serde(default)]
@@ -60,9 +68,14 @@ pub struct PlaidWebhookError {
 pub enum PlaidWebhookKind {
     /// A Link session ended, and this is what it came to. The push half of
     /// [`link_session`](crate::link_session), which is the pull half.
+    ///
+    /// `exited` is Plaid's `status: EXITED` — they closed the sheet. It is the
+    /// only way an update-mode session says whether the repair happened, since
+    /// success there produces no token.
     SessionFinished {
         link_token: String,
         public_tokens: Vec<String>,
+        exited: bool,
     },
 
     /// This bank has transactions we have not read yet.
@@ -96,6 +109,7 @@ impl PlaidWebhook {
                 Some(link_token) => PlaidWebhookKind::SessionFinished {
                     link_token: link_token.clone(),
                     public_tokens: self.public_tokens.clone(),
+                    exited: self.status.as_deref() == Some("EXITED"),
                 },
                 None => PlaidWebhookKind::Other,
             },
@@ -163,6 +177,7 @@ mod tests {
             PlaidWebhookKind::SessionFinished {
                 link_token: "link-sandbox-1".to_string(),
                 public_tokens: vec!["public-sandbox-1".to_string()],
+                exited: false,
             },
         );
     }
@@ -184,6 +199,7 @@ mod tests {
             PlaidWebhookKind::SessionFinished {
                 link_token: "link-sandbox-1".to_string(),
                 public_tokens: vec![],
+                exited: true,
             },
         );
     }

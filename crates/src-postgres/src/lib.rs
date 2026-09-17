@@ -42,6 +42,7 @@ pub use postgres_ledger::save_streams;
 pub use postgres_link::PendingLink;
 pub use postgres_link::collect_link;
 pub use postgres_link::pending_links;
+pub use postgres_link::repair_for_link;
 pub use postgres_link::save_link;
 pub use postgres_link::user_for_link;
 pub use postgres_login::StoredCode;

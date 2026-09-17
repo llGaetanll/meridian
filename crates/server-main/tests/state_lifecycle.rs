@@ -679,7 +679,12 @@ fn a_drain_does_not_give_up_on_the_exchange() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 

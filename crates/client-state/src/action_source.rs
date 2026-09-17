@@ -30,6 +30,11 @@ pub enum ActionSource {
     /// signs both cannot ship inside an app (`docs/PLAID.md`).
     StartBankLink,
 
+    /// The same, in update mode against one bank the user already holds: ask
+    /// the server for a repair session and open its page. The sign-in renews
+    /// the bank's consent instead of attaching a new one.
+    StartBankRepair { item_id: String },
+
     /// Ask the server to start a subscription, and have the card form ready
     /// to pay it.
     ///

@@ -18,7 +18,7 @@ One request is usually one answer, and D is the exception: its stream is a
 single request whose response is written to many times, so several
 `phone <- server` lines share the one `phone -> server` above them.
 
-Flows are lettered, A to F, and C has two variants that do the same job by
+Flows are lettered, A to G, and C has two variants that do the same job by
 different means. Each flow numbers its own entries from 1, so a bare number is a
 reference within that flow and anything reaching across one names the route
 instead. Where a request has more than one possible answer, every one of them is
@@ -152,7 +152,7 @@ app switch and a request to get through, and Plaid has none of that.
 2. `plaid` -> `server` - `POST /plaid/webhook` with `Plaid-Verification: <JWT>`: *`SESSION_FINISHED`, with the `public_token`s on it. Sent whether or not anybody asked.*
 3. `server` -> `plaid` - `POST /webhook_verification_key/get`: *Fetches the key that JWT names. Once per `kid`, then cached, hits and misses both, so an anonymous POST cannot become an outbound call at will.*
 4. `server` <- `plaid` - `200` JWK: *The key the signature is checked against, over the raw bytes Plaid put on the wire.*
-5. `server` -> `plaid` - `POST /item/public_token/exchange {"public_token"}`: *One call per token, and every token is exchanged: Plaid says this once, so a token nobody trades is a bank somebody connected and does not get. Each is one request against the exchange budget, and a token past it is dropped rather than traded — which the phone reads as 8b, since Plaid's POST is what answers here and there is no 429 to give it.*
+5. `server` -> `plaid` - `POST /item/public_token/exchange {"public_token"}`: *The session's row is read from Postgres first, because a repair session's finish is never exchanged — that is flow G. On an ordinary session: one call per token, and every token is exchanged: Plaid says this once, so a token nobody trades is a bank somebody connected and does not get. Each is one request against the exchange budget, and a token past it is dropped rather than traded — which the phone reads as 8b, since Plaid's POST is what answers here and there is no 429 to give it.*
 6. `server` <- `plaid` - `200 {"access_token","item_id"}`: *One per exchange, and the same irreversible call as C1's step 4.*
 7. `plaid` <- `server` - one of:
    a. `204 No Content`: *Believed and taken, sent once the exchanges have landed and been written. Taken is what stops Plaid sending it again, so a write that would not land answers 503 below instead — that is what makes a failure mid-exchange a webhook Plaid sends again rather than a bank quietly lost.*
@@ -241,6 +241,36 @@ both of these late.
 
 Both are answered exactly as C2's step 7 answers a webhook, and for the same
 reasons.
+
+## G. Repairing a bank that has stopped answering
+
+Starts on the Reconnect button that F's second webhook lights up: an
+`ITEM_LOGIN_REQUIRED` bank is a dead Item, and this is the one thing that
+brings it back. It is Plaid's update mode — the same Link page as B, opened
+against an Item we already hold — so the sign-in renews the bank's consent
+instead of attaching a new one, and **no step of it can spend an Item slot**.
+
+The web app is the client that walks this today; the phone's button is still
+disabled (issue #58).
+
+1. `phone` -> `server` - `POST /link/repair {"item_id"}` with `Authorization: Bearer <token>`: *Which bank, by the id the snapshot's connection carries.*
+2. `server` -> `plaid` - `POST /link/token/create`: *As B's step 2, plus the Item's `access_token` and minus any products — Plaid's shape for update mode. The token is looked up in the runtime; it enters no event and no request the client can see.*
+3. `phone` <- `server` - one of:
+   a. `200 {"url"}`: *The page to open, as B's 4a. The `link_sessions` row carries the `item_id`, which is what will keep this session's finish from being exchanged.*
+   b. `401 Unauthorized`: *No bearer token, or one the server no longer honours.*
+   c. `404 Not Found`: *Not this caller's bank, no such bank, or a bank with nothing to repair. One status for all three, because telling them apart says which Items exist.*
+   d. `429 Too Many Requests`: *As B's 4c: the caller's window, or Plaid's `link/token/create` budget.*
+   e. `500 Internal Server Error` / `502 Bad Gateway`: *As B's 4d and 4e.*
+4. `sheet` -> `plaid` - the sign-in, as B's 5 and 6: *The user signs into the bank on Plaid's page. Success produces no `public_token` — there is no new Item to trade for.*
+5. The collection, by whichever channel `PLAID_COLLECT` names:
+   a. polling: *`/link/finish` polls as C1 does. A finished repair session clears the item's `error_code` and is collected; whether they signed in or closed the sheet is not in the session record, so the error is cleared on finish either way — cleared wrongly, the next sync is refused again and writes it back.*
+   b. webhook: *`SESSION_FINISHED` arrives as C2's 2, and its `status` is the answer: `SUCCESS` clears the `error_code`, `EXITED` clears nothing. Plaid also sends `ITEM: LOGIN_REPAIRED`, which clears the same column — either arriving first is fine, because both writes say the same thing.*
+6. `phone` <- `server` - on `/link/finish`, as C's step 6: *`linked` is a repair that happened, `abandoned` a sheet closed without one, `pending` an answer not in yet.*
+
+A cleared `error_code` is the whole cure: `should_fetch` stops refusing the
+bank, and the next snapshot whose freshness window has expired syncs it. No
+sync is forced here — the screen that follows asks for a snapshot, and that is
+enough.
 
 ## Things worth knowing about the shape
 

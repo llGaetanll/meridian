@@ -73,6 +73,7 @@ pub(crate) fn router(to_loop: ToLoop, origins: &WebOrigins) -> Router {
         .route("/auth/request", post(auth_request))
         .route("/auth/verify", post(auth_verify))
         .route("/link/start", post(link_start))
+        .route("/link/repair", post(link_repair))
         .route("/link/finish", post(link_finish))
         .route("/sync/status", get(sync_status))
         .route("/billing/subscribe", post(billing_subscribe))
@@ -544,6 +545,60 @@ async fn link_start(
         // Plaid refusing, the same way the other routes tell a store that
         // would not answer apart from an answer: a gateway error points at
         // somebody else's service for something that went wrong here.
+        Some(ActionRouter::Unavailable) => Err(StatusCode::INTERNAL_SERVER_ERROR.into()),
+
+        _ => Err(StatusCode::BAD_GATEWAY.into()),
+    }
+}
+
+/// What `POST /link/repair` is asked with: which bank to repair.
+#[derive(Debug, serde::Deserialize)]
+struct RepairAsked {
+    item_id: String,
+}
+
+/// `POST /link/repair` — open an update-mode Link session for one of the
+/// signed-in user's banks.
+///
+/// The same page as `/link/start` at the other end, and the same
+/// `/link/finish` afterwards. What differs is what the session does: it
+/// repairs the named Item instead of attaching a new one, so nothing it
+/// produces is exchanged and no Item slot can be spent.
+async fn link_repair(
+    State(to_loop): State<ToLoop>,
+    Extension(ip): Extension<ClientIp>,
+    headers: axum::http::HeaderMap,
+    Json(asked): Json<RepairAsked>,
+) -> Result<Json<LinkStarted>, Refusal> {
+    let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let origin = headers
+        .get(ORIGIN)
+        .map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned());
+
+    let answer = runtime_router::dispatch(
+        &to_loop,
+        Client::anonymous(ip),
+        EventRouter::RepairRequested {
+            token_sha256,
+            origin,
+            item_id: asked.item_id,
+        },
+    )
+    .await;
+
+    refused(&answer)?;
+
+    match answer {
+        Some(ActionRouter::LinkOpened { url }) => Ok(Json(LinkStarted { url })),
+
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
+
+        // Not this caller's bank, no such bank, or one with nothing to
+        // repair. One status for all three, because telling them apart says
+        // which Items exist.
+        Some(ActionRouter::Rejected) => Err(StatusCode::NOT_FOUND.into()),
+
         Some(ActionRouter::Unavailable) => Err(StatusCode::INTERNAL_SERVER_ERROR.into()),
 
         _ => Err(StatusCode::BAD_GATEWAY.into()),

@@ -68,6 +68,11 @@ pub enum EventUi {
     /// whichever screen the tap came from, Plaid opens next.
     BankConnectRequested,
 
+    /// Reconnect, on a bank that has stopped answering. Opens Plaid too, in
+    /// update mode against the named bank: the sign-in repairs it rather than
+    /// attaching another.
+    BankReconnectRequested { item_id: String },
+
     /// Open Meridian, on the last screen of first run.
     OnboardingFinished,
 

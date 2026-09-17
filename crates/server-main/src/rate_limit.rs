@@ -68,6 +68,9 @@ pub enum Route {
     /// `POST /link/start`
     LinkStart,
 
+    /// `POST /link/repair`
+    LinkRepair,
+
     /// `POST /link/finish`
     LinkFinish,
 
@@ -96,6 +99,7 @@ impl Route {
             Route::AuthRequest => "/auth/request",
             Route::AuthVerify => "/auth/verify",
             Route::LinkStart => "/link/start",
+            Route::LinkRepair => "/link/repair",
             Route::LinkFinish => "/link/finish",
             Route::SyncStatus => "/sync/status",
             Route::BillingSubscribe => "/billing/subscribe",
@@ -133,6 +137,7 @@ impl Route {
             Route::Snapshot
             | Route::AuthVerify
             | Route::LinkStart
+            | Route::LinkRepair
             | Route::LinkFinish
             | Route::BillingStatus => (CALLS_PER_MINUTE, MINUTE),
         }

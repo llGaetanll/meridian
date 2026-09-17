@@ -72,12 +72,21 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
             },
         },
 
-        > Action::ToSourcePlaid {
+        > Action::ToStore {
             call_id: 2,
+            action: ActionStore::LoadLinkRepair { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::LinkRepairLoaded { repair_of: None },
+        },
+
+        > Action::ToSourcePlaid {
+            call_id: 3,
             action: ActionSourcePlaid::ExchangePublicToken { .. },
         },
         < Event::FromSourcePlaid {
-            call_id: 2,
+            call_id: 3,
             event: EventSourcePlaid::ItemLinked {
                 link_token: "link-1".to_string(),
                 item_id: "item-9".to_string(),
@@ -86,9 +95,9 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
 
         // The bank is written down. Nobody has asked what the session came
         // to yet, so the outcome waits for a route that will.
-        > Action::ToStore { call_id: 3, action: ActionStore::SaveItem { .. } },
+        > Action::ToStore { call_id: 4, action: ActionStore::SaveItem { .. } },
         < Event::FromStore {
-            call_id: 3,
+            call_id: 4,
             event: EventStore::ItemSaved {
                 item: Some(ItemFacts {
                     item_id: "item-9".to_string(),
@@ -104,7 +113,7 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         // started from — on a call nobody is parked on, so the webhook is
         // answered without waiting for it.
         > Action::ToSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             action: ActionSourcePlaid::FetchBalances { .. },
         },
 
@@ -121,39 +130,44 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         },
 
         > Action::ToStore {
-            call_id: 5,
+            call_id: 6,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 5,
+            call_id: 6,
             event: EventStore::SessionResolved {
                 user_id: Some(uuid::Uuid::nil()),
             },
         },
 
         > Action::ToStore {
-            call_id: 6,
+            call_id: 7,
             action: ActionStore::LoadPendingLinks { .. },
         },
         < Event::FromStore {
-            call_id: 6,
+            call_id: 7,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 
         > Action::ToStore {
-            call_id: 7,
+            call_id: 8,
             action: ActionStore::CollectLink { .. },
         },
-        < Event::FromStore { call_id: 7, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 8, event: EventStore::WriteSuccess },
 
         > @r#"ToRouter { request_id: 2, action: Linked { count: 1 } }"#,
 
         // The first sync runs its three calls out. Nobody is waiting on it,
         // so its last write is the end of it.
         < Event::FromSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             event: EventSourcePlaid::BalancesLoaded {
                 item_id: "item-9".to_string(),
                 connection: Connection {
@@ -167,19 +181,19 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         },
 
         > Action::ToStore {
-            call_id: 8,
+            call_id: 9,
             action: ActionStore::SaveAccounts { .. },
         },
 
         > Action::ToSourcePlaid {
-            call_id: 9,
+            call_id: 10,
             action: ActionSourcePlaid::SyncTransactions { .. },
         },
 
-        < Event::FromStore { call_id: 8, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 9, event: EventStore::WriteSuccess },
 
         < Event::FromSourcePlaid {
-            call_id: 9,
+            call_id: 10,
             event: EventSourcePlaid::TransactionsLoaded {
                 item_id: "item-9".to_string(),
                 added: vec![Entry::from_tx(
@@ -197,19 +211,19 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         },
 
         > Action::ToStore {
-            call_id: 10,
+            call_id: 11,
             action: ActionStore::SaveTransactions { .. },
         },
 
         > Action::ToSourcePlaid {
-            call_id: 11,
+            call_id: 12,
             action: ActionSourcePlaid::FetchRecurring { .. },
         },
 
-        < Event::FromStore { call_id: 10, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 11, event: EventStore::WriteSuccess },
 
         < Event::FromSourcePlaid {
-            call_id: 11,
+            call_id: 12,
             event: EventSourcePlaid::RecurringLoaded {
                 item_id: "item-9".to_string(),
                 streams: vec![],
@@ -217,10 +231,10 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         },
 
         > Action::ToStore {
-            call_id: 12,
+            call_id: 13,
             action: ActionStore::SaveStreams { .. },
         },
-        < Event::FromStore { call_id: 12, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 13, event: EventStore::WriteSuccess },
 
         // Ten minutes in which nobody calls. Long enough for every window the
         // close was metered in to have gone idle.
@@ -241,22 +255,22 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         },
 
         > Action::ToStore {
-            call_id: 13,
+            call_id: 14,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 13,
+            call_id: 14,
             event: EventStore::SessionResolved {
                 user_id: Some(uuid::Uuid::nil()),
             },
         },
 
         > Action::ToStore {
-            call_id: 14,
+            call_id: 15,
             action: ActionStore::LoadItems { .. },
         },
         < Event::FromStore {
-            call_id: 14,
+            call_id: 15,
             event: EventStore::ItemsLoaded {
                 items: vec![ItemFacts {
                     item_id: "item-9".to_string(),
@@ -269,11 +283,11 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         },
 
         > Action::ToSourcePlaid {
-            call_id: 15,
+            call_id: 16,
             action: ActionSourcePlaid::FetchBalances { .. },
         },
         < Event::FromSourcePlaid {
-            call_id: 15,
+            call_id: 16,
             event: EventSourcePlaid::BalancesLoaded {
                 item_id: "item-9".to_string(),
                 connection: Connection {
@@ -289,19 +303,19 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         },
 
         > Action::ToStore {
-            call_id: 16,
+            call_id: 17,
             action: ActionStore::SaveAccounts { .. },
         },
 
         > Action::ToSourcePlaid {
-            call_id: 17,
+            call_id: 18,
             action: ActionSourcePlaid::SyncTransactions { .. },
         },
 
-        < Event::FromStore { call_id: 16, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 17, event: EventStore::WriteSuccess },
 
         < Event::FromSourcePlaid {
-            call_id: 17,
+            call_id: 18,
             event: EventSourcePlaid::TransactionsLoaded {
                 item_id: "item-9".to_string(),
                 added: vec![Entry::from_tx(
@@ -319,19 +333,19 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         },
 
         > Action::ToStore {
-            call_id: 18,
+            call_id: 19,
             action: ActionStore::SaveTransactions { .. },
         },
 
         > Action::ToSourcePlaid {
-            call_id: 19,
+            call_id: 20,
             action: ActionSourcePlaid::FetchRecurring { .. },
         },
 
-        < Event::FromStore { call_id: 18, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 19, event: EventStore::WriteSuccess },
 
         < Event::FromSourcePlaid {
-            call_id: 19,
+            call_id: 20,
             event: EventSourcePlaid::RecurringLoaded {
                 item_id: "item-9".to_string(),
                 streams: vec![],
@@ -339,17 +353,17 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
         },
 
         > Action::ToStore {
-            call_id: 20,
+            call_id: 21,
             action: ActionStore::SaveStreams { .. },
         },
-        < Event::FromStore { call_id: 20, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 21, event: EventStore::WriteSuccess },
 
         > Action::ToStore {
-            call_id: 21,
+            call_id: 22,
             action: ActionStore::LoadSnapshot { .. },
         },
         < Event::FromStore {
-            call_id: 21,
+            call_id: 22,
             event: EventStore::SnapshotLoaded {
                 snapshot: WireSnapshot::default(),
             },
@@ -477,7 +491,12 @@ fn a_route_parked_on_a_session_nobody_reports_on_is_let_go_of_whole() {
         < Event::FromStore {
             call_id: 2,
             event: EventStore::PendingLinksLoaded {
-                link_tokens: vec!["link-1".to_string()],
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
             },
         },
 

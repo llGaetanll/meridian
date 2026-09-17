@@ -163,6 +163,27 @@ because it is the one nothing can undo: each request that lands creates an Item
 and the account may hold ten. That stops a burst and nothing slower — nothing
 here counts how many Items the account already holds.
 
+## Repairing a bank
+
+A bank whose login has expired answers `ITEM_LOGIN_REQUIRED` to everything,
+and no amount of syncing fixes it. The cure is Link's **update mode**: the
+same Hosted Link page, requested with the Item's `access_token` and **no
+products** — `LinkTokenRequest::update` builds that shape and `POST
+/link/repair {"item_id"}` is the route that opens it. The access token stays
+the same afterwards; what changes is that the bank starts answering for it
+again.
+
+Nothing in a repair can spend an Item slot. Its session's row carries the
+`item_id` (`link_sessions.item_id`), and that column is what keeps the finish
+from being exchanged — the one call that spends. What a successful repair does
+instead is clear `items.error_code`, which is the column `should_fetch`
+refuses on, so the next stale snapshot syncs the bank as if nothing had
+happened.
+
+`docs/API_FLOW.md` writes it out as flow G. Sandbox never expires a login, so
+the way to try it there is `/sandbox/item/reset_login`, which puts a linked
+Item into `ITEM_LOGIN_REQUIRED` on purpose.
+
 ## The two redirects
 
 Plaid takes two addresses with similar names, and conflating them is why this

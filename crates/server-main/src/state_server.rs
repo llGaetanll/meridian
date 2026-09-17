@@ -266,7 +266,7 @@ impl StateServer {
         }
 
         match event {
-            EventRouter::LinkRequested { .. } => {
+            EventRouter::LinkRequested { .. } | EventRouter::RepairRequested { .. } => {
                 unreachable!("a request carrying a token is resolved before it is decided")
             }
 
@@ -522,6 +522,23 @@ impl StateServer {
                 self.now,
                 actions,
             ),
+
+            // Whose Item it is has to be settled before Plaid is asked for
+            // anything, so the caller's banks are read first.
+            Authenticated::RepairRequested { .. } => {
+                self.signup.waits_on(
+                    request_id,
+                    Pending::Loading {
+                        user_id,
+                        event: event.clone(),
+                    },
+                );
+
+                actions.push(Action::ToStore {
+                    call_id: self.signup.calling(request_id, self.now),
+                    action: ActionStore::LoadItems { user_id },
+                });
+            }
 
             Authenticated::LinkClosed => {
                 self.signup
@@ -1104,13 +1121,30 @@ impl StateServer {
         );
 
         let facts = match webhook.kind() {
+            // Not acted on until the store says whether the session repairs an
+            // Item: a repair's finish must not be exchanged, and the exchange
+            // is the call nothing can undo.
             PlaidWebhookKind::SessionFinished {
                 link_token,
                 public_tokens,
-            } => WebhookFacts::SessionFinished {
-                link_token,
-                public_tokens,
-            },
+                exited,
+            } => {
+                self.signup.waits_on(
+                    request_id,
+                    Pending::WebhookLink {
+                        link_token: link_token.clone(),
+                        public_tokens,
+                        exited,
+                    },
+                );
+
+                actions.push(Action::ToStore {
+                    call_id: self.signup.calling(request_id, self.now),
+                    action: ActionStore::LoadLinkRepair { link_token },
+                });
+
+                return;
+            }
 
             // The one kind that needs a read: it names a bank, not a person.
             PlaidWebhookKind::SyncUpdatesAvailable { item_id } => {
@@ -1182,20 +1216,6 @@ impl StateServer {
         actions: &mut Vec<Action>,
     ) {
         match webhook {
-            WebhookFacts::SessionFinished {
-                link_token,
-                public_tokens,
-            } => {
-                self.signup.session_finished(
-                    request_id,
-                    link_token,
-                    public_tokens,
-                    &mut self.limiter,
-                    self.now,
-                    actions,
-                );
-            }
-
             WebhookFacts::SyncUpdatesAvailable { item_id, item } => {
                 // News about a bank the store has no row for. Nothing to fix
                 // from here, but the two sides disagreeing is worth saying.
@@ -1852,6 +1872,7 @@ impl StateServer {
                 user_id,
                 link_token,
                 hosted_link_url,
+                repair_of,
             } => {
                 let Some(request_id) = self.signup.answered(call_id) else {
                     return;
@@ -1869,6 +1890,7 @@ impl StateServer {
                     *user_id,
                     link_token,
                     hosted_link_url,
+                    repair_of.as_deref(),
                     self.now,
                     actions,
                 );
@@ -1879,15 +1901,20 @@ impl StateServer {
                     return;
                 };
 
-                let step = self.signup.resumed(request_id);
+                let Some(Pending::Polling { repairs }) = self.signup.resumed(request_id) else {
+                    tracing::error!(call_id, "plaid answered a poll nobody asked for");
 
-                debug_assert!(
-                    matches!(step, Some(Pending::Polling)),
-                    "the route asked for a poll"
+                    return;
+                };
+
+                self.signup.links_polled(
+                    request_id,
+                    polls,
+                    &repairs,
+                    &mut self.limiter,
+                    self.now,
+                    actions,
                 );
-
-                self.signup
-                    .links_polled(request_id, polls, &mut self.limiter, self.now, actions);
             }
 
             // Named by the call rather than by the route it was made for: an
@@ -2188,11 +2215,24 @@ impl StateServer {
                         self.handle_snapshot(request_id, user_id, items, actions)
                     }
 
-                    _ => unreachable!("only a snapshot asks for banks"),
+                    Authenticated::RepairRequested { origin, item_id } => {
+                        self.signup.repair_requested(
+                            request_id,
+                            user_id,
+                            &item_id,
+                            origin.as_deref(),
+                            items,
+                            &mut self.limiter,
+                            self.now,
+                            actions,
+                        );
+                    }
+
+                    _ => unreachable!("only a snapshot or a repair asks for banks"),
                 }
             }
 
-            EventStore::PendingLinksLoaded { link_tokens } => {
+            EventStore::PendingLinksLoaded { links } => {
                 let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
@@ -2205,11 +2245,54 @@ impl StateServer {
 
                 self.signup.pending_links_loaded(
                     request_id,
-                    link_tokens,
+                    links,
                     &mut self.limiter,
                     self.now,
                     actions,
                 );
+            }
+
+            // The answer a `SESSION_FINISHED` waited on: whether its session
+            // repairs an Item, which decides whether its tokens are exchanged.
+            EventStore::LinkRepairLoaded { repair_of } => {
+                let Some(request_id) = self.signup.answered(call_id) else {
+                    return;
+                };
+
+                let Some(Pending::WebhookLink {
+                    link_token,
+                    public_tokens,
+                    exited,
+                }) = self.signup.resumed(request_id)
+                else {
+                    tracing::error!(call_id, "the store answered a session nobody asked about");
+
+                    return;
+                };
+
+                match repair_of {
+                    Some(item_id) => {
+                        self.signup.repair_finished(
+                            request_id,
+                            &link_token,
+                            item_id,
+                            exited,
+                            self.now,
+                            actions,
+                        );
+                    }
+
+                    None => {
+                        self.signup.session_finished(
+                            request_id,
+                            &link_token,
+                            &public_tokens,
+                            &mut self.limiter,
+                            self.now,
+                            actions,
+                        );
+                    }
+                }
             }
 
             EventStore::SnapshotLoaded { snapshot } => {

@@ -132,6 +132,22 @@ impl Meridian {
         Ok(started.url)
     }
 
+    /// Open an update-mode Link session against one bank, and answer with the
+    /// address of Plaid's page for it. The sign-in there repairs the bank
+    /// rather than attaching a new one.
+    pub async fn repair_link(&self, token: &str, item_id: &str) -> Result<String, Failure> {
+        #[derive(Deserialize)]
+        struct Started {
+            url: String,
+        }
+
+        let body = serde_json::json!({ "item_id": item_id });
+
+        let started: Started = self.post_authed_body("link/repair", token, &body).await?;
+
+        Ok(started.url)
+    }
+
     /// Ask what the Link session came to.
     pub async fn finish_link(&self, token: &str) -> Result<LinkOutcome, Failure> {
         #[derive(Deserialize)]
@@ -278,6 +294,34 @@ impl Meridian {
         let (status, body) = self
             .send(self.client.post(url).bearer_auth(token), call)
             .await?;
+
+        if let Some(refusal) = Failure::refusal(status, &body) {
+            return Err(refusal);
+        }
+
+        serde_json::from_str(&body).map_err(|_| Failure::Unreadable)
+    }
+
+    /// A POST that carries the session and a JSON body, and whose answer is
+    /// JSON.
+    async fn post_authed_body<T: for<'de> Deserialize<'de>>(
+        &self,
+        path: &str,
+        token: &str,
+        body: &serde_json::Value,
+    ) -> Result<T, Failure> {
+        let url = self.url(path)?;
+        let body = body.to_string();
+        let call = ApiCall::post(module_path!(), SOURCE, &url, &body);
+
+        let request = self
+            .client
+            .post(url)
+            .bearer_auth(token)
+            .header("Content-Type", "application/json")
+            .body(body);
+
+        let (status, body) = self.send(request, call).await?;
 
         if let Some(refusal) = Failure::refusal(status, &body) {
             return Err(refusal);

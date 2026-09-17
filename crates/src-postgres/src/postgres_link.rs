@@ -13,18 +13,29 @@ pub struct PendingLink {
     pub link_token: String,
     pub user_id: Uuid,
     pub created_at: Timestamp,
+
+    /// The Item this session repairs — Plaid's update mode. `None` is the
+    /// ordinary session that attaches a new one.
+    pub repair_of: Option<String>,
 }
 
-/// Remember that this user opened this Link session.
+/// Remember that this user opened this Link session, and which Item it
+/// repairs if it repairs one.
 ///
 /// Written before the URL is handed back, so there is no window in which
 /// somebody could finish a session we have no record of asking for.
-pub async fn save_link(db: &Db, link_token: &str, user_id: Uuid) -> Result<(), PostgresError> {
+pub async fn save_link(
+    db: &Db,
+    link_token: &str,
+    user_id: Uuid,
+    repair_of: Option<&str>,
+) -> Result<(), PostgresError> {
     sqlx::query!(
-        "INSERT INTO link_sessions (link_token, user_id) VALUES ($1, $2)
+        "INSERT INTO link_sessions (link_token, user_id, item_id) VALUES ($1, $2, $3)
          ON CONFLICT (link_token) DO NOTHING",
         link_token,
         user_id,
+        repair_of,
     )
     .execute(db)
     .await?;
@@ -38,7 +49,7 @@ pub async fn save_link(db: &Db, link_token: &str, user_id: Uuid) -> Result<(), P
 /// is what turns a session into an Item, and an Item is somebody's bank.
 pub async fn pending_links(db: &Db, user_id: Uuid) -> Result<Vec<PendingLink>, PostgresError> {
     let rows = sqlx::query!(
-        "SELECT link_token, user_id, created_at FROM link_sessions
+        "SELECT link_token, user_id, created_at, item_id FROM link_sessions
          WHERE user_id = $1 AND collected_at IS NULL
          ORDER BY created_at DESC",
         user_id,
@@ -52,6 +63,7 @@ pub async fn pending_links(db: &Db, user_id: Uuid) -> Result<Vec<PendingLink>, P
             link_token: row.link_token,
             user_id: row.user_id,
             created_at: seconds(row.created_at),
+            repair_of: row.item_id,
         })
         .collect())
 }
@@ -70,6 +82,22 @@ pub async fn user_for_link(db: &Db, link_token: &str) -> Result<Option<Uuid>, Po
     .await?;
 
     Ok(row.map(|row| row.user_id))
+}
+
+/// The Item this Link session repairs, if it repairs one.
+///
+/// `None` covers both a session we have no row for and an ordinary session
+/// that attaches: neither is a repair, and what a repair must not do —
+/// exchange the finish for a new Item — is decided from this answer.
+pub async fn repair_for_link(db: &Db, link_token: &str) -> Result<Option<String>, PostgresError> {
+    let row = sqlx::query!(
+        "SELECT item_id FROM link_sessions WHERE link_token = $1",
+        link_token,
+    )
+    .fetch_optional(db)
+    .await?;
+
+    Ok(row.and_then(|row| row.item_id))
 }
 
 /// Mark a session collected, whatever it turned out to hold.
