@@ -30,7 +30,7 @@ body { padding: 0; overflow-x: auto; }
 }
 
 /* Leaving the road is drawn as leaving it. */
-.wire.down, .wire.under, .wire.rise {
+.wire.down, .wire.under, .wire.backhop, .wire.rise {
   stroke: var(--border-strong); color: var(--border-strong);
 }
 
@@ -51,7 +51,7 @@ body { padding: 0; overflow-x: auto; }
   white-space: nowrap;
   color: var(--violet-300);
 }
-.wire-label.down, .wire-label.under, .wire-label.rise {
+.wire-label.down, .wire-label.under, .wire-label.backhop, .wire-label.rise {
   color: var(--text-faint); font-weight: 400;
 }
 

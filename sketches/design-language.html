@@ -104,6 +104,8 @@ body {
     <symbol id="i-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"/><path d="M3.5 12A8.5 8.5 0 0 1 12 3.5" opacity="0.2"/></symbol>
     <symbol id="i-caret" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 9 18 9 12 16"/></symbol>
     <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></symbol>
+    <symbol id="i-apple" viewBox="0 0 24 24" fill="currentColor"><path d="M17.1 12.6c0-2.5 2-3.7 2.1-3.8-1.1-1.7-2.9-1.9-3.6-1.9-1.5-.2-3 .9-3.7.9s-2-.9-3.3-.9c-1.7 0-3.2 1-4 2.5-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3.1 2.5 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8 2.2-1.2 3-2.4c.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.5-1-2.5-3.9Z"/><path d="M14.7 4.9c.7-.8 1.1-1.9 1-3-1 0-2.2.6-2.9 1.4-.6.7-1.2 1.8-1 2.9 1.1.1 2.2-.6 2.9-1.3Z"/></symbol>
+    <symbol id="i-google" viewBox="0 0 48 48"><path fill="#4285f4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"/><path fill="#34a853" d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"/><path fill="#fbbc05" d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24s.85 6.91 2.34 9.88l7.35-5.7z"/><path fill="#ea4335" d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"/></symbol>
     <symbol id="i-mail" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="m3 7 9 6 9-6"/></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/></symbol>
     <symbol id="i-bank" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9.5 9-5.5 9 5.5"/><line x1="4" y1="20" x2="20" y2="20"/><line x1="6.5" y1="12" x2="6.5" y2="17"/><line x1="12" y1="12" x2="12" y2="17"/><line x1="17.5" y1="12" x2="17.5" y2="17"/></symbol>
@@ -230,6 +232,31 @@ body {
           Rows you read <em>down</em> rather than compare <em>across</em> —
           transactions, accounts — get space and a heading instead of either.
         </div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="demo">
+        <div style="width:300px">
+          <button class="btn theirs lg block"><svg><use href="#i-apple"/></svg>Sign in with Apple</button>
+          <div class="rule-word">or</div>
+          <button class="btn primary lg block"><svg><use href="#i-mail"/></svg>Continue with email</button>
+        </div>
+      </div>
+      <div class="body">
+        <h3>A rule with a word in it</h3>
+        <p>
+          <code>.rule-word</code> between two ways of doing the same job. The
+          word is the whole control: without it a rule says these are different
+          things, which is the opposite of what is meant.
+        </p>
+        <div class="why">
+          First run's front door and the paywall both offer several ways
+          through, and a plain stack of buttons reads as a list of chores
+          rather than a choice. Only where the alternative is genuine &mdash;
+          never to break a form into steps.
+        </div>
+        <div class="use">.rule-word</div>
       </div>
     </div>
   </div>
@@ -384,6 +411,47 @@ body {
           controls to keep in agreement.
         </div>
         <div class="use">.btn.primary.lg.block</div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="demo">
+        <div style="width:300px; display:flex; flex-direction:column; gap:10px">
+          <button class="btn theirs lg block"><svg><use href="#i-apple"/></svg>Sign in with Apple</button>
+          <button class="btn theirs lg block"><svg><use href="#i-google"/></svg>Sign in with Google</button>
+          <button class="btn theirs lg block">Subscribe with<svg><use href="#i-apple"/></svg>Pay</button>
+          <button class="btn theirs lg block">Subscribe with<svg><use href="#i-google"/></svg>Pay</button>
+          <button class="btn theirs link lg block">Pay with Link</button>
+        </div>
+      </div>
+      <div class="body">
+        <h3>A button that is not ours</h3>
+        <p>
+          <code>.theirs</code> is the button somebody else draws. Apple and
+          Google hand out their sign-in buttons; Stripe renders Apple&nbsp;Pay,
+          Google&nbsp;Pay and Link inside its own frame. Each wears its owner's
+          face and its owner's words, down to the wordmark and the four-colour
+          G.
+        </p>
+        <div class="why">
+          Every one of those rulebooks says the same thing, and none of them is
+          optional: the button looks like theirs or it does not ship. Somebody
+          hunting for the Apple&nbsp;Pay button they know will not find a
+          violet one, and a violet one is the only kind we could have made. So
+          the sheet carries them, and a screen holding three of them is designed around
+          what they really look like rather than what we wish they did. Never
+          style anything else this way, and always put a rule between them and
+          a real action of ours.
+        </div>
+        <div class="why">
+          These are drawn here so a screen can be laid out, not so they can be
+          built: on the web they arrive inside Stripe's Express Checkout
+          Element, and the only things we choose are the height, the corner
+          radius, each button's theme and its wording. Which of them appear at
+          all is decided by the browser and by what the customer has set up, so
+          a screen that only works with three buttons on it does not work.
+        </div>
+        <div class="use">.btn.theirs.lg.block &middot; .link</div>
       </div>
     </div>
 

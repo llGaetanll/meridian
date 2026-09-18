@@ -28,7 +28,9 @@ function drawFlow(edges) {
 
     // Along the road: out of one screen's right side, into the next one's left.
     if (e.kind === 'fwd') {
-      const mid = (a.r + b.l) / 2;
+      // `bend` moves the turn off centre, for a screen that forks into several
+      // and would otherwise send every wire down the same line.
+      const mid = (a.r + b.l) / 2 + (e.bend ?? 0);
       d = `M${a.r} ${a.cy} H${mid} V${b.cy} H${b.l}`;
       lx = mid; ly = b.cy;
 
@@ -43,6 +45,13 @@ function drawFlow(edges) {
       const gx = a.l - TIE;
       d = `M${a.l} ${a.b - 70} H${gx} V${b.cy} H${b.l}`;
 
+    // Back the way it came, below the arrow that came: out of the left side and
+    // into the right side of the screen before it. `dy` is how far under the
+    // forward arrow it runs.
+    } else if (e.kind === 'backhop') {
+      d = `M${a.l} ${a.cy + e.dy} H${e.via} V${b.cy + e.dy} H${b.r}`;
+      lx = (a.l + b.r) / 2; ly = (a.cy + b.cy) / 2 + e.dy;
+
     // The chevron: a short hop back under the pair.
     } else if (e.kind === 'under') {
       d = `M${a.cx} ${a.b} V${e.lane} H${e.gap} V${b.b}`;
@@ -52,10 +61,10 @@ function drawFlow(edges) {
     // there that are not the road through payment.
     } else if (e.kind === 'rise') {
       const bx = b.l + e.in;
-      const head = e.out === 'left'
-        ? `M${a.l} ${a.cy} H${e.via}`
-        : e.via ? `M${a.cx} ${a.b} V${a.b + 44} H${e.via}`
-                : `M${a.cx} ${a.b}`;
+      const head = e.out === 'left'  ? `M${a.l} ${a.cy} H${e.via}`
+                 : e.out === 'right' ? `M${a.r} ${a.cy + (e.dy ?? 0)} H${e.via}`
+                 : e.via ? `M${a.cx} ${a.b} V${a.b + 44} H${e.via}`
+                         : `M${a.cx} ${a.b}`;
       d = `${head} V${e.lane} H${bx} V${b.b}`;
       lx = ((e.via ?? a.cx) + bx) / 2; ly = e.lane;
     }

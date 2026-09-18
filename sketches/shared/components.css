@@ -228,6 +228,22 @@
 .ui .rule-sec { border-top: 1px solid var(--border-strong); }
 .ui .rule-row { border-top: 1px solid var(--divider); }
 
+/* A rule with a word set into it.
+
+   For the one thing a rule cannot say on its own: that what is above it and
+   what is below it are two ways of doing the same job, not two jobs. It earns
+   its place on the paywall and on first run's front door, where the screen
+   offers four ways to pay and three ways to sign in and has to say so without
+   sounding like a list of chores. */
+
+.ui .rule-word {
+  display: flex; align-items: center; gap: 14px;
+  margin: 18px 0;
+  font-size: 12px; color: var(--text-faint);
+}
+.ui .rule-word::before,
+.ui .rule-word::after { content: ""; flex: 1; border-top: 1px solid var(--divider); }
+
 /* A day in a calendar.
 
    Today is the accent as a wash. A day you have tapped is filled in grey
@@ -412,6 +428,30 @@
 }
 .ui .btn.lg svg { width: 16px; height: 16px; }
 .ui .btn.block { display: flex; width: 100%; justify-content: center; }
+
+/* A button that belongs to somebody else.
+
+   Sign in with Apple, Sign in with Google, Apple Pay, Google Pay and Link.
+   Every one of them is drawn by its owner — Apple and Google hand out the
+   sign-in buttons, Stripe renders the wallets inside its own frame — and every
+   one of their rulebooks says the same thing: it wears its owner's face, in
+   its owner's words, or it does not go on the screen. Somebody hunting for the
+   Apple Pay button they know will not find a violet one, and a violet one is
+   the only kind we could have made.
+
+   They are in the sheet so that a screen holding three of them is designed
+   around what they really look like rather than around what we wish they did.
+   White and green among our violet. Never style anything else this way, and
+   never put one next to a real action of ours without a rule between them. */
+
+.ui .btn.theirs {
+  background: #fff; border-color: #d4d8de; color: #111;
+  box-shadow: 0 2px 0 #8c939f;
+}
+.ui .btn.theirs.link {
+  background: #00d66f; border-color: #00b85f; color: #011e0f;
+  box-shadow: 0 2px 0 #008544;
+}
 
 /* The field.
 
