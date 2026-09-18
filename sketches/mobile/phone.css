@@ -611,59 +611,15 @@ body {
   background: var(--cat-color, var(--bars));
 }
 
-/* First run — sketches/mobile/onboarding.html.
+/* Three of first run's controls, which Account borrows: the chevron it puts
+   over a sheet, its stacked actions, and its small print. The flow that owned
+   them is sketches/screens/first-run-phone-flow.html now. */
 
-   One column: a word saying where you are, the body, and the action on the
-   bottom edge under the thumb. Nothing on these screens scrolls; a step that
-   needs a scrollbar is asking too much at once.
-
-   The controls in them are the design language's — the button, the field, the
-   code, the mark. What is here is where they sit. */
-
-.onb {
-  flex: 1; min-height: 0;
-  display: flex; flex-direction: column;
-  padding: 6px 24px 30px;
-}
-/* eats the slack, so the actions sit on the bottom edge whatever is above */
-.onb-fill { flex: 1; min-height: 10px; }
-
-.onb-mark { width: 50px; height: 50px; color: var(--violet-300); margin-bottom: 20px; }
-
-.onb-step {
-  font-size: 11px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.09em;
-  color: var(--text-faint);
-  padding-bottom: 22px;
-}
-
-.onb-title { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.18; }
-.onb-body {
-  font-size: 14.5px; color: var(--text-muted);
-  margin-top: 10px; max-width: 32ch;
-}
-.onb-body b { color: var(--text); font-weight: 600; }
-
-/* Back is a chevron in the status bar's shadow: these screens have no title
-   bar, and one chevron does not earn one. */
 .onb-back { flex: none; padding: 4px 18px 0; }
 .onb-back svg { width: 20px; height: 20px; color: var(--text-muted); }
 
-/* The actions, stacked. One violet at most, always last. */
 .acts { display: flex; flex-direction: column; gap: 10px; }
 
-/* What the app is waiting for, under the field it is waiting on. */
-.err {
-  display: flex; align-items: flex-start; gap: 8px;
-  margin-top: 13px;
-  font-size: 13px; color: var(--rose-400);
-}
-.err svg { width: 15px; height: 15px; flex: none; margin-top: 2px; }
-
-.resend { margin-top: 16px; font-size: 13px; color: var(--text-faint); }
-.resend .num { color: var(--text-muted); font-weight: 600; }
-
-/* Small print, at the point of consent rather than in a settings screen. */
 .legal {
   margin-top: 16px;
   font-size: 11.5px; line-height: 1.55;
@@ -671,69 +627,6 @@ body {
 }
 .legal a { color: var(--text-muted); text-decoration: underline; text-underline-offset: 2px; }
 
-/* The first sync.
-
-   The counts climb because the pages actually land — `/transactions/sync`
-   pages the whole history the first time and almost nothing every time after,
-   so this is the one wait in the app, and a bar that says how far along it is
-   beats a spinner that says nothing. The bar is the share control, on the rule
-   the heading already sits above. */
-
-.sync-bar { position: relative; margin-top: 26px; border-top: 1px solid var(--divider); }
-.sync-bar .track { position: absolute; left: 0; right: 0; top: -1px; }
-
-.sync-step > svg { color: var(--bars); }
-.sync-step.done > svg { color: var(--lime-400); }
-.sync-step.now > svg { color: var(--violet-300); }
-.sync-step.wait .rt { color: var(--text-faint); font-weight: 500; }
-
-/* What arrived, on the last screen of the flow. The figures are money-faced
-   without being money: they are a column you read down, which is the whole
-   reason that face exists. */
-.tally { margin-top: 20px; }
-.tally .r { display: flex; align-items: baseline; gap: 14px; padding: 12px 0; }
-.tally .v { font-size: 22px; min-width: 46px; }
-.tally .k { font-size: 13.5px; color: var(--text-muted); }
-
-/* Plaid's own page, which we do not draw. Deliberately plain: anything
-   prettier here reads as a screen somebody has to build. */
-
-.plaid {
-  flex: 1; min-height: 0;
-  margin: 4px 10px 10px;
-  border-radius: 26px;
-  background: #f7f8fa;
-  color: #1a1d21;
-  display: flex; flex-direction: column;
-  overflow: hidden;
-}
-.plaid-bar {
-  display: flex; align-items: center; justify-content: center; gap: 7px;
-  padding: 12px;
-  background: #e9ecf0;
-  font-size: 12.5px; color: #5a6470;
-}
-.plaid-bar svg { width: 12px; height: 12px; }
-.plaid-body { padding: 22px 20px; }
-.plaid-body .h { font-size: 19px; font-weight: 700; }
-.plaid-body .p { font-size: 13px; color: #5a6470; margin-top: 6px; }
-.plaid-search {
-  margin-top: 18px; padding: 12px 14px;
-  border-radius: 10px; background: #fff; border: 1px solid #d8dde4;
-  font-size: 14px; color: #8b95a1;
-}
-.plaid-row {
-  display: flex; align-items: center; gap: 12px;
-  padding: 14px 2px;
-  border-bottom: 1px solid #e4e8ed;
-  font-size: 14.5px; font-weight: 500;
-}
-.plaid-row i { width: 32px; height: 32px; border-radius: 8px; background: #dfe4ea; display: block; flex: none; }
-.plaid-note {
-  margin-top: auto;
-  padding: 14px 20px 20px;
-  font-size: 11.5px; color: #8b95a1; text-align: center;
-}
 
 /* Account — sketches/mobile/account.html. A list on the same measure as
    Balances, since half of it is the same connections. */

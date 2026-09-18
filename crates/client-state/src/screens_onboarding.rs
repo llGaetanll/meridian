@@ -2,7 +2,8 @@
 //!
 //! Every sentence the flow prints is here, so that three platforms drawing
 //! this road are not three chances to word the same promise differently.
-//! `sketches/mobile/onboarding.html` carries the reasoning behind each one.
+//! `sketches/screens/first-run-flow.html` and its phone half draw every one
+//! of them, in the order they are reached.
 
 use std::cmp::Ordering;
 
