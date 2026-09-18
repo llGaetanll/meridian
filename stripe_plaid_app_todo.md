@@ -56,7 +56,7 @@ quarterly filing chore.
 
 # Plaid application
 - [x] Create an LLC, otherwise *you* are liable
-- [ ] Connect citi account on trial
+- [x] Connect citi account on trial
     - [ ] #53 An OAuth bank has nowhere to hand control back to — server side
           built but switched off
     - [x] #105 The iOS app does not build: BankLink calls a method Apple does
@@ -77,5 +77,5 @@ issue knockouts:
 - [x] #51 The freshness window is 30 seconds, which is a Plaid bill on
       Production
 - [x] #49 A first sync that answers PRODUCT_NOT_READY is never asked again
-- [ ] #48 A link Plaid would not open writes a row for a session that never
+- [x] #48 A link Plaid would not open writes a row for a session that never
       existed
