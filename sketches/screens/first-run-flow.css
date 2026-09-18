@@ -122,3 +122,20 @@ body { padding: 0; overflow-x: auto; }
 .frame.chip a b { color: var(--violet-300); }
 .frame.chip a:hover b { text-decoration: underline; }
 .frame.chip span { color: var(--text-faint); font-size: 15px; line-height: 1.5; }
+
+/* The phone board draws the same screens on a phone rather than in a window.
+   The device has its own rounded edge, so the cell around it carries none. */
+.frame.tel {
+  width: 242px; height: 524px;
+  border: none;
+  border-radius: 0;
+}
+.frame.tel .phone { transform: scale(0.62); transform-origin: 0 0; }
+
+.frame.tel.chip {
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 28px;
+}
+.frame.tel.chip > * { max-width: 180px; }
+.frame.tel.chip b { font-size: 17px; }
+.frame.tel.chip span { font-size: 13.5px; }
