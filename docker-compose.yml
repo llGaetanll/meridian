@@ -3,11 +3,17 @@
 #   docker compose up -d                      the database, for a server run on
 #                                             the host with `cargo run`
 #   docker compose --profile server up        both, exactly as deployed
+#   scripts/dev.sh                            those and the `dev` profile too:
+#                                             trunk on :8080 and `stripe listen`
 #
 # The split is a development convenience and nothing more. `cargo run` rebuilds
 # in about three seconds where an image rebuild is closer to twenty, so the
 # database alone is what you want while writing code — but the server container
 # is the real target and is meant to stay working, not to rot.
+#
+# `dev` is the other half of that: two services that exist only on a laptop and
+# must never reach the box, which asks for `server` alone. Everything in it is
+# there to be one fewer thing to install and one fewer command to remember.
 
 services:
   db:
@@ -206,5 +212,85 @@ services:
       # everything is up.
       - "${SERVER_BIND:-0.0.0.0}:8082:8082"
 
+  # The web app, served by trunk, watching the working tree. Behind the `dev`
+  # profile: it is a toolchain with a bind mount, and it has no business on the
+  # box — docker-compose.prod.yml has a `web` of its own, which is Caddy handing
+  # out files that were built on a laptop.
+  #
+  # One less command to type, and one less machine-local install of trunk,
+  # wasm-bindgen and tailwind to get wrong. The first start compiles the app's
+  # dependencies for the browser into the volume below and takes a few minutes;
+  # every one after it is a save away.
+  web:
+    profiles: ["dev"]
+
+    build:
+      context: .
+      dockerfile: deploy/web/Dockerfile.dev
+
+    # Named, because the default compose would pick is `meridian-web`, which is
+    # the deployed image's name in docker-compose.prod.yml. Two very different
+    # things under one name is a `docker images` nobody can read.
+    image: meridian-web-dev
+
+    volumes:
+      # The working tree, as it is. Nothing in the container writes to it:
+      # `--dist` in the image puts trunk's output in the container, and cargo
+      # writes to the volume below.
+      - .:/app
+
+      # Not `./target`, and not shared with the host's cargo. See the image.
+      - meridian-web-target:/target
+      - meridian-web-cargo:/cargo
+
+    ports:
+      # Every interface, like the server, so a phone on the LAN can open the web
+      # app too. The browser should still say `127.0.0.1:8080`, which is what
+      # WEB_ORIGINS names and what CORS is checked against.
+      - "${WEB_BIND:-0.0.0.0}:8080:8080"
+
+  # `stripe listen`, which is the only way a webhook reaches a laptop: Stripe
+  # calls the CLI, the CLI calls the server. Without it a subscription is paid
+  # for and nothing here ever hears about it.
+  #
+  # A container rather than an install, because the alternative is every machine
+  # fetching its own CLI and every session remembering to type the command. The
+  # key arrives as `STRIPE_API_KEY` rather than on the command line, where
+  # `docker ps` would print it.
+  stripe:
+    profiles: ["dev"]
+
+    # Pinned, like everything else here. `latest` is whichever version the
+    # machine last pulled.
+    image: stripe/stripe-cli:v1.51.0
+
+    environment:
+      # Empty is allowed and the container then exits saying so, which is the
+      # right noise for a laptop that has not filled in .env yet.
+      STRIPE_API_KEY: ${STRIPE_SECRET_KEY:-}
+
+    # The server is reached through the host, not by service name, because it
+    # is not always a container: `cargo run` on the host is the usual way to
+    # write server code, and it publishes nothing on this network. The host's
+    # port 8082 is the one address that is right either way.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    command:
+      - listen
+
+      # The same three the deployed endpoint is registered for, and no others,
+      # so what a laptop sees is what the box will see. docs/STRIPE.md says why
+      # the invoice events are not among them. The CLI requires the list to be
+      # stated since v1.51 — there is no forwarding everything by accident any
+      # more.
+      - --events
+      - customer.subscription.created,customer.subscription.updated,customer.subscription.deleted
+
+      - --forward-to
+      - http://host.docker.internal:8082/stripe/webhook
+
 volumes:
   meridian-db:
+  meridian-web-target:
+  meridian-web-cargo:

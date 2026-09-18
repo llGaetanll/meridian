@@ -1,0 +1,5 @@
+# This image is a toolchain, not a build of the app, so the context is one
+# file. Everything else arrives at run time on the bind mount, and anything
+# named here would rebuild the toolchain on a code change.
+*
+!rust-toolchain.toml

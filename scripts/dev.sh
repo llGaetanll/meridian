@@ -5,7 +5,10 @@
 #
 #     ./scripts/dev.sh
 #
-# It brings the database and the server up *detached*, then follows their logs.
+# It brings the whole stack up *detached*, then follows its logs: the database,
+# the server, trunk serving the web app, and `stripe listen` forwarding webhooks
+# to it. That is everything development needs, and nothing else to type.
+#
 # Detached is the whole point. A plain `docker compose up` owns its containers
 # and ties them to the terminal it was typed in, so anyone wanting to restart
 # the server has to interrupt that terminal or start a shell of their own — and
@@ -30,11 +33,16 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-# docker-compose.yml puts the server behind a profile so that a bare `up` gets
-# the database alone. Setting it here rather than passing `--profile` at each
-# call site means `logs` and `restart` cannot end up disagreeing about whether
-# the server is part of the stack.
-COMPOSE_PROFILES=server
+# docker-compose.yml puts everything but the database behind a profile so that
+# a bare `up` gets the database alone. Setting them here rather than passing
+# `--profile` at each call site means `logs` and `restart` cannot end up
+# disagreeing about what the stack is.
+#
+# `dev` is the half that exists only on a laptop: trunk serving the web app,
+# and `stripe listen` carrying webhooks in. `scripts/deploy.sh` asks for
+# `server` alone, which is why they are a separate profile rather than more of
+# that one.
+COMPOSE_PROFILES=server,dev
 export COMPOSE_PROFILES
 
 # The commit every log line the server writes is stamped with. The image build
@@ -65,6 +73,32 @@ fi
 # them is instant and idempotent, so it costs a stat on every other run.
 if [ ! -f certs/server.key ]; then
     ./scripts/db-certs.sh
+fi
+
+# The secret every webhook `stripe listen` forwards is signed with, which the
+# server checks and refuses the webhook without. It is not a second credential
+# to go and find: it belongs to the account the secret key already names, it is
+# the same value every time, and the CLI will say it. So a clone that has
+# filled in STRIPE_SECRET_KEY should not also have to paste this one.
+#
+# Written into `.env` rather than exported, the way scripts/db-init.sh handles
+# MERIDIAN_DB_KEY — an exported value would be right only in windows started by
+# this script, and `docker compose` typed by hand would quietly use the empty
+# one. Only when the line is empty, so this costs nothing after the first run
+# and never argues with a secret that was put there on purpose.
+if [ -f .env ] && grep -q '^STRIPE_WEBHOOK_SECRET=$' .env; then
+    key=$(sed -n 's/^STRIPE_SECRET_KEY=//p' .env | tail -1)
+    if [ -n "$key" ]; then
+        whsec=$(docker run --rm -e STRIPE_API_KEY="$key" \
+            stripe/stripe-cli:v1.51.0 listen --print-secret 2>/dev/null) || whsec=
+        case "$whsec" in
+            whsec_*)
+                sed -i.bak "s|^STRIPE_WEBHOOK_SECRET=$|STRIPE_WEBHOOK_SECRET=$whsec|" .env
+                rm -f .env.bak
+                echo "-- wrote STRIPE_WEBHOOK_SECRET into .env, from stripe listen"
+                ;;
+        esac
+    fi
 fi
 
 cmd=logs

@@ -15,10 +15,16 @@
 
 ## Running the stack
 
-The database and the server run under docker compose, and their logs belong in
-one tmux window that the user keeps open, running `./scripts/dev.sh` with no
-arguments. That window is the user's; do not start it, and do not read logs by
-starting a second one.
+The whole stack runs under docker compose, and its logs belong in one tmux
+window that the user keeps open, running `./scripts/dev.sh` with no arguments.
+That window is the user's; do not start it, and do not read logs by starting a
+second one.
+
+Four services: `db`, `server`, `web` — trunk serving the web app on :8080,
+watching the working tree — and `stripe`, which is `stripe listen` forwarding
+webhooks to the server. The last two are behind the `dev` profile and exist
+only on a laptop; nothing has to be installed for them and nothing has to be
+typed to start them.
 
 **Never run `docker compose up`, and never start a service in a shell of your
 own.** Both tie the containers to a terminal nobody is watching, which is the
@@ -36,6 +42,14 @@ done as asked, and the output appears in the user's window:
 
 A change to Rust needs `build`, not `restart` — `restart` runs the image that
 is already there, so the code you just wrote is not in it.
+
+That is the *server*. The web app needs neither: trunk rebuilds it on save.
+`build web` is only for a change to `deploy/web/Dockerfile.dev`, which is the
+toolchain and nothing else.
+
+A server run on the host with `cargo run` instead of in its container still
+gets its webhooks: the `stripe` service forwards to the host's port 8082, which
+is the same address either way.
 
 To read logs, ask for the slice you want and let it return: `docker compose
 logs --since 2m server`. Never `-f`, which does not return.

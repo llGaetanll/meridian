@@ -18,56 +18,61 @@ rustup toolchain install nightly
 
 ## The web app
 
-You will need the tailwindcss cli. If you want to install it without going
-through npm, you can do so as follows:
-```
-curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
-chmod +x tailwindcss-linux-x64
-sudo mv tailwindcss-linux-x64 /usr/local/bin/tailwindcss
-```
-
-You will also need `trunk`, and the right wasm target
-```
-cargo binstall trunk
-```
-
-```
-rustup target add wasm32-unknown-unknown
-```
-
-Then run `trunk serve --open` from `crates/web-main`, which is the web app.
-
-It reads its data from `server-main`, which is what holds the Plaid secret —
-see [PLAID.md](PLAID.md) for why that cannot live in the app. So the web app is
-two commands:
-
-```
-cargo run -p server-main                  # :8082
-cd crates/web-main && trunk serve         # :8080
-```
-
-**The server needs `.env` filled in, and it needs Postgres.** Every variable is
-required — Plaid's credentials, the environment, the collection channel and
-`DATABASE_URL` — and it exits saying which one is missing rather than starting
-and serving something plausible.
-
-Postgres is not optional because the Plaid access tokens live in it, one row
-per bank:
+**There is nothing to install.** `./scripts/dev.sh`, in a window of its own, is
+the whole of it:
 
 ```
 cp .env.example .env
-./scripts/db-init.sh                      # Postgres in a container
-cargo run -p server-main --example link_sandbox   # a bank to look at
-cargo run -p server-main                  # applies migrations, then serves
+./scripts/dev.sh
 ```
 
-Without that middle line the server starts and serves an empty ledger, which is
-correct: no bank has been linked. [PLAID.md](PLAID.md) has the rest.
+That is four containers: Postgres, the server on :8082, `trunk serve` on :8080
+with the working tree mounted, and `stripe listen` forwarding webhooks to the
+server. Open <http://127.0.0.1:8080>, edit `crates/web-main`, and trunk
+rebuilds on save exactly as it would on the host — the first start compiles the
+app's dependencies for the browser and takes a few minutes, and every one after
+it is quick.
 
-`./scripts/dev.sh` brings both up as they are deployed and follows their logs.
-Give it a window and leave it there: it starts the containers detached, so
-`./scripts/dev.sh restart server` from any other shell lands its output back in
-that window rather than in whichever terminal ran it.
+`.env` has to be filled in first. Every variable the server reads is required —
+Plaid's credentials, the environment, the collection channel and `DATABASE_URL`
+— and it exits saying which one is missing rather than starting and serving
+something plausible. `STRIPE_WEBHOOK_SECRET` is the exception: leave it empty
+and the script writes it in, see [STRIPE.md](STRIPE.md).
+
+A bank to look at, once the database is up:
+
+```
+cargo run -p server-main --example link_sandbox
+```
+
+Without it the server serves an empty ledger, which is correct: no bank has
+been linked. [PLAID.md](PLAID.md) has the rest.
+
+### On the host instead
+
+The containers are a convenience, not a requirement, and writing server code is
+usually easier with `cargo run` — three seconds against twenty for an image.
+The `stripe` container forwards to the host's port 8082 either way, so webhooks
+still arrive.
+
+```
+./scripts/dev.sh                          # leave it in its window
+./scripts/dev.sh stop server              # the port is 8082 for one of them only
+cargo run -p server-main                  # :8082
+```
+
+Running trunk on the host too needs the tools the container already carries:
+
+```
+cargo binstall trunk
+rustup target add wasm32-unknown-unknown
+curl -sLO https://github.com/tailwindlabs/tailwindcss/releases/latest/download/tailwindcss-linux-x64
+chmod +x tailwindcss-linux-x64 && sudo mv tailwindcss-linux-x64 /usr/local/bin/tailwindcss
+```
+
+Then `trunk serve --open` from `crates/web-main`. Stop the `web` container
+first, or the two want the same port.
+
 [DATABASE.md](DATABASE.md) has the rest, including the one rule about
 migrations.
 

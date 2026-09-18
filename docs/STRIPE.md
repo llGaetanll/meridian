@@ -38,8 +38,22 @@ client is built with one.
 
 The webhook secret is different for a registered endpoint and for `stripe
 listen`, and a webhook signed by one does not verify against the other.
-Development runs `stripe listen --forward-to localhost:PORT/stripe/webhook`
-and uses what it prints.
+
+**Nothing has to be typed for this in development, and the CLI does not have to
+be installed.** `stripe listen` is a service in docker-compose.yml, behind the
+`dev` profile, started by `scripts/dev.sh` with everything else. It forwards to
+the host's port 8082, so it reaches the server whether that is the container or
+a `cargo run`. It subscribes to the same three events the deployed endpoint is
+registered for and no others, so a laptop sees what the box will see.
+
+The listener's secret belongs to the account the secret key names and is the
+same value every time, so it is not a second credential to go and find:
+`scripts/dev.sh` asks the CLI for it and writes it into `.env` the first time
+it finds `STRIPE_WEBHOOK_SECRET` empty. A value already there is left alone.
+
+The image is pinned, like every other. Since v1.51 the CLI refuses to listen
+without being told which events to forward, which is why the list is spelled
+out in compose rather than left to a default.
 
 ## The API version is pinned
 

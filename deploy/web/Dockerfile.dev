@@ -1,0 +1,52 @@
+# The web app while it is being written: trunk, watching a bind mount.
+#
+# Not a build of the app. This image is a toolchain and nothing else — the
+# source arrives at run time from the working tree, and `trunk serve` rebuilds
+# it on every save exactly as it does on the host. `deploy/web/Dockerfile` is
+# the one that produces something to deploy, and the two are separate on
+# purpose: that one compiles once and throws the toolchain away, this one keeps
+# the toolchain and never finishes.
+#
+# The point is that `trunk` is one less thing a machine has to have installed,
+# and one less version to disagree about. The pins below are the deploy image's,
+# to the character, so what is served here is built by what will build it.
+#
+# Nothing is copied but `rust-toolchain.toml` — see the ignore file beside this
+# one. A code change must not rebuild this image; that is what the bind mount
+# is for.
+
+FROM rust:1-bookworm
+WORKDIR /app
+
+ARG TRUNK=0.21.14
+RUN curl -fsSL "https://github.com/trunk-rs/trunk/releases/download/v$TRUNK/trunk-x86_64-unknown-linux-gnu.tar.gz" \
+    | tar -xz -C /usr/local/bin trunk
+
+ARG WASM_BINDGEN=0.2.100
+RUN curl -fsSL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/$WASM_BINDGEN/wasm-bindgen-$WASM_BINDGEN-x86_64-unknown-linux-musl.tar.gz" \
+    | tar -xz -C /usr/local/bin --strip-components=1 "wasm-bindgen-$WASM_BINDGEN-x86_64-unknown-linux-musl/wasm-bindgen"
+
+ARG BINARYEN=version_123
+RUN curl -fsSL "https://github.com/WebAssembly/binaryen/releases/download/$BINARYEN/binaryen-$BINARYEN-x86_64-linux.tar.gz" \
+    | tar -xz -C /opt
+ENV PATH="/opt/binaryen-$BINARYEN/bin:$PATH"
+
+ARG TAILWIND=4.3.3
+RUN curl -fsSL -o /usr/local/bin/tailwindcss "https://github.com/tailwindlabs/tailwindcss/releases/download/v$TAILWIND/tailwindcss-linux-x64" \
+    && chmod +x /usr/local/bin/tailwindcss
+
+COPY rust-toolchain.toml .
+RUN rustup toolchain install && rustup target add wasm32-unknown-unknown
+
+# Both are volumes in docker-compose.yml, and both are deliberately not the
+# host's. A container sharing `./target` would take the same lock as a `cargo`
+# typed in a terminal, so a `cargo clippy` would sit and wait on a rebuild
+# nobody asked about — and the two write different targets into it anyway.
+ENV CARGO_HOME=/cargo
+ENV CARGO_TARGET_DIR=/target
+
+WORKDIR /app/crates/web-main
+
+# `--dist` off the mount, so a container running as root leaves nothing
+# root-owned in the working tree. Nothing else here writes to it.
+CMD ["trunk", "serve", "--address", "0.0.0.0", "--port", "8080", "--dist", "/dist"]
