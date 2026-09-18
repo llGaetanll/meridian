@@ -1,6 +1,6 @@
-/* The flow chart: one box per screen of first run, and the arrows between
-   them. The screens are the ones in first-run.html, drawn small and without
-   their browser chrome; nothing here restyles a screen. */
+/* The flow chart: every screen of first run and of the paywall, drawn small
+   and without their browser chrome, with the arrows between them. This page
+   is where those screens live; nothing here restyles one. */
 
 body { padding: 0; overflow-x: auto; }
 
