@@ -34,6 +34,13 @@ body { padding: 0; overflow-x: auto; }
   stroke: var(--border-strong); color: var(--border-strong);
 }
 
+/* A tie, not a transition: the screen at the end of it is the one above it
+   wearing a different state. */
+.wire.tie {
+  stroke: var(--slate-600);
+  stroke-dasharray: 6 7;
+}
+
 .wire-label {
   position: absolute; z-index: 3;
   transform: translate(-50%, -50%);
@@ -66,6 +73,11 @@ body { padding: 0; overflow-x: auto; }
 .band-cap span { font-size: 14px; font-weight: 400; color: var(--text-faint); }
 
 .node { position: absolute; z-index: 2; width: 620px; }
+
+/* A state rather than a step, so its name is not printed in the app's colour. */
+.node.var .cap { color: var(--slate-400); }
+.node.var .cap .dot { background: var(--slate-500); }
+.node.var .frame { border-color: var(--border); }
 
 .cap {
   display: flex; align-items: center; gap: 9px;

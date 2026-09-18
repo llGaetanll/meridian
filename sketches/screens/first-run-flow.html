@@ -55,18 +55,19 @@
 
 <header class="head">
   <h1><a href="../index.html">Sketches</a> / First run, the flow</h1>
-  <p>The desktop road from the first screen to a bank connected, one box per
-  screen, in four parts. <b>This is the order we want, not the one that is
-  built</b>: today paying happens when Connect a bank is pressed, which flashes
-  a window open and shuts it again. Here it is asked for and settled before the
-  bank is ever mentioned.</p>
-  <p>Every screen also has states it can be in — a code refused, a card
-  declined — and those are in <a href="first-run.html">First run</a> and
-  <a href="paywall.html">Paywall</a>, not here. A dashed box is a page Meridian
-  does not draw. The phone walks the same road and is not on this page.</p>
+  <p>The desktop road from the first screen to a bank connected, in four parts.
+  <b>This is the order we want, not the one that is built</b>: today paying
+  happens when Connect a bank is pressed, which flashes a window open and shuts
+  it again. Here it is asked for and settled before the bank is ever mentioned.</p>
+  <p>The top row is the road. Under a screen, tied to it by a dashed line, are
+  the other states that screen can be in — a code refused, a card declined, a
+  sign-in that never opened. The waits are left out: a button reading
+  <i>Opening Plaid…</i> or <i>Paying…</i> is the screen above it with its button
+  busy. A dashed box is a page Meridian does not draw. The phone walks the same
+  road and is not on this page.</p>
 </header>
 
-<div class="canvas" style="width:8900px;height:1786px">
+<div class="canvas" style="width:8900px;height:3194px">
 <svg class="wires" aria-hidden="true">
   <defs>
     <marker id="head" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -75,19 +76,19 @@
   </defs>
 </svg>
 
-<div class="band" style="left:42px;top:96px;width:2336px;height:1410px">
+<div class="band" style="left:42px;top:96px;width:2336px;height:2818px">
   <div class="band-cap">1. Account<span>Who you are. One door: an address that exists signs in, one that does not signs up.</span></div>
 </div>
 
-<div class="band" style="left:2472px;top:96px;width:2336px;height:1410px">
+<div class="band" style="left:2472px;top:96px;width:2336px;height:2818px">
   <div class="band-cap">2. Payment<span>What it costs. Skipped whole for somebody who has already paid.</span></div>
 </div>
 
-<div class="band" style="left:4902px;top:96px;width:1526px;height:1410px">
+<div class="band" style="left:4902px;top:96px;width:1526px;height:2818px">
   <div class="band-cap">3. Bank<span>The connection. Nothing in the app is a view of anything until this is done.</span></div>
 </div>
 
-<div class="band" style="left:6522px;top:96px;width:2336px;height:1410px">
+<div class="band" style="left:6522px;top:96px;width:2336px;height:706px">
   <div class="band-cap">4. Finishing<span>The first read, and the way out of first run.</span></div>
 </div>
 
@@ -142,6 +143,67 @@ one ledger.</div><div class="say-body">Meridian reads your banks and puts what y
   <div class="frame"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">meridian.app</span></div><div class="viewport"><div class="onboarding ui"><div class="measure"><div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Meridian</span></div><svg class="say-icon done"><use href="#i-tick-circle"/></svg><div class="say-title">You're set.</div><div class="say-body"><b>First Platypus Bank</b> is connected and syncing.</div><div class="tally"><div class="r"><span class="v">8</span><span class="k">accounts</span></div><div class="r"><span class="v">48</span><span class="k">transactions</span></div><div class="r"><span class="v">8</span><span class="k">recurring bills found</span></div></div><div class="acts"><button class="btn lg block">Add another bank</button><button class="btn primary lg block">Open Meridian</button></div></div></div></div></div></div>
 </div>
 
+<div class="node var" id="welcome-out" style="left:90px;top:904px">
+  <div class="cap"><span class="dot"></span>Welcome, signed out</div>
+  <div class="frame"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">meridian.app</span></div><div class="viewport"><div class="onboarding ui"><div class="measure"><div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Meridian</span></div><div class="say-title">Every account,
+one ledger.</div><div class="say-body">Meridian reads your banks and puts what you spend, hold and owe on one page.</div><div class="say-fault"><svg><use href="#i-warn"/></svg>You've been signed out. Sign in again to carry on.</div><div class="acts"><button class="btn primary lg block"><svg><use href="#i-mail"/></svg>Continue with email</button></div><div class="say-legal">By continuing you agree to our Terms and Privacy Policy.</div></div></div></div></div></div>
+</div>
+
+<div class="node var" id="email-bad" style="left:900px;top:904px">
+  <div class="cap"><span class="dot"></span>Email, not an address</div>
+  <div class="frame"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">meridian.app</span></div><div class="viewport"><div class="onboarding ui"><div class="measure"><div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Meridian</span></div><button class="btn plain back"><svg><use href="#i-back"/></svg></button><div class="say-step">Step 1 of 3 · Account</div><div class="say-title">What's your email?</div><div class="say-body">We'll send a six-digit code. Nothing to make up and nothing to forget.</div><form class="entry"><span class="field bad"><span class="in"><svg><use href="#i-mail"/></svg>al@example</span></span><div class="say-fault"><svg><use href="#i-warn"/></svg>That doesn't look like an email address.</div><div class="acts"><button class="btn primary lg block">Continue</button></div></form></div></div></div></div></div>
+</div>
+
+<div class="node var" id="code-filled" style="left:1710px;top:904px">
+  <div class="cap"><span class="dot"></span>Code, filled</div>
+  <div class="frame"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">meridian.app</span></div><div class="viewport"><div class="onboarding ui"><div class="measure"><div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Meridian</span></div><button class="btn plain back"><svg><use href="#i-back"/></svg></button><div class="say-step">Step 1 of 3 · Account</div><div class="say-title">Check your email</div><div class="say-body">We sent a code to <b>al@example.com</b>.</div><form class="entry"><div class="code"><span class="field"><span class="in">4</span></span><span class="field"><span class="in">0</span></span><span class="field"><span class="in">7</span></span><span class="field"><span class="in">1</span></span><span class="field"><span class="in">9</span></span><span class="field"><span class="in">3</span></span></div><div class="acts"><button class="btn primary lg block">Continue</button></div></form><div class="say-note">Resend in 0:31 · <button class="btn plain">Wrong address?</button></div></div></div></div></div></div>
+</div>
+
+<div class="node var" id="code-refused" style="left:1710px;top:1608px">
+  <div class="cap"><span class="dot"></span>Code, refused</div>
+  <div class="frame"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">meridian.app</span></div><div class="viewport"><div class="onboarding ui"><div class="measure"><div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Meridian</span></div><button class="btn plain back"><svg><use href="#i-back"/></svg></button><div class="say-step">Step 1 of 3 · Account</div><div class="say-title">Check your email</div><div class="say-body">We sent a code to <b>al@example.com</b>.</div><form class="entry"><div class="code"><span class="field bad"><span class="in">4</span></span><span class="field bad"><span class="in">0</span></span><span class="field bad"><span class="in">7</span></span><span class="field bad"><span class="in">1</span></span><span class="field bad"><span class="in">9</span></span><span class="field bad"><span class="in">3</span></span></div><div class="say-fault"><svg><use href="#i-warn"/></svg>That code is not right.</div><div class="acts"><button class="btn primary lg block">Continue</button></div></form><div class="say-note">Resend in 0:24 · <button class="btn plain">Wrong address?</button></div></div></div></div></div></div>
+</div>
+
+<div class="node var" id="code-resend" style="left:1710px;top:2312px">
+  <div class="cap"><span class="dot"></span>Code, resend ready</div>
+  <div class="frame"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">meridian.app</span></div><div class="viewport"><div class="onboarding ui"><div class="measure"><div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Meridian</span></div><button class="btn plain back"><svg><use href="#i-back"/></svg></button><div class="say-step">Step 1 of 3 · Account</div><div class="say-title">Check your email</div><div class="say-body">We sent a code to <b>al@example.com</b>.</div><form class="entry"><div class="code"><span class="field bad"><span class="in">4</span></span><span class="field bad"><span class="in">0</span></span><span class="field bad"><span class="in">7</span></span><span class="field bad"><span class="in">1</span></span><span class="field bad"><span class="in">9</span></span><span class="field bad"><span class="in">3</span></span></div><div class="say-fault"><svg><use href="#i-warn"/></svg>That code is not right.</div><div class="acts"><button class="btn primary lg block">Continue</button></div></form><button class="btn lg block resend">Send a new code</button></div></div></div></div></div>
+</div>
+
+<div class="node var" id="pay-declined" style="left:2520px;top:904px">
+  <div class="cap"><span class="dot"></span>Paywall, payment declined</div>
+  <div class="frame"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">meridian.app</span></div><div class="viewport"><div class="paywall ui"><div class="measure"><div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Meridian</span></div><div class="say-title">Your last payment didn't go through</div><div class="say-body">The card on file was declined. A working card opens the app back up.</div><div class="facts"><div class="row"><svg><use href="#i-tag"/></svg><div class="rt">Price</div><span class="rv">$5.99 a month</span></div><div class="row"><svg><use href="#i-clock"/></svg><div class="rt">Ran out</div><span class="rv">Aug 12 2026</span></div></div><div class="acts"><button class="btn lg block">Sign out</button><button class="btn primary lg block">Subscribe</button></div></div></div></div></div></div>
+</div>
+
+<div class="node var" id="pay-ended" style="left:2520px;top:1608px">
+  <div class="cap"><span class="dot"></span>Paywall, subscription ended</div>
+  <div class="frame"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">meridian.app</span></div><div class="viewport"><div class="paywall ui"><div class="measure"><div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Meridian</span></div><div class="say-title">Your subscription has ended</div><div class="say-body">It ran to the end of the period you had paid for, and that has now passed. Subscribing again opens the app back up.</div><div class="facts"><div class="row"><svg><use href="#i-tag"/></svg><div class="rt">Price</div><span class="rv">$5.99 a month</span></div><div class="row"><svg><use href="#i-clock"/></svg><div class="rt">Ran out</div><span class="rv">Aug 12 2026</span></div></div><div class="acts"><button class="btn lg block">Sign out</button><button class="btn primary lg block">Subscribe</button></div></div></div></div></div></div>
+</div>
+
+<div class="node var" id="pay-unknown" style="left:2520px;top:2312px">
+  <div class="cap"><span class="dot"></span>Paywall, not confirmed</div>
+  <div class="frame"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">meridian.app</span></div><div class="viewport"><div class="paywall ui"><div class="measure"><div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Meridian</span></div><div class="say-title">We can't confirm your subscription</div><div class="say-body">If you have just paid, give it a minute and pull to refresh. Nothing here has been lost.</div><div class="facts"><div class="row"><svg><use href="#i-tag"/></svg><div class="rt">Price</div><span class="rv">$5.99 a month</span></div></div><div class="acts"><button class="btn lg block">Sign out</button><button class="btn primary lg block">Subscribe</button></div></div></div></div></div></div>
+</div>
+
+<div class="node var" id="card-declined" style="left:3330px;top:904px">
+  <div class="cap"><span class="dot"></span>Card, declined</div>
+  <div class="frame"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">meridian.app</span></div><div class="viewport"><div class="paywall ui"><div class="measure"><div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Meridian</span></div><div class="say-title">Pay by card</div><div class="say-body">Charged today, then on this day each month until you cancel. Your card goes to Stripe, who take our payments, and never reaches Meridian.</div><div class="facts"><div class="row"><svg><use href="#i-tag"/></svg><div class="rt">Price</div><span class="rv">$5.99 a month</span></div></div><div class="pay"><div class="card-entry"><span class="field"><span class="in"><svg><use href="#i-card"/></svg>4000 0000 0000 0002</span></span><span class="field"><span class="in">12 / 34</span></span><span class="field"><span class="in">123</span></span></div><div class="say-fault"><svg><use href="#i-warn"/></svg>Your card was declined. Try another card.</div></div><div class="acts"><button class="btn lg block">Sign out</button><button class="btn primary lg block">Pay $5.99</button></div></div></div></div></div></div>
+</div>
+
+<div class="node var" id="conf-again" style="left:4140px;top:904px">
+  <div class="cap"><span class="dot"></span>Confirming, not confirmed</div>
+  <div class="frame"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">meridian.app</span></div><div class="viewport"><div class="paywall ui"><div class="measure"><div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Meridian</span></div><div class="say-title">We can't confirm your payment yet</div><div class="say-body">Your card was charged, and Stripe hasn't told us yet. Nothing has been lost: check again in a minute.</div><div class="facts"><div class="row"><svg><use href="#i-tag"/></svg><div class="rt">Price</div><span class="rv">$5.99 a month</span></div></div><div class="acts"><button class="btn lg block">Sign out</button><button class="btn primary lg block">Check again</button></div></div></div></div></div></div>
+</div>
+
+<div class="node var" id="failed-block" style="left:5760px;top:1608px">
+  <div class="cap"><span class="dot"></span>Failed, pop-up blocked</div>
+  <div class="frame"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">meridian.app</span></div><div class="viewport"><div class="onboarding ui"><div class="measure"><div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Meridian</span></div><div class="say-step">Step 2 of 3 · Bank</div><svg class="say-icon needs"><use href="#i-warn"/></svg><div class="say-title">That didn't finish</div><div class="say-body">Your browser blocked the window the bank sign-in opens in, so no bank was connected. Allow pop-ups for Meridian and try again.</div><div class="rows"><div class="row top"><svg><use href="#i-tick-circle"/></svg><div class="rt">Your account is made<div class="rs">Close the app if you need to. Signing in again comes back to here.</div></div></div></div><div class="acts"><button class="btn primary lg block"><svg><use href="#i-ext"/></svg>Try again</button></div></div></div></div></div></div>
+</div>
+
+<div class="node var" id="failed-linked" style="left:5760px;top:2312px">
+  <div class="cap"><span class="dot"></span>Failed, one bank connected</div>
+  <div class="frame"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">meridian.app</span></div><div class="viewport"><div class="onboarding ui"><div class="measure"><div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Meridian</span></div><div class="say-step">Step 2 of 3 · Bank</div><svg class="say-icon needs"><use href="#i-warn"/></svg><div class="say-title">That didn't finish</div><div class="say-body">The bank sign-in closed before it was done, so nothing was added.</div><div class="rows"><div class="row top"><svg><use href="#i-tick-circle"/></svg><div class="rt">First Platypus Bank is still connected<div class="rs">Nothing about it changed. This attempt is the only thing that did not finish.</div></div></div></div><div class="acts"><button class="btn lg block">Open Meridian</button><button class="btn primary lg block"><svg><use href="#i-ext"/></svg>Try again</button></div></div></div></div></div></div>
+</div>
+
 <div class="node" id="plaid" style="left:5760px;top:200px">
   <div class="cap off"><span class="dot"></span>Plaid</div>
   <div class="frame chip"><div><b>secure.plaid.com</b><span>The bank sign-in, in a window we open and do not draw.</span></div></div>
@@ -157,7 +219,10 @@ one ledger.</div><div class="say-body">Meridian reads your banks and puts what y
 <script>
 // The wires are measured from where the nodes landed rather than written down
 // beside them, so moving a node is one number, not a path to redraw.
-const EDGES = [{"kind": "fwd", "from": "welcome", "to": "email", "label": "Continue with email"}, {"kind": "fwd", "from": "email", "to": "code", "label": "Continue \u00b7 code sent"}, {"kind": "fwd", "from": "code", "to": "paywall", "label": "not paid for"}, {"kind": "fwd", "from": "paywall", "to": "card", "label": "Subscribe"}, {"kind": "fwd", "from": "card", "to": "confirming", "label": "card accepted"}, {"kind": "fwd", "from": "confirming", "to": "bank", "label": "the webhook says active"}, {"kind": "fwd", "from": "bank", "to": "plaid", "label": "Connect a bank"}, {"kind": "fwd", "from": "plaid", "to": "sync", "label": "bank linked"}, {"kind": "fwd", "from": "sync", "to": "ready", "label": "sync finished"}, {"kind": "fwd", "from": "ready", "to": "app", "label": "Open Meridian"}, {"kind": "down", "from": "plaid", "to": "failed", "label": "closed early, or never opened"}, {"kind": "down", "from": "sync", "to": "failed", "label": "nothing arrived"}, {"kind": "under", "from": "email", "to": "welcome", "label": "back", "lane": 829, "gap": 400}, {"kind": "under", "from": "code", "to": "email", "label": "back", "lane": 829, "gap": 1210}, {"kind": "rise", "from": "code", "to": "bank", "label": "already paid", "lane": 1576, "in": 124}, {"kind": "rise", "from": "ready", "to": "bank", "label": "Add another bank", "lane": 1636, "in": 310}, {"kind": "rise", "from": "failed", "to": "bank", "label": "Try again", "lane": 1696, "in": 496}];
+const EDGES = [{"kind": "fwd", "from": "welcome", "to": "email", "label": "Continue with email"}, {"kind": "fwd", "from": "email", "to": "code", "label": "Continue \u00b7 code sent"}, {"kind": "fwd", "from": "code", "to": "paywall", "label": "not paid for"}, {"kind": "fwd", "from": "paywall", "to": "card", "label": "Subscribe"}, {"kind": "fwd", "from": "card", "to": "confirming", "label": "card accepted"}, {"kind": "fwd", "from": "confirming", "to": "bank", "label": "the webhook says active"}, {"kind": "fwd", "from": "bank", "to": "plaid", "label": "Connect a bank"}, {"kind": "fwd", "from": "plaid", "to": "sync", "label": "bank linked"}, {"kind": "fwd", "from": "sync", "to": "ready", "label": "sync finished"}, {"kind": "fwd", "from": "ready", "to": "app", "label": "Open Meridian"}, {"kind": "down", "from": "plaid", "to": "failed", "label": "closed early, or never opened"}, {"kind": "down", "from": "sync", "to": "failed", "label": "nothing arrived"}, {"kind": "under", "from": "email", "to": "welcome", "label": "back", "lane": 829, "gap": 400}, {"kind": "under", "from": "code", "to": "email", "label": "back", "lane": 829, "gap": 1210}, {"kind": "rise", "from": "code", "to": "bank", "label": "already paid", "lane": 2984, "in": 100, "via": 2425}, {"kind": "rise", "from": "ready", "to": "bank", "label": "Add another bank", "lane": 3044, "in": 260}, {"kind": "rise", "from": "failed", "to": "bank", "label": "Try again", "lane": 3104, "in": 420, "out": "left", "via": 5620}, {"kind": "tie", "from": "welcome", "to": "welcome-out", "label": ""}, {"kind": "tie", "from": "email", "to": "email-bad", "label": ""}, {"kind": "tie", "from": "code", "to": "code-filled", "label": ""}, {"kind": "tie", "from": "code", "to": "code-refused", "label": ""}, {"kind": "tie", "from": "code", "to": "code-resend", "label": ""}, {"kind": "tie", "from": "paywall", "to": "pay-declined", "label": ""}, {"kind": "tie", "from": "paywall", "to": "pay-ended", "label": ""}, {"kind": "tie", "from": "paywall", "to": "pay-unknown", "label": ""}, {"kind": "tie", "from": "card", "to": "card-declined", "label": ""}, {"kind": "tie", "from": "confirming", "to": "conf-again", "label": ""}, {"kind": "tie", "from": "failed", "to": "failed-block", "label": ""}, {"kind": "tie", "from": "failed", "to": "failed-linked", "label": ""}];
+
+// How far out from a column the dashed tie to its other states runs.
+const TIE = 34;
 
 function draw() {
   const canvas = document.querySelector('.canvas');
@@ -184,31 +249,41 @@ function draw() {
       d = `M${a.r} ${a.cy} H${mid} V${b.cy} H${b.l}`;
       lx = mid; ly = b.cy;
 
-    // Off the road: down into what went wrong, or what comes next under it.
+    // Down into a screen that is a place of its own, not a state of the one above.
     } else if (e.kind === 'down') {
       const mid = (a.b + b.t) / 2;
       d = `M${a.cx} ${a.b} V${mid} H${b.cx} V${b.t}`;
       lx = (a.cx + b.cx) / 2; ly = mid;
+
+    // The same screen, in another state: down the column's own gutter.
+    } else if (e.kind === 'tie') {
+      const gx = a.l - TIE;
+      d = `M${a.l} ${a.b - 70} H${gx} V${b.cy} H${b.l}`;
 
     // The chevron: a short hop back under the pair.
     } else if (e.kind === 'under') {
       d = `M${a.cx} ${a.b} V${e.lane} H${e.gap} V${b.b}`;
       lx = (a.cx + e.gap) / 2; ly = e.lane;
 
-    // Under the board and up into the bank screen: the ways of arriving there
-    // that are not the road through payment.
+    // Round the outside and up into the bank screen: the ways of arriving
+    // there that are not the road through payment.
     } else if (e.kind === 'rise') {
       const bx = b.l + e.in;
-      d = `M${a.cx} ${a.b} V${e.lane} H${bx} V${b.b}`;
-      lx = (a.cx + bx) / 2; ly = e.lane;
+      const head = e.out === 'left'
+        ? `M${a.l} ${a.cy} H${e.via}`
+        : e.via ? `M${a.cx} ${a.b} V${a.b + 44} H${e.via}`
+                : `M${a.cx} ${a.b}`;
+      d = `${head} V${e.lane} H${bx} V${b.b}`;
+      lx = ((e.via ?? a.cx) + bx) / 2; ly = e.lane;
     }
 
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', d);
     path.setAttribute('class', 'wire ' + e.kind);
-    path.setAttribute('marker-end', 'url(#head)');
+    if (e.kind !== 'tie') path.setAttribute('marker-end', 'url(#head)');
     svg.appendChild(path);
 
+    if (!e.label) continue;
     const label = document.createElement('div');
     label.className = 'wire-label ' + e.kind;
     label.textContent = e.label;
