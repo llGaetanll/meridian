@@ -61,7 +61,7 @@ quarterly filing chore.
           built but switched off
     - [x] #105 The iOS app does not build: BankLink calls a method Apple does
           not have
-- [ ] #60 client_name is a literal, and it is what the user reads on Plaid's
+- [x] #60 client_name is a literal, and it is what the user reads on Plaid's
       consent screen
 - [x] Hosted homepage, and the support address on it is live
 - [ ] Security Questionaire
@@ -70,3 +70,12 @@ quarterly filing chore.
     - #16 Handling user financial data: what we're on the hook for
     - #64 There is no way to delete an account
     - #102 Nothing calls /account/delete, so there is no way to leave
+issue knockouts:
+- [x] #60 client_name is a literal, and it is what the user reads on Plaid's
+      consent screen
+- [x] #58 A bank that needs a new sign-in cannot be reconnected
+- [x] #51 The freshness window is 30 seconds, which is a Plaid bill on
+      Production
+- [x] #49 A first sync that answers PRODUCT_NOT_READY is never asked again
+- [ ] #48 A link Plaid would not open writes a row for a session that never
+      existed
