@@ -81,6 +81,13 @@ user.
 
 ## Design
 
+`sketches/README.md` says what is in `sketches/` and how to find a screen in
+it. Start there. **First run is drawn end to end** in
+`sketches/screens/first-run-flow.html` and its phone half — every screen, every
+state, and an arrow for every way the machine gets from one to the next. Read
+the board before changing onboarding, and note that it draws the flow we want
+rather than the one that is built.
+
 `sketches/design-language.html` is every control the app draws, in one place,
 with a note on why each one is the way it is. Open it before designing anything
 for the phone, the web or the desktop app, and build screens out of what is

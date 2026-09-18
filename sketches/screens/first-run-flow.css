@@ -244,3 +244,27 @@ body { padding: 0; overflow-x: auto; }
   font-size: 12px; color: #6d6e78;
 }
 .stripe .foot b { color: #1a1f36; font-weight: 700; letter-spacing: -0.02em; }
+
+/* Every box on the board, listed once at the top.
+ *
+ * For a person, a way in without scrolling four thousand pixels. For an agent
+ * sent here to build one of these screens, the whole vocabulary in one place:
+ * the name it is called by, and the anchor that jumps to it.
+ */
+
+.toc {
+  display: flex; flex-wrap: wrap; gap: 34px 56px;
+  padding: 8px 48px 0;
+  max-width: 1400px;
+}
+.toc-part { display: flex; flex-direction: column; gap: 5px; }
+.toc-part b {
+  padding-bottom: 4px;
+  font-size: 13px; font-weight: 600; color: var(--slate-300);
+}
+.toc a {
+  font-size: 13px; color: var(--violet-300); text-decoration: none;
+}
+.toc a:hover { text-decoration: underline; }
+.toc a.var { color: var(--slate-400); }
+.toc a.off { color: var(--text-faint); }
