@@ -104,6 +104,10 @@ body { padding: 0; overflow-x: auto; }
 .frame .window { border: none; border-radius: 0; }
 .frame .window-bar { display: none; }
 
+/* A screen that is drawn but is not ours: the dashed edge is the whole of what
+   it has in common with the boxes that are only named. */
+.frame.foreign { border-style: dashed; border-color: var(--slate-600); }
+
 /* Something in the flow that is not one of our screens: Plaid's own page, and
    the app on the far side of first run. Drawn as a box with nothing in it,
    because there is nothing of ours in it. */
@@ -139,3 +143,104 @@ body { padding: 0; overflow-x: auto; }
 .frame.tel.chip > * { max-width: 180px; }
 .frame.tel.chip b { font-size: 17px; }
 .frame.tel.chip span { font-size: 13.5px; }
+
+/* Stripe's own page, drawn.
+ *
+ * Not one of our components and deliberately not in the design language: it is
+ * a picture of somebody else's screen, the way the old sketches drew Plaid's.
+ * It lives here because the flow chart is the only place it appears, and it
+ * wears Stripe's default look rather than ours so that nobody reads it as a
+ * screen we have to build.
+ *
+ * What we could change if we wanted to: the logo, the background colour, the
+ * button colour, the font and whether the corners are square, round or pill.
+ * Fifteen settings, and the layout is not among them.
+ */
+
+.stripe {
+  display: grid; grid-template-columns: 1fr 1fr;
+  height: 100%;
+  background: #fff;
+  color: #30313d;
+  font-size: 15px; line-height: 1.5;
+  letter-spacing: normal;
+}
+
+.stripe .left { padding: 46px 40px 40px 72px; background: #f6f9fc; }
+.stripe .right { padding: 46px 72px 40px 40px; }
+
+.stripe .biz {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 15px; font-weight: 600; color: #1a1f36;
+}
+.stripe .biz .back { color: #6d6e78; font-size: 19px; line-height: 1; }
+.stripe .biz .logo {
+  display: grid; place-items: center;
+  width: 26px; height: 26px;
+  border-radius: 6px; background: #635bff; color: #fff;
+  font-size: 14px; font-weight: 700;
+}
+
+.stripe .lede { margin-top: 34px; font-size: 15px; color: #6d6e78; }
+.stripe .amt {
+  margin-top: 2px;
+  font-size: 34px; font-weight: 600; letter-spacing: -0.02em; color: #1a1f36;
+}
+.stripe .amt span { font-size: 15px; font-weight: 500; color: #6d6e78; }
+
+.stripe .items { margin-top: 34px; }
+.stripe .item, .stripe .sum {
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 11px 0;
+  font-size: 14px;
+}
+.stripe .item { border-bottom: 1px solid #e6e6e6; }
+.stripe .item .sub { display: block; font-size: 13px; color: #6d6e78; }
+.stripe .sum { color: #6d6e78; padding: 7px 0; }
+.stripe .sum.due { padding-top: 14px; border-top: 1px solid #e6e6e6; color: #1a1f36; font-weight: 600; }
+
+.stripe .wallet {
+  display: grid; place-items: center;
+  height: 44px; border-radius: 5px;
+  background: #00d66f; color: #011e0f;
+  font-size: 14px; font-weight: 600;
+}
+.stripe .or {
+  display: flex; align-items: center; gap: 12px;
+  margin: 22px 0;
+  font-size: 13px; color: #6d6e78;
+}
+.stripe .or::before, .stripe .or::after { content: ""; flex: 1; border-top: 1px solid #e6e6e6; }
+
+.stripe label { display: block; margin: 14px 0 5px; font-size: 13px; font-weight: 500; color: #30313d; }
+.stripe .in {
+  padding: 10px 12px;
+  border: 1px solid #e0e0e0; border-radius: 5px;
+  background: #fff;
+  box-shadow: 0 1px 1px rgba(0,0,0,0.03);
+  font-size: 14px; color: #30313d;
+}
+.stripe .in.ghost { color: #8a8a94; }
+.stripe .in.pick { display: flex; justify-content: space-between; }
+.stripe .in.pick::after { content: "\25be"; color: #6d6e78; }
+
+/* Stripe stacks the card fields into one box with hairlines between. */
+.stripe .card .in { border-radius: 5px 5px 0 0; }
+.stripe .card .pair { display: grid; grid-template-columns: 1fr 1fr; }
+.stripe .card .pair .in { border-top: 0; border-radius: 0 0 0 5px; }
+.stripe .card .pair .in + .in { border-left: 0; border-radius: 0 0 5px 0; }
+
+.stripe .pay {
+  display: grid; place-items: center;
+  height: 44px; margin-top: 22px;
+  border-radius: 5px; background: #0570de; color: #fff;
+  font-size: 15px; font-weight: 600;
+}
+.stripe .consent { margin-top: 14px; font-size: 12px; line-height: 1.5; color: #6d6e78; }
+.stripe .foot {
+  display: flex; align-items: center; gap: 14px;
+  margin-top: 26px; padding-top: 16px;
+  border-top: 1px solid #e6e6e6;
+  font-size: 12px; color: #6d6e78;
+}
+.stripe .foot b { color: #1a1f36; font-weight: 700; letter-spacing: -0.02em; }

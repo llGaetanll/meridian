@@ -63,9 +63,9 @@
   the bank is ever mentioned, and the money taken on Stripe's own page rather
   than on a card form of ours.</p>
   <p>The top row of a part is its road. Under a screen, tied to it by a dashed
-  line, are the other states it can be in. A box with a dashed edge is a page
-  Meridian does not draw — every one of them a place the person leaves us for
-  and comes back from.</p>
+  line, are the other states it can be in. A box with a dashed edge is not our
+  screen: Apple's, Google's and Plaid's are named rather than drawn, because we
+  cannot know what they will show. Stripe's we can, and it is drawn.</p>
   <p>The buttons on the paywall are drawn by Stripe's Express Checkout Element,
   which shows whichever of Link, Apple&nbsp;Pay and Google&nbsp;Pay the browser
   and the customer actually have, so the list is never fixed. <b>Paywall</b> is what Safari sees and <b>Paywall, no Apple Pay here</b> is what Chrome on a PC sees. PayPal, Amazon Pay and Klarna are the other three the element can show, and all three are out: the support table says they cannot save a payment method while taking a payment, which is the whole of a subscription. We choose the button height, the corner radius, each button&rsquo;s theme and its wording, and nothing else.</p>
@@ -130,6 +130,10 @@ one ledger.</div><div class="say-body">Meridian reads your banks and puts what y
   <div class="cap"><span class="dot"></span>Ready</div>
   <div class="frame"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">meridian.app</span></div><div class="viewport"><div class="onboarding ui"><div class="measure"><div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Meridian</span></div><svg class="say-icon done"><use href="#i-tick-circle"/></svg><div class="say-title">You're set.</div><div class="say-body"><b>First Platypus Bank</b> is connected and syncing.</div><div class="tally"><div class="r"><span class="v">8</span><span class="k">accounts</span></div><div class="r"><span class="v">48</span><span class="k">transactions</span></div><div class="r"><span class="v">8</span><span class="k">recurring bills found</span></div></div><div class="acts"><button class="btn lg block">Add another bank</button><button class="btn primary lg block">Open Meridian</button></div></div></div></div></div></div>
 </div>
+<div class="node" id="stripe" style="left:3330px;top:200px">
+  <div class="cap off"><span class="dot"></span>checkout.stripe.com</div>
+  <div class="frame foreign"><div class="window"><div class="window-bar"><i></i><i></i><i></i><span class="window-url">checkout.stripe.com</span></div><div class="viewport"><div class="stripe"><div class="left"><div class="biz"><span class="back">&#8592;</span><span class="logo">M</span>Meridian</div><div class="lede">Subscribe to Meridian</div><div class="amt">$5.99 <span>per month</span></div><div class="items"><div class="item"><div>Meridian<span class="sub">Billed monthly</span></div><div>$5.99</div></div><div class="sum"><div>Subtotal</div><div>$5.99</div></div><div class="sum"><div>Tax</div><div>$0.00</div></div><div class="sum due"><div>Total due today</div><div>$5.99</div></div></div></div><div class="right"><div class="wallet">Pay with Link</div><div class="or">Or pay with card</div><label>Email</label><div class="in">al@example.com</div><label>Card information</label><div class="card"><div class="in ghost">1234 1234 1234 1234</div><div class="pair"><div class="in ghost">MM / YY</div><div class="in ghost">CVC</div></div></div><label>Cardholder name</label><div class="in ghost">Full name on card</div><label>Country or region</label><div class="in pick">United States</div><div class="pay">Subscribe</div><p class="consent">By confirming your subscription, you allow Meridian to charge you for future payments in accordance with their terms. You can always cancel your subscription.</p><div class="foot">Powered by <b>stripe</b><span>Terms</span><span>Privacy</span></div></div></div></div></div></div>
+</div>
 
 <div class="node var" id="welcome-out" style="left:90px;top:904px">
   <div class="cap"><span class="dot"></span>Welcome, signed out</div>
@@ -188,10 +192,6 @@ one ledger.</div><div class="say-body">Meridian reads your banks and puts what y
 <div class="node" id="google" style="left:900px;top:904px">
   <div class="cap off"><span class="dot"></span>Google</div>
   <div class="frame chip"><div><b>Google</b><span>Sign in with Google, on Google's own page. What comes back is an address Google has already verified.</span></div></div>
-</div>
-<div class="node" id="stripe" style="left:3330px;top:200px">
-  <div class="cap off"><span class="dot"></span>Stripe</div>
-  <div class="frame chip"><div><b>Stripe</b><span>Whichever button was pressed, what opens is Stripe's own sheet or the wallet's. No card ever reaches us.</span></div></div>
 </div>
 <div class="node" id="plaid" style="left:5760px;top:200px">
   <div class="cap off"><span class="dot"></span>Plaid</div>
