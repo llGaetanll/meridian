@@ -171,6 +171,7 @@ services:
       #
       # The publishable key is the card form's, and the server hands it out
       # beside each subscription's secret, so no client is built with one.
+      STRIPE_ENV: ${STRIPE_ENV:-}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
       STRIPE_PRICE_ID: ${STRIPE_PRICE_ID:-}
