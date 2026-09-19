@@ -41,9 +41,12 @@ function drawFlow(edges) {
       lx = (a.cx + b.cx) / 2; ly = mid;
 
     // The same screen, in another state: down the column's own gutter.
+    // `side: 'right'` runs down the right-hand gutter instead, for a state
+    // whose column sits to the right of its screen's.
     } else if (e.kind === 'tie') {
-      const gx = a.l - TIE;
-      d = `M${a.l} ${a.b - 70} H${gx} V${b.cy} H${b.l}`;
+      const right = e.side === 'right';
+      const gx = right ? a.r + TIE : a.l - TIE;
+      d = `M${right ? a.r : a.l} ${a.b - 70} H${gx} V${b.cy} H${b.l}`;
 
     // Back the way it came, below the arrow that came: out of the left side and
     // into the right side of the screen before it. `dy` is how far under the
