@@ -41,8 +41,8 @@ order they are drawn:
 | Part | Ids |
 | --- | --- |
 | Account | `welcome` `welcome-out` `apple` `google` `email` `email-bad` `code` `code-filled` `code-refused` `code-resend` |
-| Payment | `paywall` `pay-chrome` `pay-declined` `pay-ended` `pay-unknown` `stripe` `confirming` `conf-again` |
-| Bank | `bank` `plaid` `failed` `failed-block` `failed-linked` |
+| Payment | `paywall` `pay-chrome` `pay-declined` `pay-ended` `pay-unknown` `pay-waiting` `stripe` `confirming` `conf-again` |
+| Bank | `bank` `bank-waiting` `plaid` `failed` `failed-block` `failed-linked` |
 | Finishing | `sync` `ready` `app` |
 
 The phone board uses the same ids for the screens it has. It has `storekit`
