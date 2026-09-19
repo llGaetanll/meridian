@@ -1,4 +1,5 @@
-//! The window Plaid's page is shown in.
+//! The window another party's page is shown in — Plaid's bank sign-in, or
+//! Stripe's Checkout.
 
 use std::time::Duration;
 
@@ -12,10 +13,10 @@ const LOOK_EVERY: Duration = Duration::from_millis(400);
 
 /// A window of its own, the browser's answer to the phone's sheet.
 ///
-/// Opened empty and pointed at Plaid afterwards, because a browser only lets
-/// a page open a window from inside the click that asked for it — and the
-/// address is not known until `/link/start` answers, which is well after the
-/// click has returned.
+/// Opened empty and pointed at the page afterwards, because a browser only
+/// lets a page open a window from inside the click that asked for it — and
+/// the address is not known until the server answers, which is well after
+/// the click has returned.
 pub struct Popup {
     window: Window,
 }
@@ -36,39 +37,40 @@ impl Popup {
         }
     }
 
-    /// Put Plaid's page in it.
+    /// Put the party's page in it.
     pub fn show(&self, url: &str) {
         if self.window.location().set_href(url).is_err() {
-            tracing::error!("the bank's window would not take Plaid's page");
+            tracing::error!("the window would not take the page");
         }
     }
 
-    /// Wait until it is gone.
+    /// Wait until it is gone, and answer with the address it came home to.
     ///
-    /// Either the person closed it, or Plaid's page finished and sent it back
-    /// to this app's own address — which this closes, since there is nothing
-    /// left in it to show. The redirect that ends a Link session is the
-    /// server's choice; both endings are the same fact here, and what the
-    /// session came to is `/link/finish`'s to say.
-    pub async fn gone(&self) {
+    /// Either the person closed it — `None` — or the page finished and sent
+    /// the window back to this app's own origin, which this closes, since
+    /// there is nothing left in it to show. Which of our pages it came home
+    /// to is the one thing the window itself says: for Checkout it is how
+    /// paid and backed-out are told apart. What a bank session came to is
+    /// `/link/finish`'s to say, so those callers read nothing from it.
+    pub async fn gone(&self) -> Option<String> {
         let home = web_sys::window().and_then(|window| window.location().origin().ok());
 
         loop {
             if self.window.closed().unwrap_or(true) {
-                return;
+                return None;
             }
 
-            // Readable only while it shows a page of this origin. Plaid's is
-            // another, and reading its address throws.
+            // Readable only while it shows a page of this origin. The other
+            // party's is another, and reading its address throws.
             let back = match (&home, self.window.location().href()) {
-                (Some(home), Ok(href)) => href.starts_with(home.as_str()),
-                _ => false,
+                (Some(home), Ok(href)) if href.starts_with(home.as_str()) => Some(href),
+                _ => None,
             };
 
-            if back {
+            if let Some(href) = back {
                 self.close();
 
-                return;
+                return Some(href);
             }
 
             clock::sleep(LOOK_EVERY).await;

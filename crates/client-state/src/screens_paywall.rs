@@ -7,7 +7,6 @@
 use api_common::Timestamp;
 use api_common::format::fmt_date;
 
-use crate::PaymentRefusal;
 use crate::Unpaid;
 use crate::ViewIconRow;
 use crate::ViewPaywall;
@@ -31,13 +30,7 @@ const AMOUNT: &str = "$5.99";
 /// is our words, and mapping a provider's onto them is the server's job.
 pub(crate) fn paywall(unpaid: &Unpaid, payment: StatePayment) -> ViewPaywall {
     let (title, body) = match payment {
-        StatePayment::Offer | StatePayment::Starting => refusal(unpaid),
-
-        StatePayment::Card { .. } | StatePayment::Taking => (
-            "Pay by card",
-            "Charged today, then on this day each month until you cancel. Your card goes \
-             to Stripe, who take our payments, and never reaches Meridian.",
-        ),
+        StatePayment::Offer | StatePayment::Starting | StatePayment::Paying => refusal(unpaid),
 
         StatePayment::Confirming { .. } => (
             "Payment received",
@@ -121,25 +114,18 @@ fn refusal(unpaid: &Unpaid) -> (&'static str, &'static str) {
 fn step(payment: StatePayment) -> ViewPaywallStep {
     match payment {
         StatePayment::Offer => ViewPaywallStep::Offer {
-            action: "Subscribe".to_string(),
+            action: "Pay by card".to_string(),
             opening: false,
         },
 
         StatePayment::Starting => ViewPaywallStep::Offer {
-            action: "Opening the card form…".to_string(),
+            action: "Opening Stripe…".to_string(),
             opening: true,
         },
 
-        StatePayment::Card { refused } => ViewPaywallStep::Card {
-            action: format!("Pay {AMOUNT}"),
-            paying: false,
-            fault: refused.map(|refusal| refused_because(refusal).to_string()),
-        },
-
-        StatePayment::Taking => ViewPaywallStep::Card {
-            action: "Paying…".to_string(),
-            paying: true,
-            fault: None,
+        StatePayment::Paying => ViewPaywallStep::Offer {
+            action: "Finish on Stripe's page…".to_string(),
+            opening: true,
         },
 
         StatePayment::Confirming { .. } => ViewPaywallStep::Confirming {
@@ -151,23 +137,6 @@ fn step(payment: StatePayment) -> ViewPaywallStep {
             action: "Check again".to_string(),
             checking: false,
         },
-    }
-}
-
-/// Why a card was not taken, under the form it was typed into.
-fn refused_because(refusal: PaymentRefusal) -> &'static str {
-    match refusal {
-        PaymentRefusal::Declined => "Your card was declined. Try another card.",
-
-        PaymentRefusal::Incorrect => {
-            "Those card details aren't right. Check the number, the date and the code."
-        }
-
-        PaymentRefusal::Unauthenticated => {
-            "Your bank couldn't confirm it was you. Try again, or use another card."
-        }
-
-        PaymentRefusal::Failed => "The payment couldn't be taken. Try again in a moment.",
     }
 }
 

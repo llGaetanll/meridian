@@ -3,11 +3,11 @@
 //! A sub-machine for the reason first run is one: nothing outside it reads its
 //! steps, and once somebody is served there is nothing left to read.
 //!
-//! Three parties, and only two of them answer. Our server starts a
-//! subscription; the payment provider takes the card; and the provider then
-//! tells our server, which nothing here hears except by asking again. So a
-//! card that was taken is not yet an app that opens, and the last step is a
-//! wait with a limit.
+//! Three parties, and only two of them answer. Our server opens a page of
+//! Stripe's; Stripe takes the money on it; and Stripe then tells our server,
+//! which nothing here hears except by asking again. So a sheet that took the
+//! money is not yet an app that opens, and the last step is a wait with a
+//! limit.
 
 use std::time::Duration;
 
@@ -15,9 +15,8 @@ use api_common::Timestamp;
 
 use crate::Action;
 use crate::ActionSource;
-use crate::PaymentRefusal;
 
-/// How often to ask whether the server has heard, once the card is taken.
+/// How often to ask whether the server has heard, once the money is taken.
 const CONFIRM_EVERY: Duration = Duration::from_secs(3);
 
 /// How long to go on asking on its own before handing the asking to a button.
@@ -34,18 +33,17 @@ pub(crate) enum StatePayment {
     #[default]
     Offer,
 
-    /// A subscription asked for, and not yet started.
+    /// Stripe's page asked for, and not yet up.
     Starting,
 
-    /// Started, and the card form up. `refused` is why the last card was not
-    /// taken, where one was tried and was not.
-    Card { refused: Option<PaymentRefusal> },
+    /// Stripe's page is up, in a window of its own, and the money is taken
+    /// there or not at all. Nothing here hears from the page; the window
+    /// going away is the next event.
+    Paying,
 
-    /// A card handed to the provider, and no answer yet.
-    Taking,
-
-    /// Taken, and the server is being asked whether it has heard. `since` is
-    /// when the asking began and `asked` the last time it asked.
+    /// The sheet took the money, and the server is being asked whether it has
+    /// heard. `since` is when the asking began and `asked` the last time it
+    /// asked.
     Confirming { since: Timestamp, asked: Timestamp },
 
     /// Taken, and the server still had not heard when the asking stopped.
@@ -54,26 +52,26 @@ pub(crate) enum StatePayment {
 }
 
 impl StatePayment {
-    /// Subscribe. A subscription is started only from the offer: one that is
-    /// started and not paid for is the one a second card pays, and starting
-    /// another would leave the first behind at the provider.
+    /// Pay by card. Stripe's page is opened only from the offer: while one is
+    /// up, the money is being taken there and a second window would race it.
     pub(crate) fn subscribe(&mut self, actions: &mut Vec<Action>) {
         if let Self::Offer = self {
             *self = Self::Starting;
 
             actions.push(Action::ToSource {
-                action: ActionSource::StartSubscription,
+                action: ActionSource::StartCheckout,
             });
         }
     }
 
-    /// The server already has a subscription for this person, so there was
-    /// nothing to start.
+    /// The server already has a subscription for this person, so there was no
+    /// page to open.
     ///
     /// Skips to asking whether the server has heard of a payment, which is
-    /// the step this would have reached anyway had a card been taken. If that
-    /// subscription is paid for, the snapshot is served and the app opens; if
-    /// it is one whose card stopped working, the paywall comes back saying so.
+    /// the step this would have reached anyway had the sheet taken a card. If
+    /// that subscription is paid for, the snapshot is served and the app
+    /// opens; if it is one whose card stopped working, the paywall comes back
+    /// saying so.
     pub(crate) fn already(&mut self, now: Timestamp, actions: &mut Vec<Action>) {
         if let Self::Starting = self {
             *self = Self::Confirming {
@@ -83,17 +81,6 @@ impl StatePayment {
 
             actions.push(Action::ToSource {
                 action: ActionSource::LoadSnapshot,
-            });
-        }
-    }
-
-    /// Pay, with the card in the form.
-    pub(crate) fn pay(&mut self, actions: &mut Vec<Action>) {
-        if let Self::Card { .. } = self {
-            *self = Self::Taking;
-
-            actions.push(Action::ToSource {
-                action: ActionSource::TakePayment,
             });
         }
     }
@@ -111,16 +98,16 @@ impl StatePayment {
         }
     }
 
-    pub(crate) fn started(&mut self) {
+    pub(crate) fn opened(&mut self) {
         match self {
-            Self::Starting => *self = Self::Card { refused: None },
-            _ => tracing::warn!("a subscription started that nothing was waiting on"),
+            Self::Starting => *self = Self::Paying,
+            _ => tracing::warn!("stripe's page opened and nothing was waiting on it"),
         }
     }
 
     pub(crate) fn taken(&mut self, now: Timestamp, actions: &mut Vec<Action>) {
         match self {
-            Self::Taking => {
+            Self::Starting | Self::Paying => {
                 *self = Self::Confirming {
                     since: now,
                     asked: now,
@@ -134,20 +121,18 @@ impl StatePayment {
         }
     }
 
-    pub(crate) fn refused(&mut self, refusal: PaymentRefusal) {
+    /// The window went away without the money being taken — closed by hand,
+    /// or Stripe's back arrow. The offer again, ready for another press.
+    pub(crate) fn closed(&mut self) {
         match self {
-            Self::Taking => {
-                *self = Self::Card {
-                    refused: Some(refusal),
-                }
-            }
-            _ => tracing::warn!("a payment was refused that nothing was waiting on"),
+            Self::Starting | Self::Paying => *self = Self::Offer,
+            _ => tracing::warn!("stripe's page closed and nothing was waiting on it"),
         }
     }
 
-    /// A call to the server failed. Of the steps here only starting a
-    /// subscription waits on the server, so that is the one put back; a
-    /// failed ask while confirming is simply asked again.
+    /// A call to the server failed. Of the steps here only opening Stripe's
+    /// page waits on the server, so that is the one put back; a failed ask
+    /// while confirming is simply asked again.
     pub(crate) fn failed(&mut self) {
         if let Self::Starting = self {
             *self = Self::Offer;

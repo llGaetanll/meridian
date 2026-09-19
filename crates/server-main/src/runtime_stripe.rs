@@ -46,6 +46,29 @@ pub async fn create_subscription(
     })
 }
 
+/// A Checkout page that sells the subscription, and where it is.
+///
+/// Nothing is charged and nothing is created by opening it: the subscription
+/// exists once the page takes the money.
+pub async fn create_checkout(
+    client: &StripeClient,
+    customer_id: &str,
+    success_url: &str,
+    cancel_url: &str,
+) -> Result<String, StripeError> {
+    let session =
+        src_stripe::create_checkout_session(client, customer_id, success_url, cancel_url).await?;
+
+    // Stripe leaves the address off a session already completed or expired,
+    // which a session made on this turn never is.
+    session.url.ok_or_else(|| {
+        StripeError::Config(format!(
+            "checkout session {} came back with no url",
+            session.id
+        ))
+    })
+}
+
 /// Read a subscription back, whole.
 ///
 /// Not reduced the way a created one is: what comes back is believed the way

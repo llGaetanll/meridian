@@ -65,6 +65,18 @@ pub enum EventRouter {
     /// signs in.
     SubscribeRequested { token_sha256: Vec<u8> },
 
+    /// `POST /billing/checkout` — open a page of Stripe's that sells the
+    /// subscription, for whoever this token signs in.
+    ///
+    /// `origin` plays the part it does on
+    /// [`LinkRequested`](EventRouter::LinkRequested): it is where the page's
+    /// window is sent back, and only an origin the web app is served from is
+    /// one.
+    CheckoutRequested {
+        token_sha256: Vec<u8>,
+        origin: Option<String>,
+    },
+
     /// `GET /billing/status` — what this user's subscription is.
     BillingStatusRequested { token_sha256: Vec<u8> },
 
@@ -116,6 +128,7 @@ impl EventRouter {
             | EventRouter::SyncWatchRequested { token_sha256, .. }
             | EventRouter::SnapshotRequested { token_sha256 }
             | EventRouter::SubscribeRequested { token_sha256 }
+            | EventRouter::CheckoutRequested { token_sha256, .. }
             | EventRouter::BillingStatusRequested { token_sha256 }
             | EventRouter::AppleTransactionReceived { token_sha256, .. }
             | EventRouter::DeleteRequested { token_sha256 } => Some(token_sha256),
@@ -146,6 +159,7 @@ impl EventRouter {
             EventRouter::LinkClosed { .. } => Some(Route::LinkFinish),
             EventRouter::SyncWatchRequested { .. } => Some(Route::SyncStatus),
             EventRouter::SubscribeRequested { .. } => Some(Route::BillingSubscribe),
+            EventRouter::CheckoutRequested { .. } => Some(Route::BillingCheckout),
             EventRouter::BillingStatusRequested { .. } => Some(Route::BillingStatus),
             EventRouter::AppleTransactionReceived { .. } => Some(Route::BillingApple),
             EventRouter::DeleteRequested { .. } => Some(Route::AccountDelete),
@@ -173,6 +187,7 @@ impl EventRouter {
             | EventRouter::SyncWatchRequested { .. }
             | EventRouter::WebhookReceived { .. }
             | EventRouter::SubscribeRequested { .. }
+            | EventRouter::CheckoutRequested { .. }
             | EventRouter::BillingStatusRequested { .. }
             | EventRouter::DeleteRequested { .. }
             | EventRouter::AppleTransactionReceived { .. }

@@ -108,6 +108,13 @@ pub enum ActionRouter {
         publishable_key: String,
     },
 
+    /// A Checkout page is up at Stripe, and this is where it is.
+    ///
+    /// Nothing has been charged and nothing created: the subscription it
+    /// sells exists once the page takes the money, and entitlement arrives
+    /// by webhook, or never.
+    CheckoutOpened { url: String },
+
     /// What this user's subscription is, for the screen that draws it.
     BillingStatus {
         /// Whether the app may be used right now.

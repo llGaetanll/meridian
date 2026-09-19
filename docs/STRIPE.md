@@ -66,28 +66,42 @@ its secret, and disabling the old one.
 
 ## The flow
 
+The web pays on Stripe's own page:
+
 ```
-client: POST /billing/subscribe          -> client_secret, publishable_key
+client: POST /billing/checkout           -> url, a checkout.stripe.com page
 server:   POST /v1/customers               one per user, reused on a second press
-server:   POST /v1/subscriptions           default_incomplete, nothing charged yet
-client: Stripe Elements confirms the card  the card never touches our server
-stripe: POST /stripe/webhook             -> customer.subscription.updated
+server:   POST /v1/checkout/sessions       against that customer; nothing created yet
+client: the page takes the money           in a popup; no card touches us or our page
+stripe: POST /stripe/webhook             -> customer.subscription.created / updated
 ```
 
-**A subscription's truth arrives by webhook, or by asking.** A press of
-Subscribe by somebody with a subscription on file reads it back from Stripe
-first, and what comes back is believed and written exactly as a webhook would
-be, filed under the moment it was read. That is how a webhook that never
-arrived is repaired: the person who paid and was never let in presses
-Subscribe, Stripe says `active`, and the next snapshot is served. Nothing else
-asks — a poll on every refused request would be a call per app open.
+The subscription is born at Stripe when the page takes the money, so the
+first this server hears of it is a webhook naming a subscription it has never
+seen. The customer on that webhook is how its user is found — which is why
+the customer is ours, made and written down before the page opens. The page's
+window is sent home to `paid.html` or `left.html` on the web app's own
+origin, both pages that close themselves; which one it came home to is how
+the app knows whether to wait for the webhook or to offer again. Only an
+`Origin` the web app is served from is given a page at all.
 
-**Nothing else is the truth.** The card form
-closing says a card was accepted, which is not the same thing: the card can
-fail after the form closes, the renewal can fail a month later, and a
-chargeback can undo one that worked. So `/billing/subscribe` writes the
-customer and subscription ids and no entitlement, and the webhook is what
-opens the app.
+`POST /billing/subscribe` is the older road — the same customer, a
+subscription created `default_incomplete`, and its `client_secret` handed
+back for a card form of ours. It still answers, but no client calls it.
+
+**A subscription's truth arrives by webhook, or by asking.** A press of the
+paywall's button by somebody with a subscription on file reads it back from
+Stripe first, and what comes back is believed and written exactly as a
+webhook would be, filed under the moment it was read. That is how a webhook
+that never arrived is repaired: the person who paid and was never let in
+presses the button, Stripe says `active`, and the next snapshot is served.
+Nothing else asks — a poll on every refused request would be a call per app
+open.
+
+**Nothing else is the truth.** The window coming home to `paid.html` says the
+page took a payment, which is not the same thing: the renewal can fail a
+month later, and a chargeback can undo one that worked. So nothing on the way
+to the page writes any entitlement, and the webhook is what opens the app.
 
 ## What entitlement is
 

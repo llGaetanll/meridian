@@ -21,7 +21,6 @@ use serde::Deserialize;
 use crate::io::Failure;
 use crate::io::LinkOutcome;
 use crate::io::Sse;
-use crate::io::Subscribing;
 
 /// What this client is called in the logs, and what its bodies pass through
 /// on the way there.
@@ -168,12 +167,19 @@ impl Meridian {
         })
     }
 
-    /// Start a subscription, and answer with what the card form needs to pay
-    /// its first invoice.
+    /// Open a Checkout page at Stripe, and answer with where it is.
     ///
-    /// Nobody is entitled by this: nothing has been charged when it answers.
-    pub async fn subscribe(&self, token: &str) -> Result<Subscribing, Failure> {
-        self.post_authed("billing/subscribe", token).await
+    /// Nobody is entitled by this: the money is taken on the page, and
+    /// nothing has been charged when it answers.
+    pub async fn checkout(&self, token: &str) -> Result<String, Failure> {
+        #[derive(Deserialize)]
+        struct Opened {
+            url: String,
+        }
+
+        let opened: Opened = self.post_authed("billing/checkout", token).await?;
+
+        Ok(opened.url)
     }
 
     /// How the sync is going, handed to `status` as JSON each time it moves,
@@ -374,18 +380,16 @@ impl Meridian {
     }
 }
 
-/// Three answers here are a credential: the session `/auth/verify` hands back,
-/// good for ninety days, the page `/link/start` hands back, whose address is a
-/// Link token, and the secret `/billing/subscribe` hands back, which pays an
-/// invoice. The code that buys the first goes the same way. Each is logged as
-/// its length.
+/// Two answers here are a credential: the session `/auth/verify` hands back,
+/// good for ninety days, and the page `/link/start` hands back, whose address
+/// is a Link token. The code that buys the first goes the same way. Each is
+/// logged as its length. Checkout's page is not one: its address is made to
+/// be opened in somebody's browser.
 fn redact_session<'a>(ctx: &Context<'_>, body: Cow<'a, str>) -> Cow<'a, str> {
     let secret = match ctx.direction {
         Direction::Request => ctx.url.ends_with("/auth/verify"),
         Direction::Response => {
-            ctx.url.ends_with("/auth/verify")
-                || ctx.url.ends_with("/link/start")
-                || ctx.url.ends_with("/billing/subscribe")
+            ctx.url.ends_with("/auth/verify") || ctx.url.ends_with("/link/start")
         }
     };
 

@@ -247,12 +247,6 @@ impl StateApp {
                 }
             }
 
-            EventUi::PaymentRequested => {
-                if self.unpaid.is_some() {
-                    self.payment.pay(actions);
-                }
-            }
-
             EventUi::MaskToggled => self.masked = !self.masked,
 
             EventUi::FilterGroupToggled { group } => self.ledger.toggle_group(*group),
@@ -477,6 +471,14 @@ impl StateApp {
             EventSource::CodeAccepted => {
                 if let Some(flow) = &mut self.onboarding {
                     flow.code_accepted();
+
+                    // Whether payment is settled is decided here, not on the
+                    // bank step: the ask this starts is refused for a session
+                    // that has not paid, and that refusal is the paywall.
+                    // Somebody who has paid walks straight on to the bank.
+                    actions.push(Action::ToSource {
+                        action: ActionSource::LoadSnapshot,
+                    });
                 }
 
                 self.render(actions);
@@ -547,8 +549,8 @@ impl StateApp {
                 self.render(actions);
             }
 
-            EventSource::SubscriptionStarted => {
-                self.payment.started();
+            EventSource::CheckoutOpened => {
+                self.payment.opened();
 
                 self.render(actions);
             }
@@ -561,8 +563,8 @@ impl StateApp {
                 self.render(actions);
             }
 
-            EventSource::PaymentRefused { refusal } => {
-                self.payment.refused(*refusal);
+            EventSource::CheckoutClosed => {
+                self.payment.closed();
 
                 self.render(actions);
             }

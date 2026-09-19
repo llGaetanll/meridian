@@ -1728,6 +1728,12 @@ public func FfiConverterTypeViewCodeCell_lower(_ value: ViewCodeCell) -> RustBuf
 
 public struct ViewConnection: Equatable, Hashable {
     public var id: String
+    /**
+     * Plaid's id for the connection, as a repair names it. Unlike
+     * [`id`](ViewConnection::id) it is never suffixed: the held and owed
+     * halves of one bank are one connection.
+     */
+    public var itemId: String
     public var name: String
     public var initials: String
     /**
@@ -1738,6 +1744,12 @@ public struct ViewConnection: Equatable, Hashable {
      * Whether the user has to sign in again.
      */
     public var needsReconnect: Bool
+    /**
+     * Whether a repair for this connection is under way — the tap has
+     * happened and Plaid's page has not answered — so the button waits
+     * instead of taking another.
+     */
+    public var reconnecting: Bool
     /**
      * Whether these balances are owed rather than held.
      */
@@ -1754,13 +1766,23 @@ public struct ViewConnection: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, name: String, initials: String, 
+    public init(id: String, 
+        /**
+         * Plaid's id for the connection, as a repair names it. Unlike
+         * [`id`](ViewConnection::id) it is never suffixed: the held and owed
+         * halves of one bank are one connection.
+         */itemId: String, name: String, initials: String, 
         /**
          * `"synced 2m"`, or empty when the connection needs attention.
          */synced: String, 
         /**
          * Whether the user has to sign in again.
          */needsReconnect: Bool, 
+        /**
+         * Whether a repair for this connection is under way — the tap has
+         * happened and Plaid's page has not answered — so the button waits
+         * instead of taking another.
+         */reconnecting: Bool, 
         /**
          * Whether these balances are owed rather than held.
          */isDebts: Bool, accounts: [ViewAccountRow], 
@@ -1771,10 +1793,12 @@ public struct ViewConnection: Equatable, Hashable {
          * `"$62,589.00"`.
          */total: String) {
         self.id = id
+        self.itemId = itemId
         self.name = name
         self.initials = initials
         self.synced = synced
         self.needsReconnect = needsReconnect
+        self.reconnecting = reconnecting
         self.isDebts = isDebts
         self.accounts = accounts
         self.totalLabel = totalLabel
@@ -1798,10 +1822,12 @@ public struct FfiConverterTypeViewConnection: FfiConverterRustBuffer {
         return
             try ViewConnection(
                 id: FfiConverterString.read(from: &buf), 
+                itemId: FfiConverterString.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf), 
                 initials: FfiConverterString.read(from: &buf), 
                 synced: FfiConverterString.read(from: &buf), 
                 needsReconnect: FfiConverterBool.read(from: &buf), 
+                reconnecting: FfiConverterBool.read(from: &buf), 
                 isDebts: FfiConverterBool.read(from: &buf), 
                 accounts: FfiConverterSequenceTypeViewAccountRow.read(from: &buf), 
                 totalLabel: FfiConverterString.read(from: &buf), 
@@ -1811,10 +1837,12 @@ public struct FfiConverterTypeViewConnection: FfiConverterRustBuffer {
 
     public static func write(_ value: ViewConnection, into buf: inout [UInt8]) {
         FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.itemId, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
         FfiConverterString.write(value.initials, into: &buf)
         FfiConverterString.write(value.synced, into: &buf)
         FfiConverterBool.write(value.needsReconnect, into: &buf)
+        FfiConverterBool.write(value.reconnecting, into: &buf)
         FfiConverterBool.write(value.isDebts, into: &buf)
         FfiConverterSequenceTypeViewAccountRow.write(value.accounts, into: &buf)
         FfiConverterString.write(value.totalLabel, into: &buf)
@@ -3590,18 +3618,18 @@ public enum ActionSource: Equatable, Hashable {
      */
     case startBankLink
     /**
-     * Ask the server to start a subscription, and have the card form ready
-     * to pay it.
-     *
-     * The runtime keeps what the server answers with — the secret a card is
-     * confirmed against, and the key the form opens with — and reports only
-     * that it is started. Neither is a thing to put in an event log.
+     * The same, in update mode against one bank the user already holds: ask
+     * the server for a repair session and open its page. The sign-in renews
+     * the bank's consent instead of attaching a new one.
      */
-    case startSubscription
+    case startBankRepair(itemId: String
+    )
     /**
-     * Pay the subscription that was started, with the card in the form.
+     * Ask the server for a Stripe Checkout page and open it in a window of
+     * its own. The money is taken there: no card detail ever reaches this
+     * app, and nothing about the page is a thing to put in an event log.
      */
-    case takePayment
+    case startCheckout
     /**
      * Open a stream the server writes the sync's progress to, and report
      * what arrives on it.
@@ -3654,9 +3682,10 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
         
         case 7: return .startBankLink
         
-        case 8: return .startSubscription
+        case 8: return .startBankRepair(itemId: try FfiConverterString.read(from: &buf)
+        )
         
-        case 9: return .takePayment
+        case 9: return .startCheckout
         
         case 10: return .watchSync
         
@@ -3701,11 +3730,12 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(7))
         
         
-        case .startSubscription:
+        case let .startBankRepair(itemId):
             writeInt(&buf, Int32(8))
+            FfiConverterString.write(itemId, into: &buf)
+            
         
-        
-        case .takePayment:
+        case .startCheckout:
             writeInt(&buf, Int32(9))
         
         
@@ -4064,25 +4094,25 @@ public enum EventSource: Equatable, Hashable {
      */
     case syncWatchEnded
     /**
-     * A subscription is started and waiting to be paid for.
+     * Stripe's page is up, in a window of its own.
      *
-     * Nothing else: what it is paid against stays with the runtime, the way
-     * the session token does.
+     * Nothing else: the page's address stays with the runtime, the way the
+     * session token does.
      */
-    case subscriptionStarted
+    case checkoutOpened
     /**
-     * The payment provider took the card.
+     * Stripe's page went away with the money taken.
      *
-     * Not a subscription the server will honour yet. The provider tells the
-     * server separately, a moment later, and until it has the server goes on
+     * Not a subscription the server will honour yet. Stripe tells the server
+     * separately, a moment later, and until it has the server goes on
      * refusing.
      */
     case paymentTaken
     /**
-     * The provider did not take it, and why, in our words.
+     * Stripe's page went away without taking anything — closed by hand, or
+     * backed out of. Nothing was charged and nothing was created.
      */
-    case paymentRefused(refusal: PaymentRefusal
-    )
+    case checkoutClosed
 
 
 
@@ -4132,12 +4162,11 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
         
         case 12: return .syncWatchEnded
         
-        case 13: return .subscriptionStarted
+        case 13: return .checkoutOpened
         
         case 14: return .paymentTaken
         
-        case 15: return .paymentRefused(refusal: try FfiConverterTypePaymentRefusal.read(from: &buf)
-        )
+        case 15: return .checkoutClosed
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4199,7 +4228,7 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(12))
         
         
-        case .subscriptionStarted:
+        case .checkoutOpened:
             writeInt(&buf, Int32(13))
         
         
@@ -4207,10 +4236,9 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(14))
         
         
-        case let .paymentRefused(refusal):
+        case .checkoutClosed:
             writeInt(&buf, Int32(15))
-            FfiConverterTypePaymentRefusal.write(refusal, into: &buf)
-            
+        
         }
     }
 }
@@ -4327,18 +4355,21 @@ public enum EventUi: Equatable, Hashable {
      */
     case bankConnectRequested
     /**
+     * Reconnect, on a bank that has stopped answering. Opens Plaid too, in
+     * update mode against the named bank: the sign-in repairs it rather than
+     * attaching another.
+     */
+    case bankReconnectRequested(itemId: String
+    )
+    /**
      * Open Meridian, on the last screen of first run.
      */
     case onboardingFinished
     /**
-     * Subscribe, on the paywall. Starts a subscription and brings up the card
-     * form; nothing is charged by it.
+     * Pay by card, on the paywall. Opens Stripe's own page in a window of
+     * its own; nothing is charged by the press.
      */
     case subscribeRequested
-    /**
-     * Pay, under the card form.
-     */
-    case paymentRequested
     /**
      * Sign out, on the Account tab. Everything the app holds belongs to the
      * account, so this puts the machine back to where a fresh install starts.
@@ -4412,11 +4443,12 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
         
         case 19: return .bankConnectRequested
         
-        case 20: return .onboardingFinished
+        case 20: return .bankReconnectRequested(itemId: try FfiConverterString.read(from: &buf)
+        )
         
-        case 21: return .subscribeRequested
+        case 21: return .onboardingFinished
         
-        case 22: return .paymentRequested
+        case 22: return .subscribeRequested
         
         case 23: return .signOutRequested
         
@@ -4513,15 +4545,16 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
             writeInt(&buf, Int32(19))
         
         
-        case .onboardingFinished:
+        case let .bankReconnectRequested(itemId):
             writeInt(&buf, Int32(20))
+            FfiConverterString.write(itemId, into: &buf)
+            
         
-        
-        case .subscribeRequested:
+        case .onboardingFinished:
             writeInt(&buf, Int32(21))
         
         
-        case .paymentRequested:
+        case .subscribeRequested:
             writeInt(&buf, Int32(22))
         
         
@@ -4652,7 +4685,7 @@ public enum LoadFailure: Equatable, Hashable {
     case tooMany
     /**
      * Asked to subscribe by somebody the server already has a subscription
-     * for. **409.**
+     * for, or is starting one for. **409.**
      *
      * Not a failure either: there is nothing to buy, and whether the app
      * opens is what asking for a snapshot answers.
@@ -4759,106 +4792,6 @@ public func FfiConverterTypeLoadFailure_lift(_ buf: RustBuffer) throws -> LoadFa
 #endif
 public func FfiConverterTypeLoadFailure_lower(_ value: LoadFailure) -> RustBuffer {
     return FfiConverterTypeLoadFailure.lower(value)
-}
-
-
-
-/**
- * How a payment was refused, in our words rather than a provider's.
- *
- * A reason and not a sentence: the runtime says which it was, and what each
- * reads as is decided with every other string the app prints.
- */
-
-public enum PaymentRefusal: Equatable, Hashable {
-    
-    /**
-     * The bank said no.
-     */
-    case declined
-    /**
-     * A detail of the card cannot be right — the number, the date or the
-     * code — or one was left unfinished.
-     */
-    case incorrect
-    /**
-     * The bank asked the cardholder to confirm it was them, and they did not.
-     */
-    case unauthenticated
-    /**
-     * Nothing that says anything about the card: the provider could not be
-     * reached, or answered in a way the runtime could not read.
-     */
-    case failed
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension PaymentRefusal: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypePaymentRefusal: FfiConverterRustBuffer {
-    typealias SwiftType = PaymentRefusal
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PaymentRefusal {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .declined
-        
-        case 2: return .incorrect
-        
-        case 3: return .unauthenticated
-        
-        case 4: return .failed
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: PaymentRefusal, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case .declined:
-            writeInt(&buf, Int32(1))
-        
-        
-        case .incorrect:
-            writeInt(&buf, Int32(2))
-        
-        
-        case .unauthenticated:
-            writeInt(&buf, Int32(3))
-        
-        
-        case .failed:
-            writeInt(&buf, Int32(4))
-        
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypePaymentRefusal_lift(_ buf: RustBuffer) throws -> PaymentRefusal {
-    return try FfiConverterTypePaymentRefusal.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypePaymentRefusal_lower(_ value: PaymentRefusal) -> RustBuffer {
-    return FfiConverterTypePaymentRefusal.lower(value)
 }
 
 
@@ -5491,8 +5424,8 @@ public func FfiConverterTypeViewOnboarding_lower(_ value: ViewOnboarding) -> Rus
 
 
 /**
- * The part of the paywall that moves as somebody pays: the button, and the
- * card form where there is one.
+ * The part of the paywall that moves as somebody pays: one button, and what
+ * it is waiting on.
  *
  * An enum rather than flags, for the reason [`ViewOnboarding`](crate::ViewOnboarding)
  * is one: which event the button sends is which arm this is, so the view
@@ -5502,37 +5435,21 @@ public func FfiConverterTypeViewOnboarding_lower(_ value: ViewOnboarding) -> Rus
 public enum ViewPaywallStep: Equatable, Hashable {
     
     /**
-     * Subscribe, and nothing started. The button sends
-     * [`SubscribeRequested`](crate::EventUi::SubscribeRequested).
+     * Pay by card, and the money is taken on Stripe's own page. The button
+     * sends [`SubscribeRequested`](crate::EventUi::SubscribeRequested).
      */
     case offer(
         /**
-         * `"Subscribe"`, or what it is waiting on once pressed.
+         * `"Pay by card"`, or what it is waiting on once pressed.
          */action: String, 
         /**
-         * Whether the button is waiting on the subscription being started.
+         * Whether Stripe's page is on its way or up. The button is locked
+         * while it is: the money is being taken there or not at all.
          */opening: Bool
     )
     /**
-     * The card form, and Pay under it. The button sends
-     * [`PaymentRequested`](crate::EventUi::PaymentRequested).
-     */
-    case card(
-        /**
-         * `"Pay $5.99"`, or what it is waiting on once pressed.
-         */action: String, 
-        /**
-         * Whether the card is with the provider. The form is locked while it
-         * is.
-         */paying: Bool, 
-        /**
-         * Why the last card was refused, under the form. Absent until one
-         * has been.
-         */fault: String?
-    )
-    /**
-     * The card was taken, and the server has not heard yet. While `checking`
-     * it is being asked on its own; after that the button sends
+     * The sheet took the money, and the server has not heard yet. While
+     * `checking` it is being asked on its own; after that the button sends
      * [`RefreshRequested`](crate::EventUi::RefreshRequested).
      */
     case confirming(action: String, checking: Bool
@@ -5561,10 +5478,7 @@ public struct FfiConverterTypeViewPaywallStep: FfiConverterRustBuffer {
         case 1: return .offer(action: try FfiConverterString.read(from: &buf), opening: try FfiConverterBool.read(from: &buf)
         )
         
-        case 2: return .card(action: try FfiConverterString.read(from: &buf), paying: try FfiConverterBool.read(from: &buf), fault: try FfiConverterOptionString.read(from: &buf)
-        )
-        
-        case 3: return .confirming(action: try FfiConverterString.read(from: &buf), checking: try FfiConverterBool.read(from: &buf)
+        case 2: return .confirming(action: try FfiConverterString.read(from: &buf), checking: try FfiConverterBool.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -5581,15 +5495,8 @@ public struct FfiConverterTypeViewPaywallStep: FfiConverterRustBuffer {
             FfiConverterBool.write(opening, into: &buf)
             
         
-        case let .card(action,paying,fault):
-            writeInt(&buf, Int32(2))
-            FfiConverterString.write(action, into: &buf)
-            FfiConverterBool.write(paying, into: &buf)
-            FfiConverterOptionString.write(fault, into: &buf)
-            
-        
         case let .confirming(action,checking):
-            writeInt(&buf, Int32(3))
+            writeInt(&buf, Int32(2))
             FfiConverterString.write(action, into: &buf)
             FfiConverterBool.write(checking, into: &buf)
             

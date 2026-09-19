@@ -25,6 +25,7 @@ use api_eval::eval;
 use fixtures::PAID_UNTIL;
 use fixtures::SUBSCRIBER;
 use fixtures::T0;
+use fixtures::WEB_ORIGIN;
 use fixtures::state;
 use fixtures::state_subscribed;
 use fixtures::stripe_signed;
@@ -2179,5 +2180,267 @@ fn a_late_delivery_about_a_replaced_subscription_takes_nothing_away() {
         },
 
         > @r#"ToRouter { request_id: 4, action: BillingStatus { entitled: true, unpaid: None, good_until: Some(1818633600), cancel_at_period_end: false } }"#,
+    );
+}
+
+/// G, on the web's road: a session with no subscription asks for a Checkout
+/// page, and gets the address of one after the customer it sells against is
+/// made and written down.
+///
+/// The write lands before the route is answered, because the subscription the
+/// page sells arrives by webhook and the webhook names only the customer — a
+/// restart in between must still find whose customer it is.
+#[test]
+fn a_checkout_makes_a_customer_and_answers_with_stripes_page() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CheckoutRequested {
+                token_sha256: hash_token("session-1"),
+                origin: Some(WEB_ORIGIN.to_string()),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadUser { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::UserLoaded {
+                email: Some("al@example.com".to_string()),
+            },
+        },
+
+        > Action::ToSourceStripe {
+            call_id: 3,
+            action: ActionSourceStripe::CreateCustomer {
+                user_id: SUBSCRIBER,
+                ..
+            },
+        },
+        < Event::FromSourceStripe {
+            call_id: 3,
+            event: EventSourceStripe::CustomerCreated {
+                user_id: SUBSCRIBER,
+                customer_id: "cus_1".to_string(),
+            },
+        },
+
+        // The customer is written down with no subscription against it, and
+        // the page is asked for. The window is sent home to the origin the
+        // request came from, and to no other.
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::SaveCustomer { user_id: SUBSCRIBER, subscription_id: None, .. },
+        },
+        > @r#"ToSourceStripe { call_id: 5, action: OpenCheckout { user_id: 00000000-0000-0000-0000-000000000000, customer_id: "cus_1", success_url: "http://127.0.0.1:8080/paid.html", cancel_url: "http://127.0.0.1:8080/left.html" } }"#,
+
+        < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
+
+        < Event::FromSourceStripe {
+            call_id: 5,
+            event: EventSourceStripe::CheckoutOpened {
+                user_id: SUBSCRIBER,
+                url: "https://checkout.stripe.com/c/pay/cs_1".to_string(),
+            },
+        },
+
+        > @r#"ToRouter { request_id: 1, action: CheckoutOpened { url: "https://checkout.stripe.com/c/pay/cs_1" } }"#,
+    );
+}
+
+/// A checkout asked for from anywhere that is not the web app has no window
+/// to send Stripe's page back to, so no page is opened. The phone sends no
+/// `Origin`, and an origin the web app is not served from is a header
+/// anybody can type.
+#[test]
+fn a_checkout_from_somewhere_that_is_not_the_web_app_is_refused() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CheckoutRequested {
+                token_sha256: hash_token("session-1"),
+                origin: None,
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToRouter { request_id: 1, action: ActionRouter::Rejected },
+    );
+}
+
+/// A checkout pressed by somebody already paying sells nothing. The
+/// subscription on file is read back first — which is the same read that
+/// repairs a webhook that never arrived — and what Stripe says is written
+/// before the route hears there is nothing to buy.
+#[test]
+fn a_checkout_for_somebody_already_paying_sells_nothing() {
+    let mut state = state_subscribed();
+
+    eval!(&mut state,
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CheckoutRequested {
+                token_sha256: hash_token("session-1"),
+                origin: Some(WEB_ORIGIN.to_string()),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > @r#"ToSourceStripe { call_id: 2, action: LoadSubscription { user_id: 00000000-0000-0000-0000-000000000000, subscription_id: "sub_1" } }"#,
+
+        < Event::FromSourceStripe {
+            call_id: 2,
+            event: EventSourceStripe::SubscriptionLoaded {
+                user_id: SUBSCRIBER,
+                subscription: src_stripe::StripeSubscription {
+                    id: "sub_1".to_string(),
+                    status: "active".to_string(),
+                    customer: "cus_1".to_string(),
+                    cancel_at_period_end: false,
+                    ended_at: None,
+                    items: src_stripe::StripeSubscriptionItems {
+                        data: vec![src_stripe::StripeSubscriptionItem {
+                            current_period_start: 0,
+                            current_period_end: PAID_UNTIL.as_secs() as i64,
+                        }],
+                    },
+                    latest_invoice: None,
+                },
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
+        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+
+        > Action::ToRouter { request_id: 1, action: ActionRouter::Subscribed },
+    );
+}
+
+/// A subscription born on Stripe's own Checkout page arrives as a webhook
+/// naming a subscription this process has never heard of — and a customer it
+/// has. The customer is how its user is found, the row is written the way a
+/// subscribe's would have been, and the entitlement opens the app.
+///
+/// The machine starts from the store's rows rather than from the checkout
+/// conversation, so this is also the restart story: a server that came up
+/// between the page opening and the money being taken still attributes it.
+#[test]
+fn a_webhook_for_a_subscription_born_on_stripes_page_finds_its_user_by_customer() {
+    let mut state = state();
+
+    let paid = stripe_subscription_event(
+        "evt_1",
+        T0.as_secs() + 60,
+        "sub_9",
+        "active",
+        PAID_UNTIL.as_secs(),
+    );
+    let paid_signature = stripe_signed(&paid, Timestamp::from_secs(T0.as_secs() + 60));
+
+    eval!(&mut state,
+        // The row the checkout left behind: a customer, and no subscription
+        // against it yet.
+        < Event::FromStore {
+            call_id: 0,
+            event: EventStore::SubscriptionsLoaded {
+                subscriptions: vec![src_postgres::StoredSubscription {
+                    user_id: SUBSCRIBER,
+                    provider: src_postgres::BillingProvider::Stripe,
+                    customer_id: "cus_1".to_string(),
+                    subscription_id: None,
+                    status: "none".to_string(),
+                    current_period_end: None,
+                    cancel_at_period_end: false,
+                    last_event_id: None,
+                    last_event_at: None,
+                }],
+            },
+        },
+
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::StripeWebhookReceived {
+                signature: paid_signature,
+                body: paid,
+            },
+        },
+
+        > Action::ToRouter { request_id: 1, action: ActionRouter::Accepted },
+
+        // Filed under the customer's user, then the event applied — the same
+        // two writes a subscribe leaves, made from the webhook because the
+        // webhook is the first news of this subscription.
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::SaveCustomer {
+                user_id: SUBSCRIBER,
+                subscription_id: Some(_),
+                ..
+            },
+        },
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::ApplySubscriptionEvent { .. },
+        },
+        < Event::FromStore { call_id: 1, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 2, event: EventStore::WriteSuccess },
+
+        // And the person it names is served, which is the whole point.
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::SnapshotRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 3,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToStore { call_id: 4, action: ActionStore::LoadItems { .. } },
     );
 }

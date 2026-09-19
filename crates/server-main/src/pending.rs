@@ -73,6 +73,19 @@ pub enum Pending {
     /// Waiting on Stripe to create the subscription itself.
     SubscribingTo { user_id: Uuid, customer_id: String },
 
+    /// On the way to a Checkout page, waiting on Stripe for what comes before
+    /// it: the customer the page sells against, or the read-back of a
+    /// subscription already held. The addresses ride along because the page,
+    /// once asked for, is told where to send its window back.
+    CheckingOut {
+        user_id: Uuid,
+        success_url: String,
+        cancel_url: String,
+    },
+
+    /// Waiting on Stripe for the Checkout page itself.
+    OpeningCheckout { user_id: Uuid },
+
     /// Deleting an account, waiting on Stripe to stop the subscription.
     ///
     /// First because it is the only step that can be told to somebody: a card

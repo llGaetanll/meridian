@@ -162,6 +162,19 @@ impl StateBilling {
         self.apple.get(customer_id).copied()
     }
 
+    /// Whose Stripe customer this is, if we know.
+    ///
+    /// A walk rather than a second index: it is read on the one webhook whose
+    /// subscription is not yet known — the first news of one born on Stripe's
+    /// own Checkout page — and a second index is a second thing that can
+    /// disagree.
+    pub fn user_for_customer(&self, customer_id: &str) -> Option<Uuid> {
+        self.stripe
+            .iter()
+            .find(|(_, payer)| payer.customer_id == customer_id)
+            .map(|(user_id, _)| *user_id)
+    }
+
     /// What Stripe has been asked for on this user's behalf, if anything.
     pub fn payer(&self, user_id: Uuid) -> Option<&StripePayer> {
         self.stripe.get(&user_id)

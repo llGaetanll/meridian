@@ -18,10 +18,12 @@ Each draws **every screen of the road in**, in four parts — Account, Payment,
 Bank, Finishing — with an arrow for every way the machine gets from one to the
 next.
 
-**They show the flow we want, not the flow that is built.** Today paying
-happens when Connect a bank is pressed; on these boards it is settled before
-the bank is mentioned, and there are three doors on the front rather than one.
-Anything you implement from here is a change, not a transcription.
+**They show the flow we want, not the flow that is built.** The web walks
+most of this road: payment is settled before the bank is mentioned, and the
+money is taken on Stripe's own page. What it does not draw yet is the front's
+three doors — there is one, the email — and the paywall's wallet buttons. The
+phone has none of it: there, paying still happens when Connect a bank is
+pressed. Anything you implement from here is a change, not a transcription.
 
 ### Finding a screen
 

@@ -1248,23 +1248,52 @@ impl StateSignup {
         });
     }
 
-    /// Whether a subscribe for this user is already being answered.
+    /// Where the Checkout page sends its window back, on the web origin the
+    /// request came from.
     ///
-    /// A walk over the routes in flight, on a press of Subscribe. Two presses
-    /// answered side by side would each see a user Stripe has never heard of
-    /// and make a customer and a subscription apiece, and the machine keeps
-    /// only the later one.
+    /// `None` is a caller with no window to send back — no `Origin`, or one
+    /// the web app is not served from. Both pages exist on the web app's
+    /// origin and close themselves; which of the two the window lands on is
+    /// how the app learns whether the money was taken.
+    pub fn checkout_urls(&self, origin: Option<&str>) -> Option<(String, String)> {
+        let web = self.web_origins.as_ref()?;
+
+        let origin = origin?;
+
+        if !web.allows(origin) {
+            tracing::warn!(
+                origin,
+                "a checkout was asked for from an origin that is not the web app's"
+            );
+
+            return None;
+        }
+
+        Some((format!("{origin}/paid.html"), format!("{origin}/left.html")))
+    }
+
+    /// Whether a subscribe or a checkout for this user is already being
+    /// answered.
+    ///
+    /// A walk over the routes in flight, on a press of the paywall's button.
+    /// Two presses answered side by side would each see a user Stripe has
+    /// never heard of and make a customer apiece, and the machine keeps only
+    /// the later one.
     pub fn subscribing(&self, user_id: Uuid) -> bool {
         self.requests.values().any(|step| match step {
             Pending::Loading {
                 user_id: loading,
-                event: Authenticated::SubscribeRequested,
+                event: Authenticated::SubscribeRequested | Authenticated::CheckoutRequested { .. },
             } => *loading == user_id,
 
             Pending::Subscribing { user_id: waiting }
             | Pending::SubscribingTo {
                 user_id: waiting, ..
-            } => *waiting == user_id,
+            }
+            | Pending::CheckingOut {
+                user_id: waiting, ..
+            }
+            | Pending::OpeningCheckout { user_id: waiting } => *waiting == user_id,
 
             _ => false,
         })

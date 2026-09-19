@@ -337,8 +337,12 @@ fn wrong_address_goes_back_to_the_field_with_it_still_in() {
     );
 }
 
+/// A verified code moves the flow to the bank screen and asks the server for
+/// the snapshot in the same turn. Whether payment is settled is that ask's to
+/// answer: refused unpaid, the paywall covers the flow here — between the
+/// account and the bank — and somebody who has paid walks straight on.
 #[test]
-fn a_verified_code_asks_for_a_bank() {
+fn a_verified_code_asks_for_a_bank_and_whether_its_paid_for() {
     let mut state = at_the_code_screen();
 
     eval!(&mut state,
@@ -348,6 +352,39 @@ fn a_verified_code_asks_for_a_bank() {
         > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToSource { action: LoadSnapshot }"#,
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Bank { .. } }, .. } },
+    );
+}
+
+/// The unpaid refusal that ask comes back with is the paywall, drawn over
+/// first run — the board's road runs account, payment, bank.
+#[test]
+fn an_unpaid_account_meets_the_paywall_before_the_bank() {
+    let mut state = at_the_code_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
+        < Event::FromUi { event: EventUi::CodeSubmitted },
+        < Event::FromSource { event: EventSource::CodeAccepted },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToSource { action: LoadSnapshot }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource {
+            event: EventSource::LoadFailed {
+                failure: LoadFailure::Unpaid { reason: Unpaid::Never },
+            },
+        },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { view }, .. } } => {
+            assert_eq!(view.title, "Meridian is a subscription");
+        },
+
+        // Paid for — the sheet took the money, the webhook said active, and
+        // the snapshot is served — the paywall comes down onto the bank step.
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: "{}".to_string() } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Bank { .. } }, .. } },
     );
 }

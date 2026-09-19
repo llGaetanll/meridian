@@ -39,9 +39,17 @@ pub enum Authenticated {
 
     SnapshotRequested,
 
-    /// Starting a subscription. One of the three routes an unpaid session may
+    /// Starting a subscription. One of the routes an unpaid session may
     /// reach — see [`Authenticated::needs_entitlement`].
     SubscribeRequested,
+
+    /// Opening the Stripe Checkout page that sells the subscription. Another,
+    /// for the same reason. The `origin` plays the same part as on
+    /// [`LinkRequested`](Authenticated::LinkRequested): it is where the
+    /// page's window is sent back.
+    CheckoutRequested {
+        origin: Option<String>,
+    },
 
     /// Asking what the subscription is. Another.
     BillingStatusRequested,
@@ -79,6 +87,11 @@ impl Authenticated {
             }
             EventRouter::SnapshotRequested { .. } => Some(Authenticated::SnapshotRequested),
             EventRouter::SubscribeRequested { .. } => Some(Authenticated::SubscribeRequested),
+            EventRouter::CheckoutRequested { origin, .. } => {
+                Some(Authenticated::CheckoutRequested {
+                    origin: origin.clone(),
+                })
+            }
             EventRouter::BillingStatusRequested { .. } => {
                 Some(Authenticated::BillingStatusRequested)
             }
@@ -101,6 +114,7 @@ impl Authenticated {
             Authenticated::SyncWatchRequested { .. } => Route::SyncStatus,
             Authenticated::SnapshotRequested => Route::Snapshot,
             Authenticated::SubscribeRequested => Route::BillingSubscribe,
+            Authenticated::CheckoutRequested { .. } => Route::BillingCheckout,
             Authenticated::BillingStatusRequested => Route::BillingStatus,
             Authenticated::AppleTransactionReceived { .. } => Route::BillingApple,
             Authenticated::DeleteRequested => Route::AccountDelete,
@@ -126,6 +140,7 @@ impl Authenticated {
             // out of our hands. A deletion refused for want of a payment is a
             // deletion right that does not exist.
             Authenticated::SubscribeRequested
+            | Authenticated::CheckoutRequested { .. }
             | Authenticated::BillingStatusRequested
             | Authenticated::AppleTransactionReceived { .. }
             | Authenticated::DeleteRequested => false,

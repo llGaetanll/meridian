@@ -79,6 +79,7 @@ pub enum Route {
 
     /// `POST /billing/subscribe`
     BillingSubscribe,
+    BillingCheckout,
 
     /// `GET /billing/status`
     BillingStatus,
@@ -103,6 +104,7 @@ impl Route {
             Route::LinkFinish => "/link/finish",
             Route::SyncStatus => "/sync/status",
             Route::BillingSubscribe => "/billing/subscribe",
+            Route::BillingCheckout => "/billing/checkout",
             Route::BillingStatus => "/billing/status",
             Route::BillingApple => "/billing/apple",
             Route::AccountDelete => "/account/delete",
@@ -125,6 +127,7 @@ impl Route {
             Route::AuthRequest => (EMAILS_PER_QUARTER_HOUR, QUARTER_HOUR),
 
             Route::BillingSubscribe => (SUBSCRIBES_PER_MINUTE, MINUTE),
+            Route::BillingCheckout => (SUBSCRIBES_PER_MINUTE, MINUTE),
 
             // As tight as subscribing, because it is subscribing: the App
             // Store took the money and this is the only thing that records it.

@@ -76,12 +76,9 @@ pub enum EventUi {
     /// Open Meridian, on the last screen of first run.
     OnboardingFinished,
 
-    /// Subscribe, on the paywall. Starts a subscription and brings up the card
-    /// form; nothing is charged by it.
+    /// Pay by card, on the paywall. Opens Stripe's own page in a window of
+    /// its own; nothing is charged by the press.
     SubscribeRequested,
-
-    /// Pay, under the card form.
-    PaymentRequested,
 
     /// Sign out, on the Account tab. Everything the app holds belongs to the
     /// account, so this puts the machine back to where a fresh install starts.

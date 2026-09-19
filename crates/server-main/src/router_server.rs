@@ -77,6 +77,7 @@ pub(crate) fn router(to_loop: ToLoop, origins: &WebOrigins) -> Router {
         .route("/link/finish", post(link_finish))
         .route("/sync/status", get(sync_status))
         .route("/billing/subscribe", post(billing_subscribe))
+        .route("/billing/checkout", post(billing_checkout))
         .route("/billing/status", get(billing_status))
         .route("/account/delete", post(account_delete))
         .route("/billing/apple", post(billing_apple))
@@ -192,6 +193,65 @@ struct SubscribeAnswer {
     /// built into a client, so the web and the desktop app hold no key of
     /// their own.
     publishable_key: String,
+}
+
+/// `POST /billing/checkout`
+///
+/// Opens a Stripe Checkout page for whoever the bearer token signs in, and
+/// answers with where it is. The money is taken on that page, so no card
+/// detail ever reaches this server.
+///
+/// **It takes nothing.** The price is the server's, not the caller's, and
+/// where the page sends its window back is decided from the `Origin` header
+/// against the origins the web app is served from.
+async fn billing_checkout(
+    State(to_loop): State<ToLoop>,
+    Extension(ip): Extension<ClientIp>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<CheckoutAnswer>, Refusal> {
+    let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
+
+    // Lossy rather than dropped when it is not text, as on `/link/start`: an
+    // absent origin is not a browser, and a header nobody can read is not.
+    let origin = headers
+        .get(ORIGIN)
+        .map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned());
+
+    let answer = runtime_router::dispatch(
+        &to_loop,
+        Client::anonymous(ip),
+        EventRouter::CheckoutRequested {
+            token_sha256,
+            origin,
+        },
+    )
+    .await;
+
+    refused(&answer)?;
+
+    match answer {
+        Some(ActionRouter::CheckoutOpened { url }) => Ok(Json(CheckoutAnswer { url })),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
+
+        // No window to send the page back to: a caller that is not the web
+        // app asked for a page only the web app can finish.
+        Some(ActionRouter::Rejected) => Err(StatusCode::BAD_REQUEST.into()),
+
+        // Already paying, or already being answered. Its own code because it
+        // is the one refusal here somebody can act on: there is nothing to
+        // buy, and the app they are looking at is already theirs.
+        Some(ActionRouter::Subscribed) => Err(StatusCode::CONFLICT.into()),
+
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),
+    }
+}
+
+/// What `POST /billing/checkout` answers with.
+#[derive(Debug, serde::Serialize)]
+struct CheckoutAnswer {
+    /// The page on `checkout.stripe.com`, live for 24 hours. Not a credential:
+    /// it is made to be opened in somebody's browser.
+    url: String,
 }
 
 /// `GET /billing/status`

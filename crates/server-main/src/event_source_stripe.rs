@@ -21,6 +21,12 @@ pub enum EventSourceStripe {
         client_secret: Option<String>,
     },
 
+    /// A Checkout page exists, and this is where it is.
+    ///
+    /// Nothing exists at Stripe beyond the page itself: the subscription it
+    /// sells is created when the money is taken, and arrives by webhook.
+    CheckoutOpened { user_id: Uuid, url: String },
+
     /// The subscription this user already had, as Stripe has it now.
     ///
     /// The whole object, because it is believed the way a webhook is: what

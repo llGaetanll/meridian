@@ -35,16 +35,10 @@ pub enum ActionSource {
     /// the bank's consent instead of attaching a new one.
     StartBankRepair { item_id: String },
 
-    /// Ask the server to start a subscription, and have the card form ready
-    /// to pay it.
-    ///
-    /// The runtime keeps what the server answers with — the secret a card is
-    /// confirmed against, and the key the form opens with — and reports only
-    /// that it is started. Neither is a thing to put in an event log.
-    StartSubscription,
-
-    /// Pay the subscription that was started, with the card in the form.
-    TakePayment,
+    /// Ask the server for a Stripe Checkout page and open it in a window of
+    /// its own. The money is taken there: no card detail ever reaches this
+    /// app, and nothing about the page is a thing to put in an event log.
+    StartCheckout,
 
     /// Open a stream the server writes the sync's progress to, and report
     /// what arrives on it.

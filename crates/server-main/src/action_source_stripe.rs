@@ -16,6 +16,24 @@ pub enum ActionSourceStripe {
     /// charged: the customer has given no card yet.
     CreateSubscription { user_id: Uuid, customer_id: String },
 
+    /// Open a Checkout Session: a page of Stripe's that sells the
+    /// subscription, against a customer we already hold.
+    ///
+    /// Answers with the page's address. Nothing is charged and nothing is
+    /// created by opening it: the subscription exists once the page takes
+    /// the money, and the webhook is what says so.
+    OpenCheckout {
+        user_id: Uuid,
+        customer_id: String,
+
+        /// Where Stripe sends the window when the money is taken — a page on
+        /// the web app's origin that closes itself.
+        success_url: String,
+
+        /// The same, for backing out of the page without paying.
+        cancel_url: String,
+    },
+
     /// Read back the subscription this user already has.
     ///
     /// Asked before making a second one. A subscription somebody started and

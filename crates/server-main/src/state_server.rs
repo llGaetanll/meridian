@@ -320,6 +320,7 @@ impl StateServer {
 
             EventRouter::SnapshotRequested { .. }
             | EventRouter::SubscribeRequested { .. }
+            | EventRouter::CheckoutRequested { .. }
             | EventRouter::BillingStatusRequested { .. }
             | EventRouter::AppleTransactionReceived { .. }
             | EventRouter::DeleteRequested { .. } => {
@@ -378,19 +379,39 @@ impl StateServer {
 
         let entitlement = StateBilling::entitlement_of(subscription, event_at, self.now);
 
-        // Held only for a user this process knows about. One it does not is a
-        // subscription created against another database — a test key pointed
-        // at a live server, or a customer from before this table existed.
+        // Held only for a user this process knows about. A subscription it
+        // does not know but whose customer it does is one born on Stripe's
+        // own Checkout page — this webhook is the first news of it, so the
+        // row the next lookup needs is written now, the way Apple's first
+        // purchase is. Neither is a subscription created against another
+        // database — a test key pointed at a live server, or a customer from
+        // before this table existed — which is what the last arm is.
         match self.billing.user_for_subscription(&subscription.id) {
             Some(user_id) => {
                 self.entitle(user_id, entitlement);
             }
-            None => {
-                tracing::warn!(
-                    subscription = subscription.id,
-                    "a webhook named a subscription this process does not know"
-                );
-            }
+            None => match self.billing.user_for_customer(&subscription.customer) {
+                Some(user_id) => {
+                    self.entitle(user_id, entitlement);
+
+                    let write = self.signup.calling(request_id, self.now);
+
+                    self.billing.subscription_ready(
+                        user_id,
+                        &subscription.customer,
+                        &subscription.id,
+                        &subscription.status(),
+                        write,
+                        actions,
+                    );
+                }
+                None => {
+                    tracing::warn!(
+                        subscription = subscription.id,
+                        "a webhook named a subscription this process does not know"
+                    );
+                }
+            },
         }
 
         // Sent whatever the lookup said. The row may exist in the store even
@@ -651,6 +672,99 @@ impl StateServer {
                             action: ActionSourceStripe::CreateSubscription {
                                 user_id,
                                 customer_id,
+                            },
+                        });
+                    }
+
+                    // Nobody Stripe has heard of. The address is what Stripe
+                    // emails a receipt to and the machine does not hold one,
+                    // so the store is asked and the conversation with Stripe
+                    // starts a turn later.
+                    None => {
+                        self.signup.waits_on(
+                            request_id,
+                            Pending::Loading {
+                                user_id,
+                                event: event.clone(),
+                            },
+                        );
+
+                        actions.push(Action::ToStore {
+                            call_id: self.signup.calling(request_id, self.now),
+                            action: ActionStore::LoadUser { user_id },
+                        });
+                    }
+                }
+            }
+
+            Authenticated::CheckoutRequested { origin } => {
+                // Refused before Stripe is asked for anything: a Checkout
+                // page with nowhere to send its window back is one whose
+                // ending the app never hears about.
+                let Some((success_url, cancel_url)) = self.signup.checkout_urls(origin.as_deref())
+                else {
+                    self.signup
+                        .answer(request_id, ActionRouter::Rejected, self.now, actions);
+
+                    return;
+                };
+
+                // A press while the last one is still being answered. Stripe
+                // is asked nothing: the page in flight is the one this
+                // person gets.
+                if self.signup.subscribing(user_id) {
+                    tracing::info!(%user_id, "asked for a checkout while one is in flight");
+
+                    self.signup
+                        .answer(request_id, ActionRouter::Subscribed, self.now, actions);
+
+                    return;
+                }
+
+                // What this press means depends on what Stripe has already
+                // been asked for. Every arm here answers the same route;
+                // they differ in how much of the conversation is already
+                // done.
+                match self.billing.payer(user_id).cloned() {
+                    // A subscription already exists. Read it back rather
+                    // than selling another: if it is worth something, there
+                    // is nothing to buy, and reading it is what repairs a
+                    // webhook that never arrived.
+                    Some(StripePayer {
+                        subscription_id: Some(subscription_id),
+                        ..
+                    }) => {
+                        self.signup.waits_on(
+                            request_id,
+                            Pending::CheckingOut {
+                                user_id,
+                                success_url,
+                                cancel_url,
+                            },
+                        );
+
+                        actions.push(Action::ToSourceStripe {
+                            call_id: self.signup.calling(request_id, self.now),
+                            action: ActionSourceStripe::LoadSubscription {
+                                user_id,
+                                subscription_id,
+                            },
+                        });
+                    }
+
+                    // A customer with nothing against it, so the page opens
+                    // straight away.
+                    Some(StripePayer { customer_id, .. }) => {
+                        self.signup
+                            .waits_on(request_id, Pending::OpeningCheckout { user_id });
+
+                        actions.push(Action::ToSourceStripe {
+                            call_id: self.signup.calling(request_id, self.now),
+                            action: ActionSourceStripe::OpenCheckout {
+                                user_id,
+                                customer_id,
+                                success_url,
+                                cancel_url,
                             },
                         });
                     }
@@ -1314,31 +1428,72 @@ impl StateServer {
                     return;
                 };
 
-                let Some(Pending::Subscribing { user_id: waiting }) =
-                    self.signup.resumed(request_id)
-                else {
-                    tracing::error!("a customer answered a request nobody is waiting on");
+                match self.signup.resumed(request_id) {
+                    Some(Pending::Subscribing { user_id: waiting }) => {
+                        debug_assert_eq!(
+                            waiting, *user_id,
+                            "a customer answered another user's request"
+                        );
 
-                    return;
-                };
+                        self.signup.waits_on(
+                            request_id,
+                            Pending::SubscribingTo {
+                                user_id: *user_id,
+                                customer_id: customer_id.clone(),
+                            },
+                        );
 
-                debug_assert_eq!(
-                    waiting, *user_id,
-                    "a customer answered another user's request"
-                );
+                        let call_id = self.signup.calling(request_id, self.now);
 
-                self.signup.waits_on(
-                    request_id,
-                    Pending::SubscribingTo {
-                        user_id: *user_id,
-                        customer_id: customer_id.clone(),
-                    },
-                );
+                        self.billing
+                            .customer_ready(*user_id, customer_id, call_id, actions);
+                    }
 
-                let call_id = self.signup.calling(request_id, self.now);
+                    Some(Pending::CheckingOut {
+                        user_id: waiting,
+                        success_url,
+                        cancel_url,
+                    }) => {
+                        debug_assert_eq!(
+                            waiting, *user_id,
+                            "a customer answered another user's request"
+                        );
 
-                self.billing
-                    .customer_ready(*user_id, customer_id, call_id, actions);
+                        // Written down before the page opens, because the
+                        // subscription the page sells arrives by webhook and
+                        // the webhook names only the customer. A restart in
+                        // between must still find whose customer this is.
+                        self.billing.customer_created(customer_id, *user_id);
+
+                        actions.push(Action::ToStore {
+                            call_id: self.signup.calling(request_id, self.now),
+                            action: ActionStore::SaveCustomer {
+                                user_id: *user_id,
+                                provider: src_postgres::BillingProvider::Stripe,
+                                customer_id: customer_id.clone(),
+                                subscription_id: None,
+                                status: "none".to_string(),
+                            },
+                        });
+
+                        self.signup
+                            .waits_on(request_id, Pending::OpeningCheckout { user_id: *user_id });
+
+                        actions.push(Action::ToSourceStripe {
+                            call_id: self.signup.calling(request_id, self.now),
+                            action: ActionSourceStripe::OpenCheckout {
+                                user_id: *user_id,
+                                customer_id: customer_id.clone(),
+                                success_url,
+                                cancel_url,
+                            },
+                        });
+                    }
+
+                    _ => {
+                        tracing::error!("a customer answered a request nobody is waiting on");
+                    }
+                }
             }
 
             EventSourceStripe::SubscriptionCreated {
@@ -1388,6 +1543,32 @@ impl StateServer {
                 );
             }
 
+            EventSourceStripe::CheckoutOpened { user_id, url } => {
+                let Some(request_id) = self.signup.answered(call_id) else {
+                    return;
+                };
+
+                let Some(Pending::OpeningCheckout { user_id: waiting }) =
+                    self.signup.resumed(request_id)
+                else {
+                    tracing::error!("a checkout page answered a request nobody is waiting on");
+
+                    return;
+                };
+
+                debug_assert_eq!(
+                    waiting, *user_id,
+                    "a checkout page answered another user's request"
+                );
+
+                self.signup.answer(
+                    request_id,
+                    ActionRouter::CheckoutOpened { url: url.clone() },
+                    self.now,
+                    actions,
+                );
+            }
+
             // The subscription this user already had. What to do about it is
             // one decision over its status, which is why it arrives as a
             // value rather than as Stripe's spelling of one.
@@ -1399,12 +1580,25 @@ impl StateServer {
                     return;
                 };
 
-                let Some(Pending::Subscribing { user_id: waiting }) =
-                    self.signup.resumed(request_id)
-                else {
-                    tracing::error!("a subscription read answered a request nobody is waiting on");
+                // Which conversation the read carries on: `None` is a press
+                // of Subscribe, `Some` a checkout, holding where its page
+                // sends the window back.
+                let (waiting, checkout) = match self.signup.resumed(request_id) {
+                    Some(Pending::Subscribing { user_id: waiting }) => (waiting, None),
 
-                    return;
+                    Some(Pending::CheckingOut {
+                        user_id: waiting,
+                        success_url,
+                        cancel_url,
+                    }) => (waiting, Some((success_url, cancel_url))),
+
+                    _ => {
+                        tracing::error!(
+                            "a subscription read answered a request nobody is waiting on"
+                        );
+
+                        return;
+                    }
                 };
 
                 debug_assert_eq!(
@@ -1430,6 +1624,72 @@ impl StateServer {
                 let subscription_id = subscription.id.as_str();
                 let status = subscription.status();
                 let client_secret = subscription.client_secret();
+
+                // A checkout press. The dead statuses get a fresh page — an
+                // `incomplete` left behind expires on its own inside Stripe's
+                // 23 hours, having charged nothing — and anything worth
+                // something means there is nothing to sell.
+                if let Some((success_url, cancel_url)) = checkout {
+                    match status {
+                        StripeStatus::Incomplete
+                        | StripeStatus::IncompleteExpired
+                        | StripeStatus::Canceled => {
+                            let Some(payer) = self.billing.payer(*user_id).cloned() else {
+                                tracing::error!(
+                                    %user_id,
+                                    "a subscription was read for a user with no customer",
+                                );
+
+                                self.signup.answer(
+                                    request_id,
+                                    ActionRouter::Unavailable,
+                                    self.now,
+                                    actions,
+                                );
+
+                                return;
+                            };
+
+                            tracing::info!(
+                                subscription_id,
+                                status = status.as_str(),
+                                "opening a checkout past a subscription that bought nothing",
+                            );
+
+                            self.signup.waits_on(
+                                request_id,
+                                Pending::OpeningCheckout { user_id: *user_id },
+                            );
+
+                            actions.push(Action::ToSourceStripe {
+                                call_id: self.signup.calling(request_id, self.now),
+                                action: ActionSourceStripe::OpenCheckout {
+                                    user_id: *user_id,
+                                    customer_id: payer.customer_id,
+                                    success_url,
+                                    cancel_url,
+                                },
+                            });
+                        }
+
+                        _ => {
+                            tracing::info!(
+                                subscription_id,
+                                status = status.as_str(),
+                                "asked for a checkout by somebody who already pays",
+                            );
+
+                            self.signup.answer(
+                                request_id,
+                                ActionRouter::Subscribed,
+                                self.now,
+                                actions,
+                            );
+                        }
+                    }
+
+                    return;
+                }
 
                 match status {
                     // Still waiting for a card, which is somebody who opened
@@ -2131,7 +2391,8 @@ impl StateServer {
                     return;
                 };
 
-                let Some(Pending::Loading { user_id, .. }) = self.signup.resumed(request_id) else {
+                let Some(Pending::Loading { user_id, event }) = self.signup.resumed(request_id)
+                else {
                     tracing::error!(call_id, "the store answered a subscribe nobody asked for");
 
                     return;
@@ -2148,8 +2409,36 @@ impl StateServer {
                     return;
                 };
 
-                self.signup
-                    .waits_on(request_id, Pending::Subscribing { user_id });
+                // The same first call either way — the customer — and the
+                // step notes which conversation the answer carries on.
+                let step = match &event {
+                    Authenticated::CheckoutRequested { origin } => {
+                        // Checked when the route arrived, and the answer to
+                        // an origin gone missing since is the same refusal.
+                        let Some((success_url, cancel_url)) =
+                            self.signup.checkout_urls(origin.as_deref())
+                        else {
+                            self.signup.answer(
+                                request_id,
+                                ActionRouter::Rejected,
+                                self.now,
+                                actions,
+                            );
+
+                            return;
+                        };
+
+                        Pending::CheckingOut {
+                            user_id,
+                            success_url,
+                            cancel_url,
+                        }
+                    }
+
+                    _ => Pending::Subscribing { user_id },
+                };
+
+                self.signup.waits_on(request_id, step);
 
                 let call_id = self.signup.calling(request_id, self.now);
 

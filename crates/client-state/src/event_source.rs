@@ -1,7 +1,6 @@
 //! A source answered, or failed to.
 
 use crate::LoadFailure;
-use crate::PaymentRefusal;
 
 /// What a source came back with. No variant carries a clock reading.
 #[derive(Debug, uniffi::Enum)]
@@ -63,19 +62,20 @@ pub enum EventSource {
     /// machine's, and it decides that from where the flow is.
     SyncWatchEnded,
 
-    /// A subscription is started and waiting to be paid for.
+    /// Stripe's page is up, in a window of its own.
     ///
-    /// Nothing else: what it is paid against stays with the runtime, the way
-    /// the session token does.
-    SubscriptionStarted,
+    /// Nothing else: the page's address stays with the runtime, the way the
+    /// session token does.
+    CheckoutOpened,
 
-    /// The payment provider took the card.
+    /// Stripe's page went away with the money taken.
     ///
-    /// Not a subscription the server will honour yet. The provider tells the
-    /// server separately, a moment later, and until it has the server goes on
+    /// Not a subscription the server will honour yet. Stripe tells the server
+    /// separately, a moment later, and until it has the server goes on
     /// refusing.
     PaymentTaken,
 
-    /// The provider did not take it, and why, in our words.
-    PaymentRefused { refusal: PaymentRefusal },
+    /// Stripe's page went away without taking anything — closed by hand, or
+    /// backed out of. Nothing was charged and nothing was created.
+    CheckoutClosed,
 }

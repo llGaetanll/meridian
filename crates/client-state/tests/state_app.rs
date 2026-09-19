@@ -277,6 +277,7 @@ fn a_refused_stream_is_not_reopened() {
         < Event::FromRuntime { event: EventRuntime::Tick { now: NOW } },
         < Event::FromSource { event: EventSource::CodeAccepted },
         < Event::FromSource { event: EventSource::BankLinked },
+        > Action::ToSource { action: ActionSource::LoadSnapshot },
         > Action::ToUi { action: ActionUi::Render { .. } },
         > Action::ToUi { action: ActionUi::Render { .. } },
         > Action::ToSource { action: ActionSource::WatchSync },

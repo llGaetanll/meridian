@@ -495,6 +495,7 @@ impl RuntimeServer {
         let user_id = match action {
             ActionSourceStripe::CreateCustomer { user_id, .. }
             | ActionSourceStripe::CreateSubscription { user_id, .. }
+            | ActionSourceStripe::OpenCheckout { user_id, .. }
             | ActionSourceStripe::LoadSubscription { user_id, .. }
             | ActionSourceStripe::CancelSubscription { user_id, .. } => *user_id,
         };
@@ -557,6 +558,26 @@ impl RuntimeServer {
                     message: e.to_string(),
                 },
             },
+
+            ActionSourceStripe::OpenCheckout {
+                user_id,
+                customer_id,
+                success_url,
+                cancel_url,
+            } => {
+                match runtime_stripe::create_checkout(client, customer_id, success_url, cancel_url)
+                    .await
+                {
+                    Ok(url) => EventSourceStripe::CheckoutOpened {
+                        user_id: *user_id,
+                        url,
+                    },
+                    Err(e) => EventSourceStripe::StripeFailed {
+                        user_id: *user_id,
+                        message: e.to_string(),
+                    },
+                }
+            }
 
             ActionSourceStripe::CreateSubscription {
                 user_id,

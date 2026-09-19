@@ -17,20 +17,20 @@ package uniffi.client_state
 // compile the Rust component. The easiest way to ensure this is to bundle the Kotlin
 // helpers directly inline like we're doing here.
 
-import com.sun.jna.Callback
-import com.sun.jna.IntegerType
 import com.sun.jna.Library
+import com.sun.jna.IntegerType
 import com.sun.jna.Native
 import com.sun.jna.Pointer
 import com.sun.jna.Structure
+import com.sun.jna.Callback
 import com.sun.jna.ptr.*
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.CharBuffer
 import java.nio.charset.CodingErrorAction
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 
 // This is a helper for safely working with byte buffers returned from the Rust code.
 // A rust-owned buffer is represented by its capacity, its current length, and a
@@ -44,41 +44,29 @@ open class RustBuffer : Structure() {
     // Note: `capacity` and `len` are actually `ULong` values, but JVM only supports signed values.
     // When dealing with these fields, make sure to call `toULong()`.
     @JvmField var capacity: Long = 0
-
     @JvmField var len: Long = 0
-
     @JvmField var data: Pointer? = null
 
-    class ByValue :
-        RustBuffer(),
-        Structure.ByValue
+    class ByValue: RustBuffer(), Structure.ByValue
+    class ByReference: RustBuffer(), Structure.ByReference
 
-    class ByReference :
-        RustBuffer(),
-        Structure.ByReference
-
-    internal fun setValue(other: RustBuffer) {
+   internal fun setValue(other: RustBuffer) {
         capacity = other.capacity
         len = other.len
         data = other.data
     }
 
     companion object {
-        internal fun alloc(size: ULong = 0UL) =
-            uniffiRustCall { status ->
-                // Note: need to convert the size to a `Long` value to make this work with JVM.
-                UniffiLib.ffi_client_state_rustbuffer_alloc(size.toLong(), status)
-            }.also {
-                if (it.data == null) {
-                    throw RuntimeException("RustBuffer.alloc() returned null data pointer (size=$size)")
-                }
-            }
+        internal fun alloc(size: ULong = 0UL) = uniffiRustCall() { status ->
+            // Note: need to convert the size to a `Long` value to make this work with JVM.
+            UniffiLib.ffi_client_state_rustbuffer_alloc(size.toLong(), status)
+        }.also {
+            if(it.data == null) {
+               throw RuntimeException("RustBuffer.alloc() returned null data pointer (size=${size})")
+           }
+        }
 
-        internal fun create(
-            capacity: ULong,
-            len: ULong,
-            data: Pointer?,
-        ): RustBuffer.ByValue {
+        internal fun create(capacity: ULong, len: ULong, data: Pointer?): RustBuffer.ByValue {
             var buf = RustBuffer.ByValue()
             buf.capacity = capacity.toLong()
             buf.len = len.toLong()
@@ -86,10 +74,9 @@ open class RustBuffer : Structure() {
             return buf
         }
 
-        internal fun free(buf: RustBuffer.ByValue) =
-            uniffiRustCall { status ->
-                UniffiLib.ffi_client_state_rustbuffer_free(buf, status)
-            }
+        internal fun free(buf: RustBuffer.ByValue) = uniffiRustCall() { status ->
+            UniffiLib.ffi_client_state_rustbuffer_free(buf, status)
+        }
     }
 
     @Suppress("TooGenericExceptionThrown")
@@ -108,12 +95,9 @@ open class RustBuffer : Structure() {
 @Structure.FieldOrder("len", "data")
 internal open class ForeignBytes : Structure() {
     @JvmField var len: Int = 0
-
     @JvmField var data: Pointer? = null
 
-    class ByValue :
-        ForeignBytes(),
-        Structure.ByValue
+    class ByValue : ForeignBytes(), Structure.ByValue
 }
 
 // Converter for `&[u8]` / `[ByRef] bytes` arguments.
@@ -136,13 +120,7 @@ internal object FfiConverterByRefBytes : FfiConverter<java.nio.ByteBuffer, Forei
         fb.len = remaining
         // Zero-length direct buffers: skip getDirectBufferPointer (platform-variable behavior)
         // and pass null. The Rust side treats (null, 0) as &[].
-        fb.data =
-            if (remaining == 0) {
-                null
-            } else {
-                com.sun.jna.Native
-                    .getDirectBufferPointer(value)
-            }
+        fb.data = if (remaining == 0) null else com.sun.jna.Native.getDirectBufferPointer(value)
         return fb
     }
 
@@ -150,24 +128,14 @@ internal object FfiConverterByRefBytes : FfiConverter<java.nio.ByteBuffer, Forei
         error("ByRef bytes cannot be lifted: zero-copy &[u8] only flows foreign->Rust")
 
     override fun read(buf: java.nio.ByteBuffer): java.nio.ByteBuffer =
-        error(
-            "ByRef bytes cannot be read from a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.",
-        )
+        error("ByRef bytes cannot be read from a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
 
-    override fun write(
-        value: java.nio.ByteBuffer,
-        buf: java.nio.ByteBuffer,
-    ): Unit =
-        error(
-            "ByRef bytes cannot be written to a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.",
-        )
+    override fun write(value: java.nio.ByteBuffer, buf: java.nio.ByteBuffer): Unit =
+        error("ByRef bytes cannot be written to a buffer: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
 
     override fun allocationSize(value: java.nio.ByteBuffer): ULong =
-        error(
-            "ByRef bytes have no RustBuffer allocation size: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.",
-        )
+        error("ByRef bytes have no RustBuffer allocation size: zero-copy &[u8] is only supported in argument position, not nested in records/options/etc.")
 }
-
 /**
  * The FfiConverter interface handles converter types to and from the FFI
  *
@@ -197,10 +165,7 @@ public interface FfiConverter<KotlinType, FfiType> {
     fun allocationSize(value: KotlinType): ULong
 
     // Write a Kotlin type to a `ByteBuffer`
-    fun write(
-        value: KotlinType,
-        buf: ByteBuffer,
-    )
+    fun write(value: KotlinType, buf: ByteBuffer)
 
     // Lower a value into a `RustBuffer`
     //
@@ -211,10 +176,9 @@ public interface FfiConverter<KotlinType, FfiType> {
     fun lowerIntoRustBuffer(value: KotlinType): RustBuffer.ByValue {
         val rbuf = RustBuffer.alloc(allocationSize(value))
         try {
-            val bbuf =
-                rbuf.data!!.getByteBuffer(0, rbuf.capacity).also {
-                    it.order(ByteOrder.BIG_ENDIAN)
-                }
+            val bbuf = rbuf.data!!.getByteBuffer(0, rbuf.capacity).also {
+                it.order(ByteOrder.BIG_ENDIAN)
+            }
             write(value, bbuf)
             rbuf.writeField("len", bbuf.position().toLong())
             return rbuf
@@ -231,11 +195,11 @@ public interface FfiConverter<KotlinType, FfiType> {
     fun liftFromRustBuffer(rbuf: RustBuffer.ByValue): KotlinType {
         val byteBuf = rbuf.asByteBuffer()!!
         try {
-            val item = read(byteBuf)
-            if (byteBuf.hasRemaining()) {
-                throw RuntimeException("junk remaining in buffer after lifting, something is very wrong!!")
-            }
-            return item
+           val item = read(byteBuf)
+           if (byteBuf.hasRemaining()) {
+               throw RuntimeException("junk remaining in buffer after lifting, something is very wrong!!")
+           }
+           return item
         } finally {
             RustBuffer.free(rbuf)
         }
@@ -247,9 +211,8 @@ public interface FfiConverter<KotlinType, FfiType> {
  *
  * @suppress
  */
-public interface FfiConverterRustBuffer<KotlinType> : FfiConverter<KotlinType, RustBuffer.ByValue> {
+public interface FfiConverterRustBuffer<KotlinType>: FfiConverter<KotlinType, RustBuffer.ByValue> {
     override fun lift(value: RustBuffer.ByValue) = liftFromRustBuffer(value)
-
     override fun lower(value: KotlinType) = lowerIntoRustBuffer(value)
 }
 // A handful of classes and functions to support the generated data structures.
@@ -262,24 +225,24 @@ internal const val UNIFFI_CALL_UNEXPECTED_ERROR = 2.toByte()
 @Structure.FieldOrder("code", "error_buf")
 internal open class UniffiRustCallStatus : Structure() {
     @JvmField var code: Byte = 0
-
     @JvmField var error_buf: RustBuffer.ByValue = RustBuffer.ByValue()
 
-    class ByValue :
-        UniffiRustCallStatus(),
-        Structure.ByValue
+    class ByValue: UniffiRustCallStatus(), Structure.ByValue
 
-    fun isSuccess(): Boolean = code == UNIFFI_CALL_SUCCESS
+    fun isSuccess(): Boolean {
+        return code == UNIFFI_CALL_SUCCESS
+    }
 
-    fun isError(): Boolean = code == UNIFFI_CALL_ERROR
+    fun isError(): Boolean {
+        return code == UNIFFI_CALL_ERROR
+    }
 
-    fun isPanic(): Boolean = code == UNIFFI_CALL_UNEXPECTED_ERROR
+    fun isPanic(): Boolean {
+        return code == UNIFFI_CALL_UNEXPECTED_ERROR
+    }
 
     companion object {
-        fun create(
-            code: Byte,
-            errorBuf: RustBuffer.ByValue,
-        ): UniffiRustCallStatus.ByValue {
+        fun create(code: Byte, errorBuf: RustBuffer.ByValue): UniffiRustCallStatus.ByValue {
             val callStatus = UniffiRustCallStatus.ByValue()
             callStatus.code = code
             callStatus.error_buf = errorBuf
@@ -288,9 +251,7 @@ internal open class UniffiRustCallStatus : Structure() {
     }
 }
 
-class InternalException(
-    message: String,
-) : kotlin.Exception(message)
+class InternalException(message: String) : kotlin.Exception(message)
 
 /**
  * Each top-level error class has a companion object that can lift the error from the call status's rust buffer
@@ -298,7 +259,7 @@ class InternalException(
  * @suppress
  */
 interface UniffiRustCallStatusErrorHandler<E> {
-    fun lift(error_buf: RustBuffer.ByValue): E
+    fun lift(error_buf: RustBuffer.ByValue): E;
 }
 
 // Helpers for calling Rust
@@ -306,10 +267,7 @@ interface UniffiRustCallStatusErrorHandler<E> {
 // synchronize itself
 
 // Call a rust function that returns a Result<>.  Pass in the Error class companion that corresponds to the Err
-private inline fun <U, E : kotlin.Exception> uniffiRustCallWithError(
-    errorHandler: UniffiRustCallStatusErrorHandler<E>,
-    callback: (UniffiRustCallStatus) -> U,
-): U {
+private inline fun <U, E: kotlin.Exception> uniffiRustCallWithError(errorHandler: UniffiRustCallStatusErrorHandler<E>, callback: (UniffiRustCallStatus) -> U): U {
     var status = UniffiRustCallStatus()
     val return_value = callback(status)
     uniffiCheckCallStatus(errorHandler, status)
@@ -317,10 +275,7 @@ private inline fun <U, E : kotlin.Exception> uniffiRustCallWithError(
 }
 
 // Check UniffiRustCallStatus and throw an error if the call wasn't successful
-private fun <E : kotlin.Exception> uniffiCheckCallStatus(
-    errorHandler: UniffiRustCallStatusErrorHandler<E>,
-    status: UniffiRustCallStatus,
-) {
+private fun<E: kotlin.Exception> uniffiCheckCallStatus(errorHandler: UniffiRustCallStatusErrorHandler<E>, status: UniffiRustCallStatus) {
     if (status.isSuccess()) {
         return
     } else if (status.isError()) {
@@ -344,7 +299,7 @@ private fun <E : kotlin.Exception> uniffiCheckCallStatus(
  *
  * @suppress
  */
-object UniffiNullRustCallStatusErrorHandler : UniffiRustCallStatusErrorHandler<InternalException> {
+object UniffiNullRustCallStatusErrorHandler: UniffiRustCallStatusErrorHandler<InternalException> {
     override fun lift(error_buf: RustBuffer.ByValue): InternalException {
         RustBuffer.free(error_buf)
         return InternalException("Unexpected CALL_ERROR")
@@ -352,54 +307,44 @@ object UniffiNullRustCallStatusErrorHandler : UniffiRustCallStatusErrorHandler<I
 }
 
 // Call a rust function that returns a plain value
-private inline fun <U> uniffiRustCall(callback: (UniffiRustCallStatus) -> U): U =
-    uniffiRustCallWithError(UniffiNullRustCallStatusErrorHandler, callback)
+private inline fun <U> uniffiRustCall(callback: (UniffiRustCallStatus) -> U): U {
+    return uniffiRustCallWithError(UniffiNullRustCallStatusErrorHandler, callback)
+}
 
-internal inline fun <T> uniffiTraitInterfaceCall(
+internal inline fun<T> uniffiTraitInterfaceCall(
     callStatus: UniffiRustCallStatus,
     makeCall: () -> T,
     writeReturn: (T) -> Unit,
 ) {
     try {
         writeReturn(makeCall())
-    } catch (e: kotlin.Exception) {
-        val err =
-            try {
-                e.stackTraceToString()
-            } catch (_: Throwable) {
-                ""
-            }
+    } catch(e: kotlin.Exception) {
+        val err = try { e.stackTraceToString() } catch(_: Throwable) { "" }
         callStatus.code = UNIFFI_CALL_UNEXPECTED_ERROR
         callStatus.error_buf = FfiConverterString.lower(err)
     }
 }
 
-internal inline fun <T, reified E : Throwable> uniffiTraitInterfaceCallWithError(
+internal inline fun<T, reified E: Throwable> uniffiTraitInterfaceCallWithError(
     callStatus: UniffiRustCallStatus,
     makeCall: () -> T,
     writeReturn: (T) -> Unit,
-    lowerError: (E) -> RustBuffer.ByValue,
+    lowerError: (E) -> RustBuffer.ByValue
 ) {
     try {
         writeReturn(makeCall())
-    } catch (e: kotlin.Exception) {
+    } catch(e: kotlin.Exception) {
         if (e is E) {
             callStatus.code = UNIFFI_CALL_ERROR
             callStatus.error_buf = lowerError(e)
         } else {
-            val err =
-                try {
-                    e.stackTraceToString()
-                } catch (_: Throwable) {
-                    ""
-                }
+            val err = try { e.stackTraceToString() } catch(_: Throwable) { "" }
             callStatus.code = UNIFFI_CALL_UNEXPECTED_ERROR
             callStatus.error_buf = FfiConverterString.lower(err)
         }
     }
 }
-
-// Initial value and increment amount for handles.
+// Initial value and increment amount for handles. 
 // These ensure that Kotlin-generated handles always have the lowest bit set
 private const val UNIFFI_HANDLEMAP_INITIAL = 1.toLong()
 private const val UNIFFI_HANDLEMAP_DELTA = 2.toLong()
@@ -407,13 +352,10 @@ private const val UNIFFI_HANDLEMAP_DELTA = 2.toLong()
 // Map handles to objects
 //
 // This is used pass an opaque 64-bit handle representing a foreign object to the Rust code.
-internal class UniffiHandleMap<T : Any> {
+internal class UniffiHandleMap<T: Any> {
     private val map = ConcurrentHashMap<Long, T>()
-
-    // Start
-    private val counter =
-        java.util.concurrent.atomic
-            .AtomicLong(UNIFFI_HANDLEMAP_INITIAL)
+    // Start 
+    private val counter = java.util.concurrent.atomic.AtomicLong(UNIFFI_HANDLEMAP_INITIAL)
 
     val size: Int
         get() = map.size
@@ -432,10 +374,14 @@ internal class UniffiHandleMap<T : Any> {
     }
 
     // Get an object from the handle map
-    fun get(handle: Long): T = map.get(handle) ?: throw InternalException("UniffiHandleMap.get: Invalid handle")
+    fun get(handle: Long): T {
+        return map.get(handle) ?: throw InternalException("UniffiHandleMap.get: Invalid handle")
+    }
 
     // Remove an entry from the handlemap and get the Kotlin object back
-    fun remove(handle: Long): T = map.remove(handle) ?: throw InternalException("UniffiHandleMap: Invalid handle")
+    fun remove(handle: Long): T {
+        return map.remove(handle) ?: throw InternalException("UniffiHandleMap: Invalid handle")
+    }
 }
 
 // Contains loading, initialization code,
@@ -451,24 +397,18 @@ private fun findLibraryName(componentName: String): String {
 
 // Define FFI callback types
 internal interface UniffiRustFutureContinuationCallback : com.sun.jna.Callback {
-    fun callback(
-        `data`: Long,
-        `pollResult`: Byte,
-    )
+    fun callback(`data`: Long,`pollResult`: Byte,)
 }
-
 internal interface UniffiForeignFutureDroppedCallback : com.sun.jna.Callback {
-    fun callback(`handle`: Long)
+    fun callback(`handle`: Long,)
 }
-
 internal interface UniffiCallbackInterfaceFree : com.sun.jna.Callback {
-    fun callback(`handle`: Long)
+    fun callback(`handle`: Long,)
 }
-
 internal interface UniffiCallbackInterfaceClone : com.sun.jna.Callback {
-    fun callback(`handle`: Long): Long
+    fun callback(`handle`: Long,)
+    : Long
 }
-
 @Structure.FieldOrder("handle", "free")
 internal open class UniffiForeignFutureDroppedCallbackStruct(
     @JvmField internal var `handle`: Long = 0.toLong(),
@@ -477,15 +417,14 @@ internal open class UniffiForeignFutureDroppedCallbackStruct(
     class UniffiByValue(
         `handle`: Long = 0.toLong(),
         `free`: UniffiForeignFutureDroppedCallback? = null,
-    ) : UniffiForeignFutureDroppedCallbackStruct(`handle`, `free`),
-        Structure.ByValue
+    ): UniffiForeignFutureDroppedCallbackStruct(`handle`,`free`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureDroppedCallbackStruct) {
+   internal fun uniffiSetValue(other: UniffiForeignFutureDroppedCallbackStruct) {
         `handle` = other.`handle`
         `free` = other.`free`
     }
-}
 
+}
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultU8(
     @JvmField internal var `returnValue`: Byte = 0.toByte(),
@@ -494,22 +433,17 @@ internal open class UniffiForeignFutureResultU8(
     class UniffiByValue(
         `returnValue`: Byte = 0.toByte(),
         `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultU8(`returnValue`, `callStatus`),
-        Structure.ByValue
+    ): UniffiForeignFutureResultU8(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultU8) {
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultU8) {
         `returnValue` = other.`returnValue`
         `callStatus` = other.`callStatus`
     }
-}
 
+}
 internal interface UniffiForeignFutureCompleteU8 : com.sun.jna.Callback {
-    fun callback(
-        `callbackData`: Long,
-        `result`: UniffiForeignFutureResultU8.UniffiByValue,
-    )
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultU8.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultI8(
     @JvmField internal var `returnValue`: Byte = 0.toByte(),
@@ -518,22 +452,17 @@ internal open class UniffiForeignFutureResultI8(
     class UniffiByValue(
         `returnValue`: Byte = 0.toByte(),
         `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultI8(`returnValue`, `callStatus`),
-        Structure.ByValue
+    ): UniffiForeignFutureResultI8(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultI8) {
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultI8) {
         `returnValue` = other.`returnValue`
         `callStatus` = other.`callStatus`
     }
-}
 
+}
 internal interface UniffiForeignFutureCompleteI8 : com.sun.jna.Callback {
-    fun callback(
-        `callbackData`: Long,
-        `result`: UniffiForeignFutureResultI8.UniffiByValue,
-    )
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultI8.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultU16(
     @JvmField internal var `returnValue`: Short = 0.toShort(),
@@ -542,22 +471,17 @@ internal open class UniffiForeignFutureResultU16(
     class UniffiByValue(
         `returnValue`: Short = 0.toShort(),
         `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultU16(`returnValue`, `callStatus`),
-        Structure.ByValue
+    ): UniffiForeignFutureResultU16(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultU16) {
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultU16) {
         `returnValue` = other.`returnValue`
         `callStatus` = other.`callStatus`
     }
-}
 
+}
 internal interface UniffiForeignFutureCompleteU16 : com.sun.jna.Callback {
-    fun callback(
-        `callbackData`: Long,
-        `result`: UniffiForeignFutureResultU16.UniffiByValue,
-    )
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultU16.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultI16(
     @JvmField internal var `returnValue`: Short = 0.toShort(),
@@ -566,22 +490,17 @@ internal open class UniffiForeignFutureResultI16(
     class UniffiByValue(
         `returnValue`: Short = 0.toShort(),
         `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultI16(`returnValue`, `callStatus`),
-        Structure.ByValue
+    ): UniffiForeignFutureResultI16(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultI16) {
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultI16) {
         `returnValue` = other.`returnValue`
         `callStatus` = other.`callStatus`
     }
-}
 
+}
 internal interface UniffiForeignFutureCompleteI16 : com.sun.jna.Callback {
-    fun callback(
-        `callbackData`: Long,
-        `result`: UniffiForeignFutureResultI16.UniffiByValue,
-    )
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultI16.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultU32(
     @JvmField internal var `returnValue`: Int = 0,
@@ -590,22 +509,17 @@ internal open class UniffiForeignFutureResultU32(
     class UniffiByValue(
         `returnValue`: Int = 0,
         `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultU32(`returnValue`, `callStatus`),
-        Structure.ByValue
+    ): UniffiForeignFutureResultU32(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultU32) {
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultU32) {
         `returnValue` = other.`returnValue`
         `callStatus` = other.`callStatus`
     }
-}
 
+}
 internal interface UniffiForeignFutureCompleteU32 : com.sun.jna.Callback {
-    fun callback(
-        `callbackData`: Long,
-        `result`: UniffiForeignFutureResultU32.UniffiByValue,
-    )
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultU32.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultI32(
     @JvmField internal var `returnValue`: Int = 0,
@@ -614,22 +528,17 @@ internal open class UniffiForeignFutureResultI32(
     class UniffiByValue(
         `returnValue`: Int = 0,
         `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultI32(`returnValue`, `callStatus`),
-        Structure.ByValue
+    ): UniffiForeignFutureResultI32(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultI32) {
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultI32) {
         `returnValue` = other.`returnValue`
         `callStatus` = other.`callStatus`
     }
-}
 
+}
 internal interface UniffiForeignFutureCompleteI32 : com.sun.jna.Callback {
-    fun callback(
-        `callbackData`: Long,
-        `result`: UniffiForeignFutureResultI32.UniffiByValue,
-    )
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultI32.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultU64(
     @JvmField internal var `returnValue`: Long = 0.toLong(),
@@ -638,22 +547,17 @@ internal open class UniffiForeignFutureResultU64(
     class UniffiByValue(
         `returnValue`: Long = 0.toLong(),
         `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultU64(`returnValue`, `callStatus`),
-        Structure.ByValue
+    ): UniffiForeignFutureResultU64(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultU64) {
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultU64) {
         `returnValue` = other.`returnValue`
         `callStatus` = other.`callStatus`
     }
-}
 
+}
 internal interface UniffiForeignFutureCompleteU64 : com.sun.jna.Callback {
-    fun callback(
-        `callbackData`: Long,
-        `result`: UniffiForeignFutureResultU64.UniffiByValue,
-    )
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultU64.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultI64(
     @JvmField internal var `returnValue`: Long = 0.toLong(),
@@ -662,22 +566,17 @@ internal open class UniffiForeignFutureResultI64(
     class UniffiByValue(
         `returnValue`: Long = 0.toLong(),
         `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultI64(`returnValue`, `callStatus`),
-        Structure.ByValue
+    ): UniffiForeignFutureResultI64(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultI64) {
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultI64) {
         `returnValue` = other.`returnValue`
         `callStatus` = other.`callStatus`
     }
-}
 
+}
 internal interface UniffiForeignFutureCompleteI64 : com.sun.jna.Callback {
-    fun callback(
-        `callbackData`: Long,
-        `result`: UniffiForeignFutureResultI64.UniffiByValue,
-    )
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultI64.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultF32(
     @JvmField internal var `returnValue`: Float = 0.0f,
@@ -686,22 +585,17 @@ internal open class UniffiForeignFutureResultF32(
     class UniffiByValue(
         `returnValue`: Float = 0.0f,
         `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultF32(`returnValue`, `callStatus`),
-        Structure.ByValue
+    ): UniffiForeignFutureResultF32(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultF32) {
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultF32) {
         `returnValue` = other.`returnValue`
         `callStatus` = other.`callStatus`
     }
-}
 
+}
 internal interface UniffiForeignFutureCompleteF32 : com.sun.jna.Callback {
-    fun callback(
-        `callbackData`: Long,
-        `result`: UniffiForeignFutureResultF32.UniffiByValue,
-    )
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultF32.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultF64(
     @JvmField internal var `returnValue`: Double = 0.0,
@@ -710,22 +604,17 @@ internal open class UniffiForeignFutureResultF64(
     class UniffiByValue(
         `returnValue`: Double = 0.0,
         `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultF64(`returnValue`, `callStatus`),
-        Structure.ByValue
+    ): UniffiForeignFutureResultF64(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultF64) {
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultF64) {
         `returnValue` = other.`returnValue`
         `callStatus` = other.`callStatus`
     }
-}
 
+}
 internal interface UniffiForeignFutureCompleteF64 : com.sun.jna.Callback {
-    fun callback(
-        `callbackData`: Long,
-        `result`: UniffiForeignFutureResultF64.UniffiByValue,
-    )
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultF64.UniffiByValue,)
 }
-
 @Structure.FieldOrder("returnValue", "callStatus")
 internal open class UniffiForeignFutureResultRustBuffer(
     @JvmField internal var `returnValue`: RustBuffer.ByValue = RustBuffer.ByValue(),
@@ -734,41 +623,32 @@ internal open class UniffiForeignFutureResultRustBuffer(
     class UniffiByValue(
         `returnValue`: RustBuffer.ByValue = RustBuffer.ByValue(),
         `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultRustBuffer(`returnValue`, `callStatus`),
-        Structure.ByValue
+    ): UniffiForeignFutureResultRustBuffer(`returnValue`,`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultRustBuffer) {
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultRustBuffer) {
         `returnValue` = other.`returnValue`
         `callStatus` = other.`callStatus`
     }
-}
 
+}
 internal interface UniffiForeignFutureCompleteRustBuffer : com.sun.jna.Callback {
-    fun callback(
-        `callbackData`: Long,
-        `result`: UniffiForeignFutureResultRustBuffer.UniffiByValue,
-    )
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultRustBuffer.UniffiByValue,)
 }
-
 @Structure.FieldOrder("callStatus")
 internal open class UniffiForeignFutureResultVoid(
     @JvmField internal var `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
 ) : Structure() {
     class UniffiByValue(
         `callStatus`: UniffiRustCallStatus.ByValue = UniffiRustCallStatus.ByValue(),
-    ) : UniffiForeignFutureResultVoid(`callStatus`),
-        Structure.ByValue
+    ): UniffiForeignFutureResultVoid(`callStatus`,), Structure.ByValue
 
-    internal fun uniffiSetValue(other: UniffiForeignFutureResultVoid) {
+   internal fun uniffiSetValue(other: UniffiForeignFutureResultVoid) {
         `callStatus` = other.`callStatus`
     }
-}
 
+}
 internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
-    fun callback(
-        `callbackData`: Long,
-        `result`: UniffiForeignFutureResultVoid.UniffiByValue,
-    )
+    fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultVoid.UniffiByValue,)
 }
 
 // A JNA Library to expose the extern-C FFI definitions.
@@ -793,242 +673,142 @@ internal object IntegrityCheckingUniffiLib {
         uniffiCheckContractApiVersion(this)
         uniffiCheckApiChecksums(this)
     }
+    external fun uniffi_client_state_checksum_method_core_handle_events(
+    ): Int
+    external fun uniffi_client_state_checksum_constructor_core_new(
+    ): Int
+    external fun ffi_client_state_uniffi_contract_version(
+    ): Int
 
-    external fun uniffi_client_state_checksum_method_core_handle_events(): Int
-
-    external fun uniffi_client_state_checksum_constructor_core_new(): Int
-
-    external fun ffi_client_state_uniffi_contract_version(): Int
+        
 }
 
 internal object UniffiLib {
+    
     // The Cleaner for the whole library
     internal val CLEANER: UniffiCleaner by lazy {
         UniffiCleaner.create()
     }
+    
 
     init {
         Native.register(UniffiLib::class.java, findLibraryName(componentName = "client_state"))
+        
     }
-
-    external fun uniffi_client_state_fn_clone_core(
-        `handle`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun uniffi_client_state_fn_clone_core(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
-
-    external fun uniffi_client_state_fn_free_core(
-        `handle`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun uniffi_client_state_fn_free_core(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-
-    external fun uniffi_client_state_fn_constructor_core_new(uniffi_out_err: UniffiRustCallStatus): Long
-
-    external fun uniffi_client_state_fn_method_core_handle_events(
-        `ptr`: Long,
-        `events`: RustBuffer.ByValue,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun uniffi_client_state_fn_constructor_core_new(uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_client_state_fn_method_core_handle_events(`ptr`: Long,`events`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-
-    external fun ffi_client_state_rustbuffer_alloc(
-        `size`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-
-    external fun ffi_client_state_rustbuffer_from_bytes(
-        `bytes`: ForeignBytes.ByValue,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-
-    external fun ffi_client_state_rustbuffer_free(
-        `buf`: RustBuffer.ByValue,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rustbuffer_free(`buf`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-
-    external fun ffi_client_state_rustbuffer_reserve(
-        `buf`: RustBuffer.ByValue,
-        `additional`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rustbuffer_reserve(`buf`: RustBuffer.ByValue,`additional`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-
-    external fun ffi_client_state_rust_future_poll_u8(
-        `handle`: Long,
-        `callback`: UniffiRustFutureContinuationCallback,
-        `callbackData`: Long,
+    external fun ffi_client_state_rust_future_poll_u8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
-
-    external fun ffi_client_state_rust_future_cancel_u8(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_free_u8(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_complete_u8(
-        `handle`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rust_future_cancel_u8(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_free_u8(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_complete_u8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Int
-
-    external fun ffi_client_state_rust_future_poll_i8(
-        `handle`: Long,
-        `callback`: UniffiRustFutureContinuationCallback,
-        `callbackData`: Long,
+    external fun ffi_client_state_rust_future_poll_i8(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
-
-    external fun ffi_client_state_rust_future_cancel_i8(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_free_i8(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_complete_i8(
-        `handle`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rust_future_cancel_i8(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_free_i8(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_complete_i8(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Byte
-
-    external fun ffi_client_state_rust_future_poll_u16(
-        `handle`: Long,
-        `callback`: UniffiRustFutureContinuationCallback,
-        `callbackData`: Long,
+    external fun ffi_client_state_rust_future_poll_u16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
-
-    external fun ffi_client_state_rust_future_cancel_u16(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_free_u16(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_complete_u16(
-        `handle`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rust_future_cancel_u16(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_free_u16(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_complete_u16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Int
-
-    external fun ffi_client_state_rust_future_poll_i16(
-        `handle`: Long,
-        `callback`: UniffiRustFutureContinuationCallback,
-        `callbackData`: Long,
+    external fun ffi_client_state_rust_future_poll_i16(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
-
-    external fun ffi_client_state_rust_future_cancel_i16(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_free_i16(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_complete_i16(
-        `handle`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rust_future_cancel_i16(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_free_i16(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_complete_i16(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Short
-
-    external fun ffi_client_state_rust_future_poll_u32(
-        `handle`: Long,
-        `callback`: UniffiRustFutureContinuationCallback,
-        `callbackData`: Long,
+    external fun ffi_client_state_rust_future_poll_u32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
-
-    external fun ffi_client_state_rust_future_cancel_u32(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_free_u32(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_complete_u32(
-        `handle`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rust_future_cancel_u32(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_free_u32(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_complete_u32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Int
-
-    external fun ffi_client_state_rust_future_poll_i32(
-        `handle`: Long,
-        `callback`: UniffiRustFutureContinuationCallback,
-        `callbackData`: Long,
+    external fun ffi_client_state_rust_future_poll_i32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
-
-    external fun ffi_client_state_rust_future_cancel_i32(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_free_i32(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_complete_i32(
-        `handle`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rust_future_cancel_i32(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_free_i32(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_complete_i32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Int
-
-    external fun ffi_client_state_rust_future_poll_u64(
-        `handle`: Long,
-        `callback`: UniffiRustFutureContinuationCallback,
-        `callbackData`: Long,
+    external fun ffi_client_state_rust_future_poll_u64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
-
-    external fun ffi_client_state_rust_future_cancel_u64(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_free_u64(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_complete_u64(
-        `handle`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rust_future_cancel_u64(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_free_u64(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_complete_u64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
-
-    external fun ffi_client_state_rust_future_poll_i64(
-        `handle`: Long,
-        `callback`: UniffiRustFutureContinuationCallback,
-        `callbackData`: Long,
+    external fun ffi_client_state_rust_future_poll_i64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
-
-    external fun ffi_client_state_rust_future_cancel_i64(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_free_i64(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_complete_i64(
-        `handle`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rust_future_cancel_i64(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_free_i64(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_complete_i64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
-
-    external fun ffi_client_state_rust_future_poll_f32(
-        `handle`: Long,
-        `callback`: UniffiRustFutureContinuationCallback,
-        `callbackData`: Long,
+    external fun ffi_client_state_rust_future_poll_f32(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
-
-    external fun ffi_client_state_rust_future_cancel_f32(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_free_f32(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_complete_f32(
-        `handle`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rust_future_cancel_f32(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_free_f32(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_complete_f32(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Float
-
-    external fun ffi_client_state_rust_future_poll_f64(
-        `handle`: Long,
-        `callback`: UniffiRustFutureContinuationCallback,
-        `callbackData`: Long,
+    external fun ffi_client_state_rust_future_poll_f64(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
-
-    external fun ffi_client_state_rust_future_cancel_f64(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_free_f64(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_complete_f64(
-        `handle`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rust_future_cancel_f64(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_free_f64(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_complete_f64(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Double
-
-    external fun ffi_client_state_rust_future_poll_rust_buffer(
-        `handle`: Long,
-        `callback`: UniffiRustFutureContinuationCallback,
-        `callbackData`: Long,
+    external fun ffi_client_state_rust_future_poll_rust_buffer(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
     ): Unit
-
-    external fun ffi_client_state_rust_future_cancel_rust_buffer(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_free_rust_buffer(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_complete_rust_buffer(
-        `handle`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
+    external fun ffi_client_state_rust_future_cancel_rust_buffer(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_free_rust_buffer(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_complete_rust_buffer(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-
-    external fun ffi_client_state_rust_future_poll_void(
-        `handle`: Long,
-        `callback`: UniffiRustFutureContinuationCallback,
-        `callbackData`: Long,
+    external fun ffi_client_state_rust_future_poll_void(`handle`: Long,`callback`: UniffiRustFutureContinuationCallback,`callbackData`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_cancel_void(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_free_void(`handle`: Long,
+    ): Unit
+    external fun ffi_client_state_rust_future_complete_void(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
 
-    external fun ffi_client_state_rust_future_cancel_void(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_free_void(`handle`: Long): Unit
-
-    external fun ffi_client_state_rust_future_complete_void(
-        `handle`: Long,
-        uniffi_out_err: UniffiRustCallStatus,
-    ): Unit
+        
 }
 
 private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
@@ -1040,7 +820,6 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI contract version mismatch: try cleaning and rebuilding your project")
     }
 }
-
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_client_state_checksum_method_core_handle_events() != 29355) {
@@ -1065,6 +844,7 @@ public fun uniffiEnsureInitialized() {
 
 // Public interface members begin here.
 
+
 // Interface implemented by anything that can contain an object reference.
 //
 // Such types expose a `destroy()` method that must be called to cleanly
@@ -1075,15 +855,11 @@ public fun uniffiEnsureInitialized() {
 // helper method to execute a block and destroy the object at the end.
 interface Disposable {
     fun destroy()
-
     companion object {
         fun destroy(vararg args: Any?) {
             for (arg in args) {
                 when (arg) {
-                    is Disposable -> {
-                        arg.destroy()
-                    }
-
+                    is Disposable -> arg.destroy()
                     is ArrayList<*> -> {
                         for (idx in arg.indices) {
                             val element = arg[idx]
@@ -1092,7 +868,6 @@ interface Disposable {
                             }
                         }
                     }
-
                     is Map<*, *> -> {
                         for (element in arg.values) {
                             if (element is Disposable) {
@@ -1100,7 +875,6 @@ interface Disposable {
                             }
                         }
                     }
-
                     is Iterable<*> -> {
                         for (element in arg) {
                             if (element is Disposable) {
@@ -1129,7 +903,7 @@ inline fun <T : Disposable?, R> T.use(block: (T) -> R) =
         }
     }
 
-/**
+/** 
  * Placeholder object used to signal that we're constructing an interface with a FFI handle.
  *
  * This is the first argument for interface constructors that input a raw handle. It exists is that
@@ -1140,13 +914,12 @@ inline fun <T : Disposable?, R> T.use(block: (T) -> R) =
  * */
 object UniffiWithHandle
 
-/**
+/** 
  * Used to instantiate an interface without an actual pointer, for fakes in tests, mostly.
  *
  * @suppress
  * */
 object NoHandle
-
 /**
  * The cleaner interface for Object finalization code to run.
  * This is the entry point to any implementation that we're using.
@@ -1162,24 +935,17 @@ interface UniffiCleaner {
         fun clean()
     }
 
-    fun register(
-        value: Any,
-        cleanUpTask: Runnable,
-    ): UniffiCleaner.Cleanable
+    fun register(value: Any, cleanUpTask: Runnable): UniffiCleaner.Cleanable
 
     companion object
 }
 
 // The fallback Jna cleaner, which is available for both Android, and the JVM.
 private class UniffiJnaCleaner : UniffiCleaner {
-    private val cleaner =
-        com.sun.jna.internal.Cleaner
-            .getCleaner()
+    private val cleaner = com.sun.jna.internal.Cleaner.getCleaner()
 
-    override fun register(
-        value: Any,
-        cleanUpTask: Runnable,
-    ): UniffiCleaner.Cleanable = UniffiJnaCleanable(cleaner.register(value, cleanUpTask))
+    override fun register(value: Any, cleanUpTask: Runnable): UniffiCleaner.Cleanable =
+        UniffiJnaCleanable(cleaner.register(value, cleanUpTask))
 }
 
 private class UniffiJnaCleanable(
@@ -1187,6 +953,7 @@ private class UniffiJnaCleanable(
 ) : UniffiCleaner.Cleanable {
     override fun clean() = cleanable.clean()
 }
+
 
 // We decide at uniffi binding generation time whether we were
 // using Android or not.
@@ -1206,18 +973,14 @@ private fun UniffiCleaner.Companion.create(): UniffiCleaner =
     }
 
 private class JavaLangRefCleaner : UniffiCleaner {
-    val cleaner =
-        java.lang.ref.Cleaner
-            .create()
+    val cleaner = java.lang.ref.Cleaner.create()
 
-    override fun register(
-        value: Any,
-        cleanUpTask: Runnable,
-    ): UniffiCleaner.Cleanable = JavaLangRefCleanable(cleaner.register(value, cleanUpTask))
+    override fun register(value: Any, cleanUpTask: Runnable): UniffiCleaner.Cleanable =
+        JavaLangRefCleanable(cleaner.register(value, cleanUpTask))
 }
 
 private class JavaLangRefCleanable(
-    val cleanable: java.lang.ref.Cleaner.Cleanable,
+    val cleanable: java.lang.ref.Cleaner.Cleanable
 ) : UniffiCleaner.Cleanable {
     override fun clean() = cleanable.clean()
 }
@@ -1225,21 +988,26 @@ private class JavaLangRefCleanable(
 /**
  * @suppress
  */
-public object FfiConverterUShort : FfiConverter<UShort, Short> {
-    override fun lift(value: Short): UShort = value.toUShort()
+public object FfiConverterUShort: FfiConverter<UShort, Short> {
+    override fun lift(value: Short): UShort {
+        return value.toUShort()
+    }
 
-    fun lift(value: Int): UShort = value.toUShort()
+    fun lift(value: Int): UShort {
+        return value.toUShort()
+    }
 
-    override fun read(buf: ByteBuffer): UShort = lift(buf.getShort())
+    override fun read(buf: ByteBuffer): UShort {
+        return lift(buf.getShort())
+    }
 
-    override fun lower(value: UShort): Short = value.toShort()
+    override fun lower(value: UShort): Short {
+        return value.toShort()
+    }
 
     override fun allocationSize(value: UShort) = 2UL
 
-    override fun write(
-        value: UShort,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: UShort, buf: ByteBuffer) {
         buf.putShort(value.toShort())
     }
 }
@@ -1247,19 +1015,22 @@ public object FfiConverterUShort : FfiConverter<UShort, Short> {
 /**
  * @suppress
  */
-public object FfiConverterUInt : FfiConverter<UInt, Int> {
-    override fun lift(value: Int): UInt = value.toUInt()
+public object FfiConverterUInt: FfiConverter<UInt, Int> {
+    override fun lift(value: Int): UInt {
+        return value.toUInt()
+    }
 
-    override fun read(buf: ByteBuffer): UInt = lift(buf.getInt())
+    override fun read(buf: ByteBuffer): UInt {
+        return lift(buf.getInt())
+    }
 
-    override fun lower(value: UInt): Int = value.toInt()
+    override fun lower(value: UInt): Int {
+        return value.toInt()
+    }
 
     override fun allocationSize(value: UInt) = 4UL
 
-    override fun write(
-        value: UInt,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: UInt, buf: ByteBuffer) {
         buf.putInt(value.toInt())
     }
 }
@@ -1267,19 +1038,22 @@ public object FfiConverterUInt : FfiConverter<UInt, Int> {
 /**
  * @suppress
  */
-public object FfiConverterInt : FfiConverter<Int, Int> {
-    override fun lift(value: Int): Int = value
+public object FfiConverterInt: FfiConverter<Int, Int> {
+    override fun lift(value: Int): Int {
+        return value
+    }
 
-    override fun read(buf: ByteBuffer): Int = buf.getInt()
+    override fun read(buf: ByteBuffer): Int {
+        return buf.getInt()
+    }
 
-    override fun lower(value: Int): Int = value
+    override fun lower(value: Int): Int {
+        return value
+    }
 
     override fun allocationSize(value: Int) = 4UL
 
-    override fun write(
-        value: Int,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: Int, buf: ByteBuffer) {
         buf.putInt(value)
     }
 }
@@ -1287,19 +1061,22 @@ public object FfiConverterInt : FfiConverter<Int, Int> {
 /**
  * @suppress
  */
-public object FfiConverterULong : FfiConverter<ULong, Long> {
-    override fun lift(value: Long): ULong = value.toULong()
+public object FfiConverterULong: FfiConverter<ULong, Long> {
+    override fun lift(value: Long): ULong {
+        return value.toULong()
+    }
 
-    override fun read(buf: ByteBuffer): ULong = lift(buf.getLong())
+    override fun read(buf: ByteBuffer): ULong {
+        return lift(buf.getLong())
+    }
 
-    override fun lower(value: ULong): Long = value.toLong()
+    override fun lower(value: ULong): Long {
+        return value.toLong()
+    }
 
     override fun allocationSize(value: ULong) = 8UL
 
-    override fun write(
-        value: ULong,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: ULong, buf: ByteBuffer) {
         buf.putLong(value.toLong())
     }
 }
@@ -1307,19 +1084,22 @@ public object FfiConverterULong : FfiConverter<ULong, Long> {
 /**
  * @suppress
  */
-public object FfiConverterDouble : FfiConverter<Double, Double> {
-    override fun lift(value: Double): Double = value
+public object FfiConverterDouble: FfiConverter<Double, Double> {
+    override fun lift(value: Double): Double {
+        return value
+    }
 
-    override fun read(buf: ByteBuffer): Double = buf.getDouble()
+    override fun read(buf: ByteBuffer): Double {
+        return buf.getDouble()
+    }
 
-    override fun lower(value: Double): Double = value
+    override fun lower(value: Double): Double {
+        return value
+    }
 
     override fun allocationSize(value: Double) = 8UL
 
-    override fun write(
-        value: Double,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: Double, buf: ByteBuffer) {
         buf.putDouble(value)
     }
 }
@@ -1327,19 +1107,22 @@ public object FfiConverterDouble : FfiConverter<Double, Double> {
 /**
  * @suppress
  */
-public object FfiConverterBoolean : FfiConverter<Boolean, Byte> {
-    override fun lift(value: Byte): Boolean = value.toInt() != 0
+public object FfiConverterBoolean: FfiConverter<Boolean, Byte> {
+    override fun lift(value: Byte): Boolean {
+        return value.toInt() != 0
+    }
 
-    override fun read(buf: ByteBuffer): Boolean = lift(buf.get())
+    override fun read(buf: ByteBuffer): Boolean {
+        return lift(buf.get())
+    }
 
-    override fun lower(value: Boolean): Byte = if (value) 1.toByte() else 0.toByte()
+    override fun lower(value: Boolean): Byte {
+        return if (value) 1.toByte() else 0.toByte()
+    }
 
     override fun allocationSize(value: Boolean) = 1UL
 
-    override fun write(
-        value: Boolean,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: Boolean, buf: ByteBuffer) {
         buf.put(lower(value))
     }
 }
@@ -1347,7 +1130,7 @@ public object FfiConverterBoolean : FfiConverter<Boolean, Byte> {
 /**
  * @suppress
  */
-public object FfiConverterString : FfiConverter<String, RustBuffer.ByValue> {
+public object FfiConverterString: FfiConverter<String, RustBuffer.ByValue> {
     // Note: we don't inherit from FfiConverterRustBuffer, because we use a
     // special encoding when lowering/lifting.  We can use `RustBuffer.len` to
     // store our length and avoid writing it out to the buffer.
@@ -1394,15 +1177,13 @@ public object FfiConverterString : FfiConverter<String, RustBuffer.ByValue> {
         return sizeForLength + sizeForString
     }
 
-    override fun write(
-        value: String,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: String, buf: ByteBuffer) {
         val byteBuf = toUtf8(value)
         buf.putInt(byteBuf.limit())
         buf.put(byteBuf)
     }
 }
+
 
 // This template implements a class for working with a Rust struct via a handle
 // to the live Rust struct on the other side of the FFI.
@@ -1498,6 +1279,7 @@ public object FfiConverterString : FfiConverter<String, RustBuffer.ByValue> {
 // [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
 //
 
+
 /**
  * The state machine, as the platforms see it.
  *
@@ -1505,6 +1287,7 @@ public object FfiConverterString : FfiConverter<String, RustBuffer.ByValue> {
  * exported object; the machine itself has no opinion about threads.
  */
 public interface CoreInterface {
+    
     /**
      * Hand in what happened, get back what to do about it.
      *
@@ -1512,7 +1295,7 @@ public interface CoreInterface {
      * not cross FFI, so the buffer is allocated here instead of reused.
      */
     fun `handleEvents`(`events`: List<Event>): List<Action>
-
+    
     companion object
 }
 
@@ -1522,14 +1305,13 @@ public interface CoreInterface {
  * The `Mutex` is what makes it `Send + Sync`, which UniFFI requires of an
  * exported object; the machine itself has no opinion about threads.
  */
-open class Core :
-    Disposable,
-    AutoCloseable,
-    CoreInterface {
+open class Core: Disposable, AutoCloseable, CoreInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
     /**
      * @suppress
      */
-    @Suppress("UNUSED_PARAMETER")
     constructor(withHandle: UniffiWithHandle, handle: Long) {
         this.handle = handle
         this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
@@ -1548,12 +1330,13 @@ open class Core :
         this.cleanable = null
     }
     constructor() :
-        this(
-            UniffiWithHandle,
-            uniffiRustCall { _status ->
-                UniffiLib.uniffi_client_state_fn_constructor_core_new(_status)
-            },
-        )
+        this(UniffiWithHandle, 
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_client_state_fn_constructor_core_new(
+    
+        _status)
+}
+    )
 
     protected val handle: Long
     protected val cleanable: UniffiCleaner.Cleanable?
@@ -1593,7 +1376,7 @@ open class Core :
             if (c == Long.MAX_VALUE) {
                 throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
             }
-        } while (!this.callCounter.compareAndSet(c, c + 1L))
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
         // Now we can safely do the method call without the handle being freed concurrently.
         try {
             return block(this.uniffiCloneHandle())
@@ -1607,13 +1390,11 @@ open class Core :
 
     // Use a static inner class instead of a closure so as not to accidentally
     // capture `this` as part of the cleanable's action.
-    private class UniffiCleanAction(
-        private val handle: Long,
-    ) : Runnable {
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
         override fun run() {
             if (handle == 0.toLong()) {
                 // Fake object created with `NoHandle`, don't try to free.
-                return
+                return;
             }
             uniffiRustCall { status ->
                 UniffiLib.uniffi_client_state_fn_free_core(handle, status)
@@ -1626,96 +1407,122 @@ open class Core :
      */
     fun uniffiCloneHandle(): Long {
         if (handle == 0.toLong()) {
-            throw InternalException("uniffiCloneHandle() called on NoHandle object")
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
         }
-        return uniffiRustCall { status ->
+        return uniffiRustCall() { status ->
             UniffiLib.uniffi_client_state_fn_clone_core(handle, status)
         }
     }
 
+    
     /**
      * Hand in what happened, get back what to do about it.
      *
      * The owning counterpart to [`StateApp::handle_events`]: a `&mut Vec` does
      * not cross FFI, so the buffer is allocated here instead of reused.
-     */
-    override fun `handleEvents`(`events`: List<Event>): List<Action> =
-        FfiConverterSequenceTypeAction.lift(
-            callWithHandle {
-                uniffiRustCall { _status ->
-                    UniffiLib.uniffi_client_state_fn_method_core_handle_events(
-                        it,
-                        FfiConverterSequenceTypeEvent.lower(`events`),
-                        _status,
-                    )
-                }
-            },
-        )
+     */override fun `handleEvents`(`events`: List<Event>): List<Action> {
+            return FfiConverterSequenceTypeAction.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_client_state_fn_method_core_handle_events(
+        it,
+        
+        FfiConverterSequenceTypeEvent.lower(`events`),_status)
+}
+    }
+    )
+    }
+    
 
+    
+
+    
+
+
+    
+    
     /**
      * @suppress
      */
     companion object
+    
 }
+
 
 /**
  * @suppress
  */
-public object FfiConverterTypeCore : FfiConverter<Core, Long> {
-    override fun lower(value: Core): Long = value.uniffiCloneHandle()
+public object FfiConverterTypeCore: FfiConverter<Core, Long> {
+    override fun lower(value: Core): Long {
+        return value.uniffiCloneHandle()
+    }
 
-    override fun lift(value: Long): Core = Core(UniffiWithHandle, value)
+    override fun lift(value: Long): Core {
+        return Core(UniffiWithHandle, value)
+    }
 
-    override fun read(buf: ByteBuffer): Core = lift(buf.getLong())
+    override fun read(buf: ByteBuffer): Core {
+        return lift(buf.getLong())
+    }
 
     override fun allocationSize(value: Core) = 8UL
 
-    override fun write(
-        value: Core,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: Core, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
 
+
+
 /**
  * Everything the Account tab shows.
  */
-data class ViewAccount(
+data class ViewAccount (
     /**
      * `"Banks"`.
      */
-    var `banksLabel`: kotlin.String,
+    var `banksLabel`: kotlin.String
+    , 
     /**
      * The same connections the Balances screen draws, one row each.
      */
-    var `banks`: List<ViewAccountBank>,
+    var `banks`: List<ViewAccountBank>
+    , 
     /**
      * What the list says when there are none.
      */
-    var `banksEmpty`: kotlin.String?,
+    var `banksEmpty`: kotlin.String?
+    , 
     /**
      * `"Session"`.
      */
-    var `sessionLabel`: kotlin.String,
+    var `sessionLabel`: kotlin.String
+    , 
     /**
      * `"Sign out"`.
      */
-    var `signOutLabel`: kotlin.String,
+    var `signOutLabel`: kotlin.String
+    , 
     /**
      * `"Meridian 0.1.0"`.
      */
-    var `build`: kotlin.String,
-) {
+    var `build`: kotlin.String
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewAccount : FfiConverterRustBuffer<ViewAccount> {
-    override fun read(buf: ByteBuffer): ViewAccount =
-        ViewAccount(
+public object FfiConverterTypeViewAccount: FfiConverterRustBuffer<ViewAccount> {
+    override fun read(buf: ByteBuffer): ViewAccount {
+        return ViewAccount(
             FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewAccountBank.read(buf),
             FfiConverterOptionalString.read(buf),
@@ -1723,29 +1530,28 @@ public object FfiConverterTypeViewAccount : FfiConverterRustBuffer<ViewAccount> 
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewAccount) =
-        (
+    override fun allocationSize(value: ViewAccount) = (
             FfiConverterString.allocationSize(value.`banksLabel`) +
-                FfiConverterSequenceTypeViewAccountBank.allocationSize(value.`banks`) +
-                FfiConverterOptionalString.allocationSize(value.`banksEmpty`) +
-                FfiConverterString.allocationSize(value.`sessionLabel`) +
-                FfiConverterString.allocationSize(value.`signOutLabel`) +
-                FfiConverterString.allocationSize(value.`build`)
-        )
+            FfiConverterSequenceTypeViewAccountBank.allocationSize(value.`banks`) +
+            FfiConverterOptionalString.allocationSize(value.`banksEmpty`) +
+            FfiConverterString.allocationSize(value.`sessionLabel`) +
+            FfiConverterString.allocationSize(value.`signOutLabel`) +
+            FfiConverterString.allocationSize(value.`build`)
+    )
 
-    override fun write(
-        value: ViewAccount,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`banksLabel`, buf)
-        FfiConverterSequenceTypeViewAccountBank.write(value.`banks`, buf)
-        FfiConverterOptionalString.write(value.`banksEmpty`, buf)
-        FfiConverterString.write(value.`sessionLabel`, buf)
-        FfiConverterString.write(value.`signOutLabel`, buf)
-        FfiConverterString.write(value.`build`, buf)
+    override fun write(value: ViewAccount, buf: ByteBuffer) {
+            FfiConverterString.write(value.`banksLabel`, buf)
+            FfiConverterSequenceTypeViewAccountBank.write(value.`banks`, buf)
+            FfiConverterOptionalString.write(value.`banksEmpty`, buf)
+            FfiConverterString.write(value.`sessionLabel`, buf)
+            FfiConverterString.write(value.`signOutLabel`, buf)
+            FfiConverterString.write(value.`build`, buf)
     }
 }
+
+
 
 /**
  * One bank, as this screen lists it: a name and whether it is still working.
@@ -1753,94 +1559,116 @@ public object FfiConverterTypeViewAccount : FfiConverterRustBuffer<ViewAccount> 
  * Not [`ViewConnection`](crate::ViewConnection), which also carries the
  * account rows and their balances.
  */
-data class ViewAccountBank(
-    var `id`: kotlin.String,
-    var `name`: kotlin.String,
-    var `initials`: kotlin.String,
+data class ViewAccountBank (
+    var `id`: kotlin.String
+    , 
+    var `name`: kotlin.String
+    , 
+    var `initials`: kotlin.String
+    , 
     /**
      * `"8 accounts · synced 2m ago"`, or what is wrong with it.
      */
-    var `detail`: kotlin.String,
+    var `detail`: kotlin.String
+    , 
     /**
      * Whether the bank has stopped syncing and wants a fresh sign-in.
      */
-    var `needsReconnect`: kotlin.Boolean,
-) {
+    var `needsReconnect`: kotlin.Boolean
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewAccountBank : FfiConverterRustBuffer<ViewAccountBank> {
-    override fun read(buf: ByteBuffer): ViewAccountBank =
-        ViewAccountBank(
+public object FfiConverterTypeViewAccountBank: FfiConverterRustBuffer<ViewAccountBank> {
+    override fun read(buf: ByteBuffer): ViewAccountBank {
+        return ViewAccountBank(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewAccountBank) =
-        (
+    override fun allocationSize(value: ViewAccountBank) = (
             FfiConverterString.allocationSize(value.`id`) +
-                FfiConverterString.allocationSize(value.`name`) +
-                FfiConverterString.allocationSize(value.`initials`) +
-                FfiConverterString.allocationSize(value.`detail`) +
-                FfiConverterBoolean.allocationSize(value.`needsReconnect`)
-        )
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`initials`) +
+            FfiConverterString.allocationSize(value.`detail`) +
+            FfiConverterBoolean.allocationSize(value.`needsReconnect`)
+    )
 
-    override fun write(
-        value: ViewAccountBank,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`id`, buf)
-        FfiConverterString.write(value.`name`, buf)
-        FfiConverterString.write(value.`initials`, buf)
-        FfiConverterString.write(value.`detail`, buf)
-        FfiConverterBoolean.write(value.`needsReconnect`, buf)
+    override fun write(value: ViewAccountBank, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`initials`, buf)
+            FfiConverterString.write(value.`detail`, buf)
+            FfiConverterBoolean.write(value.`needsReconnect`, buf)
     }
 }
 
-data class ViewAccountRow(
-    var `id`: kotlin.String,
-    var `name`: kotlin.String,
+
+
+data class ViewAccountRow (
+    var `id`: kotlin.String
+    , 
+    var `name`: kotlin.String
+    , 
     /**
      * `"Checking ·0000 · $100.00 available"` — the whole subtitle, assembled.
      */
-    var `subtitle`: kotlin.String,
+    var `subtitle`: kotlin.String
+    , 
     /**
      * `"Checking ·0000"` — the first half of the subtitle, for where it gets
      * a column of its own.
      */
-    var `kind`: kotlin.String,
+    var `kind`: kotlin.String
+    , 
     /**
      * `"$100.00 available"` or `"4.10% APY"` — the rest of it, or empty.
      */
-    var `detail`: kotlin.String,
+    var `detail`: kotlin.String
+    , 
     /**
      * `"$110.00"` or `"−$56,302.06"`.
      */
-    var `amount`: kotlin.String,
+    var `amount`: kotlin.String
+    , 
     /**
      * Whether this is money owed, for colour.
      */
-    var `owed`: kotlin.Boolean,
+    var `owed`: kotlin.Boolean
+    , 
     /**
      * `"$410 of $2,000 limit used"`, where a limit exists.
      */
-    var `utilisation`: kotlin.String?,
-) {
+    var `utilisation`: kotlin.String?
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewAccountRow : FfiConverterRustBuffer<ViewAccountRow> {
-    override fun read(buf: ByteBuffer): ViewAccountRow =
-        ViewAccountRow(
+public object FfiConverterTypeViewAccountRow: FfiConverterRustBuffer<ViewAccountRow> {
+    override fun read(buf: ByteBuffer): ViewAccountRow {
+        return ViewAccountRow(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
@@ -1850,84 +1678,99 @@ public object FfiConverterTypeViewAccountRow : FfiConverterRustBuffer<ViewAccoun
             FfiConverterBoolean.read(buf),
             FfiConverterOptionalString.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewAccountRow) =
-        (
+    override fun allocationSize(value: ViewAccountRow) = (
             FfiConverterString.allocationSize(value.`id`) +
-                FfiConverterString.allocationSize(value.`name`) +
-                FfiConverterString.allocationSize(value.`subtitle`) +
-                FfiConverterString.allocationSize(value.`kind`) +
-                FfiConverterString.allocationSize(value.`detail`) +
-                FfiConverterString.allocationSize(value.`amount`) +
-                FfiConverterBoolean.allocationSize(value.`owed`) +
-                FfiConverterOptionalString.allocationSize(value.`utilisation`)
-        )
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`subtitle`) +
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`detail`) +
+            FfiConverterString.allocationSize(value.`amount`) +
+            FfiConverterBoolean.allocationSize(value.`owed`) +
+            FfiConverterOptionalString.allocationSize(value.`utilisation`)
+    )
 
-    override fun write(
-        value: ViewAccountRow,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`id`, buf)
-        FfiConverterString.write(value.`name`, buf)
-        FfiConverterString.write(value.`subtitle`, buf)
-        FfiConverterString.write(value.`kind`, buf)
-        FfiConverterString.write(value.`detail`, buf)
-        FfiConverterString.write(value.`amount`, buf)
-        FfiConverterBoolean.write(value.`owed`, buf)
-        FfiConverterOptionalString.write(value.`utilisation`, buf)
+    override fun write(value: ViewAccountRow, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`subtitle`, buf)
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterString.write(value.`detail`, buf)
+            FfiConverterString.write(value.`amount`, buf)
+            FfiConverterBoolean.write(value.`owed`, buf)
+            FfiConverterOptionalString.write(value.`utilisation`, buf)
     }
 }
 
-data class ViewBalances(
+
+
+data class ViewBalances (
     /**
      * `"Held"`. What you hold, not net worth: Plaid reports the mortgage but
      * never the house behind it, so a net figure is structurally too red.
      */
-    var `headlineLabel`: kotlin.String,
+    var `headlineLabel`: kotlin.String
+    , 
     /**
      * `"$86,541.74"`, or the same figure covered.
      */
-    var `headline`: kotlin.String,
+    var `headline`: kotlin.String
+    , 
     /**
      * Whether the figures are covered. They are already replaced in the text
      * above, so nothing is merely hidden in the DOM.
      */
-    var `masked`: kotlin.Boolean,
+    var `masked`: kotlin.Boolean
+    , 
     /**
      * `"Cover figures"` or `"Show figures"` — what the eye does when pressed.
      */
-    var `maskLabel`: kotlin.String,
+    var `maskLabel`: kotlin.String
+    , 
     /**
      * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks.
      */
-    var `owedLabel`: kotlin.String,
-    var `owedTotal`: kotlin.String,
-    var `connections`: List<ViewConnection>,
+    var `owedLabel`: kotlin.String
+    , 
+    var `owedTotal`: kotlin.String
+    , 
+    var `connections`: List<ViewConnection>
+    , 
     /**
      * `"Where it sits"` — the heading over how what is held splits across
      * the banks holding it.
      */
-    var `heldSplitLabel`: kotlin.String,
+    var `heldSplitLabel`: kotlin.String
+    , 
     /**
      * One slice per bank holding anything, largest first. The label is the
      * bank's name and the token its connection id.
      */
-    var `heldSplit`: List<ViewBreakdownSlice>,
+    var `heldSplit`: List<ViewBreakdownSlice>
+    , 
     /**
      * `"Owed against it"` — the same split, over what is owed.
      */
-    var `owedSplitLabel`: kotlin.String,
-    var `owedSplit`: List<ViewBreakdownSlice>,
-) {
+    var `owedSplitLabel`: kotlin.String
+    , 
+    var `owedSplit`: List<ViewBreakdownSlice>
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewBalances : FfiConverterRustBuffer<ViewBalances> {
-    override fun read(buf: ByteBuffer): ViewBalances =
-        ViewBalances(
+public object FfiConverterTypeViewBalances: FfiConverterRustBuffer<ViewBalances> {
+    override fun read(buf: ByteBuffer): ViewBalances {
+        return ViewBalances(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
@@ -1940,89 +1783,96 @@ public object FfiConverterTypeViewBalances : FfiConverterRustBuffer<ViewBalances
             FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewBreakdownSlice.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewBalances) =
-        (
+    override fun allocationSize(value: ViewBalances) = (
             FfiConverterString.allocationSize(value.`headlineLabel`) +
-                FfiConverterString.allocationSize(value.`headline`) +
-                FfiConverterBoolean.allocationSize(value.`masked`) +
-                FfiConverterString.allocationSize(value.`maskLabel`) +
-                FfiConverterString.allocationSize(value.`owedLabel`) +
-                FfiConverterString.allocationSize(value.`owedTotal`) +
-                FfiConverterSequenceTypeViewConnection.allocationSize(value.`connections`) +
-                FfiConverterString.allocationSize(value.`heldSplitLabel`) +
-                FfiConverterSequenceTypeViewBreakdownSlice.allocationSize(value.`heldSplit`) +
-                FfiConverterString.allocationSize(value.`owedSplitLabel`) +
-                FfiConverterSequenceTypeViewBreakdownSlice.allocationSize(value.`owedSplit`)
-        )
+            FfiConverterString.allocationSize(value.`headline`) +
+            FfiConverterBoolean.allocationSize(value.`masked`) +
+            FfiConverterString.allocationSize(value.`maskLabel`) +
+            FfiConverterString.allocationSize(value.`owedLabel`) +
+            FfiConverterString.allocationSize(value.`owedTotal`) +
+            FfiConverterSequenceTypeViewConnection.allocationSize(value.`connections`) +
+            FfiConverterString.allocationSize(value.`heldSplitLabel`) +
+            FfiConverterSequenceTypeViewBreakdownSlice.allocationSize(value.`heldSplit`) +
+            FfiConverterString.allocationSize(value.`owedSplitLabel`) +
+            FfiConverterSequenceTypeViewBreakdownSlice.allocationSize(value.`owedSplit`)
+    )
 
-    override fun write(
-        value: ViewBalances,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`headlineLabel`, buf)
-        FfiConverterString.write(value.`headline`, buf)
-        FfiConverterBoolean.write(value.`masked`, buf)
-        FfiConverterString.write(value.`maskLabel`, buf)
-        FfiConverterString.write(value.`owedLabel`, buf)
-        FfiConverterString.write(value.`owedTotal`, buf)
-        FfiConverterSequenceTypeViewConnection.write(value.`connections`, buf)
-        FfiConverterString.write(value.`heldSplitLabel`, buf)
-        FfiConverterSequenceTypeViewBreakdownSlice.write(value.`heldSplit`, buf)
-        FfiConverterString.write(value.`owedSplitLabel`, buf)
-        FfiConverterSequenceTypeViewBreakdownSlice.write(value.`owedSplit`, buf)
+    override fun write(value: ViewBalances, buf: ByteBuffer) {
+            FfiConverterString.write(value.`headlineLabel`, buf)
+            FfiConverterString.write(value.`headline`, buf)
+            FfiConverterBoolean.write(value.`masked`, buf)
+            FfiConverterString.write(value.`maskLabel`, buf)
+            FfiConverterString.write(value.`owedLabel`, buf)
+            FfiConverterString.write(value.`owedTotal`, buf)
+            FfiConverterSequenceTypeViewConnection.write(value.`connections`, buf)
+            FfiConverterString.write(value.`heldSplitLabel`, buf)
+            FfiConverterSequenceTypeViewBreakdownSlice.write(value.`heldSplit`, buf)
+            FfiConverterString.write(value.`owedSplitLabel`, buf)
+            FfiConverterSequenceTypeViewBreakdownSlice.write(value.`owedSplit`, buf)
     }
 }
+
+
 
 /**
  * One segment of the breakdown bar.
  */
-data class ViewBreakdownSlice(
-    var `label`: kotlin.String,
-    var `token`: kotlin.String,
+data class ViewBreakdownSlice (
+    var `label`: kotlin.String
+    , 
+    var `token`: kotlin.String
+    , 
     /**
      * The segment's share of the bar, 0..1 — a ratio rather than a string
      * because it is geometry, the exception `docs/FFI.md` carves out.
      */
-    var `share`: kotlin.Double,
+    var `share`: kotlin.Double
+    , 
     /**
      * `"$2,078.50"`.
      */
-    var `amount`: kotlin.String,
-) {
+    var `amount`: kotlin.String
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewBreakdownSlice : FfiConverterRustBuffer<ViewBreakdownSlice> {
-    override fun read(buf: ByteBuffer): ViewBreakdownSlice =
-        ViewBreakdownSlice(
+public object FfiConverterTypeViewBreakdownSlice: FfiConverterRustBuffer<ViewBreakdownSlice> {
+    override fun read(buf: ByteBuffer): ViewBreakdownSlice {
+        return ViewBreakdownSlice(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterDouble.read(buf),
             FfiConverterString.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewBreakdownSlice) =
-        (
+    override fun allocationSize(value: ViewBreakdownSlice) = (
             FfiConverterString.allocationSize(value.`label`) +
-                FfiConverterString.allocationSize(value.`token`) +
-                FfiConverterDouble.allocationSize(value.`share`) +
-                FfiConverterString.allocationSize(value.`amount`)
-        )
+            FfiConverterString.allocationSize(value.`token`) +
+            FfiConverterDouble.allocationSize(value.`share`) +
+            FfiConverterString.allocationSize(value.`amount`)
+    )
 
-    override fun write(
-        value: ViewBreakdownSlice,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`label`, buf)
-        FfiConverterString.write(value.`token`, buf)
-        FfiConverterDouble.write(value.`share`, buf)
-        FfiConverterString.write(value.`amount`, buf)
+    override fun write(value: ViewBreakdownSlice, buf: ByteBuffer) {
+            FfiConverterString.write(value.`label`, buf)
+            FfiConverterString.write(value.`token`, buf)
+            FfiConverterDouble.write(value.`share`, buf)
+            FfiConverterString.write(value.`amount`, buf)
     }
 }
+
+
 
 /**
  * Three months side by side: the one you are looking at, and the one either
@@ -2031,84 +1881,103 @@ public object FfiConverterTypeViewBreakdownSlice : FfiConverterRustBuffer<ViewBr
  * Turning the calendar is a scroll rather than a redraw, so the neighbouring
  * months are here in full rather than as the one visible column.
  */
-data class ViewCalendar(
+data class ViewCalendar (
     /**
      * `["M", "T", "W", "T", "F", "S", "S"]` — the column headings, starting
      * on Monday. One set for all three months.
      */
-    var `weekdays`: List<kotlin.String>,
-    var `prev`: ViewCalendarMonth,
-    var `current`: ViewCalendarMonth,
-    var `next`: ViewCalendarMonth,
-) {
+    var `weekdays`: List<kotlin.String>
+    , 
+    var `prev`: ViewCalendarMonth
+    , 
+    var `current`: ViewCalendarMonth
+    , 
+    var `next`: ViewCalendarMonth
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewCalendar : FfiConverterRustBuffer<ViewCalendar> {
-    override fun read(buf: ByteBuffer): ViewCalendar =
-        ViewCalendar(
+public object FfiConverterTypeViewCalendar: FfiConverterRustBuffer<ViewCalendar> {
+    override fun read(buf: ByteBuffer): ViewCalendar {
+        return ViewCalendar(
             FfiConverterSequenceString.read(buf),
             FfiConverterTypeViewCalendarMonth.read(buf),
             FfiConverterTypeViewCalendarMonth.read(buf),
             FfiConverterTypeViewCalendarMonth.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewCalendar) =
-        (
+    override fun allocationSize(value: ViewCalendar) = (
             FfiConverterSequenceString.allocationSize(value.`weekdays`) +
-                FfiConverterTypeViewCalendarMonth.allocationSize(value.`prev`) +
-                FfiConverterTypeViewCalendarMonth.allocationSize(value.`current`) +
-                FfiConverterTypeViewCalendarMonth.allocationSize(value.`next`)
-        )
+            FfiConverterTypeViewCalendarMonth.allocationSize(value.`prev`) +
+            FfiConverterTypeViewCalendarMonth.allocationSize(value.`current`) +
+            FfiConverterTypeViewCalendarMonth.allocationSize(value.`next`)
+    )
 
-    override fun write(
-        value: ViewCalendar,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterSequenceString.write(value.`weekdays`, buf)
-        FfiConverterTypeViewCalendarMonth.write(value.`prev`, buf)
-        FfiConverterTypeViewCalendarMonth.write(value.`current`, buf)
-        FfiConverterTypeViewCalendarMonth.write(value.`next`, buf)
+    override fun write(value: ViewCalendar, buf: ByteBuffer) {
+            FfiConverterSequenceString.write(value.`weekdays`, buf)
+            FfiConverterTypeViewCalendarMonth.write(value.`prev`, buf)
+            FfiConverterTypeViewCalendarMonth.write(value.`current`, buf)
+            FfiConverterTypeViewCalendarMonth.write(value.`next`, buf)
     }
 }
 
-data class ViewCalendarDay(
+
+
+data class ViewCalendarDay (
     /**
      * What a tap sends back: the day itself, not where it sits in the grid,
      * so the same day in two months' grids is one day.
      */
-    var `id`: kotlin.String,
+    var `id`: kotlin.String
+    , 
     /**
      * `"12"`.
      */
-    var `label`: kotlin.String,
+    var `label`: kotlin.String
+    , 
     /**
      * A day belonging to the month either side. Drawn, and dimmed.
      */
-    var `outside`: kotlin.Boolean,
-    var `today`: kotlin.Boolean,
+    var `outside`: kotlin.Boolean
+    , 
+    var `today`: kotlin.Boolean
+    , 
     /**
      * The day the user tapped, filled in grey.
      */
-    var `picked`: kotlin.Boolean,
+    var `picked`: kotlin.Boolean
+    , 
     /**
      * One per stream landing that day, as category tokens. Only dates the
      * source predicts — nothing is projected forward from a frequency.
      */
-    var `marks`: List<kotlin.String>,
-) {
+    var `marks`: List<kotlin.String>
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewCalendarDay : FfiConverterRustBuffer<ViewCalendarDay> {
-    override fun read(buf: ByteBuffer): ViewCalendarDay =
-        ViewCalendarDay(
+public object FfiConverterTypeViewCalendarDay: FfiConverterRustBuffer<ViewCalendarDay> {
+    override fun read(buf: ByteBuffer): ViewCalendarDay {
+        return ViewCalendarDay(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
@@ -2116,105 +1985,121 @@ public object FfiConverterTypeViewCalendarDay : FfiConverterRustBuffer<ViewCalen
             FfiConverterBoolean.read(buf),
             FfiConverterSequenceString.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewCalendarDay) =
-        (
+    override fun allocationSize(value: ViewCalendarDay) = (
             FfiConverterString.allocationSize(value.`id`) +
-                FfiConverterString.allocationSize(value.`label`) +
-                FfiConverterBoolean.allocationSize(value.`outside`) +
-                FfiConverterBoolean.allocationSize(value.`today`) +
-                FfiConverterBoolean.allocationSize(value.`picked`) +
-                FfiConverterSequenceString.allocationSize(value.`marks`)
-        )
+            FfiConverterString.allocationSize(value.`label`) +
+            FfiConverterBoolean.allocationSize(value.`outside`) +
+            FfiConverterBoolean.allocationSize(value.`today`) +
+            FfiConverterBoolean.allocationSize(value.`picked`) +
+            FfiConverterSequenceString.allocationSize(value.`marks`)
+    )
 
-    override fun write(
-        value: ViewCalendarDay,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`id`, buf)
-        FfiConverterString.write(value.`label`, buf)
-        FfiConverterBoolean.write(value.`outside`, buf)
-        FfiConverterBoolean.write(value.`today`, buf)
-        FfiConverterBoolean.write(value.`picked`, buf)
-        FfiConverterSequenceString.write(value.`marks`, buf)
+    override fun write(value: ViewCalendarDay, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`label`, buf)
+            FfiConverterBoolean.write(value.`outside`, buf)
+            FfiConverterBoolean.write(value.`today`, buf)
+            FfiConverterBoolean.write(value.`picked`, buf)
+            FfiConverterSequenceString.write(value.`marks`, buf)
     }
 }
+
+
 
 /**
  * One month's grid, with as many rows as the month has weeks in it — five
  * for July, six for August — so the grid changes height as the months turn.
  */
-data class ViewCalendarMonth(
+data class ViewCalendarMonth (
     /**
      * `"August 2026"`. The year on all three months, because the label
      * travels from the edge to the centre as the month turns.
      */
-    var `label`: kotlin.String,
-    var `weeks`: List<List<ViewCalendarDay>>,
-) {
+    var `label`: kotlin.String
+    , 
+    var `weeks`: List<List<ViewCalendarDay>>
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewCalendarMonth : FfiConverterRustBuffer<ViewCalendarMonth> {
-    override fun read(buf: ByteBuffer): ViewCalendarMonth =
-        ViewCalendarMonth(
+public object FfiConverterTypeViewCalendarMonth: FfiConverterRustBuffer<ViewCalendarMonth> {
+    override fun read(buf: ByteBuffer): ViewCalendarMonth {
+        return ViewCalendarMonth(
             FfiConverterString.read(buf),
             FfiConverterSequenceSequenceTypeViewCalendarDay.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewCalendarMonth) =
-        (
+    override fun allocationSize(value: ViewCalendarMonth) = (
             FfiConverterString.allocationSize(value.`label`) +
-                FfiConverterSequenceSequenceTypeViewCalendarDay.allocationSize(value.`weeks`)
-        )
+            FfiConverterSequenceSequenceTypeViewCalendarDay.allocationSize(value.`weeks`)
+    )
 
-    override fun write(
-        value: ViewCalendarMonth,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`label`, buf)
-        FfiConverterSequenceSequenceTypeViewCalendarDay.write(value.`weeks`, buf)
+    override fun write(value: ViewCalendarMonth, buf: ByteBuffer) {
+            FfiConverterString.write(value.`label`, buf)
+            FfiConverterSequenceSequenceTypeViewCalendarDay.write(value.`weeks`, buf)
     }
 }
+
+
 
 /**
  * One category in the filter grid.
  */
-data class ViewCategoryChip(
+data class ViewCategoryChip (
     /**
      * The stable name, e.g. `"FoodAndDrink"` — what a tap sends back.
      */
-    var `id`: kotlin.String,
+    var `id`: kotlin.String
+    , 
     /**
      * `"Food & drink"`.
      */
-    var `label`: kotlin.String,
+    var `label`: kotlin.String
+    , 
     /**
      * `"c-food"`.
      */
-    var `token`: kotlin.String,
+    var `token`: kotlin.String
+    , 
     /**
      * How many transactions match, as text.
      */
-    var `count`: kotlin.String,
-    var `selected`: kotlin.Boolean,
+    var `count`: kotlin.String
+    , 
+    var `selected`: kotlin.Boolean
+    , 
     /**
      * Nothing matches. The chip stays visible, reading as unavailable.
      */
-    var `empty`: kotlin.Boolean,
-) {
+    var `empty`: kotlin.Boolean
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewCategoryChip : FfiConverterRustBuffer<ViewCategoryChip> {
-    override fun read(buf: ByteBuffer): ViewCategoryChip =
-        ViewCategoryChip(
+public object FfiConverterTypeViewCategoryChip: FfiConverterRustBuffer<ViewCategoryChip> {
+    override fun read(buf: ByteBuffer): ViewCategoryChip {
+        return ViewCategoryChip(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
@@ -2222,435 +2107,528 @@ public object FfiConverterTypeViewCategoryChip : FfiConverterRustBuffer<ViewCate
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewCategoryChip) =
-        (
+    override fun allocationSize(value: ViewCategoryChip) = (
             FfiConverterString.allocationSize(value.`id`) +
-                FfiConverterString.allocationSize(value.`label`) +
-                FfiConverterString.allocationSize(value.`token`) +
-                FfiConverterString.allocationSize(value.`count`) +
-                FfiConverterBoolean.allocationSize(value.`selected`) +
-                FfiConverterBoolean.allocationSize(value.`empty`)
-        )
+            FfiConverterString.allocationSize(value.`label`) +
+            FfiConverterString.allocationSize(value.`token`) +
+            FfiConverterString.allocationSize(value.`count`) +
+            FfiConverterBoolean.allocationSize(value.`selected`) +
+            FfiConverterBoolean.allocationSize(value.`empty`)
+    )
 
-    override fun write(
-        value: ViewCategoryChip,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`id`, buf)
-        FfiConverterString.write(value.`label`, buf)
-        FfiConverterString.write(value.`token`, buf)
-        FfiConverterString.write(value.`count`, buf)
-        FfiConverterBoolean.write(value.`selected`, buf)
-        FfiConverterBoolean.write(value.`empty`, buf)
+    override fun write(value: ViewCategoryChip, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`label`, buf)
+            FfiConverterString.write(value.`token`, buf)
+            FfiConverterString.write(value.`count`, buf)
+            FfiConverterBoolean.write(value.`selected`, buf)
+            FfiConverterBoolean.write(value.`empty`, buf)
     }
 }
+
+
 
 /**
  * One box of a six-digit code.
  */
-data class ViewCodeCell(
+data class ViewCodeCell (
     /**
      * The digit, or empty.
      */
-    var `digit`: kotlin.String,
+    var `digit`: kotlin.String
+    , 
     /**
      * The box that takes the next digit. It carries the caret.
      */
-    var `live`: kotlin.Boolean,
+    var `live`: kotlin.Boolean
+    , 
     /**
      * Set on every box at once — a rejected code is one wrong value, not six.
      */
-    var `bad`: kotlin.Boolean,
-) {
+    var `bad`: kotlin.Boolean
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewCodeCell : FfiConverterRustBuffer<ViewCodeCell> {
-    override fun read(buf: ByteBuffer): ViewCodeCell =
-        ViewCodeCell(
+public object FfiConverterTypeViewCodeCell: FfiConverterRustBuffer<ViewCodeCell> {
+    override fun read(buf: ByteBuffer): ViewCodeCell {
+        return ViewCodeCell(
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewCodeCell) =
-        (
+    override fun allocationSize(value: ViewCodeCell) = (
             FfiConverterString.allocationSize(value.`digit`) +
-                FfiConverterBoolean.allocationSize(value.`live`) +
-                FfiConverterBoolean.allocationSize(value.`bad`)
-        )
+            FfiConverterBoolean.allocationSize(value.`live`) +
+            FfiConverterBoolean.allocationSize(value.`bad`)
+    )
 
-    override fun write(
-        value: ViewCodeCell,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`digit`, buf)
-        FfiConverterBoolean.write(value.`live`, buf)
-        FfiConverterBoolean.write(value.`bad`, buf)
+    override fun write(value: ViewCodeCell, buf: ByteBuffer) {
+            FfiConverterString.write(value.`digit`, buf)
+            FfiConverterBoolean.write(value.`live`, buf)
+            FfiConverterBoolean.write(value.`bad`, buf)
     }
 }
 
-data class ViewConnection(
-    var `id`: kotlin.String,
-    var `name`: kotlin.String,
-    var `initials`: kotlin.String,
+
+
+data class ViewConnection (
+    var `id`: kotlin.String
+    , 
+    /**
+     * Plaid's id for the connection, as a repair names it. Unlike
+     * [`id`](ViewConnection::id) it is never suffixed: the held and owed
+     * halves of one bank are one connection.
+     */
+    var `itemId`: kotlin.String
+    , 
+    var `name`: kotlin.String
+    , 
+    var `initials`: kotlin.String
+    , 
     /**
      * `"synced 2m"`, or empty when the connection needs attention.
      */
-    var `synced`: kotlin.String,
+    var `synced`: kotlin.String
+    , 
     /**
      * Whether the user has to sign in again.
      */
-    var `needsReconnect`: kotlin.Boolean,
+    var `needsReconnect`: kotlin.Boolean
+    , 
+    /**
+     * Whether a repair for this connection is under way — the tap has
+     * happened and Plaid's page has not answered — so the button waits
+     * instead of taking another.
+     */
+    var `reconnecting`: kotlin.Boolean
+    , 
     /**
      * Whether these balances are owed rather than held.
      */
-    var `isDebts`: kotlin.Boolean,
-    var `accounts`: List<ViewAccountRow>,
+    var `isDebts`: kotlin.Boolean
+    , 
+    var `accounts`: List<ViewAccountRow>
+    , 
     /**
      * `"6 accounts held"` / `"6 accounts owed"`.
      */
-    var `totalLabel`: kotlin.String,
+    var `totalLabel`: kotlin.String
+    , 
     /**
      * `"$62,589.00"`.
      */
-    var `total`: kotlin.String,
-) {
+    var `total`: kotlin.String
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewConnection : FfiConverterRustBuffer<ViewConnection> {
-    override fun read(buf: ByteBuffer): ViewConnection =
-        ViewConnection(
+public object FfiConverterTypeViewConnection: FfiConverterRustBuffer<ViewConnection> {
+    override fun read(buf: ByteBuffer): ViewConnection {
+        return ViewConnection(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterSequenceTypeViewAccountRow.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewConnection) =
-        (
+    override fun allocationSize(value: ViewConnection) = (
             FfiConverterString.allocationSize(value.`id`) +
-                FfiConverterString.allocationSize(value.`name`) +
-                FfiConverterString.allocationSize(value.`initials`) +
-                FfiConverterString.allocationSize(value.`synced`) +
-                FfiConverterBoolean.allocationSize(value.`needsReconnect`) +
-                FfiConverterBoolean.allocationSize(value.`isDebts`) +
-                FfiConverterSequenceTypeViewAccountRow.allocationSize(value.`accounts`) +
-                FfiConverterString.allocationSize(value.`totalLabel`) +
-                FfiConverterString.allocationSize(value.`total`)
-        )
+            FfiConverterString.allocationSize(value.`itemId`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`initials`) +
+            FfiConverterString.allocationSize(value.`synced`) +
+            FfiConverterBoolean.allocationSize(value.`needsReconnect`) +
+            FfiConverterBoolean.allocationSize(value.`reconnecting`) +
+            FfiConverterBoolean.allocationSize(value.`isDebts`) +
+            FfiConverterSequenceTypeViewAccountRow.allocationSize(value.`accounts`) +
+            FfiConverterString.allocationSize(value.`totalLabel`) +
+            FfiConverterString.allocationSize(value.`total`)
+    )
 
-    override fun write(
-        value: ViewConnection,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`id`, buf)
-        FfiConverterString.write(value.`name`, buf)
-        FfiConverterString.write(value.`initials`, buf)
-        FfiConverterString.write(value.`synced`, buf)
-        FfiConverterBoolean.write(value.`needsReconnect`, buf)
-        FfiConverterBoolean.write(value.`isDebts`, buf)
-        FfiConverterSequenceTypeViewAccountRow.write(value.`accounts`, buf)
-        FfiConverterString.write(value.`totalLabel`, buf)
-        FfiConverterString.write(value.`total`, buf)
+    override fun write(value: ViewConnection, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`itemId`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`initials`, buf)
+            FfiConverterString.write(value.`synced`, buf)
+            FfiConverterBoolean.write(value.`needsReconnect`, buf)
+            FfiConverterBoolean.write(value.`reconnecting`, buf)
+            FfiConverterBoolean.write(value.`isDebts`, buf)
+            FfiConverterSequenceTypeViewAccountRow.write(value.`accounts`, buf)
+            FfiConverterString.write(value.`totalLabel`, buf)
+            FfiConverterString.write(value.`total`, buf)
     }
 }
+
+
 
 /**
  * The streams landing on the day the calendar has selected.
  */
-data class ViewDayCard(
+data class ViewDayCard (
     /**
      * `"Fri, Jul 10"`.
      */
-    var `heading`: kotlin.String,
+    var `heading`: kotlin.String
+    , 
     /**
      * `"−$578.50"`, what the day comes to.
      */
-    var `total`: kotlin.String,
-    var `rows`: List<ViewDayRow>,
-) {
+    var `total`: kotlin.String
+    , 
+    var `rows`: List<ViewDayRow>
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewDayCard : FfiConverterRustBuffer<ViewDayCard> {
-    override fun read(buf: ByteBuffer): ViewDayCard =
-        ViewDayCard(
+public object FfiConverterTypeViewDayCard: FfiConverterRustBuffer<ViewDayCard> {
+    override fun read(buf: ByteBuffer): ViewDayCard {
+        return ViewDayCard(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewDayRow.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewDayCard) =
-        (
+    override fun allocationSize(value: ViewDayCard) = (
             FfiConverterString.allocationSize(value.`heading`) +
-                FfiConverterString.allocationSize(value.`total`) +
-                FfiConverterSequenceTypeViewDayRow.allocationSize(value.`rows`)
-        )
+            FfiConverterString.allocationSize(value.`total`) +
+            FfiConverterSequenceTypeViewDayRow.allocationSize(value.`rows`)
+    )
 
-    override fun write(
-        value: ViewDayCard,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`heading`, buf)
-        FfiConverterString.write(value.`total`, buf)
-        FfiConverterSequenceTypeViewDayRow.write(value.`rows`, buf)
+    override fun write(value: ViewDayCard, buf: ByteBuffer) {
+            FfiConverterString.write(value.`heading`, buf)
+            FfiConverterString.write(value.`total`, buf)
+            FfiConverterSequenceTypeViewDayRow.write(value.`rows`, buf)
     }
 }
 
-data class ViewDayRow(
-    var `id`: kotlin.String,
+
+
+data class ViewDayRow (
+    var `id`: kotlin.String
+    , 
     /**
      * `"United Airlines"`.
      */
-    var `name`: kotlin.String,
+    var `name`: kotlin.String
+    , 
     /**
      * `"−$500.00"`.
      */
-    var `amount`: kotlin.String,
-) {
+    var `amount`: kotlin.String
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewDayRow : FfiConverterRustBuffer<ViewDayRow> {
-    override fun read(buf: ByteBuffer): ViewDayRow =
-        ViewDayRow(
+public object FfiConverterTypeViewDayRow: FfiConverterRustBuffer<ViewDayRow> {
+    override fun read(buf: ByteBuffer): ViewDayRow {
+        return ViewDayRow(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewDayRow) =
-        (
+    override fun allocationSize(value: ViewDayRow) = (
             FfiConverterString.allocationSize(value.`id`) +
-                FfiConverterString.allocationSize(value.`name`) +
-                FfiConverterString.allocationSize(value.`amount`)
-        )
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`amount`)
+    )
 
-    override fun write(
-        value: ViewDayRow,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`id`, buf)
-        FfiConverterString.write(value.`name`, buf)
-        FfiConverterString.write(value.`amount`, buf)
+    override fun write(value: ViewDayRow, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`amount`, buf)
     }
 }
+
+
 
 /**
  * A day's worth of rows, under its heading.
  */
-data class ViewDaySection(
+data class ViewDaySection (
     /**
      * `"Wed, Aug 12"`.
      */
-    var `heading`: kotlin.String,
+    var `heading`: kotlin.String
+    , 
     /**
      * `"−$30.40"`, the day's net.
      */
-    var `total`: kotlin.String,
-    var `rows`: List<ViewTxRow>,
-) {
+    var `total`: kotlin.String
+    , 
+    var `rows`: List<ViewTxRow>
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewDaySection : FfiConverterRustBuffer<ViewDaySection> {
-    override fun read(buf: ByteBuffer): ViewDaySection =
-        ViewDaySection(
+public object FfiConverterTypeViewDaySection: FfiConverterRustBuffer<ViewDaySection> {
+    override fun read(buf: ByteBuffer): ViewDaySection {
+        return ViewDaySection(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewTxRow.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewDaySection) =
-        (
+    override fun allocationSize(value: ViewDaySection) = (
             FfiConverterString.allocationSize(value.`heading`) +
-                FfiConverterString.allocationSize(value.`total`) +
-                FfiConverterSequenceTypeViewTxRow.allocationSize(value.`rows`)
-        )
+            FfiConverterString.allocationSize(value.`total`) +
+            FfiConverterSequenceTypeViewTxRow.allocationSize(value.`rows`)
+    )
 
-    override fun write(
-        value: ViewDaySection,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`heading`, buf)
-        FfiConverterString.write(value.`total`, buf)
-        FfiConverterSequenceTypeViewTxRow.write(value.`rows`, buf)
+    override fun write(value: ViewDaySection, buf: ByteBuffer) {
+            FfiConverterString.write(value.`heading`, buf)
+            FfiConverterString.write(value.`total`, buf)
+            FfiConverterSequenceTypeViewTxRow.write(value.`rows`, buf)
     }
 }
 
-data class ViewDock(
-    var `items`: List<ViewDockItem>,
-) {
+
+
+data class ViewDock (
+    var `items`: List<ViewDockItem>
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewDock : FfiConverterRustBuffer<ViewDock> {
-    override fun read(buf: ByteBuffer): ViewDock =
-        ViewDock(
+public object FfiConverterTypeViewDock: FfiConverterRustBuffer<ViewDock> {
+    override fun read(buf: ByteBuffer): ViewDock {
+        return ViewDock(
             FfiConverterSequenceTypeViewDockItem.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewDock) =
-        (
+    override fun allocationSize(value: ViewDock) = (
             FfiConverterSequenceTypeViewDockItem.allocationSize(value.`items`)
-        )
+    )
 
-    override fun write(
-        value: ViewDock,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterSequenceTypeViewDockItem.write(value.`items`, buf)
+    override fun write(value: ViewDock, buf: ByteBuffer) {
+            FfiConverterSequenceTypeViewDockItem.write(value.`items`, buf)
     }
 }
 
-data class ViewDockItem(
-    var `screen`: Screen,
-    var `label`: kotlin.String,
+
+
+data class ViewDockItem (
+    var `screen`: Screen
+    , 
+    var `label`: kotlin.String
+    , 
     /**
      * An icon name the view resolves in its own asset catalogue.
      */
-    var `icon`: kotlin.String,
-    var `selected`: kotlin.Boolean,
-) {
+    var `icon`: kotlin.String
+    , 
+    var `selected`: kotlin.Boolean
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewDockItem : FfiConverterRustBuffer<ViewDockItem> {
-    override fun read(buf: ByteBuffer): ViewDockItem =
-        ViewDockItem(
+public object FfiConverterTypeViewDockItem: FfiConverterRustBuffer<ViewDockItem> {
+    override fun read(buf: ByteBuffer): ViewDockItem {
+        return ViewDockItem(
             FfiConverterTypeScreen.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewDockItem) =
-        (
+    override fun allocationSize(value: ViewDockItem) = (
             FfiConverterTypeScreen.allocationSize(value.`screen`) +
-                FfiConverterString.allocationSize(value.`label`) +
-                FfiConverterString.allocationSize(value.`icon`) +
-                FfiConverterBoolean.allocationSize(value.`selected`)
-        )
+            FfiConverterString.allocationSize(value.`label`) +
+            FfiConverterString.allocationSize(value.`icon`) +
+            FfiConverterBoolean.allocationSize(value.`selected`)
+    )
 
-    override fun write(
-        value: ViewDockItem,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterTypeScreen.write(value.`screen`, buf)
-        FfiConverterString.write(value.`label`, buf)
-        FfiConverterString.write(value.`icon`, buf)
-        FfiConverterBoolean.write(value.`selected`, buf)
+    override fun write(value: ViewDockItem, buf: ByteBuffer) {
+            FfiConverterTypeScreen.write(value.`screen`, buf)
+            FfiConverterString.write(value.`label`, buf)
+            FfiConverterString.write(value.`icon`, buf)
+            FfiConverterBoolean.write(value.`selected`, buf)
     }
 }
+
+
 
 /**
  * Something to type into.
  */
-data class ViewField(
+data class ViewField (
     /**
      * An icon name the view resolves in its own set.
      */
-    var `icon`: kotlin.String,
+    var `icon`: kotlin.String
+    , 
     /**
      * What is in it. Empty draws the placeholder.
      */
-    var `value`: kotlin.String,
-    var `placeholder`: kotlin.String,
+    var `value`: kotlin.String
+    , 
+    var `placeholder`: kotlin.String
+    , 
     /**
      * What the server, or the machine, made of the value.
      */
-    var `fault`: kotlin.String?,
-) {
+    var `fault`: kotlin.String?
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewField : FfiConverterRustBuffer<ViewField> {
-    override fun read(buf: ByteBuffer): ViewField =
-        ViewField(
+public object FfiConverterTypeViewField: FfiConverterRustBuffer<ViewField> {
+    override fun read(buf: ByteBuffer): ViewField {
+        return ViewField(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterOptionalString.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewField) =
-        (
+    override fun allocationSize(value: ViewField) = (
             FfiConverterString.allocationSize(value.`icon`) +
-                FfiConverterString.allocationSize(value.`value`) +
-                FfiConverterString.allocationSize(value.`placeholder`) +
-                FfiConverterOptionalString.allocationSize(value.`fault`)
-        )
+            FfiConverterString.allocationSize(value.`value`) +
+            FfiConverterString.allocationSize(value.`placeholder`) +
+            FfiConverterOptionalString.allocationSize(value.`fault`)
+    )
 
-    override fun write(
-        value: ViewField,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`icon`, buf)
-        FfiConverterString.write(value.`value`, buf)
-        FfiConverterString.write(value.`placeholder`, buf)
-        FfiConverterOptionalString.write(value.`fault`, buf)
+    override fun write(value: ViewField, buf: ByteBuffer) {
+            FfiConverterString.write(value.`icon`, buf)
+            FfiConverterString.write(value.`value`, buf)
+            FfiConverterString.write(value.`placeholder`, buf)
+            FfiConverterOptionalString.write(value.`fault`, buf)
     }
 }
 
-data class ViewFilter(
-    var `categoriesOpen`: kotlin.Boolean,
-    var `rangeOpen`: kotlin.Boolean,
+
+
+data class ViewFilter (
+    var `categoriesOpen`: kotlin.Boolean
+    , 
+    var `rangeOpen`: kotlin.Boolean
+    , 
     /**
      * All sixteen, each with its live count.
      */
-    var `categories`: List<ViewCategoryChip>,
+    var `categories`: List<ViewCategoryChip>
+    , 
     /**
      * What a shut category group shows instead of its chips.
      */
-    var `categoriesSummary`: List<ViewCategoryChip>,
-    var `categoriesOverflow`: kotlin.String?,
-    var `range`: ViewRange,
+    var `categoriesSummary`: List<ViewCategoryChip>
+    , 
+    var `categoriesOverflow`: kotlin.String?
+    , 
+    var `range`: ViewRange
+    , 
     /**
      * `"Last 3 months"` — what a shut range group shows.
      */
-    var `rangeSummary`: kotlin.String,
-) {
+    var `rangeSummary`: kotlin.String
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewFilter : FfiConverterRustBuffer<ViewFilter> {
-    override fun read(buf: ByteBuffer): ViewFilter =
-        ViewFilter(
+public object FfiConverterTypeViewFilter: FfiConverterRustBuffer<ViewFilter> {
+    override fun read(buf: ByteBuffer): ViewFilter {
+        return ViewFilter(
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterSequenceTypeViewCategoryChip.read(buf),
@@ -2659,126 +2637,146 @@ public object FfiConverterTypeViewFilter : FfiConverterRustBuffer<ViewFilter> {
             FfiConverterTypeViewRange.read(buf),
             FfiConverterString.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewFilter) =
-        (
+    override fun allocationSize(value: ViewFilter) = (
             FfiConverterBoolean.allocationSize(value.`categoriesOpen`) +
-                FfiConverterBoolean.allocationSize(value.`rangeOpen`) +
-                FfiConverterSequenceTypeViewCategoryChip.allocationSize(value.`categories`) +
-                FfiConverterSequenceTypeViewCategoryChip.allocationSize(value.`categoriesSummary`) +
-                FfiConverterOptionalString.allocationSize(value.`categoriesOverflow`) +
-                FfiConverterTypeViewRange.allocationSize(value.`range`) +
-                FfiConverterString.allocationSize(value.`rangeSummary`)
-        )
+            FfiConverterBoolean.allocationSize(value.`rangeOpen`) +
+            FfiConverterSequenceTypeViewCategoryChip.allocationSize(value.`categories`) +
+            FfiConverterSequenceTypeViewCategoryChip.allocationSize(value.`categoriesSummary`) +
+            FfiConverterOptionalString.allocationSize(value.`categoriesOverflow`) +
+            FfiConverterTypeViewRange.allocationSize(value.`range`) +
+            FfiConverterString.allocationSize(value.`rangeSummary`)
+    )
 
-    override fun write(
-        value: ViewFilter,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterBoolean.write(value.`categoriesOpen`, buf)
-        FfiConverterBoolean.write(value.`rangeOpen`, buf)
-        FfiConverterSequenceTypeViewCategoryChip.write(value.`categories`, buf)
-        FfiConverterSequenceTypeViewCategoryChip.write(value.`categoriesSummary`, buf)
-        FfiConverterOptionalString.write(value.`categoriesOverflow`, buf)
-        FfiConverterTypeViewRange.write(value.`range`, buf)
-        FfiConverterString.write(value.`rangeSummary`, buf)
+    override fun write(value: ViewFilter, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`categoriesOpen`, buf)
+            FfiConverterBoolean.write(value.`rangeOpen`, buf)
+            FfiConverterSequenceTypeViewCategoryChip.write(value.`categories`, buf)
+            FfiConverterSequenceTypeViewCategoryChip.write(value.`categoriesSummary`, buf)
+            FfiConverterOptionalString.write(value.`categoriesOverflow`, buf)
+            FfiConverterTypeViewRange.write(value.`range`, buf)
+            FfiConverterString.write(value.`rangeSummary`, buf)
     }
 }
+
+
 
 /**
  * An icon, a line, a line under it, and something on the right — the one row
  * every list in this flow is made of.
  */
-data class ViewIconRow(
+data class ViewIconRow (
     /**
      * An icon name the view resolves in its own set.
      */
-    var `icon`: kotlin.String,
-    var `tone`: ViewRowTone,
-    var `title`: kotlin.String,
-    var `sub`: kotlin.String?,
+    var `icon`: kotlin.String
+    , 
+    var `tone`: ViewRowTone
+    , 
+    var `title`: kotlin.String
+    , 
+    var `sub`: kotlin.String?
+    , 
     /**
      * `"8"`, `"48 so far"`, `"waiting"`.
      */
-    var `value`: kotlin.String?,
-) {
+    var `value`: kotlin.String?
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewIconRow : FfiConverterRustBuffer<ViewIconRow> {
-    override fun read(buf: ByteBuffer): ViewIconRow =
-        ViewIconRow(
+public object FfiConverterTypeViewIconRow: FfiConverterRustBuffer<ViewIconRow> {
+    override fun read(buf: ByteBuffer): ViewIconRow {
+        return ViewIconRow(
             FfiConverterString.read(buf),
             FfiConverterTypeViewRowTone.read(buf),
             FfiConverterString.read(buf),
             FfiConverterOptionalString.read(buf),
             FfiConverterOptionalString.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewIconRow) =
-        (
+    override fun allocationSize(value: ViewIconRow) = (
             FfiConverterString.allocationSize(value.`icon`) +
-                FfiConverterTypeViewRowTone.allocationSize(value.`tone`) +
-                FfiConverterString.allocationSize(value.`title`) +
-                FfiConverterOptionalString.allocationSize(value.`sub`) +
-                FfiConverterOptionalString.allocationSize(value.`value`)
-        )
+            FfiConverterTypeViewRowTone.allocationSize(value.`tone`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterOptionalString.allocationSize(value.`sub`) +
+            FfiConverterOptionalString.allocationSize(value.`value`)
+    )
 
-    override fun write(
-        value: ViewIconRow,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`icon`, buf)
-        FfiConverterTypeViewRowTone.write(value.`tone`, buf)
-        FfiConverterString.write(value.`title`, buf)
-        FfiConverterOptionalString.write(value.`sub`, buf)
-        FfiConverterOptionalString.write(value.`value`, buf)
+    override fun write(value: ViewIconRow, buf: ByteBuffer) {
+            FfiConverterString.write(value.`icon`, buf)
+            FfiConverterTypeViewRowTone.write(value.`tone`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterOptionalString.write(value.`sub`, buf)
+            FfiConverterOptionalString.write(value.`value`, buf)
     }
 }
 
-data class ViewLedger(
+
+
+data class ViewLedger (
     /**
      * `"All time · Food & drink, Travel · 21 transactions"` — what the
      * headline under it is a figure for.
      */
-    var `headlineLabel`: kotlin.String,
+    var `headlineLabel`: kotlin.String
+    , 
     /**
      * `"−$1,284.31"`, the net of every row the filter lets through.
      */
-    var `headline`: kotlin.String,
+    var `headline`: kotlin.String
+    , 
     /**
      * `"$500.00"` and `"$1,784.31"` — the two directions of those rows,
      * unsigned, for where a word beside the figure says which way the money
      * goes.
      */
-    var `flowIn`: kotlin.String,
-    var `flowOut`: kotlin.String,
+    var `flowIn`: kotlin.String
+    , 
+    var `flowOut`: kotlin.String
+    , 
     /**
      * The transactions, grouped by month and then by day.
      */
-    var `months`: List<ViewMonthSection>,
+    var `months`: List<ViewMonthSection>
+    , 
     /**
      * The filter panel, whose state travels with the screen it filters.
      */
-    var `filter`: ViewFilter,
+    var `filter`: ViewFilter
+    , 
     /**
      * What to show instead of the list when it is empty. `None` means there
      * are rows.
      */
-    var `empty`: kotlin.String?,
-) {
+    var `empty`: kotlin.String?
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewLedger : FfiConverterRustBuffer<ViewLedger> {
-    override fun read(buf: ByteBuffer): ViewLedger =
-        ViewLedger(
+public object FfiConverterTypeViewLedger: FfiConverterRustBuffer<ViewLedger> {
+    override fun read(buf: ByteBuffer): ViewLedger {
+        return ViewLedger(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
@@ -2787,83 +2785,90 @@ public object FfiConverterTypeViewLedger : FfiConverterRustBuffer<ViewLedger> {
             FfiConverterTypeViewFilter.read(buf),
             FfiConverterOptionalString.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewLedger) =
-        (
+    override fun allocationSize(value: ViewLedger) = (
             FfiConverterString.allocationSize(value.`headlineLabel`) +
-                FfiConverterString.allocationSize(value.`headline`) +
-                FfiConverterString.allocationSize(value.`flowIn`) +
-                FfiConverterString.allocationSize(value.`flowOut`) +
-                FfiConverterSequenceTypeViewMonthSection.allocationSize(value.`months`) +
-                FfiConverterTypeViewFilter.allocationSize(value.`filter`) +
-                FfiConverterOptionalString.allocationSize(value.`empty`)
-        )
+            FfiConverterString.allocationSize(value.`headline`) +
+            FfiConverterString.allocationSize(value.`flowIn`) +
+            FfiConverterString.allocationSize(value.`flowOut`) +
+            FfiConverterSequenceTypeViewMonthSection.allocationSize(value.`months`) +
+            FfiConverterTypeViewFilter.allocationSize(value.`filter`) +
+            FfiConverterOptionalString.allocationSize(value.`empty`)
+    )
 
-    override fun write(
-        value: ViewLedger,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`headlineLabel`, buf)
-        FfiConverterString.write(value.`headline`, buf)
-        FfiConverterString.write(value.`flowIn`, buf)
-        FfiConverterString.write(value.`flowOut`, buf)
-        FfiConverterSequenceTypeViewMonthSection.write(value.`months`, buf)
-        FfiConverterTypeViewFilter.write(value.`filter`, buf)
-        FfiConverterOptionalString.write(value.`empty`, buf)
+    override fun write(value: ViewLedger, buf: ByteBuffer) {
+            FfiConverterString.write(value.`headlineLabel`, buf)
+            FfiConverterString.write(value.`headline`, buf)
+            FfiConverterString.write(value.`flowIn`, buf)
+            FfiConverterString.write(value.`flowOut`, buf)
+            FfiConverterSequenceTypeViewMonthSection.write(value.`months`, buf)
+            FfiConverterTypeViewFilter.write(value.`filter`, buf)
+            FfiConverterOptionalString.write(value.`empty`, buf)
     }
 }
+
+
 
 /**
  * A month's worth of days, under its rule.
  */
-data class ViewMonthSection(
+data class ViewMonthSection (
     /**
      * `"August"`.
      */
-    var `name`: kotlin.String,
+    var `name`: kotlin.String
+    , 
     /**
      * `"2026"`.
      */
-    var `year`: kotlin.String,
+    var `year`: kotlin.String
+    , 
     /**
      * `"August 2026"` — the two of them as the marker reads them.
      */
-    var `label`: kotlin.String,
-    var `days`: List<ViewDaySection>,
-) {
+    var `label`: kotlin.String
+    , 
+    var `days`: List<ViewDaySection>
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewMonthSection : FfiConverterRustBuffer<ViewMonthSection> {
-    override fun read(buf: ByteBuffer): ViewMonthSection =
-        ViewMonthSection(
+public object FfiConverterTypeViewMonthSection: FfiConverterRustBuffer<ViewMonthSection> {
+    override fun read(buf: ByteBuffer): ViewMonthSection {
+        return ViewMonthSection(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewDaySection.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewMonthSection) =
-        (
+    override fun allocationSize(value: ViewMonthSection) = (
             FfiConverterString.allocationSize(value.`name`) +
-                FfiConverterString.allocationSize(value.`year`) +
-                FfiConverterString.allocationSize(value.`label`) +
-                FfiConverterSequenceTypeViewDaySection.allocationSize(value.`days`)
-        )
+            FfiConverterString.allocationSize(value.`year`) +
+            FfiConverterString.allocationSize(value.`label`) +
+            FfiConverterSequenceTypeViewDaySection.allocationSize(value.`days`)
+    )
 
-    override fun write(
-        value: ViewMonthSection,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`name`, buf)
-        FfiConverterString.write(value.`year`, buf)
-        FfiConverterString.write(value.`label`, buf)
-        FfiConverterSequenceTypeViewDaySection.write(value.`days`, buf)
+    override fun write(value: ViewMonthSection, buf: ByteBuffer) {
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`year`, buf)
+            FfiConverterString.write(value.`label`, buf)
+            FfiConverterSequenceTypeViewDaySection.write(value.`days`, buf)
     }
 }
+
+
 
 /**
  * The paywall, in the words it is read in.
@@ -2874,92 +2879,112 @@ public object FfiConverterTypeViewMonthSection : FfiConverterRustBuffer<ViewMont
  * here but [`step`](Self::step), and the web and the desktop app, which take a
  * card, draw that too.
  */
-data class ViewPaywall(
-    var `title`: kotlin.String,
-    var `body`: List<ViewRun>,
+data class ViewPaywall (
+    var `title`: kotlin.String
+    , 
+    var `body`: List<ViewRun>
+    , 
     /**
      * What it costs, and when the last period ran out where there was one.
      */
-    var `rows`: List<ViewIconRow>,
+    var `rows`: List<ViewIconRow>
+    , 
     /**
      * How far paying has got: the button, and the card form where there is
      * one.
      */
-    var `step`: ViewPaywallStep,
+    var `step`: ViewPaywallStep
+    , 
     /**
      * `"Sign out"`.
      */
-    var `signOut`: kotlin.String,
-) {
+    var `signOut`: kotlin.String
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewPaywall : FfiConverterRustBuffer<ViewPaywall> {
-    override fun read(buf: ByteBuffer): ViewPaywall =
-        ViewPaywall(
+public object FfiConverterTypeViewPaywall: FfiConverterRustBuffer<ViewPaywall> {
+    override fun read(buf: ByteBuffer): ViewPaywall {
+        return ViewPaywall(
             FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewRun.read(buf),
             FfiConverterSequenceTypeViewIconRow.read(buf),
             FfiConverterTypeViewPaywallStep.read(buf),
             FfiConverterString.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewPaywall) =
-        (
+    override fun allocationSize(value: ViewPaywall) = (
             FfiConverterString.allocationSize(value.`title`) +
-                FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
-                FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`) +
-                FfiConverterTypeViewPaywallStep.allocationSize(value.`step`) +
-                FfiConverterString.allocationSize(value.`signOut`)
-        )
+            FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
+            FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`) +
+            FfiConverterTypeViewPaywallStep.allocationSize(value.`step`) +
+            FfiConverterString.allocationSize(value.`signOut`)
+    )
 
-    override fun write(
-        value: ViewPaywall,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`title`, buf)
-        FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
-        FfiConverterSequenceTypeViewIconRow.write(value.`rows`, buf)
-        FfiConverterTypeViewPaywallStep.write(value.`step`, buf)
-        FfiConverterString.write(value.`signOut`, buf)
+    override fun write(value: ViewPaywall, buf: ByteBuffer) {
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
+            FfiConverterSequenceTypeViewIconRow.write(value.`rows`, buf)
+            FfiConverterTypeViewPaywallStep.write(value.`step`, buf)
+            FfiConverterString.write(value.`signOut`, buf)
     }
 }
+
+
 
 /**
  * The time range, as the sentence the sketch draws.
  */
-data class ViewRange(
+data class ViewRange (
     /**
      * Which of the four forms is live.
      */
-    var `kind`: ViewRangeKind,
+    var `kind`: ViewRangeKind
+    , 
     /**
      * "This [month]" — the unit token.
      */
-    var `thisUnit`: kotlin.String,
+    var `thisUnit`: kotlin.String
+    , 
     /**
      * "Last [3] [months]" — the count and unit tokens.
      */
-    var `lastCount`: kotlin.String,
-    var `lastUnit`: kotlin.String,
+    var `lastCount`: kotlin.String
+    , 
+    var `lastUnit`: kotlin.String
+    , 
     /**
      * "Between [Jun 1] and [Aug 19]".
      */
-    var `betweenStart`: kotlin.String,
-    var `betweenEnd`: kotlin.String,
-) {
+    var `betweenStart`: kotlin.String
+    , 
+    var `betweenEnd`: kotlin.String
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewRange : FfiConverterRustBuffer<ViewRange> {
-    override fun read(buf: ByteBuffer): ViewRange =
-        ViewRange(
+public object FfiConverterTypeViewRange: FfiConverterRustBuffer<ViewRange> {
+    override fun read(buf: ByteBuffer): ViewRange {
+        return ViewRange(
             FfiConverterTypeViewRangeKind.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
@@ -2967,90 +2992,110 @@ public object FfiConverterTypeViewRange : FfiConverterRustBuffer<ViewRange> {
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewRange) =
-        (
+    override fun allocationSize(value: ViewRange) = (
             FfiConverterTypeViewRangeKind.allocationSize(value.`kind`) +
-                FfiConverterString.allocationSize(value.`thisUnit`) +
-                FfiConverterString.allocationSize(value.`lastCount`) +
-                FfiConverterString.allocationSize(value.`lastUnit`) +
-                FfiConverterString.allocationSize(value.`betweenStart`) +
-                FfiConverterString.allocationSize(value.`betweenEnd`)
-        )
+            FfiConverterString.allocationSize(value.`thisUnit`) +
+            FfiConverterString.allocationSize(value.`lastCount`) +
+            FfiConverterString.allocationSize(value.`lastUnit`) +
+            FfiConverterString.allocationSize(value.`betweenStart`) +
+            FfiConverterString.allocationSize(value.`betweenEnd`)
+    )
 
-    override fun write(
-        value: ViewRange,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterTypeViewRangeKind.write(value.`kind`, buf)
-        FfiConverterString.write(value.`thisUnit`, buf)
-        FfiConverterString.write(value.`lastCount`, buf)
-        FfiConverterString.write(value.`lastUnit`, buf)
-        FfiConverterString.write(value.`betweenStart`, buf)
-        FfiConverterString.write(value.`betweenEnd`, buf)
+    override fun write(value: ViewRange, buf: ByteBuffer) {
+            FfiConverterTypeViewRangeKind.write(value.`kind`, buf)
+            FfiConverterString.write(value.`thisUnit`, buf)
+            FfiConverterString.write(value.`lastCount`, buf)
+            FfiConverterString.write(value.`lastUnit`, buf)
+            FfiConverterString.write(value.`betweenStart`, buf)
+            FfiConverterString.write(value.`betweenEnd`, buf)
     }
 }
 
-data class ViewRecurring(
+
+
+data class ViewRecurring (
     /**
      * `"Every month"` — what the headline under it is a figure for.
      */
-    var `headlineLabel`: kotlin.String,
+    var `headlineLabel`: kotlin.String
+    , 
     /**
      * `"−$3,767.18"`, the net of everything that comes back.
      */
-    var `headline`: kotlin.String,
+    var `headline`: kotlin.String
+    , 
     /**
      * `"+$4.22 in · net −$3,767.18"` — the two directions and the net on one
      * line, which is what the web sets under its headline.
      */
-    var `detail`: kotlin.String,
+    var `detail`: kotlin.String
+    , 
     /**
      * `"$4.22"` and `"$3,771.40"` — the two directions, unsigned, for where a
      * word beside the figure says which way the money goes.
      */
-    var `flowIn`: kotlin.String,
-    var `flowOut`: kotlin.String,
+    var `flowIn`: kotlin.String
+    , 
+    var `flowOut`: kotlin.String
+    , 
     /**
      * `"+$4.22"` and `"−$3,771.40"` — the same two with the sign back on, for
      * where there is no room for the words.
      */
-    var `flowInSigned`: kotlin.String,
-    var `flowOutSigned`: kotlin.String,
-    var `masked`: kotlin.Boolean,
+    var `flowInSigned`: kotlin.String
+    , 
+    var `flowOutSigned`: kotlin.String
+    , 
+    var `masked`: kotlin.Boolean
+    , 
     /**
      * `"Where it goes"` and `"−$3,771.40"` — the heading over the split.
      */
-    var `breakdownLabel`: kotlin.String,
-    var `breakdownTotal`: kotlin.String,
+    var `breakdownLabel`: kotlin.String
+    , 
+    var `breakdownTotal`: kotlin.String
+    , 
     /**
      * The split behind both the bar and its legend.
      */
-    var `breakdown`: List<ViewBreakdownSlice>,
+    var `breakdown`: List<ViewBreakdownSlice>
+    , 
     /**
      * When it all lands.
      */
-    var `calendar`: ViewCalendar,
+    var `calendar`: ViewCalendar
+    , 
     /**
      * What landed on the day that was tapped. `None` until one is.
      */
-    var `dayCard`: ViewDayCard?,
+    var `dayCard`: ViewDayCard?
+    , 
     /**
      * `"Every stream"` and `"8"` — the heading over the list.
      */
-    var `streamsLabel`: kotlin.String,
-    var `streamsCount`: kotlin.String,
-    var `groups`: List<ViewStreamGroup>,
-) {
+    var `streamsLabel`: kotlin.String
+    , 
+    var `streamsCount`: kotlin.String
+    , 
+    var `groups`: List<ViewStreamGroup>
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewRecurring : FfiConverterRustBuffer<ViewRecurring> {
-    override fun read(buf: ByteBuffer): ViewRecurring =
-        ViewRecurring(
+public object FfiConverterTypeViewRecurring: FfiConverterRustBuffer<ViewRecurring> {
+    override fun read(buf: ByteBuffer): ViewRecurring {
+        return ViewRecurring(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
@@ -3068,49 +3113,48 @@ public object FfiConverterTypeViewRecurring : FfiConverterRustBuffer<ViewRecurri
             FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewStreamGroup.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewRecurring) =
-        (
+    override fun allocationSize(value: ViewRecurring) = (
             FfiConverterString.allocationSize(value.`headlineLabel`) +
-                FfiConverterString.allocationSize(value.`headline`) +
-                FfiConverterString.allocationSize(value.`detail`) +
-                FfiConverterString.allocationSize(value.`flowIn`) +
-                FfiConverterString.allocationSize(value.`flowOut`) +
-                FfiConverterString.allocationSize(value.`flowInSigned`) +
-                FfiConverterString.allocationSize(value.`flowOutSigned`) +
-                FfiConverterBoolean.allocationSize(value.`masked`) +
-                FfiConverterString.allocationSize(value.`breakdownLabel`) +
-                FfiConverterString.allocationSize(value.`breakdownTotal`) +
-                FfiConverterSequenceTypeViewBreakdownSlice.allocationSize(value.`breakdown`) +
-                FfiConverterTypeViewCalendar.allocationSize(value.`calendar`) +
-                FfiConverterOptionalTypeViewDayCard.allocationSize(value.`dayCard`) +
-                FfiConverterString.allocationSize(value.`streamsLabel`) +
-                FfiConverterString.allocationSize(value.`streamsCount`) +
-                FfiConverterSequenceTypeViewStreamGroup.allocationSize(value.`groups`)
-        )
+            FfiConverterString.allocationSize(value.`headline`) +
+            FfiConverterString.allocationSize(value.`detail`) +
+            FfiConverterString.allocationSize(value.`flowIn`) +
+            FfiConverterString.allocationSize(value.`flowOut`) +
+            FfiConverterString.allocationSize(value.`flowInSigned`) +
+            FfiConverterString.allocationSize(value.`flowOutSigned`) +
+            FfiConverterBoolean.allocationSize(value.`masked`) +
+            FfiConverterString.allocationSize(value.`breakdownLabel`) +
+            FfiConverterString.allocationSize(value.`breakdownTotal`) +
+            FfiConverterSequenceTypeViewBreakdownSlice.allocationSize(value.`breakdown`) +
+            FfiConverterTypeViewCalendar.allocationSize(value.`calendar`) +
+            FfiConverterOptionalTypeViewDayCard.allocationSize(value.`dayCard`) +
+            FfiConverterString.allocationSize(value.`streamsLabel`) +
+            FfiConverterString.allocationSize(value.`streamsCount`) +
+            FfiConverterSequenceTypeViewStreamGroup.allocationSize(value.`groups`)
+    )
 
-    override fun write(
-        value: ViewRecurring,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`headlineLabel`, buf)
-        FfiConverterString.write(value.`headline`, buf)
-        FfiConverterString.write(value.`detail`, buf)
-        FfiConverterString.write(value.`flowIn`, buf)
-        FfiConverterString.write(value.`flowOut`, buf)
-        FfiConverterString.write(value.`flowInSigned`, buf)
-        FfiConverterString.write(value.`flowOutSigned`, buf)
-        FfiConverterBoolean.write(value.`masked`, buf)
-        FfiConverterString.write(value.`breakdownLabel`, buf)
-        FfiConverterString.write(value.`breakdownTotal`, buf)
-        FfiConverterSequenceTypeViewBreakdownSlice.write(value.`breakdown`, buf)
-        FfiConverterTypeViewCalendar.write(value.`calendar`, buf)
-        FfiConverterOptionalTypeViewDayCard.write(value.`dayCard`, buf)
-        FfiConverterString.write(value.`streamsLabel`, buf)
-        FfiConverterString.write(value.`streamsCount`, buf)
-        FfiConverterSequenceTypeViewStreamGroup.write(value.`groups`, buf)
+    override fun write(value: ViewRecurring, buf: ByteBuffer) {
+            FfiConverterString.write(value.`headlineLabel`, buf)
+            FfiConverterString.write(value.`headline`, buf)
+            FfiConverterString.write(value.`detail`, buf)
+            FfiConverterString.write(value.`flowIn`, buf)
+            FfiConverterString.write(value.`flowOut`, buf)
+            FfiConverterString.write(value.`flowInSigned`, buf)
+            FfiConverterString.write(value.`flowOutSigned`, buf)
+            FfiConverterBoolean.write(value.`masked`, buf)
+            FfiConverterString.write(value.`breakdownLabel`, buf)
+            FfiConverterString.write(value.`breakdownTotal`, buf)
+            FfiConverterSequenceTypeViewBreakdownSlice.write(value.`breakdown`, buf)
+            FfiConverterTypeViewCalendar.write(value.`calendar`, buf)
+            FfiConverterOptionalTypeViewDayCard.write(value.`dayCard`, buf)
+            FfiConverterString.write(value.`streamsLabel`, buf)
+            FfiConverterString.write(value.`streamsCount`, buf)
+            FfiConverterSequenceTypeViewStreamGroup.write(value.`groups`, buf)
     }
 }
+
+
 
 /**
  * A stretch of body copy, and whether it is set strong.
@@ -3118,125 +3162,153 @@ public object FfiConverterTypeViewRecurring : FfiConverterRustBuffer<ViewRecurri
  * A list of runs rather than one string with markup in it, so no platform
  * has to learn to parse the same markup to keep the emphasis.
  */
-data class ViewRun(
-    var `text`: kotlin.String,
-    var `strong`: kotlin.Boolean,
-) {
+data class ViewRun (
+    var `text`: kotlin.String
+    , 
+    var `strong`: kotlin.Boolean
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewRun : FfiConverterRustBuffer<ViewRun> {
-    override fun read(buf: ByteBuffer): ViewRun =
-        ViewRun(
+public object FfiConverterTypeViewRun: FfiConverterRustBuffer<ViewRun> {
+    override fun read(buf: ByteBuffer): ViewRun {
+        return ViewRun(
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewRun) =
-        (
+    override fun allocationSize(value: ViewRun) = (
             FfiConverterString.allocationSize(value.`text`) +
-                FfiConverterBoolean.allocationSize(value.`strong`)
-        )
+            FfiConverterBoolean.allocationSize(value.`strong`)
+    )
 
-    override fun write(
-        value: ViewRun,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`text`, buf)
-        FfiConverterBoolean.write(value.`strong`, buf)
+    override fun write(value: ViewRun, buf: ByteBuffer) {
+            FfiConverterString.write(value.`text`, buf)
+            FfiConverterBoolean.write(value.`strong`, buf)
     }
 }
 
-data class ViewStreamGroup(
+
+
+data class ViewStreamGroup (
     /**
      * `"Transfer out"`.
      */
-    var `name`: kotlin.String,
-    var `token`: kotlin.String,
+    var `name`: kotlin.String
+    , 
+    var `token`: kotlin.String
+    , 
     /**
      * `"$2,078.50"`.
      */
-    var `total`: kotlin.String,
+    var `total`: kotlin.String
+    , 
     /**
      * `"1 stream"` / `"2 streams"`.
      */
-    var `countLabel`: kotlin.String,
-    var `streams`: List<ViewStreamRow>,
-) {
+    var `countLabel`: kotlin.String
+    , 
+    var `streams`: List<ViewStreamRow>
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewStreamGroup : FfiConverterRustBuffer<ViewStreamGroup> {
-    override fun read(buf: ByteBuffer): ViewStreamGroup =
-        ViewStreamGroup(
+public object FfiConverterTypeViewStreamGroup: FfiConverterRustBuffer<ViewStreamGroup> {
+    override fun read(buf: ByteBuffer): ViewStreamGroup {
+        return ViewStreamGroup(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterSequenceTypeViewStreamRow.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewStreamGroup) =
-        (
+    override fun allocationSize(value: ViewStreamGroup) = (
             FfiConverterString.allocationSize(value.`name`) +
-                FfiConverterString.allocationSize(value.`token`) +
-                FfiConverterString.allocationSize(value.`total`) +
-                FfiConverterString.allocationSize(value.`countLabel`) +
-                FfiConverterSequenceTypeViewStreamRow.allocationSize(value.`streams`)
-        )
+            FfiConverterString.allocationSize(value.`token`) +
+            FfiConverterString.allocationSize(value.`total`) +
+            FfiConverterString.allocationSize(value.`countLabel`) +
+            FfiConverterSequenceTypeViewStreamRow.allocationSize(value.`streams`)
+    )
 
-    override fun write(
-        value: ViewStreamGroup,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`name`, buf)
-        FfiConverterString.write(value.`token`, buf)
-        FfiConverterString.write(value.`total`, buf)
-        FfiConverterString.write(value.`countLabel`, buf)
-        FfiConverterSequenceTypeViewStreamRow.write(value.`streams`, buf)
+    override fun write(value: ViewStreamGroup, buf: ByteBuffer) {
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`token`, buf)
+            FfiConverterString.write(value.`total`, buf)
+            FfiConverterString.write(value.`countLabel`, buf)
+            FfiConverterSequenceTypeViewStreamRow.write(value.`streams`, buf)
     }
 }
 
-data class ViewStreamRow(
-    var `id`: kotlin.String,
-    var `title`: kotlin.String,
-    var `logoUrl`: kotlin.String?,
+
+
+data class ViewStreamRow (
+    var `id`: kotlin.String
+    , 
+    var `title`: kotlin.String
+    , 
+    var `logoUrl`: kotlin.String?
+    , 
     /**
      * `"next Aug 22 · in 3 days"`.
      */
-    var `when`: kotlin.String,
+    var `when`: kotlin.String
+    , 
     /**
      * `"Monthly · next Aug 22"` — the frequency and the date as one phrase.
      */
-    var `sub`: kotlin.String,
+    var `sub`: kotlin.String
+    , 
     /**
      * Due within the week.
      */
-    var `soon`: kotlin.Boolean,
+    var `soon`: kotlin.Boolean
+    , 
     /**
      * `"−$2,078.50"`.
      */
-    var `amount`: kotlin.String,
+    var `amount`: kotlin.String
+    , 
     /**
      * `"Monthly"`.
      */
-    var `frequency`: kotlin.String,
-) {
+    var `frequency`: kotlin.String
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewStreamRow : FfiConverterRustBuffer<ViewStreamRow> {
-    override fun read(buf: ByteBuffer): ViewStreamRow =
-        ViewStreamRow(
+public object FfiConverterTypeViewStreamRow: FfiConverterRustBuffer<ViewStreamRow> {
+    override fun read(buf: ByteBuffer): ViewStreamRow {
+        return ViewStreamRow(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterOptionalString.read(buf),
@@ -3246,129 +3318,149 @@ public object FfiConverterTypeViewStreamRow : FfiConverterRustBuffer<ViewStreamR
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewStreamRow) =
-        (
+    override fun allocationSize(value: ViewStreamRow) = (
             FfiConverterString.allocationSize(value.`id`) +
-                FfiConverterString.allocationSize(value.`title`) +
-                FfiConverterOptionalString.allocationSize(value.`logoUrl`) +
-                FfiConverterString.allocationSize(value.`when`) +
-                FfiConverterString.allocationSize(value.`sub`) +
-                FfiConverterBoolean.allocationSize(value.`soon`) +
-                FfiConverterString.allocationSize(value.`amount`) +
-                FfiConverterString.allocationSize(value.`frequency`)
-        )
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterOptionalString.allocationSize(value.`logoUrl`) +
+            FfiConverterString.allocationSize(value.`when`) +
+            FfiConverterString.allocationSize(value.`sub`) +
+            FfiConverterBoolean.allocationSize(value.`soon`) +
+            FfiConverterString.allocationSize(value.`amount`) +
+            FfiConverterString.allocationSize(value.`frequency`)
+    )
 
-    override fun write(
-        value: ViewStreamRow,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`id`, buf)
-        FfiConverterString.write(value.`title`, buf)
-        FfiConverterOptionalString.write(value.`logoUrl`, buf)
-        FfiConverterString.write(value.`when`, buf)
-        FfiConverterString.write(value.`sub`, buf)
-        FfiConverterBoolean.write(value.`soon`, buf)
-        FfiConverterString.write(value.`amount`, buf)
-        FfiConverterString.write(value.`frequency`, buf)
+    override fun write(value: ViewStreamRow, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterOptionalString.write(value.`logoUrl`, buf)
+            FfiConverterString.write(value.`when`, buf)
+            FfiConverterString.write(value.`sub`, buf)
+            FfiConverterBoolean.write(value.`soon`, buf)
+            FfiConverterString.write(value.`amount`, buf)
+            FfiConverterString.write(value.`frequency`, buf)
     }
 }
+
+
 
 /**
  * One figure on the last screen, and what it is a figure for.
  */
-data class ViewTally(
+data class ViewTally (
     /**
      * `"48"`.
      */
-    var `value`: kotlin.String,
+    var `value`: kotlin.String
+    , 
     /**
      * `"transactions, back to 23 May"`.
      */
-    var `label`: kotlin.String,
-) {
+    var `label`: kotlin.String
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewTally : FfiConverterRustBuffer<ViewTally> {
-    override fun read(buf: ByteBuffer): ViewTally =
-        ViewTally(
+public object FfiConverterTypeViewTally: FfiConverterRustBuffer<ViewTally> {
+    override fun read(buf: ByteBuffer): ViewTally {
+        return ViewTally(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewTally) =
-        (
+    override fun allocationSize(value: ViewTally) = (
             FfiConverterString.allocationSize(value.`value`) +
-                FfiConverterString.allocationSize(value.`label`)
-        )
+            FfiConverterString.allocationSize(value.`label`)
+    )
 
-    override fun write(
-        value: ViewTally,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`value`, buf)
-        FfiConverterString.write(value.`label`, buf)
+    override fun write(value: ViewTally, buf: ByteBuffer) {
+            FfiConverterString.write(value.`value`, buf)
+            FfiConverterString.write(value.`label`, buf)
     }
 }
 
-data class ViewTxRow(
+
+
+data class ViewTxRow (
     /**
      * Stable across refreshes, so a platform list can diff on it.
      */
-    var `id`: kotlin.String,
+    var `id`: kotlin.String
+    , 
     /**
      * The merchant, or the raw bank description where there is no merchant.
      */
-    var `title`: kotlin.String,
+    var `title`: kotlin.String
+    , 
     /**
      * What the row calls its category, e.g. `"Food & drink"`.
      */
-    var `category`: kotlin.String,
+    var `category`: kotlin.String
+    , 
     /**
      * A palette token for the category, e.g. `"c-food"`, which the view maps
      * to its own colour.
      */
-    var `categoryToken`: kotlin.String,
+    var `categoryToken`: kotlin.String
+    , 
     /**
      * The amount, ready to print: `"−$5.40"`, `"+$500.00"`.
      */
-    var `amount`: kotlin.String,
+    var `amount`: kotlin.String
+    , 
     /**
      * Whether the amount reads as money arriving, so that nothing has to
      * parse the sign back out of `amount`.
      */
-    var `isInflow`: kotlin.Boolean,
+    var `isInflow`: kotlin.Boolean
+    , 
     /**
      * The account it went through, `"Plaid Checking ·0000"`. Empty where the
      * account is not one the app knows.
      */
-    var `account`: kotlin.String,
+    var `account`: kotlin.String
+    , 
     /**
      * A merchant logo, where one exists. The slot is reserved either way.
      */
-    var `logoUrl`: kotlin.String?,
+    var `logoUrl`: kotlin.String?
+    , 
     /**
      * What the mark shows where there is no logo: `"UA"` for United Airlines.
      */
-    var `initials`: kotlin.String,
+    var `initials`: kotlin.String
+    , 
     /**
      * Authorised but not settled.
      */
-    var `pending`: kotlin.Boolean,
-) {
+    var `pending`: kotlin.Boolean
+    
+){
+    
+
+    
+
+    
     companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeViewTxRow : FfiConverterRustBuffer<ViewTxRow> {
-    override fun read(buf: ByteBuffer): ViewTxRow =
-        ViewTxRow(
+public object FfiConverterTypeViewTxRow: FfiConverterRustBuffer<ViewTxRow> {
+    override fun read(buf: ByteBuffer): ViewTxRow {
+        return ViewTxRow(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
@@ -3380,37 +3472,36 @@ public object FfiConverterTypeViewTxRow : FfiConverterRustBuffer<ViewTxRow> {
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
         )
+    }
 
-    override fun allocationSize(value: ViewTxRow) =
-        (
+    override fun allocationSize(value: ViewTxRow) = (
             FfiConverterString.allocationSize(value.`id`) +
-                FfiConverterString.allocationSize(value.`title`) +
-                FfiConverterString.allocationSize(value.`category`) +
-                FfiConverterString.allocationSize(value.`categoryToken`) +
-                FfiConverterString.allocationSize(value.`amount`) +
-                FfiConverterBoolean.allocationSize(value.`isInflow`) +
-                FfiConverterString.allocationSize(value.`account`) +
-                FfiConverterOptionalString.allocationSize(value.`logoUrl`) +
-                FfiConverterString.allocationSize(value.`initials`) +
-                FfiConverterBoolean.allocationSize(value.`pending`)
-        )
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterString.allocationSize(value.`category`) +
+            FfiConverterString.allocationSize(value.`categoryToken`) +
+            FfiConverterString.allocationSize(value.`amount`) +
+            FfiConverterBoolean.allocationSize(value.`isInflow`) +
+            FfiConverterString.allocationSize(value.`account`) +
+            FfiConverterOptionalString.allocationSize(value.`logoUrl`) +
+            FfiConverterString.allocationSize(value.`initials`) +
+            FfiConverterBoolean.allocationSize(value.`pending`)
+    )
 
-    override fun write(
-        value: ViewTxRow,
-        buf: ByteBuffer,
-    ) {
-        FfiConverterString.write(value.`id`, buf)
-        FfiConverterString.write(value.`title`, buf)
-        FfiConverterString.write(value.`category`, buf)
-        FfiConverterString.write(value.`categoryToken`, buf)
-        FfiConverterString.write(value.`amount`, buf)
-        FfiConverterBoolean.write(value.`isInflow`, buf)
-        FfiConverterString.write(value.`account`, buf)
-        FfiConverterOptionalString.write(value.`logoUrl`, buf)
-        FfiConverterString.write(value.`initials`, buf)
-        FfiConverterBoolean.write(value.`pending`, buf)
+    override fun write(value: ViewTxRow, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterString.write(value.`category`, buf)
+            FfiConverterString.write(value.`categoryToken`, buf)
+            FfiConverterString.write(value.`amount`, buf)
+            FfiConverterBoolean.write(value.`isInflow`, buf)
+            FfiConverterString.write(value.`account`, buf)
+            FfiConverterOptionalString.write(value.`logoUrl`, buf)
+            FfiConverterString.write(value.`initials`, buf)
+            FfiConverterBoolean.write(value.`pending`, buf)
     }
 }
+
+
 
 /**
  * What the machine asks for, and of whom.
@@ -3420,17 +3511,31 @@ public object FfiConverterTypeViewTxRow : FfiConverterRustBuffer<ViewTxRow> {
  * copies the payload across the boundary either way.
  */
 sealed class Action {
+    
     data class ToUi(
-        val `action`: uniffi.client_state.ActionUi,
-    ) : Action() {
-        companion object
-    }
+        val `action`: uniffi.client_state.ActionUi) : Action()
+        
+    {
+        
 
-    data class ToSource(
-        val `action`: uniffi.client_state.ActionSource,
-    ) : Action() {
         companion object
     }
+    
+    data class ToSource(
+        val `action`: uniffi.client_state.ActionSource) : Action()
+        
+    {
+        
+
+        companion object
+    }
+    
+
+    
+
+    
+    
+
 
     companion object
 }
@@ -3438,56 +3543,43 @@ sealed class Action {
 /**
  * @suppress
  */
-public object FfiConverterTypeAction : FfiConverterRustBuffer<Action> {
-    override fun read(buf: ByteBuffer): Action =
-        when (buf.getInt()) {
-            1 -> {
-                Action.ToUi(
-                    FfiConverterTypeActionUi.read(buf),
+public object FfiConverterTypeAction : FfiConverterRustBuffer<Action>{
+    override fun read(buf: ByteBuffer): Action {
+        return when(buf.getInt()) {
+            1 -> Action.ToUi(
+                FfiConverterTypeActionUi.read(buf),
                 )
-            }
-
-            2 -> {
-                Action.ToSource(
-                    FfiConverterTypeActionSource.read(buf),
+            2 -> Action.ToSource(
+                FfiConverterTypeActionSource.read(buf),
                 )
-            }
-
-            else -> {
-                throw RuntimeException("invalid enum value, something is very wrong!!")
-            }
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
+    }
 
-    override fun allocationSize(value: Action): ULong =
-        when (value) {
-            is Action.ToUi -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeActionUi.allocationSize(value.`action`)
-                )
-            }
-
-            is Action.ToSource -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeActionSource.allocationSize(value.`action`)
-                )
-            }
+    override fun allocationSize(value: Action): ULong = when(value) {
+        is Action.ToUi -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeActionUi.allocationSize(value.`action`)
+            )
         }
+        is Action.ToSource -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeActionSource.allocationSize(value.`action`)
+            )
+        }
+    }
 
-    override fun write(
-        value: Action,
-        buf: ByteBuffer,
-    ) {
-        when (value) {
+    override fun write(value: Action, buf: ByteBuffer) {
+        when(value) {
             is Action.ToUi -> {
                 buf.putInt(1)
                 FfiConverterTypeActionUi.write(value.`action`, buf)
                 Unit
             }
-
             is Action.ToSource -> {
                 buf.putInt(2)
                 FfiConverterTypeActionSource.write(value.`action`, buf)
@@ -3497,72 +3589,95 @@ public object FfiConverterTypeAction : FfiConverterRustBuffer<Action> {
     }
 }
 
+
+
+
+
 sealed class ActionSource {
+    
     /**
      * Go and get everything. No freshness hint: when to ask a bank again is
      * the server's decision, since a hint the app can repeat at will spends
      * an account-wide Plaid budget.
      */
     object LoadSnapshot : ActionSource()
-
+    
+    
     /**
      * Read who the device says is signed in.
      */
     object LoadSession : ActionSource()
-
+    
+    
     /**
      * Commit the session the runtime is holding, so that the next launch
      * opens on the Ledger. No payload: the credential is the one `VerifyCode`
      * came back with, and the runtime has held it since.
      */
     object SaveSession : ActionSource()
-
+    
+    
     /**
      * Throw the session away, so that the next launch opens on first run.
      */
     object ForgetSession : ActionSource()
-
+    
+    
     /**
      * Send a six-digit code to this address.
      */
     data class SendCode(
-        val `email`: kotlin.String,
-    ) : ActionSource() {
+        val `email`: kotlin.String) : ActionSource()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * Check a six-digit code against the address it was sent to.
      */
     data class VerifyCode(
-        val `email`: kotlin.String,
-        val `code`: kotlin.String,
-    ) : ActionSource() {
+        val `email`: kotlin.String, 
+        val `code`: kotlin.String) : ActionSource()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * Ask the server for a `link_token` and open the `hosted_link_url` that
      * comes back. The app never holds a token of either kind: the secret that
      * signs both cannot ship inside an app (`docs/PLAID.md`).
      */
     object StartBankLink : ActionSource()
-
+    
+    
     /**
-     * Ask the server to start a subscription, and have the card form ready
-     * to pay it.
-     *
-     * The runtime keeps what the server answers with — the secret a card is
-     * confirmed against, and the key the form opens with — and reports only
-     * that it is started. Neither is a thing to put in an event log.
+     * The same, in update mode against one bank the user already holds: ask
+     * the server for a repair session and open its page. The sign-in renews
+     * the bank's consent instead of attaching a new one.
      */
-    object StartSubscription : ActionSource()
+    data class StartBankRepair(
+        val `itemId`: kotlin.String) : ActionSource()
+        
+    {
+        
 
+        companion object
+    }
+    
     /**
-     * Pay the subscription that was started, with the card in the form.
+     * Ask the server for a Stripe Checkout page and open it in a window of
+     * its own. The money is taken there: no card detail ever reaches this
+     * app, and nothing about the page is a thing to put in an event log.
      */
-    object TakePayment : ActionSource()
-
+    object StartCheckout : ActionSource()
+    
+    
     /**
      * Open a stream the server writes the sync's progress to, and report
      * what arrives on it.
@@ -3572,13 +3687,22 @@ sealed class ActionSource {
      * and stay here — so a replay reproduces every attempt.
      */
     object WatchSync : ActionSource()
-
+    
+    
     /**
      * Let that stream go. Its own action rather than something the runtime
      * infers from a screen it cannot see: a connection nobody closes is a
      * connection the server holds a slot for.
      */
     object StopWatchingSync : ActionSource()
+    
+    
+
+    
+
+    
+    
+
 
     companion object
 }
@@ -3586,204 +3710,150 @@ sealed class ActionSource {
 /**
  * @suppress
  */
-public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource> {
-    override fun read(buf: ByteBuffer): ActionSource =
-        when (buf.getInt()) {
-            1 -> {
-                ActionSource.LoadSnapshot
-            }
-
-            2 -> {
-                ActionSource.LoadSession
-            }
-
-            3 -> {
-                ActionSource.SaveSession
-            }
-
-            4 -> {
-                ActionSource.ForgetSession
-            }
-
-            5 -> {
-                ActionSource.SendCode(
-                    FfiConverterString.read(buf),
+public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource>{
+    override fun read(buf: ByteBuffer): ActionSource {
+        return when(buf.getInt()) {
+            1 -> ActionSource.LoadSnapshot
+            2 -> ActionSource.LoadSession
+            3 -> ActionSource.SaveSession
+            4 -> ActionSource.ForgetSession
+            5 -> ActionSource.SendCode(
+                FfiConverterString.read(buf),
                 )
-            }
-
-            6 -> {
-                ActionSource.VerifyCode(
-                    FfiConverterString.read(buf),
-                    FfiConverterString.read(buf),
+            6 -> ActionSource.VerifyCode(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
                 )
-            }
-
-            7 -> {
-                ActionSource.StartBankLink
-            }
-
-            8 -> {
-                ActionSource.StartSubscription
-            }
-
-            9 -> {
-                ActionSource.TakePayment
-            }
-
-            10 -> {
-                ActionSource.WatchSync
-            }
-
-            11 -> {
-                ActionSource.StopWatchingSync
-            }
-
-            else -> {
-                throw RuntimeException("invalid enum value, something is very wrong!!")
-            }
+            7 -> ActionSource.StartBankLink
+            8 -> ActionSource.StartBankRepair(
+                FfiConverterString.read(buf),
+                )
+            9 -> ActionSource.StartCheckout
+            10 -> ActionSource.WatchSync
+            11 -> ActionSource.StopWatchingSync
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
+    }
 
-    override fun allocationSize(value: ActionSource): ULong =
-        when (value) {
-            is ActionSource.LoadSnapshot -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is ActionSource.LoadSession -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is ActionSource.SaveSession -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is ActionSource.ForgetSession -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is ActionSource.SendCode -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`email`)
-                )
-            }
-
-            is ActionSource.VerifyCode -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`email`) +
-                        FfiConverterString.allocationSize(value.`code`)
-                )
-            }
-
-            is ActionSource.StartBankLink -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is ActionSource.StartSubscription -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is ActionSource.TakePayment -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is ActionSource.WatchSync -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is ActionSource.StopWatchingSync -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
+    override fun allocationSize(value: ActionSource): ULong = when(value) {
+        is ActionSource.LoadSnapshot -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
         }
+        is ActionSource.LoadSession -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ActionSource.SaveSession -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ActionSource.ForgetSession -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ActionSource.SendCode -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`email`)
+            )
+        }
+        is ActionSource.VerifyCode -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`email`)
+                + FfiConverterString.allocationSize(value.`code`)
+            )
+        }
+        is ActionSource.StartBankLink -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ActionSource.StartBankRepair -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`itemId`)
+            )
+        }
+        is ActionSource.StartCheckout -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ActionSource.WatchSync -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ActionSource.StopWatchingSync -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+    }
 
-    override fun write(
-        value: ActionSource,
-        buf: ByteBuffer,
-    ) {
-        when (value) {
+    override fun write(value: ActionSource, buf: ByteBuffer) {
+        when(value) {
             is ActionSource.LoadSnapshot -> {
                 buf.putInt(1)
                 Unit
             }
-
             is ActionSource.LoadSession -> {
                 buf.putInt(2)
                 Unit
             }
-
             is ActionSource.SaveSession -> {
                 buf.putInt(3)
                 Unit
             }
-
             is ActionSource.ForgetSession -> {
                 buf.putInt(4)
                 Unit
             }
-
             is ActionSource.SendCode -> {
                 buf.putInt(5)
                 FfiConverterString.write(value.`email`, buf)
                 Unit
             }
-
             is ActionSource.VerifyCode -> {
                 buf.putInt(6)
                 FfiConverterString.write(value.`email`, buf)
                 FfiConverterString.write(value.`code`, buf)
                 Unit
             }
-
             is ActionSource.StartBankLink -> {
                 buf.putInt(7)
                 Unit
             }
-
-            is ActionSource.StartSubscription -> {
+            is ActionSource.StartBankRepair -> {
                 buf.putInt(8)
+                FfiConverterString.write(value.`itemId`, buf)
                 Unit
             }
-
-            is ActionSource.TakePayment -> {
+            is ActionSource.StartCheckout -> {
                 buf.putInt(9)
                 Unit
             }
-
             is ActionSource.WatchSync -> {
                 buf.putInt(10)
                 Unit
             }
-
             is ActionSource.StopWatchingSync -> {
                 buf.putInt(11)
                 Unit
@@ -3792,11 +3862,16 @@ public object FfiConverterTypeActionSource : FfiConverterRustBuffer<ActionSource
     }
 }
 
+
+
+
+
 /**
  * Something for the view to do. These carry finished values, not
  * instructions to go and compute one.
  */
 sealed class ActionUi {
+    
     /**
      * Draw this screen. The whole screen, in the state it should be in.
      *
@@ -3806,20 +3881,33 @@ sealed class ActionUi {
      * would still be a strip of ground at the bottom of the phone.
      */
     data class Render(
-        val `screen`: uniffi.client_state.ViewScreen,
-        val `dock`: uniffi.client_state.ViewDock?,
-    ) : ActionUi() {
+        val `screen`: uniffi.client_state.ViewScreen, 
+        val `dock`: uniffi.client_state.ViewDock?) : ActionUi()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * Tell the user something went wrong, in these words.
      */
     data class ShowError(
-        val `message`: kotlin.String,
-    ) : ActionUi() {
+        val `message`: kotlin.String) : ActionUi()
+        
+    {
+        
+
         companion object
     }
+    
+
+    
+
+    
+    
+
 
     companion object
 }
@@ -3827,59 +3915,46 @@ sealed class ActionUi {
 /**
  * @suppress
  */
-public object FfiConverterTypeActionUi : FfiConverterRustBuffer<ActionUi> {
-    override fun read(buf: ByteBuffer): ActionUi =
-        when (buf.getInt()) {
-            1 -> {
-                ActionUi.Render(
-                    FfiConverterTypeViewScreen.read(buf),
-                    FfiConverterOptionalTypeViewDock.read(buf),
+public object FfiConverterTypeActionUi : FfiConverterRustBuffer<ActionUi>{
+    override fun read(buf: ByteBuffer): ActionUi {
+        return when(buf.getInt()) {
+            1 -> ActionUi.Render(
+                FfiConverterTypeViewScreen.read(buf),
+                FfiConverterOptionalTypeViewDock.read(buf),
                 )
-            }
-
-            2 -> {
-                ActionUi.ShowError(
-                    FfiConverterString.read(buf),
+            2 -> ActionUi.ShowError(
+                FfiConverterString.read(buf),
                 )
-            }
-
-            else -> {
-                throw RuntimeException("invalid enum value, something is very wrong!!")
-            }
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
+    }
 
-    override fun allocationSize(value: ActionUi): ULong =
-        when (value) {
-            is ActionUi.Render -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeViewScreen.allocationSize(value.`screen`) +
-                        FfiConverterOptionalTypeViewDock.allocationSize(value.`dock`)
-                )
-            }
-
-            is ActionUi.ShowError -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`message`)
-                )
-            }
+    override fun allocationSize(value: ActionUi): ULong = when(value) {
+        is ActionUi.Render -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeViewScreen.allocationSize(value.`screen`)
+                + FfiConverterOptionalTypeViewDock.allocationSize(value.`dock`)
+            )
         }
+        is ActionUi.ShowError -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`message`)
+            )
+        }
+    }
 
-    override fun write(
-        value: ActionUi,
-        buf: ByteBuffer,
-    ) {
-        when (value) {
+    override fun write(value: ActionUi, buf: ByteBuffer) {
+        when(value) {
             is ActionUi.Render -> {
                 buf.putInt(1)
                 FfiConverterTypeViewScreen.write(value.`screen`, buf)
                 FfiConverterOptionalTypeViewDock.write(value.`dock`, buf)
                 Unit
             }
-
             is ActionUi.ShowError -> {
                 buf.putInt(2)
                 FfiConverterString.write(value.`message`, buf)
@@ -3889,6 +3964,10 @@ public object FfiConverterTypeActionUi : FfiConverterRustBuffer<ActionUi> {
     }
 }
 
+
+
+
+
 /**
  * Where an event came from.
  *
@@ -3897,23 +3976,40 @@ public object FfiConverterTypeActionUi : FfiConverterRustBuffer<ActionUi> {
  * recording of the session rather than of whenever the replay runs.
  */
 sealed class Event {
+    
     data class FromUi(
-        val `event`: uniffi.client_state.EventUi,
-    ) : Event() {
+        val `event`: uniffi.client_state.EventUi) : Event()
+        
+    {
+        
+
         companion object
     }
-
+    
     data class FromSource(
-        val `event`: uniffi.client_state.EventSource,
-    ) : Event() {
-        companion object
-    }
+        val `event`: uniffi.client_state.EventSource) : Event()
+        
+    {
+        
 
-    data class FromRuntime(
-        val `event`: uniffi.client_state.EventRuntime,
-    ) : Event() {
         companion object
     }
+    
+    data class FromRuntime(
+        val `event`: uniffi.client_state.EventRuntime) : Event()
+        
+    {
+        
+
+        companion object
+    }
+    
+
+    
+
+    
+    
+
 
     companion object
 }
@@ -3921,76 +4017,58 @@ sealed class Event {
 /**
  * @suppress
  */
-public object FfiConverterTypeEvent : FfiConverterRustBuffer<Event> {
-    override fun read(buf: ByteBuffer): Event =
-        when (buf.getInt()) {
-            1 -> {
-                Event.FromUi(
-                    FfiConverterTypeEventUi.read(buf),
+public object FfiConverterTypeEvent : FfiConverterRustBuffer<Event>{
+    override fun read(buf: ByteBuffer): Event {
+        return when(buf.getInt()) {
+            1 -> Event.FromUi(
+                FfiConverterTypeEventUi.read(buf),
                 )
-            }
-
-            2 -> {
-                Event.FromSource(
-                    FfiConverterTypeEventSource.read(buf),
+            2 -> Event.FromSource(
+                FfiConverterTypeEventSource.read(buf),
                 )
-            }
-
-            3 -> {
-                Event.FromRuntime(
-                    FfiConverterTypeEventRuntime.read(buf),
+            3 -> Event.FromRuntime(
+                FfiConverterTypeEventRuntime.read(buf),
                 )
-            }
-
-            else -> {
-                throw RuntimeException("invalid enum value, something is very wrong!!")
-            }
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
+    }
 
-    override fun allocationSize(value: Event): ULong =
-        when (value) {
-            is Event.FromUi -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeEventUi.allocationSize(value.`event`)
-                )
-            }
-
-            is Event.FromSource -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeEventSource.allocationSize(value.`event`)
-                )
-            }
-
-            is Event.FromRuntime -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeEventRuntime.allocationSize(value.`event`)
-                )
-            }
+    override fun allocationSize(value: Event): ULong = when(value) {
+        is Event.FromUi -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeEventUi.allocationSize(value.`event`)
+            )
         }
+        is Event.FromSource -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeEventSource.allocationSize(value.`event`)
+            )
+        }
+        is Event.FromRuntime -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeEventRuntime.allocationSize(value.`event`)
+            )
+        }
+    }
 
-    override fun write(
-        value: Event,
-        buf: ByteBuffer,
-    ) {
-        when (value) {
+    override fun write(value: Event, buf: ByteBuffer) {
+        when(value) {
             is Event.FromUi -> {
                 buf.putInt(1)
                 FfiConverterTypeEventUi.write(value.`event`, buf)
                 Unit
             }
-
             is Event.FromSource -> {
                 buf.putInt(2)
                 FfiConverterTypeEventSource.write(value.`event`, buf)
                 Unit
             }
-
             is Event.FromRuntime -> {
                 buf.putInt(3)
                 FfiConverterTypeEventRuntime.write(value.`event`, buf)
@@ -4000,7 +4078,12 @@ public object FfiConverterTypeEvent : FfiConverterRustBuffer<Event> {
     }
 }
 
+
+
+
+
 sealed class EventRuntime {
+    
     /**
      * What time it is, as the device's clock reads it — seconds since the
      * epoch, about once a second.
@@ -4010,10 +4093,20 @@ sealed class EventRuntime {
      * type from another crate.
      */
     data class Tick(
-        val `now`: kotlin.ULong,
-    ) : EventRuntime() {
+        val `now`: kotlin.ULong) : EventRuntime()
+        
+    {
+        
+
         companion object
     }
+    
+
+    
+
+    
+    
+
 
     companion object
 }
@@ -4021,36 +4114,28 @@ sealed class EventRuntime {
 /**
  * @suppress
  */
-public object FfiConverterTypeEventRuntime : FfiConverterRustBuffer<EventRuntime> {
-    override fun read(buf: ByteBuffer): EventRuntime =
-        when (buf.getInt()) {
-            1 -> {
-                EventRuntime.Tick(
-                    FfiConverterULong.read(buf),
+public object FfiConverterTypeEventRuntime : FfiConverterRustBuffer<EventRuntime>{
+    override fun read(buf: ByteBuffer): EventRuntime {
+        return when(buf.getInt()) {
+            1 -> EventRuntime.Tick(
+                FfiConverterULong.read(buf),
                 )
-            }
-
-            else -> {
-                throw RuntimeException("invalid enum value, something is very wrong!!")
-            }
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
+    }
 
-    override fun allocationSize(value: EventRuntime): ULong =
-        when (value) {
-            is EventRuntime.Tick -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterULong.allocationSize(value.`now`)
-                )
-            }
+    override fun allocationSize(value: EventRuntime): ULong = when(value) {
+        is EventRuntime.Tick -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterULong.allocationSize(value.`now`)
+            )
         }
+    }
 
-    override fun write(
-        value: EventRuntime,
-        buf: ByteBuffer,
-    ) {
-        when (value) {
+    override fun write(value: EventRuntime, buf: ByteBuffer) {
+        when(value) {
             is EventRuntime.Tick -> {
                 buf.putInt(1)
                 FfiConverterULong.write(value.`now`, buf)
@@ -4060,10 +4145,15 @@ public object FfiConverterTypeEventRuntime : FfiConverterRustBuffer<EventRuntime
     }
 }
 
+
+
+
+
 /**
  * What a source came back with. No variant carries a clock reading.
  */
 sealed class EventSource {
+    
     /**
      * A snapshot arrived. Everything the app knows, in one value.
      *
@@ -4071,11 +4161,14 @@ sealed class EventSource {
      * every wire type as a UniFFI record and keeping the two in step by hand.
      */
     data class SnapshotLoaded(
-        val `json`: kotlin.String,
-    ) : EventSource() {
+        val `json`: kotlin.String) : EventSource()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * A request did not come back with what was asked for.
      *
@@ -4083,31 +4176,39 @@ sealed class EventSource {
      * that means — a banner, first run, the paywall — is decided here.
      */
     data class LoadFailed(
-        val `failure`: uniffi.client_state.LoadFailure,
-    ) : EventSource() {
+        val `failure`: uniffi.client_state.LoadFailure) : EventSource()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * Whether the device has a session to act on. A bool rather than the
      * credential, which stays the runtime's and never crosses this boundary.
      */
     data class SessionLoaded(
-        val `signedIn`: kotlin.Boolean,
-    ) : EventSource() {
+        val `signedIn`: kotlin.Boolean) : EventSource()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * A code went out.
      */
     object CodeSent : EventSource()
-
+    
+    
     /**
      * The code was the right one.
      */
     object CodeAccepted : EventSource()
-
+    
+    
     /**
      * It was not.
      *
@@ -4115,7 +4216,8 @@ sealed class EventSource {
      * nobody can ask whether an address has a code standing against it.
      */
     object CodeRejected : EventSource()
-
+    
+    
     /**
      * Plaid came back with at least one bank attached.
      *
@@ -4124,68 +4226,83 @@ sealed class EventSource {
      * one bank and two lead to the same screen.
      */
     object BankLinked : EventSource()
-
+    
+    
     /**
      * The bank sign-in ended with nothing — dismissed, failed, timed out.
      */
     object BankAbandoned : EventSource()
-
+    
+    
     /**
      * The bank sign-in never opened, because the device would not show
      * Plaid's page — a browser refusing the window it opens in. Nothing was
      * attempted, which is not the same fact as a sign-in that closed.
      */
     object BankBlocked : EventSource()
-
+    
+    
     /**
      * The server has not been told what the sign-in came to, because the
      * browser coming back and Plaid telling the server race. The bank may
      * yet be attached.
      */
     object BankPending : EventSource()
-
+    
+    
     /**
      * How far the first sync has got, as `server_wire::WireSyncStatus` in
      * JSON, for the reason [`SnapshotLoaded`](EventSource::SnapshotLoaded) is.
      */
     data class SyncStatusLoaded(
-        val `json`: kotlin.String,
-    ) : EventSource() {
+        val `json`: kotlin.String) : EventSource()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * The stream carrying those went away — backgrounded, out of signal, or
      * refused. A fact and not a verdict: whether to open another one is the
      * machine's, and it decides that from where the flow is.
      */
     object SyncWatchEnded : EventSource()
-
+    
+    
     /**
-     * A subscription is started and waiting to be paid for.
+     * Stripe's page is up, in a window of its own.
      *
-     * Nothing else: what it is paid against stays with the runtime, the way
-     * the session token does.
+     * Nothing else: the page's address stays with the runtime, the way the
+     * session token does.
      */
-    object SubscriptionStarted : EventSource()
-
+    object CheckoutOpened : EventSource()
+    
+    
     /**
-     * The payment provider took the card.
+     * Stripe's page went away with the money taken.
      *
-     * Not a subscription the server will honour yet. The provider tells the
-     * server separately, a moment later, and until it has the server goes on
+     * Not a subscription the server will honour yet. Stripe tells the server
+     * separately, a moment later, and until it has the server goes on
      * refusing.
      */
     object PaymentTaken : EventSource()
-
+    
+    
     /**
-     * The provider did not take it, and why, in our words.
+     * Stripe's page went away without taking anything — closed by hand, or
+     * backed out of. Nothing was charged and nothing was created.
      */
-    data class PaymentRefused(
-        val `refusal`: uniffi.client_state.PaymentRefusal,
-    ) : EventSource() {
-        companion object
-    }
+    object CheckoutClosed : EventSource()
+    
+    
+
+    
+
+    
+    
+
 
     companion object
 }
@@ -4193,444 +4310,423 @@ sealed class EventSource {
 /**
  * @suppress
  */
-public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource> {
-    override fun read(buf: ByteBuffer): EventSource =
-        when (buf.getInt()) {
-            1 -> {
-                EventSource.SnapshotLoaded(
-                    FfiConverterString.read(buf),
+public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource>{
+    override fun read(buf: ByteBuffer): EventSource {
+        return when(buf.getInt()) {
+            1 -> EventSource.SnapshotLoaded(
+                FfiConverterString.read(buf),
                 )
-            }
-
-            2 -> {
-                EventSource.LoadFailed(
-                    FfiConverterTypeLoadFailure.read(buf),
+            2 -> EventSource.LoadFailed(
+                FfiConverterTypeLoadFailure.read(buf),
                 )
-            }
-
-            3 -> {
-                EventSource.SessionLoaded(
-                    FfiConverterBoolean.read(buf),
+            3 -> EventSource.SessionLoaded(
+                FfiConverterBoolean.read(buf),
                 )
-            }
-
-            4 -> {
-                EventSource.CodeSent
-            }
-
-            5 -> {
-                EventSource.CodeAccepted
-            }
-
-            6 -> {
-                EventSource.CodeRejected
-            }
-
-            7 -> {
-                EventSource.BankLinked
-            }
-
-            8 -> {
-                EventSource.BankAbandoned
-            }
-
-            9 -> {
-                EventSource.BankBlocked
-            }
-
-            10 -> {
-                EventSource.BankPending
-            }
-
-            11 -> {
-                EventSource.SyncStatusLoaded(
-                    FfiConverterString.read(buf),
+            4 -> EventSource.CodeSent
+            5 -> EventSource.CodeAccepted
+            6 -> EventSource.CodeRejected
+            7 -> EventSource.BankLinked
+            8 -> EventSource.BankAbandoned
+            9 -> EventSource.BankBlocked
+            10 -> EventSource.BankPending
+            11 -> EventSource.SyncStatusLoaded(
+                FfiConverterString.read(buf),
                 )
-            }
-
-            12 -> {
-                EventSource.SyncWatchEnded
-            }
-
-            13 -> {
-                EventSource.SubscriptionStarted
-            }
-
-            14 -> {
-                EventSource.PaymentTaken
-            }
-
-            15 -> {
-                EventSource.PaymentRefused(
-                    FfiConverterTypePaymentRefusal.read(buf),
-                )
-            }
-
-            else -> {
-                throw RuntimeException("invalid enum value, something is very wrong!!")
-            }
+            12 -> EventSource.SyncWatchEnded
+            13 -> EventSource.CheckoutOpened
+            14 -> EventSource.PaymentTaken
+            15 -> EventSource.CheckoutClosed
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
+    }
 
-    override fun allocationSize(value: EventSource): ULong =
-        when (value) {
-            is EventSource.SnapshotLoaded -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`json`)
-                )
-            }
-
-            is EventSource.LoadFailed -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeLoadFailure.allocationSize(value.`failure`)
-                )
-            }
-
-            is EventSource.SessionLoaded -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterBoolean.allocationSize(value.`signedIn`)
-                )
-            }
-
-            is EventSource.CodeSent -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventSource.CodeAccepted -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventSource.CodeRejected -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventSource.BankLinked -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventSource.BankAbandoned -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventSource.BankBlocked -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventSource.BankPending -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventSource.SyncStatusLoaded -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`json`)
-                )
-            }
-
-            is EventSource.SyncWatchEnded -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventSource.SubscriptionStarted -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventSource.PaymentTaken -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventSource.PaymentRefused -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypePaymentRefusal.allocationSize(value.`refusal`)
-                )
-            }
+    override fun allocationSize(value: EventSource): ULong = when(value) {
+        is EventSource.SnapshotLoaded -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`json`)
+            )
         }
+        is EventSource.LoadFailed -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeLoadFailure.allocationSize(value.`failure`)
+            )
+        }
+        is EventSource.SessionLoaded -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterBoolean.allocationSize(value.`signedIn`)
+            )
+        }
+        is EventSource.CodeSent -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventSource.CodeAccepted -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventSource.CodeRejected -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventSource.BankLinked -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventSource.BankAbandoned -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventSource.BankBlocked -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventSource.BankPending -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventSource.SyncStatusLoaded -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`json`)
+            )
+        }
+        is EventSource.SyncWatchEnded -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventSource.CheckoutOpened -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventSource.PaymentTaken -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventSource.CheckoutClosed -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+    }
 
-    override fun write(
-        value: EventSource,
-        buf: ByteBuffer,
-    ) {
-        when (value) {
+    override fun write(value: EventSource, buf: ByteBuffer) {
+        when(value) {
             is EventSource.SnapshotLoaded -> {
                 buf.putInt(1)
                 FfiConverterString.write(value.`json`, buf)
                 Unit
             }
-
             is EventSource.LoadFailed -> {
                 buf.putInt(2)
                 FfiConverterTypeLoadFailure.write(value.`failure`, buf)
                 Unit
             }
-
             is EventSource.SessionLoaded -> {
                 buf.putInt(3)
                 FfiConverterBoolean.write(value.`signedIn`, buf)
                 Unit
             }
-
             is EventSource.CodeSent -> {
                 buf.putInt(4)
                 Unit
             }
-
             is EventSource.CodeAccepted -> {
                 buf.putInt(5)
                 Unit
             }
-
             is EventSource.CodeRejected -> {
                 buf.putInt(6)
                 Unit
             }
-
             is EventSource.BankLinked -> {
                 buf.putInt(7)
                 Unit
             }
-
             is EventSource.BankAbandoned -> {
                 buf.putInt(8)
                 Unit
             }
-
             is EventSource.BankBlocked -> {
                 buf.putInt(9)
                 Unit
             }
-
             is EventSource.BankPending -> {
                 buf.putInt(10)
                 Unit
             }
-
             is EventSource.SyncStatusLoaded -> {
                 buf.putInt(11)
                 FfiConverterString.write(value.`json`, buf)
                 Unit
             }
-
             is EventSource.SyncWatchEnded -> {
                 buf.putInt(12)
                 Unit
             }
-
-            is EventSource.SubscriptionStarted -> {
+            is EventSource.CheckoutOpened -> {
                 buf.putInt(13)
                 Unit
             }
-
             is EventSource.PaymentTaken -> {
                 buf.putInt(14)
                 Unit
             }
-
-            is EventSource.PaymentRefused -> {
+            is EventSource.CheckoutClosed -> {
                 buf.putInt(15)
-                FfiConverterTypePaymentRefusal.write(value.`refusal`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 }
 
+
+
+
+
 sealed class EventUi {
+    
     /**
      * The app came up.
      */
     object Started : EventUi()
-
+    
+    
     /**
      * A tab in the dock.
      */
     data class ScreenOpened(
-        val `screen`: uniffi.client_state.Screen,
-    ) : EventUi() {
+        val `screen`: uniffi.client_state.Screen) : EventUi()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * Pull to refresh.
      */
     object RefreshRequested : EventUi()
-
+    
+    
     /**
      * The eye on a covered figure. One switch for the whole app.
      */
     object MaskToggled : EventUi()
-
+    
+    
     /**
      * One of the two groups inside the filter panel.
      */
     data class FilterGroupToggled(
-        val `group`: uniffi.client_state.FilterGroup,
-    ) : EventUi() {
+        val `group`: uniffi.client_state.FilterGroup) : EventUi()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * A category chip. Multi-select, so this toggles rather than sets.
      */
     data class CategoryToggled(
-        val `id`: kotlin.String,
-    ) : EventUi() {
+        val `id`: kotlin.String) : EventUi()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * Clear every category.
      */
     object CategoriesCleared : EventUi()
-
+    
+    
     /**
      * One of the four range forms.
      */
     data class RangeSelected(
-        val `kind`: uniffi.client_state.RangeSelection,
-    ) : EventUi() {
+        val `kind`: uniffi.client_state.RangeSelection) : EventUi()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * A day in the recurring calendar. Tapping the day already selected
      * clears it.
      */
     data class CalendarDaySelected(
-        val `id`: kotlin.String,
-    ) : EventUi() {
+        val `id`: kotlin.String) : EventUi()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * A swipe across the recurring calendar. `step` is months, so −1 is the
      * month behind and 1 the month ahead.
      */
     data class CalendarMonthStepped(
-        val `step`: kotlin.Int,
-    ) : EventUi() {
+        val `step`: kotlin.Int) : EventUi()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * The user picked a transaction out of the list.
      */
     data class TxSelected(
-        val `id`: kotlin.String,
-    ) : EventUi() {
+        val `id`: kotlin.String) : EventUi()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * The Welcome screen's one button. There is no Sign up and no Sign in:
      * an address that exists signs in and one that does not signs up.
      */
     object EmailChosen : EventUi()
-
+    
+    
     /**
      * The address field, as a whole value rather than one keystroke, so a
      * paste, a backspace and a tap are the same event.
      */
     data class EmailTyped(
-        val `text`: kotlin.String,
-    ) : EventUi() {
+        val `text`: kotlin.String) : EventUi()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * Continue, under the address.
      */
     object EmailSubmitted : EventUi()
-
+    
+    
     /**
      * The code field, as it reads. Typing alone never submits: auto-sending
      * on the sixth digit spends a guess on a typo the user has not seen yet.
      */
     data class CodeTyped(
-        val `digits`: kotlin.String,
-    ) : EventUi() {
+        val `digits`: kotlin.String) : EventUi()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * Continue, under the six boxes. Only drawn once all six are in.
      */
     object CodeSubmitted : EventUi()
-
+    
+    
     /**
      * Send a new code.
      */
     object ResendRequested : EventUi()
-
+    
+    
     /**
      * The chevron, and the code screen's way back to a mistyped address.
      */
     object BackPressed : EventUi()
-
+    
+    
     /**
      * Connect a bank, Try again, and Add another bank — one event, because
      * whichever screen the tap came from, Plaid opens next.
      */
     object BankConnectRequested : EventUi()
+    
+    
+    /**
+     * Reconnect, on a bank that has stopped answering. Opens Plaid too, in
+     * update mode against the named bank: the sign-in repairs it rather than
+     * attaching another.
+     */
+    data class BankReconnectRequested(
+        val `itemId`: kotlin.String) : EventUi()
+        
+    {
+        
 
+        companion object
+    }
+    
     /**
      * Open Meridian, on the last screen of first run.
      */
     object OnboardingFinished : EventUi()
-
+    
+    
     /**
-     * Subscribe, on the paywall. Starts a subscription and brings up the card
-     * form; nothing is charged by it.
+     * Pay by card, on the paywall. Opens Stripe's own page in a window of
+     * its own; nothing is charged by the press.
      */
     object SubscribeRequested : EventUi()
-
-    /**
-     * Pay, under the card form.
-     */
-    object PaymentRequested : EventUi()
-
+    
+    
     /**
      * Sign out, on the Account tab. Everything the app holds belongs to the
      * account, so this puts the machine back to where a fresh install starts.
      */
     object SignOutRequested : EventUi()
+    
+    
+
+    
+
+    
+    
+
 
     companion object
 }
@@ -4638,421 +4734,307 @@ sealed class EventUi {
 /**
  * @suppress
  */
-public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
-    override fun read(buf: ByteBuffer): EventUi =
-        when (buf.getInt()) {
-            1 -> {
-                EventUi.Started
-            }
-
-            2 -> {
-                EventUi.ScreenOpened(
-                    FfiConverterTypeScreen.read(buf),
+public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi>{
+    override fun read(buf: ByteBuffer): EventUi {
+        return when(buf.getInt()) {
+            1 -> EventUi.Started
+            2 -> EventUi.ScreenOpened(
+                FfiConverterTypeScreen.read(buf),
                 )
-            }
-
-            3 -> {
-                EventUi.RefreshRequested
-            }
-
-            4 -> {
-                EventUi.MaskToggled
-            }
-
-            5 -> {
-                EventUi.FilterGroupToggled(
-                    FfiConverterTypeFilterGroup.read(buf),
+            3 -> EventUi.RefreshRequested
+            4 -> EventUi.MaskToggled
+            5 -> EventUi.FilterGroupToggled(
+                FfiConverterTypeFilterGroup.read(buf),
                 )
-            }
-
-            6 -> {
-                EventUi.CategoryToggled(
-                    FfiConverterString.read(buf),
+            6 -> EventUi.CategoryToggled(
+                FfiConverterString.read(buf),
                 )
-            }
-
-            7 -> {
-                EventUi.CategoriesCleared
-            }
-
-            8 -> {
-                EventUi.RangeSelected(
-                    FfiConverterTypeRangeSelection.read(buf),
+            7 -> EventUi.CategoriesCleared
+            8 -> EventUi.RangeSelected(
+                FfiConverterTypeRangeSelection.read(buf),
                 )
-            }
-
-            9 -> {
-                EventUi.CalendarDaySelected(
-                    FfiConverterString.read(buf),
+            9 -> EventUi.CalendarDaySelected(
+                FfiConverterString.read(buf),
                 )
-            }
-
-            10 -> {
-                EventUi.CalendarMonthStepped(
-                    FfiConverterInt.read(buf),
+            10 -> EventUi.CalendarMonthStepped(
+                FfiConverterInt.read(buf),
                 )
-            }
-
-            11 -> {
-                EventUi.TxSelected(
-                    FfiConverterString.read(buf),
+            11 -> EventUi.TxSelected(
+                FfiConverterString.read(buf),
                 )
-            }
-
-            12 -> {
-                EventUi.EmailChosen
-            }
-
-            13 -> {
-                EventUi.EmailTyped(
-                    FfiConverterString.read(buf),
+            12 -> EventUi.EmailChosen
+            13 -> EventUi.EmailTyped(
+                FfiConverterString.read(buf),
                 )
-            }
-
-            14 -> {
-                EventUi.EmailSubmitted
-            }
-
-            15 -> {
-                EventUi.CodeTyped(
-                    FfiConverterString.read(buf),
+            14 -> EventUi.EmailSubmitted
+            15 -> EventUi.CodeTyped(
+                FfiConverterString.read(buf),
                 )
-            }
-
-            16 -> {
-                EventUi.CodeSubmitted
-            }
-
-            17 -> {
-                EventUi.ResendRequested
-            }
-
-            18 -> {
-                EventUi.BackPressed
-            }
-
-            19 -> {
-                EventUi.BankConnectRequested
-            }
-
-            20 -> {
-                EventUi.OnboardingFinished
-            }
-
-            21 -> {
-                EventUi.SubscribeRequested
-            }
-
-            22 -> {
-                EventUi.PaymentRequested
-            }
-
-            23 -> {
-                EventUi.SignOutRequested
-            }
-
-            else -> {
-                throw RuntimeException("invalid enum value, something is very wrong!!")
-            }
+            16 -> EventUi.CodeSubmitted
+            17 -> EventUi.ResendRequested
+            18 -> EventUi.BackPressed
+            19 -> EventUi.BankConnectRequested
+            20 -> EventUi.BankReconnectRequested(
+                FfiConverterString.read(buf),
+                )
+            21 -> EventUi.OnboardingFinished
+            22 -> EventUi.SubscribeRequested
+            23 -> EventUi.SignOutRequested
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
+    }
 
-    override fun allocationSize(value: EventUi): ULong =
-        when (value) {
-            is EventUi.Started -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventUi.ScreenOpened -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeScreen.allocationSize(value.`screen`)
-                )
-            }
-
-            is EventUi.RefreshRequested -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventUi.MaskToggled -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventUi.FilterGroupToggled -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeFilterGroup.allocationSize(value.`group`)
-                )
-            }
-
-            is EventUi.CategoryToggled -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`id`)
-                )
-            }
-
-            is EventUi.CategoriesCleared -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventUi.RangeSelected -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeRangeSelection.allocationSize(value.`kind`)
-                )
-            }
-
-            is EventUi.CalendarDaySelected -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`id`)
-                )
-            }
-
-            is EventUi.CalendarMonthStepped -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterInt.allocationSize(value.`step`)
-                )
-            }
-
-            is EventUi.TxSelected -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`id`)
-                )
-            }
-
-            is EventUi.EmailChosen -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventUi.EmailTyped -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`text`)
-                )
-            }
-
-            is EventUi.EmailSubmitted -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventUi.CodeTyped -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`digits`)
-                )
-            }
-
-            is EventUi.CodeSubmitted -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventUi.ResendRequested -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventUi.BackPressed -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventUi.BankConnectRequested -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventUi.OnboardingFinished -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventUi.SubscribeRequested -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventUi.PaymentRequested -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is EventUi.SignOutRequested -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
+    override fun allocationSize(value: EventUi): ULong = when(value) {
+        is EventUi.Started -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
         }
+        is EventUi.ScreenOpened -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeScreen.allocationSize(value.`screen`)
+            )
+        }
+        is EventUi.RefreshRequested -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventUi.MaskToggled -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventUi.FilterGroupToggled -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeFilterGroup.allocationSize(value.`group`)
+            )
+        }
+        is EventUi.CategoryToggled -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+            )
+        }
+        is EventUi.CategoriesCleared -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventUi.RangeSelected -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeRangeSelection.allocationSize(value.`kind`)
+            )
+        }
+        is EventUi.CalendarDaySelected -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+            )
+        }
+        is EventUi.CalendarMonthStepped -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterInt.allocationSize(value.`step`)
+            )
+        }
+        is EventUi.TxSelected -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+            )
+        }
+        is EventUi.EmailChosen -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventUi.EmailTyped -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`text`)
+            )
+        }
+        is EventUi.EmailSubmitted -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventUi.CodeTyped -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`digits`)
+            )
+        }
+        is EventUi.CodeSubmitted -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventUi.ResendRequested -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventUi.BackPressed -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventUi.BankConnectRequested -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventUi.BankReconnectRequested -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`itemId`)
+            )
+        }
+        is EventUi.OnboardingFinished -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventUi.SubscribeRequested -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventUi.SignOutRequested -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+    }
 
-    override fun write(
-        value: EventUi,
-        buf: ByteBuffer,
-    ) {
-        when (value) {
+    override fun write(value: EventUi, buf: ByteBuffer) {
+        when(value) {
             is EventUi.Started -> {
                 buf.putInt(1)
                 Unit
             }
-
             is EventUi.ScreenOpened -> {
                 buf.putInt(2)
                 FfiConverterTypeScreen.write(value.`screen`, buf)
                 Unit
             }
-
             is EventUi.RefreshRequested -> {
                 buf.putInt(3)
                 Unit
             }
-
             is EventUi.MaskToggled -> {
                 buf.putInt(4)
                 Unit
             }
-
             is EventUi.FilterGroupToggled -> {
                 buf.putInt(5)
                 FfiConverterTypeFilterGroup.write(value.`group`, buf)
                 Unit
             }
-
             is EventUi.CategoryToggled -> {
                 buf.putInt(6)
                 FfiConverterString.write(value.`id`, buf)
                 Unit
             }
-
             is EventUi.CategoriesCleared -> {
                 buf.putInt(7)
                 Unit
             }
-
             is EventUi.RangeSelected -> {
                 buf.putInt(8)
                 FfiConverterTypeRangeSelection.write(value.`kind`, buf)
                 Unit
             }
-
             is EventUi.CalendarDaySelected -> {
                 buf.putInt(9)
                 FfiConverterString.write(value.`id`, buf)
                 Unit
             }
-
             is EventUi.CalendarMonthStepped -> {
                 buf.putInt(10)
                 FfiConverterInt.write(value.`step`, buf)
                 Unit
             }
-
             is EventUi.TxSelected -> {
                 buf.putInt(11)
                 FfiConverterString.write(value.`id`, buf)
                 Unit
             }
-
             is EventUi.EmailChosen -> {
                 buf.putInt(12)
                 Unit
             }
-
             is EventUi.EmailTyped -> {
                 buf.putInt(13)
                 FfiConverterString.write(value.`text`, buf)
                 Unit
             }
-
             is EventUi.EmailSubmitted -> {
                 buf.putInt(14)
                 Unit
             }
-
             is EventUi.CodeTyped -> {
                 buf.putInt(15)
                 FfiConverterString.write(value.`digits`, buf)
                 Unit
             }
-
             is EventUi.CodeSubmitted -> {
                 buf.putInt(16)
                 Unit
             }
-
             is EventUi.ResendRequested -> {
                 buf.putInt(17)
                 Unit
             }
-
             is EventUi.BackPressed -> {
                 buf.putInt(18)
                 Unit
             }
-
             is EventUi.BankConnectRequested -> {
                 buf.putInt(19)
                 Unit
             }
-
-            is EventUi.OnboardingFinished -> {
+            is EventUi.BankReconnectRequested -> {
                 buf.putInt(20)
+                FfiConverterString.write(value.`itemId`, buf)
                 Unit
             }
-
-            is EventUi.SubscribeRequested -> {
+            is EventUi.OnboardingFinished -> {
                 buf.putInt(21)
                 Unit
             }
-
-            is EventUi.PaymentRequested -> {
+            is EventUi.SubscribeRequested -> {
                 buf.putInt(22)
                 Unit
             }
-
             is EventUi.SignOutRequested -> {
                 buf.putInt(23)
                 Unit
@@ -5061,38 +5043,46 @@ public object FfiConverterTypeEventUi : FfiConverterRustBuffer<EventUi> {
     }
 }
 
+
+
+
+
 /**
  * Which half of the filter panel.
  */
 
 enum class FilterGroup {
+    
     CATEGORIES,
-    RANGE,
-    ;
+    RANGE;
+
+    
+
 
     companion object
 }
 
+
 /**
  * @suppress
  */
-public object FfiConverterTypeFilterGroup : FfiConverterRustBuffer<FilterGroup> {
-    override fun read(buf: ByteBuffer) =
-        try {
-            FilterGroup.values()[buf.getInt() - 1]
-        } catch (e: IndexOutOfBoundsException) {
-            throw RuntimeException("invalid enum value, something is very wrong!!", e)
-        }
+public object FfiConverterTypeFilterGroup: FfiConverterRustBuffer<FilterGroup> {
+    override fun read(buf: ByteBuffer) = try {
+        FilterGroup.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
 
     override fun allocationSize(value: FilterGroup) = 4UL
 
-    override fun write(
-        value: FilterGroup,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: FilterGroup, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
+
+
+
+
 
 /**
  * Why a source could not be read.
@@ -5106,54 +5096,73 @@ public object FfiConverterTypeFilterGroup : FfiConverterRustBuffer<FilterGroup> 
  * paywall.
  */
 sealed class LoadFailure {
+    
     /**
      * Nothing came back. No signal, aeroplane mode, or a server that is not
      * running.
      */
     object Offline : LoadFailure()
-
+    
+    
     /**
      * The server does not know this session. **401.**
      */
     object SignedOut : LoadFailure()
-
+    
+    
     /**
      * The session is good, and the app is not paid for. **402.**
      */
     data class Unpaid(
-        val `reason`: uniffi.client_state.Unpaid,
-    ) : LoadFailure() {
+        val `reason`: uniffi.client_state.Unpaid) : LoadFailure()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * Asked for too much, too fast. **429.**
      */
     object TooMany : LoadFailure()
-
+    
+    
     /**
      * Asked to subscribe by somebody the server already has a subscription
-     * for. **409.**
+     * for, or is starting one for. **409.**
      *
      * Not a failure either: there is nothing to buy, and whether the app
      * opens is what asking for a snapshot answers.
      */
     object Subscribed : LoadFailure()
-
+    
+    
     /**
      * Any other answer, which is the server's problem rather than this
      * session's.
      */
     data class Server(
-        val `status`: kotlin.UShort,
-    ) : LoadFailure() {
+        val `status`: kotlin.UShort) : LoadFailure()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * An answer arrived and could not be read.
      */
     object Unreadable : LoadFailure()
+    
+    
+
+    
+
+    
+    
+
 
     companion object
 }
@@ -5161,137 +5170,99 @@ sealed class LoadFailure {
 /**
  * @suppress
  */
-public object FfiConverterTypeLoadFailure : FfiConverterRustBuffer<LoadFailure> {
-    override fun read(buf: ByteBuffer): LoadFailure =
-        when (buf.getInt()) {
-            1 -> {
-                LoadFailure.Offline
-            }
-
-            2 -> {
-                LoadFailure.SignedOut
-            }
-
-            3 -> {
-                LoadFailure.Unpaid(
-                    FfiConverterTypeUnpaid.read(buf),
+public object FfiConverterTypeLoadFailure : FfiConverterRustBuffer<LoadFailure>{
+    override fun read(buf: ByteBuffer): LoadFailure {
+        return when(buf.getInt()) {
+            1 -> LoadFailure.Offline
+            2 -> LoadFailure.SignedOut
+            3 -> LoadFailure.Unpaid(
+                FfiConverterTypeUnpaid.read(buf),
                 )
-            }
-
-            4 -> {
-                LoadFailure.TooMany
-            }
-
-            5 -> {
-                LoadFailure.Subscribed
-            }
-
-            6 -> {
-                LoadFailure.Server(
-                    FfiConverterUShort.read(buf),
+            4 -> LoadFailure.TooMany
+            5 -> LoadFailure.Subscribed
+            6 -> LoadFailure.Server(
+                FfiConverterUShort.read(buf),
                 )
-            }
-
-            7 -> {
-                LoadFailure.Unreadable
-            }
-
-            else -> {
-                throw RuntimeException("invalid enum value, something is very wrong!!")
-            }
+            7 -> LoadFailure.Unreadable
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
+    }
 
-    override fun allocationSize(value: LoadFailure): ULong =
-        when (value) {
-            is LoadFailure.Offline -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is LoadFailure.SignedOut -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is LoadFailure.Unpaid -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeUnpaid.allocationSize(value.`reason`)
-                )
-            }
-
-            is LoadFailure.TooMany -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is LoadFailure.Subscribed -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is LoadFailure.Server -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterUShort.allocationSize(value.`status`)
-                )
-            }
-
-            is LoadFailure.Unreadable -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
+    override fun allocationSize(value: LoadFailure): ULong = when(value) {
+        is LoadFailure.Offline -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
         }
+        is LoadFailure.SignedOut -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is LoadFailure.Unpaid -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeUnpaid.allocationSize(value.`reason`)
+            )
+        }
+        is LoadFailure.TooMany -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is LoadFailure.Subscribed -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is LoadFailure.Server -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterUShort.allocationSize(value.`status`)
+            )
+        }
+        is LoadFailure.Unreadable -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+    }
 
-    override fun write(
-        value: LoadFailure,
-        buf: ByteBuffer,
-    ) {
-        when (value) {
+    override fun write(value: LoadFailure, buf: ByteBuffer) {
+        when(value) {
             is LoadFailure.Offline -> {
                 buf.putInt(1)
                 Unit
             }
-
             is LoadFailure.SignedOut -> {
                 buf.putInt(2)
                 Unit
             }
-
             is LoadFailure.Unpaid -> {
                 buf.putInt(3)
                 FfiConverterTypeUnpaid.write(value.`reason`, buf)
                 Unit
             }
-
             is LoadFailure.TooMany -> {
                 buf.putInt(4)
                 Unit
             }
-
             is LoadFailure.Subscribed -> {
                 buf.putInt(5)
                 Unit
             }
-
             is LoadFailure.Server -> {
                 buf.putInt(6)
                 FfiConverterUShort.write(value.`status`, buf)
                 Unit
             }
-
             is LoadFailure.Unreadable -> {
                 buf.putInt(7)
                 Unit
@@ -5300,61 +5271,9 @@ public object FfiConverterTypeLoadFailure : FfiConverterRustBuffer<LoadFailure> 
     }
 }
 
-/**
- * How a payment was refused, in our words rather than a provider's.
- *
- * A reason and not a sentence: the runtime says which it was, and what each
- * reads as is decided with every other string the app prints.
- */
 
-enum class PaymentRefusal {
-    /**
-     * The bank said no.
-     */
-    DECLINED,
 
-    /**
-     * A detail of the card cannot be right — the number, the date or the
-     * code — or one was left unfinished.
-     */
-    INCORRECT,
 
-    /**
-     * The bank asked the cardholder to confirm it was them, and they did not.
-     */
-    UNAUTHENTICATED,
-
-    /**
-     * Nothing that says anything about the card: the provider could not be
-     * reached, or answered in a way the runtime could not read.
-     */
-    FAILED,
-
-    ;
-
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypePaymentRefusal : FfiConverterRustBuffer<PaymentRefusal> {
-    override fun read(buf: ByteBuffer) =
-        try {
-            PaymentRefusal.values()[buf.getInt() - 1]
-        } catch (e: IndexOutOfBoundsException) {
-            throw RuntimeException("invalid enum value, something is very wrong!!", e)
-        }
-
-    override fun allocationSize(value: PaymentRefusal) = 4UL
-
-    override fun write(
-        value: PaymentRefusal,
-        buf: ByteBuffer,
-    ) {
-        buf.putInt(value.ordinal + 1)
-    }
-}
 
 /**
  * A time range the user asked for.
@@ -5363,25 +5282,32 @@ public object FfiConverterTypePaymentRefusal : FfiConverterRustBuffer<PaymentRef
  * and not three, and a replay shows the range the user picked.
  */
 sealed class RangeSelection {
+    
     /**
      * This month, this week, this year.
      */
     data class This(
-        val `unit`: uniffi.client_state.RangeUnit,
-    ) : RangeSelection() {
+        val `unit`: uniffi.client_state.RangeUnit) : RangeSelection()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * The last N of them.
      */
     data class Last(
-        val `count`: kotlin.UInt,
-        val `unit`: uniffi.client_state.RangeUnit,
-    ) : RangeSelection() {
+        val `count`: kotlin.UInt, 
+        val `unit`: uniffi.client_state.RangeUnit) : RangeSelection()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * Between two days, as seconds since the epoch.
      *
@@ -5390,16 +5316,27 @@ sealed class RangeSelection {
      * [`RangeSelection::window_bounds`] converts.
      */
     data class Between(
-        val `start`: kotlin.ULong,
-        val `end`: kotlin.ULong,
-    ) : RangeSelection() {
+        val `start`: kotlin.ULong, 
+        val `end`: kotlin.ULong) : RangeSelection()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * Everything.
      */
     object All : RangeSelection()
+    
+    
+
+    
+
+    
+    
+
 
     companion object
 }
@@ -5407,99 +5344,76 @@ sealed class RangeSelection {
 /**
  * @suppress
  */
-public object FfiConverterTypeRangeSelection : FfiConverterRustBuffer<RangeSelection> {
-    override fun read(buf: ByteBuffer): RangeSelection =
-        when (buf.getInt()) {
-            1 -> {
-                RangeSelection.This(
-                    FfiConverterTypeRangeUnit.read(buf),
+public object FfiConverterTypeRangeSelection : FfiConverterRustBuffer<RangeSelection>{
+    override fun read(buf: ByteBuffer): RangeSelection {
+        return when(buf.getInt()) {
+            1 -> RangeSelection.This(
+                FfiConverterTypeRangeUnit.read(buf),
                 )
-            }
-
-            2 -> {
-                RangeSelection.Last(
-                    FfiConverterUInt.read(buf),
-                    FfiConverterTypeRangeUnit.read(buf),
+            2 -> RangeSelection.Last(
+                FfiConverterUInt.read(buf),
+                FfiConverterTypeRangeUnit.read(buf),
                 )
-            }
-
-            3 -> {
-                RangeSelection.Between(
-                    FfiConverterULong.read(buf),
-                    FfiConverterULong.read(buf),
+            3 -> RangeSelection.Between(
+                FfiConverterULong.read(buf),
+                FfiConverterULong.read(buf),
                 )
-            }
-
-            4 -> {
-                RangeSelection.All
-            }
-
-            else -> {
-                throw RuntimeException("invalid enum value, something is very wrong!!")
-            }
+            4 -> RangeSelection.All
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
+    }
 
-    override fun allocationSize(value: RangeSelection): ULong =
-        when (value) {
-            is RangeSelection.This -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeRangeUnit.allocationSize(value.`unit`)
-                )
-            }
-
-            is RangeSelection.Last -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterUInt.allocationSize(value.`count`) +
-                        FfiConverterTypeRangeUnit.allocationSize(value.`unit`)
-                )
-            }
-
-            is RangeSelection.Between -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterULong.allocationSize(value.`start`) +
-                        FfiConverterULong.allocationSize(value.`end`)
-                )
-            }
-
-            is RangeSelection.All -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
+    override fun allocationSize(value: RangeSelection): ULong = when(value) {
+        is RangeSelection.This -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeRangeUnit.allocationSize(value.`unit`)
+            )
         }
+        is RangeSelection.Last -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterUInt.allocationSize(value.`count`)
+                + FfiConverterTypeRangeUnit.allocationSize(value.`unit`)
+            )
+        }
+        is RangeSelection.Between -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterULong.allocationSize(value.`start`)
+                + FfiConverterULong.allocationSize(value.`end`)
+            )
+        }
+        is RangeSelection.All -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+    }
 
-    override fun write(
-        value: RangeSelection,
-        buf: ByteBuffer,
-    ) {
-        when (value) {
+    override fun write(value: RangeSelection, buf: ByteBuffer) {
+        when(value) {
             is RangeSelection.This -> {
                 buf.putInt(1)
                 FfiConverterTypeRangeUnit.write(value.`unit`, buf)
                 Unit
             }
-
             is RangeSelection.Last -> {
                 buf.putInt(2)
                 FfiConverterUInt.write(value.`count`, buf)
                 FfiConverterTypeRangeUnit.write(value.`unit`, buf)
                 Unit
             }
-
             is RangeSelection.Between -> {
                 buf.putInt(3)
                 FfiConverterULong.write(value.`start`, buf)
                 FfiConverterULong.write(value.`end`, buf)
                 Unit
             }
-
             is RangeSelection.All -> {
                 buf.putInt(4)
                 Unit
@@ -5508,70 +5422,83 @@ public object FfiConverterTypeRangeSelection : FfiConverterRustBuffer<RangeSelec
     }
 }
 
+
+
+
+
+
 enum class RangeUnit {
+    
     WEEK,
     MONTH,
-    YEAR,
-    ;
+    YEAR;
+
+    
+
 
     companion object
 }
 
+
 /**
  * @suppress
  */
-public object FfiConverterTypeRangeUnit : FfiConverterRustBuffer<RangeUnit> {
-    override fun read(buf: ByteBuffer) =
-        try {
-            RangeUnit.values()[buf.getInt() - 1]
-        } catch (e: IndexOutOfBoundsException) {
-            throw RuntimeException("invalid enum value, something is very wrong!!", e)
-        }
+public object FfiConverterTypeRangeUnit: FfiConverterRustBuffer<RangeUnit> {
+    override fun read(buf: ByteBuffer) = try {
+        RangeUnit.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
 
     override fun allocationSize(value: RangeUnit) = 4UL
 
-    override fun write(
-        value: RangeUnit,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: RangeUnit, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
+
+
+
+
 
 /**
  * Which screen the app is on — the dock's four tabs.
  */
 
 enum class Screen {
+    
     LEDGER,
     RECURRING,
     BALANCES,
-    ACCOUNT,
-    ;
+    ACCOUNT;
+
+    
+
 
     companion object
 }
 
+
 /**
  * @suppress
  */
-public object FfiConverterTypeScreen : FfiConverterRustBuffer<Screen> {
-    override fun read(buf: ByteBuffer) =
-        try {
-            Screen.values()[buf.getInt() - 1]
-        } catch (e: IndexOutOfBoundsException) {
-            throw RuntimeException("invalid enum value, something is very wrong!!", e)
-        }
+public object FfiConverterTypeScreen: FfiConverterRustBuffer<Screen> {
+    override fun read(buf: ByteBuffer) = try {
+        Screen.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
 
     override fun allocationSize(value: Screen) = 4UL
 
-    override fun write(
-        value: Screen,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: Screen, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
+
+
+
+
 
 /**
  * What the server said about a subscription it is not honouring.
@@ -5585,11 +5512,13 @@ public object FfiConverterTypeScreen : FfiConverterRustBuffer<Screen> {
  * served never produces one.
  */
 sealed class Unpaid {
+    
     /**
      * Nobody has ever subscribed on this account.
      */
     object Never : Unpaid()
-
+    
+    
     /**
      * A payment did not go through. The date is when the period it had paid
      * for ended, where there was one — a first payment that never landed
@@ -5600,26 +5529,33 @@ sealed class Unpaid {
          * When the period that was paid for ended, in seconds. Absent where
          * the server has no date for it.
          */
-        val `ranOut`: kotlin.ULong?,
-    ) : Unpaid() {
+        val `ranOut`: kotlin.ULong?) : Unpaid()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * A subscription that was ended, and the period it paid for has passed.
      */
     data class Ended(
-        val `ranOut`: kotlin.ULong?,
-    ) : Unpaid() {
+        val `ranOut`: kotlin.ULong?) : Unpaid()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * A subscription that was started and never paid for. Nothing was
      * charged, and subscribing again picks up the same card form.
      */
     object Unfinished : Unpaid()
-
+    
+    
     /**
      * The server cannot tell. A payment still in flight, or a provider that
      * believes this person is paying while the date says otherwise.
@@ -5630,6 +5566,14 @@ sealed class Unpaid {
      * ended is being lied to.
      */
     object Unconfirmed : Unpaid()
+    
+    
+
+    
+
+    
+    
+
 
     companion object
 }
@@ -5637,105 +5581,77 @@ sealed class Unpaid {
 /**
  * @suppress
  */
-public object FfiConverterTypeUnpaid : FfiConverterRustBuffer<Unpaid> {
-    override fun read(buf: ByteBuffer): Unpaid =
-        when (buf.getInt()) {
-            1 -> {
-                Unpaid.Never
-            }
-
-            2 -> {
-                Unpaid.Declined(
-                    FfiConverterOptionalULong.read(buf),
+public object FfiConverterTypeUnpaid : FfiConverterRustBuffer<Unpaid>{
+    override fun read(buf: ByteBuffer): Unpaid {
+        return when(buf.getInt()) {
+            1 -> Unpaid.Never
+            2 -> Unpaid.Declined(
+                FfiConverterOptionalULong.read(buf),
                 )
-            }
-
-            3 -> {
-                Unpaid.Ended(
-                    FfiConverterOptionalULong.read(buf),
+            3 -> Unpaid.Ended(
+                FfiConverterOptionalULong.read(buf),
                 )
-            }
-
-            4 -> {
-                Unpaid.Unfinished
-            }
-
-            5 -> {
-                Unpaid.Unconfirmed
-            }
-
-            else -> {
-                throw RuntimeException("invalid enum value, something is very wrong!!")
-            }
+            4 -> Unpaid.Unfinished
+            5 -> Unpaid.Unconfirmed
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
+    }
 
-    override fun allocationSize(value: Unpaid): ULong =
-        when (value) {
-            is Unpaid.Never -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is Unpaid.Declined -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterOptionalULong.allocationSize(value.`ranOut`)
-                )
-            }
-
-            is Unpaid.Ended -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterOptionalULong.allocationSize(value.`ranOut`)
-                )
-            }
-
-            is Unpaid.Unfinished -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
-
-            is Unpaid.Unconfirmed -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL
-                )
-            }
+    override fun allocationSize(value: Unpaid): ULong = when(value) {
+        is Unpaid.Never -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
         }
+        is Unpaid.Declined -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterOptionalULong.allocationSize(value.`ranOut`)
+            )
+        }
+        is Unpaid.Ended -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterOptionalULong.allocationSize(value.`ranOut`)
+            )
+        }
+        is Unpaid.Unfinished -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is Unpaid.Unconfirmed -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+    }
 
-    override fun write(
-        value: Unpaid,
-        buf: ByteBuffer,
-    ) {
-        when (value) {
+    override fun write(value: Unpaid, buf: ByteBuffer) {
+        when(value) {
             is Unpaid.Never -> {
                 buf.putInt(1)
                 Unit
             }
-
             is Unpaid.Declined -> {
                 buf.putInt(2)
                 FfiConverterOptionalULong.write(value.`ranOut`, buf)
                 Unit
             }
-
             is Unpaid.Ended -> {
                 buf.putInt(3)
                 FfiConverterOptionalULong.write(value.`ranOut`, buf)
                 Unit
             }
-
             is Unpaid.Unfinished -> {
                 buf.putInt(4)
                 Unit
             }
-
             is Unpaid.Unconfirmed -> {
                 buf.putInt(5)
                 Unit
@@ -5743,6 +5659,10 @@ public object FfiConverterTypeUnpaid : FfiConverterRustBuffer<Unpaid> {
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 }
+
+
+
+
 
 /**
  * Where the flow is, and everything that screen prints.
@@ -5752,144 +5672,173 @@ public object FfiConverterTypeUnpaid : FfiConverterRustBuffer<Unpaid> {
  * handed and holds no "which step am I on" of its own.
  */
 sealed class ViewOnboarding {
+    
     /**
      * One door, not two: an address that exists signs in, one that does not
      * signs up.
      */
     data class Welcome(
-        val `title`: kotlin.String,
-        val `body`: List<uniffi.client_state.ViewRun>,
+        val `title`: kotlin.String, 
+        val `body`: List<uniffi.client_state.ViewRun>, 
         /**
          * `"Continue with email"`.
          */
-        val `action`: kotlin.String,
+        val `action`: kotlin.String, 
         /**
          * Why the app is back here having been signed in. Absent on a fresh
          * install, which is the ordinary way this screen is reached.
          */
-        val `fault`: kotlin.String?,
-        val `legal`: kotlin.String,
-    ) : ViewOnboarding() {
+        val `fault`: kotlin.String?, 
+        val `legal`: kotlin.String) : ViewOnboarding()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * The address, and nothing else on the screen.
      */
     data class Email(
-        val `step`: kotlin.String,
-        val `title`: kotlin.String,
-        val `body`: List<uniffi.client_state.ViewRun>,
-        val `field`: uniffi.client_state.ViewField,
+        val `step`: kotlin.String, 
+        val `title`: kotlin.String, 
+        val `body`: List<uniffi.client_state.ViewRun>, 
+        val `field`: uniffi.client_state.ViewField, 
         /**
          * `"Continue"`.
          */
-        val `action`: kotlin.String,
-    ) : ViewOnboarding() {
+        val `action`: kotlin.String) : ViewOnboarding()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * Six digits and a Continue that is only there once all six are in.
      */
     data class Code(
-        val `step`: kotlin.String,
-        val `title`: kotlin.String,
-        val `body`: List<uniffi.client_state.ViewRun>,
-        val `cells`: List<uniffi.client_state.ViewCodeCell>,
+        val `step`: kotlin.String, 
+        val `title`: kotlin.String, 
+        val `body`: List<uniffi.client_state.ViewRun>, 
+        val `cells`: List<uniffi.client_state.ViewCodeCell>, 
         /**
          * `"That code is not right."` One sentence for every way a code can
          * fail, because the server answers with one.
          */
-        val `fault`: kotlin.String?,
+        val `fault`: kotlin.String?, 
         /**
          * `Some("Continue")` once the code is complete — absent rather than
          * present-and-dim, because a dim button still invites a press.
          */
-        val `action`: kotlin.String?,
-        val `resend`: uniffi.client_state.ViewResend,
-    ) : ViewOnboarding() {
+        val `action`: kotlin.String?, 
+        val `resend`: uniffi.client_state.ViewResend) : ViewOnboarding()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * What connecting a bank means, and the button that does it. No skip:
      * every screen in the app is a view of transactions.
      */
     data class Bank(
-        val `step`: kotlin.String,
-        val `title`: kotlin.String,
-        val `body`: List<uniffi.client_state.ViewRun>,
-        val `rows`: List<uniffi.client_state.ViewIconRow>,
-        val `action`: kotlin.String,
+        val `step`: kotlin.String, 
+        val `title`: kotlin.String, 
+        val `body`: List<uniffi.client_state.ViewRun>, 
+        val `rows`: List<uniffi.client_state.ViewIconRow>, 
+        val `action`: kotlin.String, 
         /**
          * `Some("Opening Plaid…")` while the button waits on Plaid's page to
          * appear, which is the label it wears and the reason it takes no
          * second tap.
          */
-        val `opening`: kotlin.String?,
-        val `legal`: kotlin.String,
-    ) : ViewOnboarding() {
+        val `opening`: kotlin.String?, 
+        val `legal`: kotlin.String) : ViewOnboarding()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * The one slow screen in the app, and it happens once per bank.
      */
     data class Sync(
-        val `step`: kotlin.String,
-        val `title`: kotlin.String,
-        val `body`: List<uniffi.client_state.ViewRun>,
+        val `step`: kotlin.String, 
+        val `title`: kotlin.String, 
+        val `body`: List<uniffi.client_state.ViewRun>, 
         /**
          * How far along, 0..1 — geometry rather than a percentage to print,
          * which is the exception `docs/FFI.md` carves out for a drawn figure.
          */
-        val `progress`: kotlin.Double,
-        val `rows`: List<uniffi.client_state.ViewIconRow>,
-    ) : ViewOnboarding() {
+        val `progress`: kotlin.Double, 
+        val `rows`: List<uniffi.client_state.ViewIconRow>) : ViewOnboarding()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * The end of the flow: counts rather than a tick and a slogan.
      */
     data class Ready(
-        val `title`: kotlin.String,
-        val `body`: List<uniffi.client_state.ViewRun>,
-        val `tally`: List<uniffi.client_state.ViewTally>,
+        val `title`: kotlin.String, 
+        val `body`: List<uniffi.client_state.ViewRun>, 
+        val `tally`: List<uniffi.client_state.ViewTally>, 
         /**
          * `"Add another bank"`.
          */
-        val `another`: kotlin.String,
+        val `another`: kotlin.String, 
         /**
          * `"Open Meridian"`.
          */
-        val `open`: kotlin.String,
-    ) : ViewOnboarding() {
+        val `open`: kotlin.String) : ViewOnboarding()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * The sheet closed without a connection — the common ending, not a rare
      * one. Nothing was created.
      */
     data class Failed(
-        val `step`: kotlin.String,
-        val `title`: kotlin.String,
-        val `body`: List<uniffi.client_state.ViewRun>,
-        val `rows`: List<uniffi.client_state.ViewIconRow>,
-        val `action`: kotlin.String,
+        val `step`: kotlin.String, 
+        val `title`: kotlin.String, 
+        val `body`: List<uniffi.client_state.ViewRun>, 
+        val `rows`: List<uniffi.client_state.ViewIconRow>, 
+        val `action`: kotlin.String, 
         /**
          * The same wait as [`Bank`](ViewOnboarding::Bank)'s.
          */
-        val `opening`: kotlin.String?,
+        val `opening`: kotlin.String?, 
         /**
          * The way out, worded — `Some` only once a bank has connected.
          */
-        val `open`: kotlin.String?,
-    ) : ViewOnboarding() {
+        val `open`: kotlin.String?) : ViewOnboarding()
+        
+    {
+        
+
         companion object
     }
+    
+
+    
+
+    
+    
+
 
     companion object
 }
@@ -5897,188 +5846,156 @@ sealed class ViewOnboarding {
 /**
  * @suppress
  */
-public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboarding> {
-    override fun read(buf: ByteBuffer): ViewOnboarding =
-        when (buf.getInt()) {
-            1 -> {
-                ViewOnboarding.Welcome(
-                    FfiConverterString.read(buf),
-                    FfiConverterSequenceTypeViewRun.read(buf),
-                    FfiConverterString.read(buf),
-                    FfiConverterOptionalString.read(buf),
-                    FfiConverterString.read(buf),
+public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboarding>{
+    override fun read(buf: ByteBuffer): ViewOnboarding {
+        return when(buf.getInt()) {
+            1 -> ViewOnboarding.Welcome(
+                FfiConverterString.read(buf),
+                FfiConverterSequenceTypeViewRun.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterString.read(buf),
                 )
-            }
-
-            2 -> {
-                ViewOnboarding.Email(
-                    FfiConverterString.read(buf),
-                    FfiConverterString.read(buf),
-                    FfiConverterSequenceTypeViewRun.read(buf),
-                    FfiConverterTypeViewField.read(buf),
-                    FfiConverterString.read(buf),
+            2 -> ViewOnboarding.Email(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterSequenceTypeViewRun.read(buf),
+                FfiConverterTypeViewField.read(buf),
+                FfiConverterString.read(buf),
                 )
-            }
-
-            3 -> {
-                ViewOnboarding.Code(
-                    FfiConverterString.read(buf),
-                    FfiConverterString.read(buf),
-                    FfiConverterSequenceTypeViewRun.read(buf),
-                    FfiConverterSequenceTypeViewCodeCell.read(buf),
-                    FfiConverterOptionalString.read(buf),
-                    FfiConverterOptionalString.read(buf),
-                    FfiConverterTypeViewResend.read(buf),
+            3 -> ViewOnboarding.Code(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterSequenceTypeViewRun.read(buf),
+                FfiConverterSequenceTypeViewCodeCell.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterTypeViewResend.read(buf),
                 )
-            }
-
-            4 -> {
-                ViewOnboarding.Bank(
-                    FfiConverterString.read(buf),
-                    FfiConverterString.read(buf),
-                    FfiConverterSequenceTypeViewRun.read(buf),
-                    FfiConverterSequenceTypeViewIconRow.read(buf),
-                    FfiConverterString.read(buf),
-                    FfiConverterOptionalString.read(buf),
-                    FfiConverterString.read(buf),
+            4 -> ViewOnboarding.Bank(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterSequenceTypeViewRun.read(buf),
+                FfiConverterSequenceTypeViewIconRow.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterString.read(buf),
                 )
-            }
-
-            5 -> {
-                ViewOnboarding.Sync(
-                    FfiConverterString.read(buf),
-                    FfiConverterString.read(buf),
-                    FfiConverterSequenceTypeViewRun.read(buf),
-                    FfiConverterDouble.read(buf),
-                    FfiConverterSequenceTypeViewIconRow.read(buf),
+            5 -> ViewOnboarding.Sync(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterSequenceTypeViewRun.read(buf),
+                FfiConverterDouble.read(buf),
+                FfiConverterSequenceTypeViewIconRow.read(buf),
                 )
-            }
-
-            6 -> {
-                ViewOnboarding.Ready(
-                    FfiConverterString.read(buf),
-                    FfiConverterSequenceTypeViewRun.read(buf),
-                    FfiConverterSequenceTypeViewTally.read(buf),
-                    FfiConverterString.read(buf),
-                    FfiConverterString.read(buf),
+            6 -> ViewOnboarding.Ready(
+                FfiConverterString.read(buf),
+                FfiConverterSequenceTypeViewRun.read(buf),
+                FfiConverterSequenceTypeViewTally.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
                 )
-            }
-
-            7 -> {
-                ViewOnboarding.Failed(
-                    FfiConverterString.read(buf),
-                    FfiConverterString.read(buf),
-                    FfiConverterSequenceTypeViewRun.read(buf),
-                    FfiConverterSequenceTypeViewIconRow.read(buf),
-                    FfiConverterString.read(buf),
-                    FfiConverterOptionalString.read(buf),
-                    FfiConverterOptionalString.read(buf),
+            7 -> ViewOnboarding.Failed(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterSequenceTypeViewRun.read(buf),
+                FfiConverterSequenceTypeViewIconRow.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterOptionalString.read(buf),
+                FfiConverterOptionalString.read(buf),
                 )
-            }
-
-            else -> {
-                throw RuntimeException("invalid enum value, something is very wrong!!")
-            }
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
+    }
 
-    override fun allocationSize(value: ViewOnboarding): ULong =
-        when (value) {
-            is ViewOnboarding.Welcome -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`title`) +
-                        FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
-                        FfiConverterString.allocationSize(value.`action`) +
-                        FfiConverterOptionalString.allocationSize(value.`fault`) +
-                        FfiConverterString.allocationSize(value.`legal`)
-                )
-            }
-
-            is ViewOnboarding.Email -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`step`) +
-                        FfiConverterString.allocationSize(value.`title`) +
-                        FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
-                        FfiConverterTypeViewField.allocationSize(value.`field`) +
-                        FfiConverterString.allocationSize(value.`action`)
-                )
-            }
-
-            is ViewOnboarding.Code -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`step`) +
-                        FfiConverterString.allocationSize(value.`title`) +
-                        FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
-                        FfiConverterSequenceTypeViewCodeCell.allocationSize(value.`cells`) +
-                        FfiConverterOptionalString.allocationSize(value.`fault`) +
-                        FfiConverterOptionalString.allocationSize(value.`action`) +
-                        FfiConverterTypeViewResend.allocationSize(value.`resend`)
-                )
-            }
-
-            is ViewOnboarding.Bank -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`step`) +
-                        FfiConverterString.allocationSize(value.`title`) +
-                        FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
-                        FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`) +
-                        FfiConverterString.allocationSize(value.`action`) +
-                        FfiConverterOptionalString.allocationSize(value.`opening`) +
-                        FfiConverterString.allocationSize(value.`legal`)
-                )
-            }
-
-            is ViewOnboarding.Sync -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`step`) +
-                        FfiConverterString.allocationSize(value.`title`) +
-                        FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
-                        FfiConverterDouble.allocationSize(value.`progress`) +
-                        FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`)
-                )
-            }
-
-            is ViewOnboarding.Ready -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`title`) +
-                        FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
-                        FfiConverterSequenceTypeViewTally.allocationSize(value.`tally`) +
-                        FfiConverterString.allocationSize(value.`another`) +
-                        FfiConverterString.allocationSize(value.`open`)
-                )
-            }
-
-            is ViewOnboarding.Failed -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`step`) +
-                        FfiConverterString.allocationSize(value.`title`) +
-                        FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
-                        FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`) +
-                        FfiConverterString.allocationSize(value.`action`) +
-                        FfiConverterOptionalString.allocationSize(value.`opening`) +
-                        FfiConverterOptionalString.allocationSize(value.`open`)
-                )
-            }
+    override fun allocationSize(value: ViewOnboarding): ULong = when(value) {
+        is ViewOnboarding.Welcome -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`title`)
+                + FfiConverterSequenceTypeViewRun.allocationSize(value.`body`)
+                + FfiConverterString.allocationSize(value.`action`)
+                + FfiConverterOptionalString.allocationSize(value.`fault`)
+                + FfiConverterString.allocationSize(value.`legal`)
+            )
         }
+        is ViewOnboarding.Email -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`step`)
+                + FfiConverterString.allocationSize(value.`title`)
+                + FfiConverterSequenceTypeViewRun.allocationSize(value.`body`)
+                + FfiConverterTypeViewField.allocationSize(value.`field`)
+                + FfiConverterString.allocationSize(value.`action`)
+            )
+        }
+        is ViewOnboarding.Code -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`step`)
+                + FfiConverterString.allocationSize(value.`title`)
+                + FfiConverterSequenceTypeViewRun.allocationSize(value.`body`)
+                + FfiConverterSequenceTypeViewCodeCell.allocationSize(value.`cells`)
+                + FfiConverterOptionalString.allocationSize(value.`fault`)
+                + FfiConverterOptionalString.allocationSize(value.`action`)
+                + FfiConverterTypeViewResend.allocationSize(value.`resend`)
+            )
+        }
+        is ViewOnboarding.Bank -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`step`)
+                + FfiConverterString.allocationSize(value.`title`)
+                + FfiConverterSequenceTypeViewRun.allocationSize(value.`body`)
+                + FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`)
+                + FfiConverterString.allocationSize(value.`action`)
+                + FfiConverterOptionalString.allocationSize(value.`opening`)
+                + FfiConverterString.allocationSize(value.`legal`)
+            )
+        }
+        is ViewOnboarding.Sync -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`step`)
+                + FfiConverterString.allocationSize(value.`title`)
+                + FfiConverterSequenceTypeViewRun.allocationSize(value.`body`)
+                + FfiConverterDouble.allocationSize(value.`progress`)
+                + FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`)
+            )
+        }
+        is ViewOnboarding.Ready -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`title`)
+                + FfiConverterSequenceTypeViewRun.allocationSize(value.`body`)
+                + FfiConverterSequenceTypeViewTally.allocationSize(value.`tally`)
+                + FfiConverterString.allocationSize(value.`another`)
+                + FfiConverterString.allocationSize(value.`open`)
+            )
+        }
+        is ViewOnboarding.Failed -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`step`)
+                + FfiConverterString.allocationSize(value.`title`)
+                + FfiConverterSequenceTypeViewRun.allocationSize(value.`body`)
+                + FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`)
+                + FfiConverterString.allocationSize(value.`action`)
+                + FfiConverterOptionalString.allocationSize(value.`opening`)
+                + FfiConverterOptionalString.allocationSize(value.`open`)
+            )
+        }
+    }
 
-    override fun write(
-        value: ViewOnboarding,
-        buf: ByteBuffer,
-    ) {
-        when (value) {
+    override fun write(value: ViewOnboarding, buf: ByteBuffer) {
+        when(value) {
             is ViewOnboarding.Welcome -> {
                 buf.putInt(1)
                 FfiConverterString.write(value.`title`, buf)
@@ -6088,7 +6005,6 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterString.write(value.`legal`, buf)
                 Unit
             }
-
             is ViewOnboarding.Email -> {
                 buf.putInt(2)
                 FfiConverterString.write(value.`step`, buf)
@@ -6098,7 +6014,6 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterString.write(value.`action`, buf)
                 Unit
             }
-
             is ViewOnboarding.Code -> {
                 buf.putInt(3)
                 FfiConverterString.write(value.`step`, buf)
@@ -6110,7 +6025,6 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterTypeViewResend.write(value.`resend`, buf)
                 Unit
             }
-
             is ViewOnboarding.Bank -> {
                 buf.putInt(4)
                 FfiConverterString.write(value.`step`, buf)
@@ -6122,7 +6036,6 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterString.write(value.`legal`, buf)
                 Unit
             }
-
             is ViewOnboarding.Sync -> {
                 buf.putInt(5)
                 FfiConverterString.write(value.`step`, buf)
@@ -6132,7 +6045,6 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterSequenceTypeViewIconRow.write(value.`rows`, buf)
                 Unit
             }
-
             is ViewOnboarding.Ready -> {
                 buf.putInt(6)
                 FfiConverterString.write(value.`title`, buf)
@@ -6142,7 +6054,6 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterString.write(value.`open`, buf)
                 Unit
             }
-
             is ViewOnboarding.Failed -> {
                 buf.putInt(7)
                 FfiConverterString.write(value.`step`, buf)
@@ -6158,66 +6069,62 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
     }
 }
 
+
+
+
+
 /**
- * The part of the paywall that moves as somebody pays: the button, and the
- * card form where there is one.
+ * The part of the paywall that moves as somebody pays: one button, and what
+ * it is waiting on.
  *
  * An enum rather than flags, for the reason [`ViewOnboarding`](crate::ViewOnboarding)
  * is one: which event the button sends is which arm this is, so the view
  * holds no "which step am I on" of its own.
  */
 sealed class ViewPaywallStep {
+    
     /**
-     * Subscribe, and nothing started. The button sends
-     * [`SubscribeRequested`](crate::EventUi::SubscribeRequested).
+     * Pay by card, and the money is taken on Stripe's own page. The button
+     * sends [`SubscribeRequested`](crate::EventUi::SubscribeRequested).
      */
     data class Offer(
         /**
-         * `"Subscribe"`, or what it is waiting on once pressed.
+         * `"Pay by card"`, or what it is waiting on once pressed.
          */
-        val `action`: kotlin.String,
+        val `action`: kotlin.String, 
         /**
-         * Whether the button is waiting on the subscription being started.
+         * Whether Stripe's page is on its way or up. The button is locked
+         * while it is: the money is being taken there or not at all.
          */
-        val `opening`: kotlin.Boolean,
-    ) : ViewPaywallStep() {
+        val `opening`: kotlin.Boolean) : ViewPaywallStep()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
-     * The card form, and Pay under it. The button sends
-     * [`PaymentRequested`](crate::EventUi::PaymentRequested).
-     */
-    data class Card(
-        /**
-         * `"Pay $5.99"`, or what it is waiting on once pressed.
-         */
-        val `action`: kotlin.String,
-        /**
-         * Whether the card is with the provider. The form is locked while it
-         * is.
-         */
-        val `paying`: kotlin.Boolean,
-        /**
-         * Why the last card was refused, under the form. Absent until one
-         * has been.
-         */
-        val `fault`: kotlin.String?,
-    ) : ViewPaywallStep() {
-        companion object
-    }
-
-    /**
-     * The card was taken, and the server has not heard yet. While `checking`
-     * it is being asked on its own; after that the button sends
+     * The sheet took the money, and the server has not heard yet. While
+     * `checking` it is being asked on its own; after that the button sends
      * [`RefreshRequested`](crate::EventUi::RefreshRequested).
      */
     data class Confirming(
-        val `action`: kotlin.String,
-        val `checking`: kotlin.Boolean,
-    ) : ViewPaywallStep() {
+        val `action`: kotlin.String, 
+        val `checking`: kotlin.Boolean) : ViewPaywallStep()
+        
+    {
+        
+
         companion object
     }
+    
+
+    
+
+    
+    
+
 
     companion object
 }
@@ -6225,89 +6132,50 @@ sealed class ViewPaywallStep {
 /**
  * @suppress
  */
-public object FfiConverterTypeViewPaywallStep : FfiConverterRustBuffer<ViewPaywallStep> {
-    override fun read(buf: ByteBuffer): ViewPaywallStep =
-        when (buf.getInt()) {
-            1 -> {
-                ViewPaywallStep.Offer(
-                    FfiConverterString.read(buf),
-                    FfiConverterBoolean.read(buf),
+public object FfiConverterTypeViewPaywallStep : FfiConverterRustBuffer<ViewPaywallStep>{
+    override fun read(buf: ByteBuffer): ViewPaywallStep {
+        return when(buf.getInt()) {
+            1 -> ViewPaywallStep.Offer(
+                FfiConverterString.read(buf),
+                FfiConverterBoolean.read(buf),
                 )
-            }
-
-            2 -> {
-                ViewPaywallStep.Card(
-                    FfiConverterString.read(buf),
-                    FfiConverterBoolean.read(buf),
-                    FfiConverterOptionalString.read(buf),
+            2 -> ViewPaywallStep.Confirming(
+                FfiConverterString.read(buf),
+                FfiConverterBoolean.read(buf),
                 )
-            }
-
-            3 -> {
-                ViewPaywallStep.Confirming(
-                    FfiConverterString.read(buf),
-                    FfiConverterBoolean.read(buf),
-                )
-            }
-
-            else -> {
-                throw RuntimeException("invalid enum value, something is very wrong!!")
-            }
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
+    }
 
-    override fun allocationSize(value: ViewPaywallStep): ULong =
-        when (value) {
-            is ViewPaywallStep.Offer -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`action`) +
-                        FfiConverterBoolean.allocationSize(value.`opening`)
-                )
-            }
-
-            is ViewPaywallStep.Card -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`action`) +
-                        FfiConverterBoolean.allocationSize(value.`paying`) +
-                        FfiConverterOptionalString.allocationSize(value.`fault`)
-                )
-            }
-
-            is ViewPaywallStep.Confirming -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`action`) +
-                        FfiConverterBoolean.allocationSize(value.`checking`)
-                )
-            }
+    override fun allocationSize(value: ViewPaywallStep): ULong = when(value) {
+        is ViewPaywallStep.Offer -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`action`)
+                + FfiConverterBoolean.allocationSize(value.`opening`)
+            )
         }
+        is ViewPaywallStep.Confirming -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`action`)
+                + FfiConverterBoolean.allocationSize(value.`checking`)
+            )
+        }
+    }
 
-    override fun write(
-        value: ViewPaywallStep,
-        buf: ByteBuffer,
-    ) {
-        when (value) {
+    override fun write(value: ViewPaywallStep, buf: ByteBuffer) {
+        when(value) {
             is ViewPaywallStep.Offer -> {
                 buf.putInt(1)
                 FfiConverterString.write(value.`action`, buf)
                 FfiConverterBoolean.write(value.`opening`, buf)
                 Unit
             }
-
-            is ViewPaywallStep.Card -> {
-                buf.putInt(2)
-                FfiConverterString.write(value.`action`, buf)
-                FfiConverterBoolean.write(value.`paying`, buf)
-                FfiConverterOptionalString.write(value.`fault`, buf)
-                Unit
-            }
-
             is ViewPaywallStep.Confirming -> {
-                buf.putInt(3)
+                buf.putInt(2)
                 FfiConverterString.write(value.`action`, buf)
                 FfiConverterBoolean.write(value.`checking`, buf)
                 Unit
@@ -6316,36 +6184,45 @@ public object FfiConverterTypeViewPaywallStep : FfiConverterRustBuffer<ViewPaywa
     }
 }
 
+
+
+
+
+
 enum class ViewRangeKind {
+    
     THIS,
     LAST,
     BETWEEN,
-    ALL,
-    ;
+    ALL;
+
+    
+
 
     companion object
 }
 
+
 /**
  * @suppress
  */
-public object FfiConverterTypeViewRangeKind : FfiConverterRustBuffer<ViewRangeKind> {
-    override fun read(buf: ByteBuffer) =
-        try {
-            ViewRangeKind.values()[buf.getInt() - 1]
-        } catch (e: IndexOutOfBoundsException) {
-            throw RuntimeException("invalid enum value, something is very wrong!!", e)
-        }
+public object FfiConverterTypeViewRangeKind: FfiConverterRustBuffer<ViewRangeKind> {
+    override fun read(buf: ByteBuffer) = try {
+        ViewRangeKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
 
     override fun allocationSize(value: ViewRangeKind) = 4UL
 
-    override fun write(
-        value: ViewRangeKind,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: ViewRangeKind, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
+
+
+
+
 
 /**
  * Whether a new code can be asked for yet.
@@ -6354,28 +6231,42 @@ public object FfiConverterTypeViewRangeKind : FfiConverterRustBuffer<ViewRangeKi
  * to read and a button to press are not the same control.
  */
 sealed class ViewResend {
+    
     /**
      * `"Resend in 0:42"`.
      */
     data class Waiting(
-        val `text`: kotlin.String,
+        val `text`: kotlin.String, 
         /**
          * `"Wrong address?"` — without it a typo in the step before is a dead
          * end, because the code never arrives and nothing says why.
          */
-        val `wrongAddress`: kotlin.String,
-    ) : ViewResend() {
+        val `wrongAddress`: kotlin.String) : ViewResend()
+        
+    {
+        
+
         companion object
     }
-
+    
     /**
      * `"Send a new code"`.
      */
     data class Ready(
-        val `label`: kotlin.String,
-    ) : ViewResend() {
+        val `label`: kotlin.String) : ViewResend()
+        
+    {
+        
+
         companion object
     }
+    
+
+    
+
+    
+    
+
 
     companion object
 }
@@ -6383,59 +6274,46 @@ sealed class ViewResend {
 /**
  * @suppress
  */
-public object FfiConverterTypeViewResend : FfiConverterRustBuffer<ViewResend> {
-    override fun read(buf: ByteBuffer): ViewResend =
-        when (buf.getInt()) {
-            1 -> {
-                ViewResend.Waiting(
-                    FfiConverterString.read(buf),
-                    FfiConverterString.read(buf),
+public object FfiConverterTypeViewResend : FfiConverterRustBuffer<ViewResend>{
+    override fun read(buf: ByteBuffer): ViewResend {
+        return when(buf.getInt()) {
+            1 -> ViewResend.Waiting(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
                 )
-            }
-
-            2 -> {
-                ViewResend.Ready(
-                    FfiConverterString.read(buf),
+            2 -> ViewResend.Ready(
+                FfiConverterString.read(buf),
                 )
-            }
-
-            else -> {
-                throw RuntimeException("invalid enum value, something is very wrong!!")
-            }
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
+    }
 
-    override fun allocationSize(value: ViewResend): ULong =
-        when (value) {
-            is ViewResend.Waiting -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`text`) +
-                        FfiConverterString.allocationSize(value.`wrongAddress`)
-                )
-            }
-
-            is ViewResend.Ready -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterString.allocationSize(value.`label`)
-                )
-            }
+    override fun allocationSize(value: ViewResend): ULong = when(value) {
+        is ViewResend.Waiting -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`text`)
+                + FfiConverterString.allocationSize(value.`wrongAddress`)
+            )
         }
+        is ViewResend.Ready -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`label`)
+            )
+        }
+    }
 
-    override fun write(
-        value: ViewResend,
-        buf: ByteBuffer,
-    ) {
-        when (value) {
+    override fun write(value: ViewResend, buf: ByteBuffer) {
+        when(value) {
             is ViewResend.Waiting -> {
                 buf.putInt(1)
                 FfiConverterString.write(value.`text`, buf)
                 FfiConverterString.write(value.`wrongAddress`, buf)
                 Unit
             }
-
             is ViewResend.Ready -> {
                 buf.putInt(2)
                 FfiConverterString.write(value.`label`, buf)
@@ -6445,52 +6323,57 @@ public object FfiConverterTypeViewResend : FfiConverterRustBuffer<ViewResend> {
     }
 }
 
+
+
+
+
 /**
  * What a row's icon means, which is the only thing that colours it.
  */
 
 enum class ViewRowTone {
+    
     /**
      * A statement, not a step.
      */
     PLAIN,
     DONE,
-
     /**
      * Happening now.
      */
     RUNNING,
-
     /**
      * Not reached yet.
      */
-    WAITING,
+    WAITING;
 
-    ;
+    
+
 
     companion object
 }
 
+
 /**
  * @suppress
  */
-public object FfiConverterTypeViewRowTone : FfiConverterRustBuffer<ViewRowTone> {
-    override fun read(buf: ByteBuffer) =
-        try {
-            ViewRowTone.values()[buf.getInt() - 1]
-        } catch (e: IndexOutOfBoundsException) {
-            throw RuntimeException("invalid enum value, something is very wrong!!", e)
-        }
+public object FfiConverterTypeViewRowTone: FfiConverterRustBuffer<ViewRowTone> {
+    override fun read(buf: ByteBuffer) = try {
+        ViewRowTone.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
 
     override fun allocationSize(value: ViewRowTone) = 4UL
 
-    override fun write(
-        value: ViewRowTone,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: ViewRowTone, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
+
+
+
+
 
 /**
  * Everything on screen, in one value, so the view holds no "which screen am
@@ -6499,41 +6382,67 @@ public object FfiConverterTypeViewRowTone : FfiConverterRustBuffer<ViewRowTone> 
  * [`Paywall`](ViewScreen::Paywall), which stands in front of both.
  */
 sealed class ViewScreen {
+    
     data class Ledger(
-        val `view`: uniffi.client_state.ViewLedger,
-    ) : ViewScreen() {
+        val `view`: uniffi.client_state.ViewLedger) : ViewScreen()
+        
+    {
+        
+
         companion object
     }
-
+    
     data class Recurring(
-        val `view`: uniffi.client_state.ViewRecurring,
-    ) : ViewScreen() {
+        val `view`: uniffi.client_state.ViewRecurring) : ViewScreen()
+        
+    {
+        
+
         companion object
     }
-
+    
     data class Balances(
-        val `view`: uniffi.client_state.ViewBalances,
-    ) : ViewScreen() {
+        val `view`: uniffi.client_state.ViewBalances) : ViewScreen()
+        
+    {
+        
+
         companion object
     }
-
+    
     data class Account(
-        val `view`: uniffi.client_state.ViewAccount,
-    ) : ViewScreen() {
+        val `view`: uniffi.client_state.ViewAccount) : ViewScreen()
+        
+    {
+        
+
         companion object
     }
-
+    
     data class Onboarding(
-        val `view`: uniffi.client_state.ViewOnboarding,
-    ) : ViewScreen() {
-        companion object
-    }
+        val `view`: uniffi.client_state.ViewOnboarding) : ViewScreen()
+        
+    {
+        
 
-    data class Paywall(
-        val `view`: uniffi.client_state.ViewPaywall,
-    ) : ViewScreen() {
         companion object
     }
+    
+    data class Paywall(
+        val `view`: uniffi.client_state.ViewPaywall) : ViewScreen()
+        
+    {
+        
+
+        companion object
+    }
+    
+
+    
+
+    
+    
+
 
     companion object
 }
@@ -6541,136 +6450,103 @@ sealed class ViewScreen {
 /**
  * @suppress
  */
-public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen> {
-    override fun read(buf: ByteBuffer): ViewScreen =
-        when (buf.getInt()) {
-            1 -> {
-                ViewScreen.Ledger(
-                    FfiConverterTypeViewLedger.read(buf),
+public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen>{
+    override fun read(buf: ByteBuffer): ViewScreen {
+        return when(buf.getInt()) {
+            1 -> ViewScreen.Ledger(
+                FfiConverterTypeViewLedger.read(buf),
                 )
-            }
-
-            2 -> {
-                ViewScreen.Recurring(
-                    FfiConverterTypeViewRecurring.read(buf),
+            2 -> ViewScreen.Recurring(
+                FfiConverterTypeViewRecurring.read(buf),
                 )
-            }
-
-            3 -> {
-                ViewScreen.Balances(
-                    FfiConverterTypeViewBalances.read(buf),
+            3 -> ViewScreen.Balances(
+                FfiConverterTypeViewBalances.read(buf),
                 )
-            }
-
-            4 -> {
-                ViewScreen.Account(
-                    FfiConverterTypeViewAccount.read(buf),
+            4 -> ViewScreen.Account(
+                FfiConverterTypeViewAccount.read(buf),
                 )
-            }
-
-            5 -> {
-                ViewScreen.Onboarding(
-                    FfiConverterTypeViewOnboarding.read(buf),
+            5 -> ViewScreen.Onboarding(
+                FfiConverterTypeViewOnboarding.read(buf),
                 )
-            }
-
-            6 -> {
-                ViewScreen.Paywall(
-                    FfiConverterTypeViewPaywall.read(buf),
+            6 -> ViewScreen.Paywall(
+                FfiConverterTypeViewPaywall.read(buf),
                 )
-            }
-
-            else -> {
-                throw RuntimeException("invalid enum value, something is very wrong!!")
-            }
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
+    }
 
-    override fun allocationSize(value: ViewScreen): ULong =
-        when (value) {
-            is ViewScreen.Ledger -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeViewLedger.allocationSize(value.`view`)
-                )
-            }
-
-            is ViewScreen.Recurring -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeViewRecurring.allocationSize(value.`view`)
-                )
-            }
-
-            is ViewScreen.Balances -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeViewBalances.allocationSize(value.`view`)
-                )
-            }
-
-            is ViewScreen.Account -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeViewAccount.allocationSize(value.`view`)
-                )
-            }
-
-            is ViewScreen.Onboarding -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeViewOnboarding.allocationSize(value.`view`)
-                )
-            }
-
-            is ViewScreen.Paywall -> {
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                (
-                    4UL +
-                        FfiConverterTypeViewPaywall.allocationSize(value.`view`)
-                )
-            }
+    override fun allocationSize(value: ViewScreen): ULong = when(value) {
+        is ViewScreen.Ledger -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeViewLedger.allocationSize(value.`view`)
+            )
         }
+        is ViewScreen.Recurring -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeViewRecurring.allocationSize(value.`view`)
+            )
+        }
+        is ViewScreen.Balances -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeViewBalances.allocationSize(value.`view`)
+            )
+        }
+        is ViewScreen.Account -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeViewAccount.allocationSize(value.`view`)
+            )
+        }
+        is ViewScreen.Onboarding -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeViewOnboarding.allocationSize(value.`view`)
+            )
+        }
+        is ViewScreen.Paywall -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeViewPaywall.allocationSize(value.`view`)
+            )
+        }
+    }
 
-    override fun write(
-        value: ViewScreen,
-        buf: ByteBuffer,
-    ) {
-        when (value) {
+    override fun write(value: ViewScreen, buf: ByteBuffer) {
+        when(value) {
             is ViewScreen.Ledger -> {
                 buf.putInt(1)
                 FfiConverterTypeViewLedger.write(value.`view`, buf)
                 Unit
             }
-
             is ViewScreen.Recurring -> {
                 buf.putInt(2)
                 FfiConverterTypeViewRecurring.write(value.`view`, buf)
                 Unit
             }
-
             is ViewScreen.Balances -> {
                 buf.putInt(3)
                 FfiConverterTypeViewBalances.write(value.`view`, buf)
                 Unit
             }
-
             is ViewScreen.Account -> {
                 buf.putInt(4)
                 FfiConverterTypeViewAccount.write(value.`view`, buf)
                 Unit
             }
-
             is ViewScreen.Onboarding -> {
                 buf.putInt(5)
                 FfiConverterTypeViewOnboarding.write(value.`view`, buf)
                 Unit
             }
-
             is ViewScreen.Paywall -> {
                 buf.putInt(6)
                 FfiConverterTypeViewPaywall.write(value.`view`, buf)
@@ -6680,10 +6556,15 @@ public object FfiConverterTypeViewScreen : FfiConverterRustBuffer<ViewScreen> {
     }
 }
 
+
+
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterOptionalULong : FfiConverterRustBuffer<kotlin.ULong?> {
+public object FfiConverterOptionalULong: FfiConverterRustBuffer<kotlin.ULong?> {
     override fun read(buf: ByteBuffer): kotlin.ULong? {
         if (buf.get().toInt() == 0) {
             return null
@@ -6699,10 +6580,7 @@ public object FfiConverterOptionalULong : FfiConverterRustBuffer<kotlin.ULong?> 
         }
     }
 
-    override fun write(
-        value: kotlin.ULong?,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: kotlin.ULong?, buf: ByteBuffer) {
         if (value == null) {
             buf.put(0)
         } else {
@@ -6712,10 +6590,13 @@ public object FfiConverterOptionalULong : FfiConverterRustBuffer<kotlin.ULong?> 
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterOptionalString : FfiConverterRustBuffer<kotlin.String?> {
+public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?> {
     override fun read(buf: ByteBuffer): kotlin.String? {
         if (buf.get().toInt() == 0) {
             return null
@@ -6731,10 +6612,7 @@ public object FfiConverterOptionalString : FfiConverterRustBuffer<kotlin.String?
         }
     }
 
-    override fun write(
-        value: kotlin.String?,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: kotlin.String?, buf: ByteBuffer) {
         if (value == null) {
             buf.put(0)
         } else {
@@ -6744,10 +6622,13 @@ public object FfiConverterOptionalString : FfiConverterRustBuffer<kotlin.String?
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterOptionalTypeViewDayCard : FfiConverterRustBuffer<ViewDayCard?> {
+public object FfiConverterOptionalTypeViewDayCard: FfiConverterRustBuffer<ViewDayCard?> {
     override fun read(buf: ByteBuffer): ViewDayCard? {
         if (buf.get().toInt() == 0) {
             return null
@@ -6763,10 +6644,7 @@ public object FfiConverterOptionalTypeViewDayCard : FfiConverterRustBuffer<ViewD
         }
     }
 
-    override fun write(
-        value: ViewDayCard?,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: ViewDayCard?, buf: ByteBuffer) {
         if (value == null) {
             buf.put(0)
         } else {
@@ -6776,10 +6654,13 @@ public object FfiConverterOptionalTypeViewDayCard : FfiConverterRustBuffer<ViewD
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterOptionalTypeViewDock : FfiConverterRustBuffer<ViewDock?> {
+public object FfiConverterOptionalTypeViewDock: FfiConverterRustBuffer<ViewDock?> {
     override fun read(buf: ByteBuffer): ViewDock? {
         if (buf.get().toInt() == 0) {
             return null
@@ -6795,10 +6676,7 @@ public object FfiConverterOptionalTypeViewDock : FfiConverterRustBuffer<ViewDock
         }
     }
 
-    override fun write(
-        value: ViewDock?,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: ViewDock?, buf: ByteBuffer) {
         if (value == null) {
             buf.put(0)
         } else {
@@ -6808,10 +6686,13 @@ public object FfiConverterOptionalTypeViewDock : FfiConverterRustBuffer<ViewDock
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceString : FfiConverterRustBuffer<List<kotlin.String>> {
+public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
     override fun read(buf: ByteBuffer): List<kotlin.String> {
         val len = buf.getInt()
         return List<kotlin.String>(len) {
@@ -6825,10 +6706,7 @@ public object FfiConverterSequenceString : FfiConverterRustBuffer<List<kotlin.St
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<kotlin.String>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<kotlin.String>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterString.write(it, buf)
@@ -6836,10 +6714,13 @@ public object FfiConverterSequenceString : FfiConverterRustBuffer<List<kotlin.St
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewAccountBank : FfiConverterRustBuffer<List<ViewAccountBank>> {
+public object FfiConverterSequenceTypeViewAccountBank: FfiConverterRustBuffer<List<ViewAccountBank>> {
     override fun read(buf: ByteBuffer): List<ViewAccountBank> {
         val len = buf.getInt()
         return List<ViewAccountBank>(len) {
@@ -6853,10 +6734,7 @@ public object FfiConverterSequenceTypeViewAccountBank : FfiConverterRustBuffer<L
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewAccountBank>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewAccountBank>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewAccountBank.write(it, buf)
@@ -6864,10 +6742,13 @@ public object FfiConverterSequenceTypeViewAccountBank : FfiConverterRustBuffer<L
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewAccountRow : FfiConverterRustBuffer<List<ViewAccountRow>> {
+public object FfiConverterSequenceTypeViewAccountRow: FfiConverterRustBuffer<List<ViewAccountRow>> {
     override fun read(buf: ByteBuffer): List<ViewAccountRow> {
         val len = buf.getInt()
         return List<ViewAccountRow>(len) {
@@ -6881,10 +6762,7 @@ public object FfiConverterSequenceTypeViewAccountRow : FfiConverterRustBuffer<Li
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewAccountRow>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewAccountRow>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewAccountRow.write(it, buf)
@@ -6892,10 +6770,13 @@ public object FfiConverterSequenceTypeViewAccountRow : FfiConverterRustBuffer<Li
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewBreakdownSlice : FfiConverterRustBuffer<List<ViewBreakdownSlice>> {
+public object FfiConverterSequenceTypeViewBreakdownSlice: FfiConverterRustBuffer<List<ViewBreakdownSlice>> {
     override fun read(buf: ByteBuffer): List<ViewBreakdownSlice> {
         val len = buf.getInt()
         return List<ViewBreakdownSlice>(len) {
@@ -6909,10 +6790,7 @@ public object FfiConverterSequenceTypeViewBreakdownSlice : FfiConverterRustBuffe
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewBreakdownSlice>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewBreakdownSlice>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewBreakdownSlice.write(it, buf)
@@ -6920,10 +6798,13 @@ public object FfiConverterSequenceTypeViewBreakdownSlice : FfiConverterRustBuffe
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewCalendarDay : FfiConverterRustBuffer<List<ViewCalendarDay>> {
+public object FfiConverterSequenceTypeViewCalendarDay: FfiConverterRustBuffer<List<ViewCalendarDay>> {
     override fun read(buf: ByteBuffer): List<ViewCalendarDay> {
         val len = buf.getInt()
         return List<ViewCalendarDay>(len) {
@@ -6937,10 +6818,7 @@ public object FfiConverterSequenceTypeViewCalendarDay : FfiConverterRustBuffer<L
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewCalendarDay>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewCalendarDay>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewCalendarDay.write(it, buf)
@@ -6948,10 +6826,13 @@ public object FfiConverterSequenceTypeViewCalendarDay : FfiConverterRustBuffer<L
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewCategoryChip : FfiConverterRustBuffer<List<ViewCategoryChip>> {
+public object FfiConverterSequenceTypeViewCategoryChip: FfiConverterRustBuffer<List<ViewCategoryChip>> {
     override fun read(buf: ByteBuffer): List<ViewCategoryChip> {
         val len = buf.getInt()
         return List<ViewCategoryChip>(len) {
@@ -6965,10 +6846,7 @@ public object FfiConverterSequenceTypeViewCategoryChip : FfiConverterRustBuffer<
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewCategoryChip>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewCategoryChip>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewCategoryChip.write(it, buf)
@@ -6976,10 +6854,13 @@ public object FfiConverterSequenceTypeViewCategoryChip : FfiConverterRustBuffer<
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewCodeCell : FfiConverterRustBuffer<List<ViewCodeCell>> {
+public object FfiConverterSequenceTypeViewCodeCell: FfiConverterRustBuffer<List<ViewCodeCell>> {
     override fun read(buf: ByteBuffer): List<ViewCodeCell> {
         val len = buf.getInt()
         return List<ViewCodeCell>(len) {
@@ -6993,10 +6874,7 @@ public object FfiConverterSequenceTypeViewCodeCell : FfiConverterRustBuffer<List
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewCodeCell>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewCodeCell>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewCodeCell.write(it, buf)
@@ -7004,10 +6882,13 @@ public object FfiConverterSequenceTypeViewCodeCell : FfiConverterRustBuffer<List
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewConnection : FfiConverterRustBuffer<List<ViewConnection>> {
+public object FfiConverterSequenceTypeViewConnection: FfiConverterRustBuffer<List<ViewConnection>> {
     override fun read(buf: ByteBuffer): List<ViewConnection> {
         val len = buf.getInt()
         return List<ViewConnection>(len) {
@@ -7021,10 +6902,7 @@ public object FfiConverterSequenceTypeViewConnection : FfiConverterRustBuffer<Li
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewConnection>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewConnection>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewConnection.write(it, buf)
@@ -7032,10 +6910,13 @@ public object FfiConverterSequenceTypeViewConnection : FfiConverterRustBuffer<Li
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewDayRow : FfiConverterRustBuffer<List<ViewDayRow>> {
+public object FfiConverterSequenceTypeViewDayRow: FfiConverterRustBuffer<List<ViewDayRow>> {
     override fun read(buf: ByteBuffer): List<ViewDayRow> {
         val len = buf.getInt()
         return List<ViewDayRow>(len) {
@@ -7049,10 +6930,7 @@ public object FfiConverterSequenceTypeViewDayRow : FfiConverterRustBuffer<List<V
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewDayRow>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewDayRow>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewDayRow.write(it, buf)
@@ -7060,10 +6938,13 @@ public object FfiConverterSequenceTypeViewDayRow : FfiConverterRustBuffer<List<V
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewDaySection : FfiConverterRustBuffer<List<ViewDaySection>> {
+public object FfiConverterSequenceTypeViewDaySection: FfiConverterRustBuffer<List<ViewDaySection>> {
     override fun read(buf: ByteBuffer): List<ViewDaySection> {
         val len = buf.getInt()
         return List<ViewDaySection>(len) {
@@ -7077,10 +6958,7 @@ public object FfiConverterSequenceTypeViewDaySection : FfiConverterRustBuffer<Li
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewDaySection>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewDaySection>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewDaySection.write(it, buf)
@@ -7088,10 +6966,13 @@ public object FfiConverterSequenceTypeViewDaySection : FfiConverterRustBuffer<Li
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewDockItem : FfiConverterRustBuffer<List<ViewDockItem>> {
+public object FfiConverterSequenceTypeViewDockItem: FfiConverterRustBuffer<List<ViewDockItem>> {
     override fun read(buf: ByteBuffer): List<ViewDockItem> {
         val len = buf.getInt()
         return List<ViewDockItem>(len) {
@@ -7105,10 +6986,7 @@ public object FfiConverterSequenceTypeViewDockItem : FfiConverterRustBuffer<List
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewDockItem>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewDockItem>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewDockItem.write(it, buf)
@@ -7116,10 +6994,13 @@ public object FfiConverterSequenceTypeViewDockItem : FfiConverterRustBuffer<List
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewIconRow : FfiConverterRustBuffer<List<ViewIconRow>> {
+public object FfiConverterSequenceTypeViewIconRow: FfiConverterRustBuffer<List<ViewIconRow>> {
     override fun read(buf: ByteBuffer): List<ViewIconRow> {
         val len = buf.getInt()
         return List<ViewIconRow>(len) {
@@ -7133,10 +7014,7 @@ public object FfiConverterSequenceTypeViewIconRow : FfiConverterRustBuffer<List<
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewIconRow>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewIconRow>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewIconRow.write(it, buf)
@@ -7144,10 +7022,13 @@ public object FfiConverterSequenceTypeViewIconRow : FfiConverterRustBuffer<List<
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewMonthSection : FfiConverterRustBuffer<List<ViewMonthSection>> {
+public object FfiConverterSequenceTypeViewMonthSection: FfiConverterRustBuffer<List<ViewMonthSection>> {
     override fun read(buf: ByteBuffer): List<ViewMonthSection> {
         val len = buf.getInt()
         return List<ViewMonthSection>(len) {
@@ -7161,10 +7042,7 @@ public object FfiConverterSequenceTypeViewMonthSection : FfiConverterRustBuffer<
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewMonthSection>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewMonthSection>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewMonthSection.write(it, buf)
@@ -7172,10 +7050,13 @@ public object FfiConverterSequenceTypeViewMonthSection : FfiConverterRustBuffer<
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewRun : FfiConverterRustBuffer<List<ViewRun>> {
+public object FfiConverterSequenceTypeViewRun: FfiConverterRustBuffer<List<ViewRun>> {
     override fun read(buf: ByteBuffer): List<ViewRun> {
         val len = buf.getInt()
         return List<ViewRun>(len) {
@@ -7189,10 +7070,7 @@ public object FfiConverterSequenceTypeViewRun : FfiConverterRustBuffer<List<View
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewRun>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewRun>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewRun.write(it, buf)
@@ -7200,10 +7078,13 @@ public object FfiConverterSequenceTypeViewRun : FfiConverterRustBuffer<List<View
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewStreamGroup : FfiConverterRustBuffer<List<ViewStreamGroup>> {
+public object FfiConverterSequenceTypeViewStreamGroup: FfiConverterRustBuffer<List<ViewStreamGroup>> {
     override fun read(buf: ByteBuffer): List<ViewStreamGroup> {
         val len = buf.getInt()
         return List<ViewStreamGroup>(len) {
@@ -7217,10 +7098,7 @@ public object FfiConverterSequenceTypeViewStreamGroup : FfiConverterRustBuffer<L
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewStreamGroup>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewStreamGroup>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewStreamGroup.write(it, buf)
@@ -7228,10 +7106,13 @@ public object FfiConverterSequenceTypeViewStreamGroup : FfiConverterRustBuffer<L
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewStreamRow : FfiConverterRustBuffer<List<ViewStreamRow>> {
+public object FfiConverterSequenceTypeViewStreamRow: FfiConverterRustBuffer<List<ViewStreamRow>> {
     override fun read(buf: ByteBuffer): List<ViewStreamRow> {
         val len = buf.getInt()
         return List<ViewStreamRow>(len) {
@@ -7245,10 +7126,7 @@ public object FfiConverterSequenceTypeViewStreamRow : FfiConverterRustBuffer<Lis
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewStreamRow>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewStreamRow>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewStreamRow.write(it, buf)
@@ -7256,10 +7134,13 @@ public object FfiConverterSequenceTypeViewStreamRow : FfiConverterRustBuffer<Lis
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewTally : FfiConverterRustBuffer<List<ViewTally>> {
+public object FfiConverterSequenceTypeViewTally: FfiConverterRustBuffer<List<ViewTally>> {
     override fun read(buf: ByteBuffer): List<ViewTally> {
         val len = buf.getInt()
         return List<ViewTally>(len) {
@@ -7273,10 +7154,7 @@ public object FfiConverterSequenceTypeViewTally : FfiConverterRustBuffer<List<Vi
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewTally>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewTally>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewTally.write(it, buf)
@@ -7284,10 +7162,13 @@ public object FfiConverterSequenceTypeViewTally : FfiConverterRustBuffer<List<Vi
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeViewTxRow : FfiConverterRustBuffer<List<ViewTxRow>> {
+public object FfiConverterSequenceTypeViewTxRow: FfiConverterRustBuffer<List<ViewTxRow>> {
     override fun read(buf: ByteBuffer): List<ViewTxRow> {
         val len = buf.getInt()
         return List<ViewTxRow>(len) {
@@ -7301,10 +7182,7 @@ public object FfiConverterSequenceTypeViewTxRow : FfiConverterRustBuffer<List<Vi
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<ViewTxRow>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<ViewTxRow>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeViewTxRow.write(it, buf)
@@ -7312,10 +7190,13 @@ public object FfiConverterSequenceTypeViewTxRow : FfiConverterRustBuffer<List<Vi
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeAction : FfiConverterRustBuffer<List<Action>> {
+public object FfiConverterSequenceTypeAction: FfiConverterRustBuffer<List<Action>> {
     override fun read(buf: ByteBuffer): List<Action> {
         val len = buf.getInt()
         return List<Action>(len) {
@@ -7329,10 +7210,7 @@ public object FfiConverterSequenceTypeAction : FfiConverterRustBuffer<List<Actio
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<Action>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<Action>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeAction.write(it, buf)
@@ -7340,10 +7218,13 @@ public object FfiConverterSequenceTypeAction : FfiConverterRustBuffer<List<Actio
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeEvent : FfiConverterRustBuffer<List<Event>> {
+public object FfiConverterSequenceTypeEvent: FfiConverterRustBuffer<List<Event>> {
     override fun read(buf: ByteBuffer): List<Event> {
         val len = buf.getInt()
         return List<Event>(len) {
@@ -7357,10 +7238,7 @@ public object FfiConverterSequenceTypeEvent : FfiConverterRustBuffer<List<Event>
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<Event>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<Event>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeEvent.write(it, buf)
@@ -7368,10 +7246,13 @@ public object FfiConverterSequenceTypeEvent : FfiConverterRustBuffer<List<Event>
     }
 }
 
+
+
+
 /**
  * @suppress
  */
-public object FfiConverterSequenceSequenceTypeViewCalendarDay : FfiConverterRustBuffer<List<List<ViewCalendarDay>>> {
+public object FfiConverterSequenceSequenceTypeViewCalendarDay: FfiConverterRustBuffer<List<List<ViewCalendarDay>>> {
     override fun read(buf: ByteBuffer): List<List<ViewCalendarDay>> {
         val len = buf.getInt()
         return List<List<ViewCalendarDay>>(len) {
@@ -7385,13 +7266,11 @@ public object FfiConverterSequenceSequenceTypeViewCalendarDay : FfiConverterRust
         return sizeForLength + sizeForItems
     }
 
-    override fun write(
-        value: List<List<ViewCalendarDay>>,
-        buf: ByteBuffer,
-    ) {
+    override fun write(value: List<List<ViewCalendarDay>>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterSequenceTypeViewCalendarDay.write(it, buf)
         }
     }
 }
+

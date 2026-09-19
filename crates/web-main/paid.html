@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<!--
+  Where Stripe sends the Checkout window when the money is taken, on the web.
+
+  The address is the message: the app watches the window come home, and this
+  page is the one that means paid. It carries nothing else — whether the
+  server will serve the session is the webhook's to say, and the app asks as
+  soon as this window is gone. So all it does is go. The app closes it too,
+  when it sees the window back on its own origin — this is for the moment
+  before it looks.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Meridian</title>
+    <style>
+      body {
+        margin: 0;
+        display: grid;
+        place-items: center;
+        height: 100vh;
+        /* theme.css's --bg and --text-muted: nothing here is built, so the
+           page cannot read them. */
+        background: #01030a;
+        color: #94a3b8;
+        font: 14px/1.5 Inter, ui-sans-serif, -apple-system, system-ui, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <p>Payment received. You can close this window.</p>
+    <script>window.close();</script>
+  </body>
+</html>
