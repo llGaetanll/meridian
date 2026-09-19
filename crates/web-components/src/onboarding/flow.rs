@@ -10,6 +10,7 @@ use super::Email;
 use super::Failed;
 use super::Ready;
 use super::Syncing;
+use super::Waiting;
 use super::Welcome;
 
 /// First run: whichever screen of it the machine is showing.
@@ -36,6 +37,7 @@ pub fn Onboarding(view: Signal<ViewOnboarding>, ui: Callback<EventUi>) -> impl I
             ViewOnboarding::Email { .. } => view! { <Email view=view ui=ui /> }.into_any(),
             ViewOnboarding::Code { .. } => view! { <Code view=view ui=ui /> }.into_any(),
             ViewOnboarding::Bank { .. } => view! { <Bank view=view ui=ui /> }.into_any(),
+            ViewOnboarding::Waiting { .. } => view! { <Waiting view=view /> }.into_any(),
             ViewOnboarding::Sync { .. } => view! { <Syncing view=view /> }.into_any(),
             ViewOnboarding::Ready { .. } => view! { <Ready view=view ui=ui /> }.into_any(),
             ViewOnboarding::Failed { .. } => view! { <Failed view=view ui=ui /> }.into_any(),

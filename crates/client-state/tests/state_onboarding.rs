@@ -413,6 +413,26 @@ fn connecting_a_bank_opens_plaid() {
     );
 }
 
+/// Plaid's page coming up is a screen of its own behind the window: nothing
+/// to press, and the window going away is what moves the flow on — here by
+/// closing early, which is the failed screen.
+#[test]
+fn plaids_window_up_is_a_screen_of_its_own() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource { event: EventSource::BankLinkOpened },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Waiting { step: "Step 2 of 3 · Bank", title: "Finish in your bank's window", body: [ViewRun { text: "Plaid opened your bank's sign-in in a window of its own. This screen moves on by itself when that window closes.", strong: false }], action: "Waiting on Plaid…" } }, dock: None } }"#,
+
+        < Event::FromSource { event: EventSource::BankAbandoned },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Failed { .. } }, .. } },
+    );
+}
+
 /// Connecting a bank is what starts the history arriving, so the stream
 /// follows the news rather than the runtime deciding a sync must be next.
 #[test]

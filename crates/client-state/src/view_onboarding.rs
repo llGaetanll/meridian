@@ -64,6 +64,17 @@ pub enum ViewOnboarding {
         legal: String,
     },
 
+    /// Plaid's page is up, in a window of its own, and the flow waits behind
+    /// it. Nothing to press: the window going away is what moves the flow on.
+    Waiting {
+        step: String,
+        title: String,
+        body: Vec<ViewRun>,
+        /// `"Waiting on Plaid…"` — the one button, busy for as long as the
+        /// screen is up, saying what the wait is for.
+        action: String,
+    },
+
     /// The one slow screen in the app, and it happens once per bank.
     Sync {
         step: String,

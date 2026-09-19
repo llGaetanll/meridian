@@ -33,6 +33,7 @@ pub(super) fn step(view: &ViewOnboarding) -> &str {
         ViewOnboarding::Email { step, .. }
         | ViewOnboarding::Code { step, .. }
         | ViewOnboarding::Bank { step, .. }
+        | ViewOnboarding::Waiting { step, .. }
         | ViewOnboarding::Sync { step, .. }
         | ViewOnboarding::Failed { step, .. } => step,
         ViewOnboarding::Welcome { .. } | ViewOnboarding::Ready { .. } => "",
@@ -45,6 +46,7 @@ pub(super) fn title(view: &ViewOnboarding) -> &str {
         | ViewOnboarding::Email { title, .. }
         | ViewOnboarding::Code { title, .. }
         | ViewOnboarding::Bank { title, .. }
+        | ViewOnboarding::Waiting { title, .. }
         | ViewOnboarding::Sync { title, .. }
         | ViewOnboarding::Ready { title, .. }
         | ViewOnboarding::Failed { title, .. } => title,
@@ -57,6 +59,7 @@ pub(super) fn body(view: &ViewOnboarding) -> &[ViewRun] {
         | ViewOnboarding::Email { body, .. }
         | ViewOnboarding::Code { body, .. }
         | ViewOnboarding::Bank { body, .. }
+        | ViewOnboarding::Waiting { body, .. }
         | ViewOnboarding::Sync { body, .. }
         | ViewOnboarding::Ready { body, .. }
         | ViewOnboarding::Failed { body, .. } => body,
@@ -72,6 +75,7 @@ pub(super) fn fault(view: &ViewOnboarding) -> Option<&str> {
         }
         ViewOnboarding::Email { field, .. } => field.fault.as_deref(),
         ViewOnboarding::Bank { .. }
+        | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
         | ViewOnboarding::Ready { .. }
         | ViewOnboarding::Failed { .. } => None,
@@ -84,6 +88,7 @@ pub(super) fn action(view: &ViewOnboarding) -> Option<&str> {
         ViewOnboarding::Welcome { action, .. }
         | ViewOnboarding::Email { action, .. }
         | ViewOnboarding::Bank { action, .. }
+        | ViewOnboarding::Waiting { action, .. }
         | ViewOnboarding::Failed { action, .. } => Some(action),
         ViewOnboarding::Code { action, .. } => action.as_deref(),
         ViewOnboarding::Ready { open, .. } => Some(open),
@@ -101,6 +106,7 @@ pub(super) fn aside(view: &ViewOnboarding) -> Option<&str> {
         | ViewOnboarding::Email { .. }
         | ViewOnboarding::Code { .. }
         | ViewOnboarding::Bank { .. }
+        | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. } => None,
     }
 }
@@ -110,6 +116,7 @@ pub(super) fn legal(view: &ViewOnboarding) -> &str {
         ViewOnboarding::Welcome { legal, .. } | ViewOnboarding::Bank { legal, .. } => legal,
         ViewOnboarding::Email { .. }
         | ViewOnboarding::Code { .. }
+        | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
         | ViewOnboarding::Ready { .. }
         | ViewOnboarding::Failed { .. } => "",
@@ -122,6 +129,7 @@ pub(super) fn field(view: &ViewOnboarding) -> Option<&ViewField> {
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Code { .. }
         | ViewOnboarding::Bank { .. }
+        | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
         | ViewOnboarding::Ready { .. }
         | ViewOnboarding::Failed { .. } => None,
@@ -134,6 +142,7 @@ pub(super) fn cells(view: &ViewOnboarding) -> &[ViewCodeCell] {
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
         | ViewOnboarding::Bank { .. }
+        | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
         | ViewOnboarding::Ready { .. }
         | ViewOnboarding::Failed { .. } => &[],
@@ -146,6 +155,7 @@ pub(super) fn resend(view: &ViewOnboarding) -> Option<&ViewResend> {
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
         | ViewOnboarding::Bank { .. }
+        | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
         | ViewOnboarding::Ready { .. }
         | ViewOnboarding::Failed { .. } => None,
@@ -162,6 +172,7 @@ pub(super) fn opening(view: &ViewOnboarding) -> Option<&str> {
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
         | ViewOnboarding::Code { .. }
+        | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
         | ViewOnboarding::Ready { .. } => None,
     }
@@ -174,6 +185,7 @@ pub(super) fn progress(view: &ViewOnboarding) -> f64 {
         | ViewOnboarding::Email { .. }
         | ViewOnboarding::Code { .. }
         | ViewOnboarding::Bank { .. }
+        | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Ready { .. }
         | ViewOnboarding::Failed { .. } => 0.0,
     }
@@ -187,6 +199,7 @@ pub(super) fn rows(view: &ViewOnboarding) -> &[ViewIconRow] {
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
         | ViewOnboarding::Code { .. }
+        | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Ready { .. } => &[],
     }
 }
@@ -198,6 +211,7 @@ pub(super) fn tally(view: &ViewOnboarding) -> &[ViewTally] {
         | ViewOnboarding::Email { .. }
         | ViewOnboarding::Code { .. }
         | ViewOnboarding::Bank { .. }
+        | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
         | ViewOnboarding::Failed { .. } => &[],
     }

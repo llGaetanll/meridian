@@ -28,6 +28,7 @@ pub struct ViewPaywall {
     /// one.
     pub step: ViewPaywallStep,
 
-    /// `"Sign out"`.
-    pub sign_out: String,
+    /// `Some("Sign out")` — absent behind Stripe's window, where the only
+    /// way anywhere is the window itself.
+    pub sign_out: Option<String>,
 }

@@ -2896,9 +2896,10 @@ data class ViewPaywall (
     var `step`: ViewPaywallStep
     , 
     /**
-     * `"Sign out"`.
+     * `Some("Sign out")` — absent behind Stripe's window, where the only
+     * way anywhere is the window itself.
      */
-    var `signOut`: kotlin.String
+    var `signOut`: kotlin.String?
     
 ){
     
@@ -2919,7 +2920,7 @@ public object FfiConverterTypeViewPaywall: FfiConverterRustBuffer<ViewPaywall> {
             FfiConverterSequenceTypeViewRun.read(buf),
             FfiConverterSequenceTypeViewIconRow.read(buf),
             FfiConverterTypeViewPaywallStep.read(buf),
-            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
         )
     }
 
@@ -2928,7 +2929,7 @@ public object FfiConverterTypeViewPaywall: FfiConverterRustBuffer<ViewPaywall> {
             FfiConverterSequenceTypeViewRun.allocationSize(value.`body`) +
             FfiConverterSequenceTypeViewIconRow.allocationSize(value.`rows`) +
             FfiConverterTypeViewPaywallStep.allocationSize(value.`step`) +
-            FfiConverterString.allocationSize(value.`signOut`)
+            FfiConverterOptionalString.allocationSize(value.`signOut`)
     )
 
     override fun write(value: ViewPaywall, buf: ByteBuffer) {
@@ -2936,7 +2937,7 @@ public object FfiConverterTypeViewPaywall: FfiConverterRustBuffer<ViewPaywall> {
             FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
             FfiConverterSequenceTypeViewIconRow.write(value.`rows`, buf)
             FfiConverterTypeViewPaywallStep.write(value.`step`, buf)
-            FfiConverterString.write(value.`signOut`, buf)
+            FfiConverterOptionalString.write(value.`signOut`, buf)
     }
 }
 
@@ -4219,6 +4220,12 @@ sealed class EventSource {
     
     
     /**
+     * Plaid's page is up, in a window of its own.
+     */
+    object BankLinkOpened : EventSource()
+    
+    
+    /**
      * Plaid came back with at least one bank attached.
      *
      * No name, because nobody has one yet — it arrives on
@@ -4325,17 +4332,18 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource>{
             4 -> EventSource.CodeSent
             5 -> EventSource.CodeAccepted
             6 -> EventSource.CodeRejected
-            7 -> EventSource.BankLinked
-            8 -> EventSource.BankAbandoned
-            9 -> EventSource.BankBlocked
-            10 -> EventSource.BankPending
-            11 -> EventSource.SyncStatusLoaded(
+            7 -> EventSource.BankLinkOpened
+            8 -> EventSource.BankLinked
+            9 -> EventSource.BankAbandoned
+            10 -> EventSource.BankBlocked
+            11 -> EventSource.BankPending
+            12 -> EventSource.SyncStatusLoaded(
                 FfiConverterString.read(buf),
                 )
-            12 -> EventSource.SyncWatchEnded
-            13 -> EventSource.CheckoutOpened
-            14 -> EventSource.PaymentTaken
-            15 -> EventSource.CheckoutClosed
+            13 -> EventSource.SyncWatchEnded
+            14 -> EventSource.CheckoutOpened
+            15 -> EventSource.PaymentTaken
+            16 -> EventSource.CheckoutClosed
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
     }
@@ -4375,6 +4383,12 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource>{
             )
         }
         is EventSource.CodeRejected -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is EventSource.BankLinkOpened -> {
             // Add the size for the Int that specifies the variant plus the size needed for all fields
             (
                 4UL
@@ -4466,41 +4480,45 @@ public object FfiConverterTypeEventSource : FfiConverterRustBuffer<EventSource>{
                 buf.putInt(6)
                 Unit
             }
-            is EventSource.BankLinked -> {
+            is EventSource.BankLinkOpened -> {
                 buf.putInt(7)
                 Unit
             }
-            is EventSource.BankAbandoned -> {
+            is EventSource.BankLinked -> {
                 buf.putInt(8)
                 Unit
             }
-            is EventSource.BankBlocked -> {
+            is EventSource.BankAbandoned -> {
                 buf.putInt(9)
                 Unit
             }
-            is EventSource.BankPending -> {
+            is EventSource.BankBlocked -> {
                 buf.putInt(10)
                 Unit
             }
-            is EventSource.SyncStatusLoaded -> {
+            is EventSource.BankPending -> {
                 buf.putInt(11)
+                Unit
+            }
+            is EventSource.SyncStatusLoaded -> {
+                buf.putInt(12)
                 FfiConverterString.write(value.`json`, buf)
                 Unit
             }
             is EventSource.SyncWatchEnded -> {
-                buf.putInt(12)
-                Unit
-            }
-            is EventSource.CheckoutOpened -> {
                 buf.putInt(13)
                 Unit
             }
-            is EventSource.PaymentTaken -> {
+            is EventSource.CheckoutOpened -> {
                 buf.putInt(14)
                 Unit
             }
-            is EventSource.CheckoutClosed -> {
+            is EventSource.PaymentTaken -> {
                 buf.putInt(15)
+                Unit
+            }
+            is EventSource.CheckoutClosed -> {
+                buf.putInt(16)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -5767,6 +5785,26 @@ sealed class ViewOnboarding {
     }
     
     /**
+     * Plaid's page is up, in a window of its own, and the flow waits behind
+     * it. Nothing to press: the window going away is what moves the flow on.
+     */
+    data class Waiting(
+        val `step`: kotlin.String, 
+        val `title`: kotlin.String, 
+        val `body`: List<uniffi.client_state.ViewRun>, 
+        /**
+         * `"Waiting on Plaid…"` — the one button, busy for as long as the
+         * screen is up, saying what the wait is for.
+         */
+        val `action`: kotlin.String) : ViewOnboarding()
+        
+    {
+        
+
+        companion object
+    }
+    
+    /**
      * The one slow screen in the app, and it happens once per bank.
      */
     data class Sync(
@@ -5881,21 +5919,27 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterOptionalString.read(buf),
                 FfiConverterString.read(buf),
                 )
-            5 -> ViewOnboarding.Sync(
+            5 -> ViewOnboarding.Waiting(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterSequenceTypeViewRun.read(buf),
+                FfiConverterString.read(buf),
+                )
+            6 -> ViewOnboarding.Sync(
                 FfiConverterString.read(buf),
                 FfiConverterString.read(buf),
                 FfiConverterSequenceTypeViewRun.read(buf),
                 FfiConverterDouble.read(buf),
                 FfiConverterSequenceTypeViewIconRow.read(buf),
                 )
-            6 -> ViewOnboarding.Ready(
+            7 -> ViewOnboarding.Ready(
                 FfiConverterString.read(buf),
                 FfiConverterSequenceTypeViewRun.read(buf),
                 FfiConverterSequenceTypeViewTally.read(buf),
                 FfiConverterString.read(buf),
                 FfiConverterString.read(buf),
                 )
-            7 -> ViewOnboarding.Failed(
+            8 -> ViewOnboarding.Failed(
                 FfiConverterString.read(buf),
                 FfiConverterString.read(buf),
                 FfiConverterSequenceTypeViewRun.read(buf),
@@ -5955,6 +5999,16 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 + FfiConverterString.allocationSize(value.`action`)
                 + FfiConverterOptionalString.allocationSize(value.`opening`)
                 + FfiConverterString.allocationSize(value.`legal`)
+            )
+        }
+        is ViewOnboarding.Waiting -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`step`)
+                + FfiConverterString.allocationSize(value.`title`)
+                + FfiConverterSequenceTypeViewRun.allocationSize(value.`body`)
+                + FfiConverterString.allocationSize(value.`action`)
             )
         }
         is ViewOnboarding.Sync -> {
@@ -6036,8 +6090,16 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 FfiConverterString.write(value.`legal`, buf)
                 Unit
             }
-            is ViewOnboarding.Sync -> {
+            is ViewOnboarding.Waiting -> {
                 buf.putInt(5)
+                FfiConverterString.write(value.`step`, buf)
+                FfiConverterString.write(value.`title`, buf)
+                FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
+                FfiConverterString.write(value.`action`, buf)
+                Unit
+            }
+            is ViewOnboarding.Sync -> {
+                buf.putInt(6)
                 FfiConverterString.write(value.`step`, buf)
                 FfiConverterString.write(value.`title`, buf)
                 FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
@@ -6046,7 +6108,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 Unit
             }
             is ViewOnboarding.Ready -> {
-                buf.putInt(6)
+                buf.putInt(7)
                 FfiConverterString.write(value.`title`, buf)
                 FfiConverterSequenceTypeViewRun.write(value.`body`, buf)
                 FfiConverterSequenceTypeViewTally.write(value.`tally`, buf)
@@ -6055,7 +6117,7 @@ public object FfiConverterTypeViewOnboarding : FfiConverterRustBuffer<ViewOnboar
                 Unit
             }
             is ViewOnboarding.Failed -> {
-                buf.putInt(7)
+                buf.putInt(8)
                 FfiConverterString.write(value.`step`, buf)
                 FfiConverterString.write(value.`title`, buf)
                 FfiConverterSequenceTypeViewRun.write(value.`body`, buf)

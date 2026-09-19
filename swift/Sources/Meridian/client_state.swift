@@ -2680,9 +2680,10 @@ public struct ViewPaywall: Equatable, Hashable {
      */
     public var step: ViewPaywallStep
     /**
-     * `"Sign out"`.
+     * `Some("Sign out")` — absent behind Stripe's window, where the only
+     * way anywhere is the window itself.
      */
-    public var signOut: String
+    public var signOut: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -2695,8 +2696,9 @@ public struct ViewPaywall: Equatable, Hashable {
          * one.
          */step: ViewPaywallStep, 
         /**
-         * `"Sign out"`.
-         */signOut: String) {
+         * `Some("Sign out")` — absent behind Stripe's window, where the only
+         * way anywhere is the window itself.
+         */signOut: String?) {
         self.title = title
         self.body = body
         self.rows = rows
@@ -2724,7 +2726,7 @@ public struct FfiConverterTypeViewPaywall: FfiConverterRustBuffer {
                 body: FfiConverterSequenceTypeViewRun.read(from: &buf), 
                 rows: FfiConverterSequenceTypeViewIconRow.read(from: &buf), 
                 step: FfiConverterTypeViewPaywallStep.read(from: &buf), 
-                signOut: FfiConverterString.read(from: &buf)
+                signOut: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -2733,7 +2735,7 @@ public struct FfiConverterTypeViewPaywall: FfiConverterRustBuffer {
         FfiConverterSequenceTypeViewRun.write(value.body, into: &buf)
         FfiConverterSequenceTypeViewIconRow.write(value.rows, into: &buf)
         FfiConverterTypeViewPaywallStep.write(value.step, into: &buf)
-        FfiConverterString.write(value.signOut, into: &buf)
+        FfiConverterOptionString.write(value.signOut, into: &buf)
     }
 }
 
@@ -4058,6 +4060,10 @@ public enum EventSource: Equatable, Hashable {
      */
     case codeRejected
     /**
+     * Plaid's page is up, in a window of its own.
+     */
+    case bankLinkOpened
+    /**
      * Plaid came back with at least one bank attached.
      *
      * No name, because nobody has one yet — it arrives on
@@ -4149,24 +4155,26 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
         
         case 6: return .codeRejected
         
-        case 7: return .bankLinked
+        case 7: return .bankLinkOpened
         
-        case 8: return .bankAbandoned
+        case 8: return .bankLinked
         
-        case 9: return .bankBlocked
+        case 9: return .bankAbandoned
         
-        case 10: return .bankPending
+        case 10: return .bankBlocked
         
-        case 11: return .syncStatusLoaded(json: try FfiConverterString.read(from: &buf)
+        case 11: return .bankPending
+        
+        case 12: return .syncStatusLoaded(json: try FfiConverterString.read(from: &buf)
         )
         
-        case 12: return .syncWatchEnded
+        case 13: return .syncWatchEnded
         
-        case 13: return .checkoutOpened
+        case 14: return .checkoutOpened
         
-        case 14: return .paymentTaken
+        case 15: return .paymentTaken
         
-        case 15: return .checkoutClosed
+        case 16: return .checkoutClosed
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4203,41 +4211,45 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(6))
         
         
-        case .bankLinked:
+        case .bankLinkOpened:
             writeInt(&buf, Int32(7))
         
         
-        case .bankAbandoned:
+        case .bankLinked:
             writeInt(&buf, Int32(8))
         
         
-        case .bankBlocked:
+        case .bankAbandoned:
             writeInt(&buf, Int32(9))
         
         
-        case .bankPending:
+        case .bankBlocked:
             writeInt(&buf, Int32(10))
         
         
-        case let .syncStatusLoaded(json):
+        case .bankPending:
             writeInt(&buf, Int32(11))
+        
+        
+        case let .syncStatusLoaded(json):
+            writeInt(&buf, Int32(12))
             FfiConverterString.write(json, into: &buf)
             
         
         case .syncWatchEnded:
-            writeInt(&buf, Int32(12))
-        
-        
-        case .checkoutOpened:
             writeInt(&buf, Int32(13))
         
         
-        case .paymentTaken:
+        case .checkoutOpened:
             writeInt(&buf, Int32(14))
         
         
-        case .checkoutClosed:
+        case .paymentTaken:
             writeInt(&buf, Int32(15))
+        
+        
+        case .checkoutClosed:
+            writeInt(&buf, Int32(16))
         
         }
     }
@@ -5253,6 +5265,16 @@ public enum ViewOnboarding: Equatable, Hashable {
          */opening: String?, legal: String
     )
     /**
+     * Plaid's page is up, in a window of its own, and the flow waits behind
+     * it. Nothing to press: the window going away is what moves the flow on.
+     */
+    case waiting(step: String, title: String, body: [ViewRun], 
+        /**
+         * `"Waiting on Plaid…"` — the one button, busy for as long as the
+         * screen is up, saying what the wait is for.
+         */action: String
+    )
+    /**
      * The one slow screen in the app, and it happens once per bank.
      */
     case sync(step: String, title: String, body: [ViewRun], 
@@ -5317,13 +5339,16 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
         case 4: return .bank(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf), opening: try FfiConverterOptionString.read(from: &buf), legal: try FfiConverterString.read(from: &buf)
         )
         
-        case 5: return .sync(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), progress: try FfiConverterDouble.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf)
+        case 5: return .waiting(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), action: try FfiConverterString.read(from: &buf)
         )
         
-        case 6: return .ready(title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), tally: try FfiConverterSequenceTypeViewTally.read(from: &buf), another: try FfiConverterString.read(from: &buf), open: try FfiConverterString.read(from: &buf)
+        case 6: return .sync(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), progress: try FfiConverterDouble.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf)
         )
         
-        case 7: return .failed(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf), opening: try FfiConverterOptionString.read(from: &buf), open: try FfiConverterOptionString.read(from: &buf)
+        case 7: return .ready(title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), tally: try FfiConverterSequenceTypeViewTally.read(from: &buf), another: try FfiConverterString.read(from: &buf), open: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 8: return .failed(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf), opening: try FfiConverterOptionString.read(from: &buf), open: try FfiConverterOptionString.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -5374,8 +5399,16 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
             FfiConverterString.write(legal, into: &buf)
             
         
-        case let .sync(step,title,body,progress,rows):
+        case let .waiting(step,title,body,action):
             writeInt(&buf, Int32(5))
+            FfiConverterString.write(step, into: &buf)
+            FfiConverterString.write(title, into: &buf)
+            FfiConverterSequenceTypeViewRun.write(body, into: &buf)
+            FfiConverterString.write(action, into: &buf)
+            
+        
+        case let .sync(step,title,body,progress,rows):
+            writeInt(&buf, Int32(6))
             FfiConverterString.write(step, into: &buf)
             FfiConverterString.write(title, into: &buf)
             FfiConverterSequenceTypeViewRun.write(body, into: &buf)
@@ -5384,7 +5417,7 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
             
         
         case let .ready(title,body,tally,another,`open`):
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(7))
             FfiConverterString.write(title, into: &buf)
             FfiConverterSequenceTypeViewRun.write(body, into: &buf)
             FfiConverterSequenceTypeViewTally.write(tally, into: &buf)
@@ -5393,7 +5426,7 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
             
         
         case let .failed(step,title,body,rows,action,opening,`open`):
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(8))
             FfiConverterString.write(step, into: &buf)
             FfiConverterString.write(title, into: &buf)
             FfiConverterSequenceTypeViewRun.write(body, into: &buf)

@@ -34,6 +34,12 @@ const STEP_SYNC: &str = "Step 3 of 3 · Sync";
 const SYNC_STAGES: f64 = 4.0;
 
 pub(crate) fn onboarding(flow: &StateOnboarding, now: Timestamp) -> ViewOnboarding {
+    // Plaid's page is up, whichever screen opened it, and the flow waits
+    // behind it on a screen of its own.
+    if flow.window_up() {
+        return waiting();
+    }
+
     match flow.step() {
         Step::Welcome => welcome(flow),
         Step::Email => email(flow),
@@ -319,6 +325,21 @@ fn failed(flow: &StateOnboarding) -> ViewOnboarding {
         opening: opening(flow),
 
         open: linked.then(|| "Open Meridian".to_string()),
+    }
+}
+
+/// The screen behind Plaid's window, while it is up. Nothing to press: the
+/// window going away is what moves the flow on, so the one button is busy
+/// the whole time and only says what the wait is for.
+fn waiting() -> ViewOnboarding {
+    ViewOnboarding::Waiting {
+        step: STEP_BANK.to_string(),
+        title: "Finish in your bank's window".to_string(),
+        body: plain(
+            "Plaid opened your bank's sign-in in a window of its own. This screen moves on \
+             by itself when that window closes.",
+        ),
+        action: "Waiting on Plaid…".to_string(),
     }
 }
 

@@ -81,12 +81,19 @@ pub fn PaywallPage(view: Signal<ViewPaywall>) -> impl IntoView {
                 </div>
 
                 <div class="acts">
-                    <button
-                        class="btn lg block"
-                        on:click=move |_| runtime.ui(EventUi::SignOutRequested)
-                    >
-                        {move || view.with(|view| view.sign_out.clone())}
-                    </button>
+                    {move || {
+                        view.with(|view| view.sign_out.clone())
+                            .map(|label| {
+                                view! {
+                                    <button
+                                        class="btn lg block"
+                                        on:click=move |_| runtime.ui(EventUi::SignOutRequested)
+                                    >
+                                        {label}
+                                    </button>
+                                }
+                            })
+                    }}
 
                     <button
                         type="button"

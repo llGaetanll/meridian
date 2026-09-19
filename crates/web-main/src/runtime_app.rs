@@ -348,6 +348,9 @@ impl RuntimeApp {
             };
 
             popup.show(&page);
+
+            runtime.source(EventSource::BankLinkOpened);
+
             popup.gone().await;
 
             match server.finish_link(&token).await {
@@ -399,6 +402,9 @@ impl RuntimeApp {
             };
 
             popup.show(&page);
+
+            runtime.source(EventSource::BankLinkOpened);
+
             popup.gone().await;
 
             match server.finish_link(&token).await {

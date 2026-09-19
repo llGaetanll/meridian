@@ -16,6 +16,7 @@ mod resend;
 mod runs;
 mod sync;
 mod tally;
+mod waiting;
 mod welcome;
 
 use back::Back;
@@ -35,4 +36,5 @@ use resend::Resend;
 use runs::Runs;
 use sync::Syncing;
 use tally::Tally;
+use waiting::Waiting;
 use welcome::Welcome;

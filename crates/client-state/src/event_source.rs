@@ -33,6 +33,9 @@ pub enum EventSource {
     /// nobody can ask whether an address has a code standing against it.
     CodeRejected,
 
+    /// Plaid's page is up, in a window of its own.
+    BankLinkOpened,
+
     /// Plaid came back with at least one bank attached.
     ///
     /// No name, because nobody has one yet — it arrives on

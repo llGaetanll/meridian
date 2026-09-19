@@ -29,8 +29,18 @@ const AMOUNT: &str = "$5.99";
 /// about a card. The provider's own vocabulary does not reach here: [`Unpaid`]
 /// is our words, and mapping a provider's onto them is the server's job.
 pub(crate) fn paywall(unpaid: &Unpaid, payment: StatePayment) -> ViewPaywall {
+    // Stripe's window is up, and the flow waits behind it on a screen of its
+    // own: none of the offer, because the offer is being taken up over there.
+    if let StatePayment::Paying = payment {
+        return waiting();
+    }
+
     let (title, body) = match payment {
-        StatePayment::Offer | StatePayment::Starting | StatePayment::Paying => refusal(unpaid),
+        StatePayment::Offer | StatePayment::Starting => refusal(unpaid),
+
+        // Returned above; the words here keep this total without a panic in
+        // the machine.
+        StatePayment::Paying => ("Finish paying in Stripe's window", ""),
 
         StatePayment::Confirming { .. } => (
             "Payment received",
@@ -73,7 +83,28 @@ pub(crate) fn paywall(unpaid: &Unpaid, payment: StatePayment) -> ViewPaywall {
         }],
         rows,
         step: step(payment),
-        sign_out: "Sign out".to_string(),
+        sign_out: Some("Sign out".to_string()),
+    }
+}
+
+/// The screen behind Stripe's window, while it is up. Nothing to press: the
+/// window going away is what moves the flow on, so the one button is busy
+/// the whole time and only says what the wait is for.
+fn waiting() -> ViewPaywall {
+    ViewPaywall {
+        title: "Finish paying in Stripe's window".to_string(),
+        body: vec![ViewRun {
+            text: "Checkout opened in a window of its own. This screen moves on by itself \
+                   when that window closes."
+                .to_string(),
+            strong: false,
+        }],
+        rows: Vec::new(),
+        step: ViewPaywallStep::Offer {
+            action: "Waiting on Stripe…".to_string(),
+            opening: true,
+        },
+        sign_out: None,
     }
 }
 
@@ -123,8 +154,10 @@ fn step(payment: StatePayment) -> ViewPaywallStep {
             opening: true,
         },
 
+        // Only through `waiting`, which builds the whole screen itself; the
+        // same step here keeps this total without a panic in the machine.
         StatePayment::Paying => ViewPaywallStep::Offer {
-            action: "Finish on Stripe's page…".to_string(),
+            action: "Waiting on Stripe…".to_string(),
             opening: true,
         },
 

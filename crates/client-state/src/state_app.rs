@@ -492,6 +492,16 @@ impl StateApp {
                 self.render(actions);
             }
 
+            EventSource::BankLinkOpened => {
+                // Only first run waits behind the window on a screen of its
+                // own; a repair's button already reads busy.
+                if let Some(flow) = &mut self.onboarding {
+                    flow.bank_window_opened();
+                }
+
+                self.render(actions);
+            }
+
             EventSource::BankLinked => {
                 if let Some(flow) = &mut self.onboarding {
                     flow.bank_linked();

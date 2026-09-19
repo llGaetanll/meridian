@@ -307,7 +307,7 @@ fn a_session_that_has_not_paid_gets_the_paywall() {
             assert_eq!(paywall.rows.len(), 1, "a price, and no date to have run out");
             assert_eq!(paywall.rows[0].title, "Price");
             assert_eq!(paywall.rows[0].value.as_deref(), Some("$5.99 a month"));
-            assert_eq!(paywall.sign_out, "Sign out");
+            assert_eq!(paywall.sign_out.as_deref(), Some("Sign out"));
         },
     );
 }

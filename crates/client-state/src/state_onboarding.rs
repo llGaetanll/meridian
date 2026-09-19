@@ -54,6 +54,24 @@ pub(crate) enum Fault {
     Blocked,
 }
 
+/// Where the bank sign-in's window is, from the tap that asks for one until
+/// Plaid's page has been and gone.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum Window {
+    /// No window, and none asked for.
+    #[default]
+    None,
+
+    /// Asked for: the server is creating a Link session and the window is
+    /// still empty. The button reads busy while this holds, so it takes no
+    /// second tap.
+    Opening,
+
+    /// Plaid's page is up, and the flow waits behind it on a screen of its
+    /// own.
+    Up,
+}
+
 /// How much of the first sync has arrived. The stage and the counts are
 /// separate facts: a count climbs while its stage is still running.
 #[derive(Debug, Default, Clone, Copy)]
@@ -97,9 +115,8 @@ pub struct StateOnboarding {
     /// because the wait is bounded and the machine reads no clock.
     awaiting: Option<Timestamp>,
 
-    /// Whether a bank sign-in is being opened, from the tap until Plaid's page
-    /// has been and gone.
-    opening: bool,
+    /// Where the bank sign-in's window is, if one is on its way or up.
+    window: Window,
 
     sync: Progress,
 }
@@ -134,7 +151,12 @@ impl StateOnboarding {
     }
 
     pub(crate) fn opening(&self) -> bool {
-        self.opening
+        self.window == Window::Opening
+    }
+
+    /// Whether Plaid's page is up, which is its own screen of the flow.
+    pub(crate) fn window_up(&self) -> bool {
+        self.window == Window::Up
     }
 
     pub(crate) fn linked(&self) -> bool {
@@ -251,14 +273,23 @@ impl StateOnboarding {
 
     /// Connect a bank, Try again, and Add another bank all land here.
     ///
-    /// `opening` is what the button reads while the server creates a Link
-    /// session and iOS raises the sheet — around a second, and a button that
-    /// looks untapped is a button people tap twice.
+    /// The window opening is what the button reads while the server creates a
+    /// Link session and iOS raises the sheet — around a second, and a button
+    /// that looks untapped is a button people tap twice.
     pub(crate) fn connect_bank(&mut self) {
         self.step = Step::Bank;
-        self.opening = true;
+        self.window = Window::Opening;
         self.fault = None;
         self.sync = Progress::default();
+    }
+
+    /// Plaid's page is up. Only a window being opened can come up, so news of
+    /// one while none is reports on a window already settled and changes
+    /// nothing.
+    pub(crate) fn bank_window_opened(&mut self) {
+        if self.window == Window::Opening {
+            self.window = Window::Up;
+        }
     }
 
     pub(crate) fn code_sent(&mut self, now: Timestamp) {
@@ -278,7 +309,7 @@ impl StateOnboarding {
     /// A bank is attached. What it is called is not known yet;
     /// [`Self::bank_named`] fills it in.
     pub(crate) fn bank_linked(&mut self) {
-        self.opening = false;
+        self.window = Window::None;
         self.linked = true;
         self.bank = None;
         self.sync = Progress::default();
@@ -290,15 +321,15 @@ impl StateOnboarding {
         self.bank = Some(institution.to_string());
     }
 
-    /// Closed before it was done. Only a sign-in being opened can end, so an
+    /// Closed before it was done. Only a sign-in under way can end, so an
     /// ending while none is reports on one already settled — refused, and
     /// dealt with when the refusal arrived — and changes nothing.
     pub(crate) fn bank_abandoned(&mut self) {
-        if !self.opening {
+        if self.window == Window::None {
             return;
         }
 
-        self.opening = false;
+        self.window = Window::None;
         self.step = Step::Failed;
     }
 
@@ -306,11 +337,11 @@ impl StateOnboarding {
     /// been paid for. None opened, so the flow waits on the bank step for the
     /// tap that opens one once it has been: a window cannot open without one.
     pub(crate) fn link_unpaid(&mut self) {
-        if !self.opening {
+        if self.window == Window::None {
             return;
         }
 
-        self.opening = false;
+        self.window = Window::None;
         self.step = Step::Bank;
     }
 
@@ -325,7 +356,7 @@ impl StateOnboarding {
     /// than the failed one, because a bank still landing arrives on the next
     /// status; [`linked`](Self::linked) stays false until one has.
     pub(crate) fn bank_pending(&mut self, now: Timestamp) {
-        self.opening = false;
+        self.window = Window::None;
         self.bank = None;
         self.sync = Progress::default();
         self.step = Step::Sync;

@@ -82,13 +82,19 @@ fn paying_on_stripes_page_opens_the_app() {
             assert!(opening);
         },
 
+        // Stripe's window is up, and the flow waits behind it on a screen of
+        // its own: none of the offer, and no way anywhere but the window.
         < Event::FromSource { event: EventSource::CheckoutOpened },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { view }, .. } } => {
+            assert_eq!(view.title, "Finish paying in Stripe's window");
+            assert!(view.rows.is_empty(), "none of the offer: {:?}", view.rows);
+            assert_eq!(view.sign_out, None);
+
             let ViewPaywallStep::Offer { action, opening } = &view.step else {
-                panic!("the offer, behind Stripe's window: {:?}", view.step);
+                panic!("the one busy button: {:?}", view.step);
             };
 
-            assert_eq!(action, "Finish on Stripe's page…");
+            assert_eq!(action, "Waiting on Stripe…");
             assert!(opening);
         },
 
