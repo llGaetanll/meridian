@@ -2,12 +2,12 @@
 <!--
   Where Stripe sends the Checkout window when the money is taken, on the web.
 
-  The address is the message: the app watches the window come home, and this
-  page is the one that means paid. It carries nothing else — whether the
-  server will serve the session is the webhook's to say, and the app asks as
-  soon as this window is gone. So all it does is go. The app closes it too,
-  when it sees the window back on its own origin — this is for the moment
-  before it looks.
+  The address is the message: the app looks at the window twice a second,
+  reads which page it came home to, and closes it — this page is the one that
+  means paid. It must not close itself straight away: a window gone before
+  the app has read where it was is indistinguishable from one closed by
+  hand, which is the other outcome. The delayed close is for a window whose
+  opener is no longer watching.
 -->
 <html lang="en">
   <head>
@@ -28,7 +28,7 @@
     </style>
   </head>
   <body>
-    <p>Payment received. You can close this window.</p>
-    <script>window.close();</script>
+    <p>Payment received. Taking you back&hellip;</p>
+    <script>setTimeout(() => window.close(), 2000);</script>
   </body>
 </html>

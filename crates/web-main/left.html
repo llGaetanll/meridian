@@ -4,8 +4,10 @@
   paying, on the web.
 
   The address is the message, as on paid.html: this page is the one that
-  means nothing was taken. Nothing was charged and nothing was created, so
-  all it does is go.
+  means nothing was taken. It waits to be read and closed for the reason
+  that page does — closing itself straight away races the app's look, and a
+  window gone unread reads as closed by hand. Here the two happen to mean
+  the same thing, but only one of the two pages behaving is a trap.
 -->
 <html lang="en">
   <head>
@@ -26,7 +28,7 @@
     </style>
   </head>
   <body>
-    <p>Nothing was charged. You can close this window.</p>
-    <script>window.close();</script>
+    <p>Nothing was charged. Taking you back&hellip;</p>
+    <script>setTimeout(() => window.close(), 2000);</script>
   </body>
 </html>
