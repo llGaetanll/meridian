@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO delete_codes (user_id, code_sha256, expires_at, attempts, created_at)\n         VALUES ($1, $2, $3, 0, now())\n         ON CONFLICT (user_id) DO UPDATE SET\n             code_sha256 = EXCLUDED.code_sha256,\n             expires_at  = EXCLUDED.expires_at,\n             attempts    = 0,\n             created_at  = now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ece686da91f9284c16feaf1761562cf56177368961d0c49042832cde15b77e94"
+}

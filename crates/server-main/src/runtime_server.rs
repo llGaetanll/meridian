@@ -599,25 +599,40 @@ impl RuntimeServer {
         vec![Event::FromSourceStripe { call_id, event }]
     }
 
-    /// Get a sign-in code to a person, or say where it went instead.
+    /// Get a code to a person, or say where it went instead.
     async fn perform_action_email(&self, action: &ActionEmail) {
-        let ActionEmail::SendCode { email, code } = action;
+        let (email, code, subject, text) = match action {
+            ActionEmail::SendCode { email, code } => (
+                email,
+                code,
+                format!("{code} is your Meridian code"),
+                format!(
+                    "Your Meridian sign-in code is {code}.\n\n\
+                     It works for the next 10 minutes. If you did not ask for it, \
+                     you can ignore this — nobody can sign in without it.",
+                ),
+            ),
+
+            ActionEmail::SendDeleteCode { email, code } => (
+                email,
+                code,
+                format!("{code} is your Meridian account deletion code"),
+                format!(
+                    "Your Meridian account deletion code is {code}.\n\n\
+                     Entering it deletes your account, your banks and your \
+                     transactions permanently. It works for the next 10 minutes. \
+                     If you did not ask to delete your account, you can ignore \
+                     this — nothing is deleted without it.",
+                ),
+            ),
+        };
 
         match (&self.email_send, &self.resend) {
             (EmailSend::Resend, Some(client)) => {
-                let message = src_resend::Email::new(
-                    client.from(),
-                    email,
-                    format!("{code} is your Meridian code"),
-                    format!(
-                        "Your Meridian sign-in code is {code}.\n\n\
-                         It works for the next 10 minutes. If you did not ask for it, \
-                         you can ignore this — nobody can sign in without it.",
-                    ),
-                );
+                let message = src_resend::Email::new(client.from(), email, subject, text);
 
                 if let Err(e) = src_resend::send(client, &message).await {
-                    tracing::error!(error = %e, "could not send a sign-in code");
+                    tracing::error!(error = %e, "could not send a code");
                 }
             }
 
@@ -910,6 +925,8 @@ impl RuntimeServer {
 
             ActionStore::LoadCode { email, .. } => self.load_code(email).await,
 
+            ActionStore::LoadDeleteCode { user_id } => self.load_delete_code(*user_id).await,
+
             ActionStore::LoadSubscriptions => self.load_subscriptions().await,
 
             ActionStore::LoadUser { user_id, .. } => self.load_user(*user_id).await,
@@ -1049,6 +1066,23 @@ impl RuntimeServer {
         }
     }
 
+    /// What deletion code stands against a user, as the store holds it.
+    async fn load_delete_code(&self, user_id: uuid::Uuid) -> EventStore {
+        match src_postgres::load_delete_code(&self.db, user_id).await {
+            Ok(stored) => EventStore::DeleteCodeLoaded {
+                stored: stored.map(|s| StoredCode {
+                    code_sha256: s.code_sha256,
+                    expires_at: s.expires_at,
+                    attempts: s.attempts,
+                }),
+            },
+
+            Err(e) => EventStore::ReadError {
+                message: e.to_string(),
+            },
+        }
+    }
+
     /// The write itself; `perform_action_store` turns it into an event.
     async fn write_store(&self, action: &ActionStore) -> Result<(), src_postgres::PostgresError> {
         let db = &self.db;
@@ -1151,6 +1185,18 @@ impl RuntimeServer {
                 src_postgres::record_attempt(db, email).await?;
             }
 
+            ActionStore::SaveDeleteCode {
+                user_id,
+                code_sha256,
+                expires_at,
+            } => {
+                src_postgres::save_delete_code(db, *user_id, code_sha256, *expires_at).await?;
+            }
+
+            ActionStore::RecordDeleteAttempt { user_id } => {
+                src_postgres::record_delete_attempt(db, *user_id).await?;
+            }
+
             ActionStore::DeleteCode { email } => {
                 src_postgres::delete_code(db, email).await?;
             }
@@ -1211,6 +1257,7 @@ impl RuntimeServer {
             | ActionStore::LoadLinkRepair { .. }
             | ActionStore::LoadSnapshot { .. }
             | ActionStore::LoadCode { .. }
+            | ActionStore::LoadDeleteCode { .. }
             | ActionStore::LoadSubscriptions
             | ActionStore::LoadUser { .. }
             | ActionStore::LoadAccessTokens { .. }
@@ -1436,6 +1483,9 @@ impl RuntimeServer {
             | ActionStore::SaveCode { .. }
             | ActionStore::RecordAttempt { .. }
             | ActionStore::DeleteCode { .. }
+            | ActionStore::LoadDeleteCode { .. }
+            | ActionStore::SaveDeleteCode { .. }
+            | ActionStore::RecordDeleteAttempt { .. }
             | ActionStore::CreateSession { .. }
             | ActionStore::SweepSessions { .. }
             | ActionStore::SaveLink { .. }

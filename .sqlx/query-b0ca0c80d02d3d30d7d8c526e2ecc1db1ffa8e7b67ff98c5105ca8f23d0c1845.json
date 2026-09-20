@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE delete_codes SET attempts = attempts + 1 WHERE user_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b0ca0c80d02d3d30d7d8c526e2ecc1db1ffa8e7b67ff98c5105ca8f23d0c1845"
+}

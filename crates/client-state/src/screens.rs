@@ -20,8 +20,10 @@ use crate::LoadFailure;
 use crate::RangeSelection;
 use crate::Screen;
 use crate::StateApp;
+use crate::StateDelete;
 use crate::ViewAccount;
 use crate::ViewAccountBank;
+use crate::ViewAccountDelete;
 use crate::ViewAccountRow;
 use crate::ViewBalances;
 use crate::ViewBreakdownSlice;
@@ -653,7 +655,54 @@ fn account(state: &StateApp) -> ViewAccount {
         banks,
         session_label: "Session".to_string(),
         sign_out_label: "Sign out".to_string(),
+        delete_label: "Delete my account".to_string(),
+        delete: state.deleting().map(delete_confirmation),
         build: format!("Meridian {}", env!("CARGO_PKG_VERSION")),
+    }
+}
+
+/// The delete confirmation, worded for the step it is on.
+///
+/// The loud button is the safe one on every step, so the destructive label is
+/// plain and the cancel is what a reflexive tap lands on.
+fn delete_confirmation(step: &StateDelete) -> ViewAccountDelete {
+    match step {
+        StateDelete::Confirming | StateDelete::SendingCode => ViewAccountDelete {
+            title: "Delete your account?".to_string(),
+            body: "Your banks, transactions and sign-in are deleted permanently. \
+                   To confirm, we will email a 6-digit code to your address."
+                .to_string(),
+            code: None,
+            error: None,
+            confirm_label: matches!(step, StateDelete::Confirming)
+                .then(|| "Email me the code".to_string()),
+            cancel_label: Some("Keep my account".to_string()),
+            busy: matches!(step, StateDelete::SendingCode),
+        },
+
+        StateDelete::Code { digits, wrong } => ViewAccountDelete {
+            title: "Check your email".to_string(),
+            body: "Enter the 6-digit code we sent you. \
+                   Entering it deletes your account permanently."
+                .to_string(),
+            code: Some(digits.clone()),
+            error: wrong
+                .then(|| "That code was not right. Check the email and try again.".to_string()),
+            confirm_label: (digits.len() == crate::state_onboarding::CODE_LENGTH)
+                .then(|| "Delete everything".to_string()),
+            cancel_label: Some("Keep my account".to_string()),
+            busy: false,
+        },
+
+        StateDelete::Deleting => ViewAccountDelete {
+            title: "Deleting your account…".to_string(),
+            body: "Your banks are being disconnected and your data deleted.".to_string(),
+            code: None,
+            error: None,
+            confirm_label: None,
+            cancel_label: None,
+            busy: true,
+        },
     }
 }
 

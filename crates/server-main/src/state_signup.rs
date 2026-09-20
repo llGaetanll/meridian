@@ -340,6 +340,51 @@ impl StateSignup {
         self.answer(request_id, ActionRouter::SignedIn { token }, now, actions);
     }
 
+    /// Somebody asked for the code that confirms deleting their account, and
+    /// the store has answered with the address to send it to.
+    ///
+    /// The same two actions as [`code_requested`](Self::code_requested), keyed
+    /// by the user rather than the address: only the email may ever hold the
+    /// plaintext.
+    pub fn delete_code_requested(
+        &mut self,
+        request_id: RequestId,
+        user_id: Uuid,
+        email: &str,
+        now: Timestamp,
+        actions: &mut Vec<Action>,
+    ) {
+        let Some(rng) = self.rng.as_mut() else {
+            tracing::error!("asked for a deletion code by a machine that mints none");
+
+            self.answer(request_id, ActionRouter::Unavailable, now, actions);
+
+            return;
+        };
+
+        let code = login_code::generate(rng);
+
+        let expires_at = Timestamp::from_secs(now.as_secs() + login_code::GOOD_FOR.as_secs());
+
+        actions.push(Action::ToStore {
+            call_id: self.calling(request_id, now),
+            action: ActionStore::SaveDeleteCode {
+                user_id,
+                code_sha256: login_code::hash(&code),
+                expires_at,
+            },
+        });
+
+        actions.push(Action::ToEmail {
+            action: ActionEmail::SendDeleteCode {
+                email: email.to_string(),
+                code,
+            },
+        });
+
+        self.answer(request_id, ActionRouter::Accepted, now, actions);
+    }
+
     /// Somebody wants a bank sign-in opened. Nothing to read: their id, and
     /// the `Origin` they asked from, are the whole of what it takes.
     ///

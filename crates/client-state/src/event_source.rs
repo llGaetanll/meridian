@@ -33,6 +33,17 @@ pub enum EventSource {
     /// nobody can ask whether an address has a code standing against it.
     CodeRejected,
 
+    /// A deletion code went out.
+    DeleteCodeSent,
+
+    /// The deletion code was refused — wrong, too late and guessed at too
+    /// often answer alike, the way sign-in codes do.
+    DeleteCodeRejected,
+
+    /// The account is gone, rows and all. What is left on this device is a
+    /// session naming nobody, and the machine puts itself back to first run.
+    AccountDeleted,
+
     /// Plaid's page is up, in a window of its own.
     BankLinkOpened,
 

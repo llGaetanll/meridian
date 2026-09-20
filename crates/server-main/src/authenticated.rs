@@ -63,8 +63,15 @@ pub enum Authenticated {
         signed: String,
     },
 
-    /// Cancelling and deleting, which are one action.
-    DeleteRequested,
+    /// Asking for the code that confirms a deletion, emailed to the address
+    /// the account is written to.
+    DeleteCodeRequested,
+
+    /// Cancelling and deleting, which are one action — once the code says the
+    /// inbox agreed.
+    DeleteRequested {
+        code: String,
+    },
 }
 
 impl Authenticated {
@@ -100,7 +107,10 @@ impl Authenticated {
                     signed: signed.clone(),
                 })
             }
-            EventRouter::DeleteRequested { .. } => Some(Authenticated::DeleteRequested),
+            EventRouter::DeleteCodeRequested { .. } => Some(Authenticated::DeleteCodeRequested),
+            EventRouter::DeleteRequested { code, .. } => {
+                Some(Authenticated::DeleteRequested { code: code.clone() })
+            }
             _ => None,
         }
     }
@@ -117,7 +127,8 @@ impl Authenticated {
             Authenticated::CheckoutRequested { .. } => Route::BillingCheckout,
             Authenticated::BillingStatusRequested => Route::BillingStatus,
             Authenticated::AppleTransactionReceived { .. } => Route::BillingApple,
-            Authenticated::DeleteRequested => Route::AccountDelete,
+            Authenticated::DeleteCodeRequested => Route::AccountDeleteRequest,
+            Authenticated::DeleteRequested { .. } => Route::AccountDelete,
         }
     }
 
@@ -143,7 +154,8 @@ impl Authenticated {
             | Authenticated::CheckoutRequested { .. }
             | Authenticated::BillingStatusRequested
             | Authenticated::AppleTransactionReceived { .. }
-            | Authenticated::DeleteRequested => false,
+            | Authenticated::DeleteCodeRequested
+            | Authenticated::DeleteRequested { .. } => false,
 
             Authenticated::LinkRequested { .. }
             | Authenticated::RepairRequested { .. }

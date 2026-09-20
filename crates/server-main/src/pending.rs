@@ -86,6 +86,11 @@ pub enum Pending {
     /// Waiting on Stripe for the Checkout page itself.
     OpeningCheckout { user_id: Uuid },
 
+    /// A deletion, waiting on the code the store holds against its account.
+    /// The same step [`Submitted`](Pending::Submitted) is for a sign-in,
+    /// keyed by the user because the route already knows who is asking.
+    DeleteSubmitted { user_id: Uuid, code: String },
+
     /// Deleting an account, waiting on Stripe to stop the subscription.
     ///
     /// First because it is the only step that can be told to somebody: a card

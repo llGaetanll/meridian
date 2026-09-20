@@ -79,6 +79,7 @@ pub(crate) fn router(to_loop: ToLoop, origins: &WebOrigins) -> Router {
         .route("/billing/subscribe", post(billing_subscribe))
         .route("/billing/checkout", post(billing_checkout))
         .route("/billing/status", get(billing_status))
+        .route("/account/delete/request", post(account_delete_request))
         .route("/account/delete", post(account_delete))
         .route("/billing/apple", post(billing_apple))
         .route(STRIPE_WEBHOOK_PATH, post(stripe_webhook))
@@ -304,19 +305,13 @@ struct BillingAnswer {
     cancel_at_period_end: bool,
 }
 
-/// `POST /account/delete`
+/// `POST /account/delete/request`
 ///
-/// Cancel the subscription, stop the banks at Plaid, and delete everything.
-/// One action, because a paused account is one we keep paying Plaid for.
-///
-/// **It takes nothing, and there is no undo.** The confirmation belongs in the
-/// client, where somebody can be told what they are about to lose; a body
-/// asking "are you sure" is a thing that can be sent by anything holding the
-/// token.
-///
-/// Answered only once the rows are actually gone, so a client that hears this
-/// can forget its session without wondering.
-async fn account_delete(
+/// Email the signed-in user the six-digit code that confirms deleting their
+/// account. **It takes nothing**: the address the code goes to is the one the
+/// account is written to, and a body naming another would send the
+/// confirmation somewhere the account holder does not read.
+async fn account_delete_request(
     State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
     headers: axum::http::HeaderMap,
@@ -326,7 +321,56 @@ async fn account_delete(
     let answer = runtime_router::dispatch(
         &to_loop,
         Client::anonymous(ip),
-        EventRouter::DeleteRequested { token_sha256 },
+        EventRouter::DeleteCodeRequested { token_sha256 },
+    )
+    .await;
+
+    refused(&answer)?;
+
+    match answer {
+        Some(ActionRouter::Accepted) => Ok(StatusCode::NO_CONTENT),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),
+    }
+}
+
+/// What `POST /account/delete` takes: the code the email carried.
+#[derive(Debug, Deserialize)]
+struct DeleteBody {
+    code: String,
+}
+
+/// `POST /account/delete`
+///
+/// Cancel the subscription, stop the banks at Plaid, and delete everything.
+/// One action, because a paused account is one we keep paying Plaid for.
+///
+/// **There is no undo.** The token alone is not enough: the body carries the
+/// code `/account/delete/request` emailed, so a stolen session cannot destroy
+/// an account whose inbox it cannot read.
+///
+/// One failure shape for every way a code can be wrong — wrong, expired, too
+/// many guesses, never asked for — because the difference is only useful to
+/// somebody working through guesses. 403 rather than 401: the session is
+/// good, and a client reading 401 would show a sign-in screen.
+///
+/// Answered only once the rows are actually gone, so a client that hears this
+/// can forget its session without wondering.
+async fn account_delete(
+    State(to_loop): State<ToLoop>,
+    Extension(ip): Extension<ClientIp>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<DeleteBody>,
+) -> Result<StatusCode, Refusal> {
+    let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let answer = runtime_router::dispatch(
+        &to_loop,
+        Client::anonymous(ip),
+        EventRouter::DeleteRequested {
+            token_sha256,
+            code: body.code.trim().to_string(),
+        },
     )
     .await;
 
@@ -335,6 +379,7 @@ async fn account_delete(
     match answer {
         Some(ActionRouter::Deleted) => Ok(StatusCode::NO_CONTENT),
         Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
+        Some(ActionRouter::Rejected) => Err(StatusCode::FORBIDDEN.into()),
         _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),
     }
 }

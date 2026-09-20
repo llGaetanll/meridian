@@ -64,4 +64,8 @@ pub enum EventStore {
     /// The access tokens this user's banks were reached with, and the bank
     /// each one opens. Empty is an account with no banks, which deletes fine.
     AccessTokensLoaded { tokens: Vec<(String, String)> },
+
+    /// What deletion code stands against the user a deletion named. `None` is
+    /// an account with no code, which is a rejection like any other.
+    DeleteCodeLoaded { stored: Option<StoredCode> },
 }

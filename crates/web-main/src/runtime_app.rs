@@ -210,6 +210,8 @@ impl RuntimeApp {
             ActionSource::WatchSync => self.watch_sync(),
             ActionSource::StopWatchingSync => self.stop_watching_sync(),
             ActionSource::StartCheckout => self.start_checkout(),
+            ActionSource::SendDeleteCode => self.send_delete_code(),
+            ActionSource::DeleteAccount { code } => self.delete_account(code),
         }
     }
 
@@ -293,6 +295,63 @@ impl RuntimeApp {
                     EventSource::CodeAccepted
                 }
                 Ok(None) => EventSource::CodeRejected,
+                Err(failure) => EventSource::LoadFailed {
+                    failure: failure.failure(),
+                },
+            };
+
+            runtime.source(event);
+        });
+    }
+
+    /// Ask the server to email the deletion code. The address is the
+    /// server's to know, so nothing but the session goes with it.
+    fn send_delete_code(&self) {
+        let Some(token) = self.token.get_value() else {
+            tracing::error!("asked for a deletion code with no session");
+
+            self.source(EventSource::LoadFailed {
+                failure: Failure::NoSession.failure(),
+            });
+
+            return;
+        };
+
+        let runtime = *self;
+        let server = self.server.get_value();
+
+        spawn_local(async move {
+            let event = match server.request_delete_code(&token).await {
+                Ok(()) => EventSource::DeleteCodeSent,
+                Err(failure) => EventSource::LoadFailed {
+                    failure: failure.failure(),
+                },
+            };
+
+            runtime.source(event);
+        });
+    }
+
+    /// Trade the emailed code for the deletion. `AccountDeleted` is the
+    /// machine's to act on; the token is dropped with the session it names.
+    fn delete_account(&self, code: String) {
+        let Some(token) = self.token.get_value() else {
+            tracing::error!("asked to delete an account with no session");
+
+            self.source(EventSource::LoadFailed {
+                failure: Failure::NoSession.failure(),
+            });
+
+            return;
+        };
+
+        let runtime = *self;
+        let server = self.server.get_value();
+
+        spawn_local(async move {
+            let event = match server.delete_account(&token, &code).await {
+                Ok(true) => EventSource::AccountDeleted,
+                Ok(false) => EventSource::DeleteCodeRejected,
                 Err(failure) => EventSource::LoadFailed {
                     failure: failure.failure(),
                 },

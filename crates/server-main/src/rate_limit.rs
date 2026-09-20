@@ -87,6 +87,9 @@ pub enum Route {
     /// `POST /billing/apple` — a purchase the App Store has just taken.
     BillingApple,
 
+    /// `POST /account/delete/request` — the other one that sends an email.
+    AccountDeleteRequest,
+
     /// `POST /account/delete`
     AccountDelete,
 }
@@ -107,6 +110,7 @@ impl Route {
             Route::BillingCheckout => "/billing/checkout",
             Route::BillingStatus => "/billing/status",
             Route::BillingApple => "/billing/apple",
+            Route::AccountDeleteRequest => "/account/delete/request",
             Route::AccountDelete => "/account/delete",
         }
     }
@@ -124,7 +128,11 @@ impl Route {
     fn limit(self) -> (u32, u64) {
         match self {
             Route::SyncStatus => (WATCHES_PER_MINUTE, MINUTE),
+
+            // Both send an email, so both are metered on the window that is
+            // about the inbox rather than the caller.
             Route::AuthRequest => (EMAILS_PER_QUARTER_HOUR, QUARTER_HOUR),
+            Route::AccountDeleteRequest => (EMAILS_PER_QUARTER_HOUR, QUARTER_HOUR),
 
             Route::BillingSubscribe => (SUBSCRIBES_PER_MINUTE, MINUTE),
             Route::BillingCheckout => (SUBSCRIBES_PER_MINUTE, MINUTE),

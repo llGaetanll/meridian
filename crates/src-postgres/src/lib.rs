@@ -13,6 +13,7 @@
 //! where that survives a restart. So writes happen as they land, and reads
 //! happen once at startup. `docs/ARCHITECTURE.md` has the reasoning.
 
+mod postgres_delete_code;
 mod postgres_item;
 mod postgres_ledger;
 mod postgres_link;
@@ -25,6 +26,9 @@ mod postgres_session;
 mod postgres_subscription;
 mod postgres_user;
 
+pub use postgres_delete_code::load_delete_code;
+pub use postgres_delete_code::record_delete_attempt;
+pub use postgres_delete_code::save_delete_code;
 pub use postgres_item::StoredItem;
 pub use postgres_item::load_item;
 pub use postgres_item::load_items;

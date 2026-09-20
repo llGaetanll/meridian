@@ -182,6 +182,53 @@ impl Meridian {
         Ok(opened.url)
     }
 
+    /// Ask for the code that confirms deleting the account. The server sends
+    /// it to the address the account is written to, so nothing but the
+    /// session goes with the request.
+    pub async fn request_delete_code(&self, token: &str) -> Result<(), Failure> {
+        let url = self.url("account/delete/request")?;
+        let call = ApiCall::post(module_path!(), SOURCE, &url, "");
+
+        let (status, body) = self
+            .send(self.client.post(url).bearer_auth(token), call)
+            .await?;
+
+        match Failure::refusal(status, &body) {
+            Some(refusal) => Err(refusal),
+            None => Ok(()),
+        }
+    }
+
+    /// Trade the emailed code for the deletion. There is no undo: the server
+    /// answers once the rows are gone.
+    ///
+    /// `false` is the code being refused — wrong, expired and too many
+    /// guesses answer alike. It is not a failure: a mistyped digit is the
+    /// ordinary way this ends.
+    pub async fn delete_account(&self, token: &str, code: &str) -> Result<bool, Failure> {
+        let url = self.url("account/delete")?;
+        let body = serde_json::json!({ "code": code }).to_string();
+        let call = ApiCall::post(module_path!(), SOURCE, &url, &body);
+
+        let request = self
+            .client
+            .post(url)
+            .bearer_auth(token)
+            .header("Content-Type", "application/json")
+            .body(body);
+
+        let (status, body) = self.send(request, call).await?;
+
+        if status == 403 {
+            return Ok(false);
+        }
+
+        match Failure::refusal(status, &body) {
+            Some(refusal) => Err(refusal),
+            None => Ok(true),
+        }
+    }
+
     /// How the sync is going, handed to `status` as JSON each time it moves,
     /// for as long as the connection lasts.
     ///
@@ -382,12 +429,15 @@ impl Meridian {
 
 /// Two answers here are a credential: the session `/auth/verify` hands back,
 /// good for ninety days, and the page `/link/start` hands back, whose address
-/// is a Link token. The code that buys the first goes the same way. Each is
-/// logged as its length. Checkout's page is not one: its address is made to
-/// be opened in somebody's browser.
+/// is a Link token. The code that buys the first goes the same way, and so
+/// does the one `/account/delete` carries — six digits that destroy an
+/// account. Each is logged as its length. Checkout's page is not one: its
+/// address is made to be opened in somebody's browser.
 fn redact_session<'a>(ctx: &Context<'_>, body: Cow<'a, str>) -> Cow<'a, str> {
     let secret = match ctx.direction {
-        Direction::Request => ctx.url.ends_with("/auth/verify"),
+        Direction::Request => {
+            ctx.url.ends_with("/auth/verify") || ctx.url.ends_with("/account/delete")
+        }
         Direction::Response => {
             ctx.url.ends_with("/auth/verify") || ctx.url.ends_with("/link/start")
         }

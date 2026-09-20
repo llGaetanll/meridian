@@ -1,6 +1,11 @@
 //! Leaving — tested the way `docs/STYLE.md` says: events in with `<`, actions
 //! out with `>`.
 //!
+//! Leaving is two requests. `POST /account/delete/request` emails the
+//! account's address a six-digit code, and `POST /account/delete` trades the
+//! typed digits for the deletion — so a stolen session cannot destroy an
+//! account whose inbox it cannot read.
+//!
 //! Cancelling and deleting are one action, and that is a product decision with
 //! a cost behind it: a Plaid Item is billed for as long as it *exists*, not for
 //! as long as it is used, so an account that stops paying us and keeps its
@@ -38,16 +43,22 @@ fn hash_token(token: &str) -> Vec<u8> {
     sha2::Sha256::digest(token.as_bytes()).to_vec()
 }
 
-/// H. The whole of it: a paying subscriber with one bank, gone.
+/// H. The whole of it: the code asked for and emailed, then the digits traded
+/// for the deletion — a paying subscriber with one bank, gone.
 #[test]
-fn leaving_cancels_the_subscription_stops_the_bank_and_deletes_the_rows() {
+fn leaving_asks_the_inbox_first_and_the_code_deletes_everything() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
+
+        // The code is asked for. The address it goes to is the store's to
+        // say, so the store is read; the hash is stored and the code is sent
+        // as two actions, because only one of them may hold the plaintext.
         < Event::FromRouter {
             request_id: 1,
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
-            event: EventRouter::DeleteRequested {
+            event: EventRouter::DeleteCodeRequested {
                 token_sha256: hash_token("session-1"),
             },
         },
@@ -61,17 +72,75 @@ fn leaving_cancels_the_subscription_stops_the_bank_and_deletes_the_rows() {
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadUser { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::UserLoaded {
+                email: Some("gaetan@example.com".to_string()),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::SaveDeleteCode { user_id: SUBSCRIBER, .. },
+        },
+
+        > @r#"ToEmail { action: SendDeleteCode { email: "gaetan@example.com", code: "470977" } }"#,
+
+        // Taken, once the hash is actually down — a 204 sent before it would
+        // be a code the next request cannot find.
+        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+
+        > @r#"ToRouter { request_id: 1, action: Accepted }"#,
+
+        // The digits that came out of the machine above, typed back in.
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::DeleteRequested {
+                token_sha256: hash_token("session-1"),
+                code: "470977".to_string(),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 4,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToStore {
+            call_id: 5,
+            action: ActionStore::LoadDeleteCode { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 5,
+            event: EventStore::DeleteCodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("470977"),
+                    expires_at: Timestamp::from_secs(T0.as_secs() + 600),
+                    attempts: 0,
+                }),
+            },
+        },
+
         // Stripe first: a card that keeps being charged is the failure
         // somebody notices.
         > Action::ToSourceStripe {
-            call_id: 2,
+            call_id: 6,
             action: ActionSourceStripe::CancelSubscription {
                 user_id: SUBSCRIBER,
                 ..
             },
         },
         < Event::FromSourceStripe {
-            call_id: 2,
+            call_id: 6,
             event: EventSourceStripe::SubscriptionCancelled {
                 user_id: SUBSCRIBER,
                 good_until: Some(1818633600),
@@ -80,11 +149,11 @@ fn leaving_cancels_the_subscription_stops_the_bank_and_deletes_the_rows() {
 
         // Then the tokens, while the rows they live in still exist.
         > Action::ToStore {
-            call_id: 3,
+            call_id: 7,
             action: ActionStore::LoadAccessTokens { user_id: SUBSCRIBER },
         },
         < Event::FromStore {
-            call_id: 3,
+            call_id: 7,
             event: EventStore::AccessTokensLoaded {
                 tokens: vec![(
                     "item-1".to_string(),
@@ -95,25 +164,165 @@ fn leaving_cancels_the_subscription_stops_the_bank_and_deletes_the_rows() {
 
         // Then the bank, which is the only way its Plaid bill stops.
         > Action::ToSourcePlaid {
-            call_id: 4,
+            call_id: 8,
             action: ActionSourcePlaid::RemoveItem { .. },
         },
         < Event::FromSourcePlaid {
-            call_id: 4,
+            call_id: 8,
             event: EventSourcePlaid::ItemRemoved {
                 item_id: "item-1".to_string(),
                 removed: true,
             },
         },
 
-        // And only then the rows.
+        // And only then the rows. The code row is not spent by an action of
+        // its own: it goes with the account.
         > Action::ToStore {
-            call_id: 5,
+            call_id: 9,
             action: ActionStore::DeleteUser { user_id: SUBSCRIBER },
         },
-        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 9, event: EventStore::WriteSuccess },
 
-        > @r#"ToRouter { request_id: 1, action: Deleted }"#,
+        > @r#"ToRouter { request_id: 2, action: Deleted }"#,
+    );
+}
+
+/// A wrong code deletes nothing, and spends a guess.
+///
+/// Counted in the store rather than waved through, because the cap is what
+/// stops a stolen code being brute-forced in the ten minutes it lives.
+#[test]
+fn a_wrong_code_deletes_nothing() {
+    let mut state = state_subscribed();
+
+    eval!(&mut state,
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::DeleteRequested {
+                token_sha256: hash_token("session-1"),
+                code: "000000".to_string(),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadDeleteCode { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::DeleteCodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("123456"),
+                    expires_at: Timestamp::from_secs(T0.as_secs() + 600),
+                    attempts: 0,
+                }),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::RecordDeleteAttempt { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+
+        > @r#"ToRouter { request_id: 1, action: Rejected }"#,
+    );
+}
+
+/// A deletion nobody asked a code for is refused: the token alone is not
+/// enough, which is the whole reason the code exists.
+#[test]
+fn a_deletion_with_no_code_standing_is_refused() {
+    let mut state = state_subscribed();
+
+    eval!(&mut state,
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::DeleteRequested {
+                token_sha256: hash_token("session-1"),
+                code: "123456".to_string(),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadDeleteCode { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::DeleteCodeLoaded { stored: None },
+        },
+
+        > @r#"ToRouter { request_id: 1, action: Rejected }"#,
+    );
+}
+
+/// A right code typed too late is refused like a wrong one, and counted.
+#[test]
+fn an_expired_code_deletes_nothing() {
+    let mut state = state_subscribed();
+
+    eval!(&mut state,
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::DeleteRequested {
+                token_sha256: hash_token("session-1"),
+                code: "123456".to_string(),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadDeleteCode { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::DeleteCodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("123456"),
+                    expires_at: T0,
+                    attempts: 0,
+                }),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::RecordDeleteAttempt { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+
+        > @r#"ToRouter { request_id: 1, action: Rejected }"#,
     );
 }
 
@@ -132,6 +341,7 @@ fn every_bank_is_stopped_before_the_rows_go() {
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
             event: EventRouter::DeleteRequested {
                 token_sha256: hash_token("session-1"),
+                code: "123456".to_string(),
             },
         },
 
@@ -144,12 +354,27 @@ fn every_bank_is_stopped_before_the_rows_go() {
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 
-        > Action::ToSourceStripe {
+        > Action::ToStore {
             call_id: 2,
+            action: ActionStore::LoadDeleteCode { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::DeleteCodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("123456"),
+                    expires_at: Timestamp::from_secs(T0.as_secs() + 600),
+                    attempts: 0,
+                }),
+            },
+        },
+
+        > Action::ToSourceStripe {
+            call_id: 3,
             action: ActionSourceStripe::CancelSubscription { .. },
         },
         < Event::FromSourceStripe {
-            call_id: 2,
+            call_id: 3,
             event: EventSourceStripe::SubscriptionCancelled {
                 user_id: SUBSCRIBER,
                 good_until: Some(1818633600),
@@ -157,11 +382,11 @@ fn every_bank_is_stopped_before_the_rows_go() {
         },
 
         > Action::ToStore {
-            call_id: 3,
+            call_id: 4,
             action: ActionStore::LoadAccessTokens { .. },
         },
         < Event::FromStore {
-            call_id: 3,
+            call_id: 4,
             event: EventStore::AccessTokensLoaded {
                 tokens: vec![
                     ("item-1".to_string(), "token-1".to_string()),
@@ -171,18 +396,18 @@ fn every_bank_is_stopped_before_the_rows_go() {
         },
 
         > Action::ToSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             action: ActionSourcePlaid::RemoveItem { .. },
         },
 
         > Action::ToSourcePlaid {
-            call_id: 5,
+            call_id: 6,
             action: ActionSourcePlaid::RemoveItem { .. },
         },
 
         // One down. Nothing happens: the other is still out.
         < Event::FromSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             event: EventSourcePlaid::ItemRemoved {
                 item_id: "item-1".to_string(),
                 removed: true,
@@ -190,7 +415,7 @@ fn every_bank_is_stopped_before_the_rows_go() {
         },
 
         < Event::FromSourcePlaid {
-            call_id: 5,
+            call_id: 6,
             event: EventSourcePlaid::ItemRemoved {
                 item_id: "item-2".to_string(),
                 removed: true,
@@ -198,10 +423,10 @@ fn every_bank_is_stopped_before_the_rows_go() {
         },
 
         > Action::ToStore {
-            call_id: 6,
+            call_id: 7,
             action: ActionStore::DeleteUser { .. },
         },
-        < Event::FromStore { call_id: 6, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 7, event: EventStore::WriteSuccess },
 
         > @r#"ToRouter { request_id: 1, action: Deleted }"#,
     );
@@ -222,6 +447,7 @@ fn a_bank_that_will_not_stop_does_not_block_the_deletion() {
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
             event: EventRouter::DeleteRequested {
                 token_sha256: hash_token("session-1"),
+                code: "123456".to_string(),
             },
         },
 
@@ -234,12 +460,27 @@ fn a_bank_that_will_not_stop_does_not_block_the_deletion() {
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 
-        > Action::ToSourceStripe {
+        > Action::ToStore {
             call_id: 2,
+            action: ActionStore::LoadDeleteCode { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::DeleteCodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("123456"),
+                    expires_at: Timestamp::from_secs(T0.as_secs() + 600),
+                    attempts: 0,
+                }),
+            },
+        },
+
+        > Action::ToSourceStripe {
+            call_id: 3,
             action: ActionSourceStripe::CancelSubscription { .. },
         },
         < Event::FromSourceStripe {
-            call_id: 2,
+            call_id: 3,
             event: EventSourceStripe::SubscriptionCancelled {
                 user_id: SUBSCRIBER,
                 good_until: Some(1818633600),
@@ -247,22 +488,22 @@ fn a_bank_that_will_not_stop_does_not_block_the_deletion() {
         },
 
         > Action::ToStore {
-            call_id: 3,
+            call_id: 4,
             action: ActionStore::LoadAccessTokens { .. },
         },
         < Event::FromStore {
-            call_id: 3,
+            call_id: 4,
             event: EventStore::AccessTokensLoaded {
                 tokens: vec![("item-1".to_string(), "token-1".to_string())],
             },
         },
 
         > Action::ToSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             action: ActionSourcePlaid::RemoveItem { .. },
         },
         < Event::FromSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             event: EventSourcePlaid::ItemRemoved {
                 item_id: "item-1".to_string(),
                 removed: false,
@@ -270,10 +511,10 @@ fn a_bank_that_will_not_stop_does_not_block_the_deletion() {
         },
 
         > Action::ToStore {
-            call_id: 5,
+            call_id: 6,
             action: ActionStore::DeleteUser { .. },
         },
-        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 6, event: EventStore::WriteSuccess },
 
         > @r#"ToRouter { request_id: 1, action: Deleted }"#,
     );
@@ -290,6 +531,7 @@ fn an_account_with_no_bank_goes_straight_to_the_rows() {
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
             event: EventRouter::DeleteRequested {
                 token_sha256: hash_token("session-1"),
+                code: "123456".to_string(),
             },
         },
 
@@ -302,12 +544,27 @@ fn an_account_with_no_bank_goes_straight_to_the_rows() {
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 
-        > Action::ToSourceStripe {
+        > Action::ToStore {
             call_id: 2,
+            action: ActionStore::LoadDeleteCode { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::DeleteCodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("123456"),
+                    expires_at: Timestamp::from_secs(T0.as_secs() + 600),
+                    attempts: 0,
+                }),
+            },
+        },
+
+        > Action::ToSourceStripe {
+            call_id: 3,
             action: ActionSourceStripe::CancelSubscription { .. },
         },
         < Event::FromSourceStripe {
-            call_id: 2,
+            call_id: 3,
             event: EventSourceStripe::SubscriptionCancelled {
                 user_id: SUBSCRIBER,
                 good_until: Some(1818633600),
@@ -315,19 +572,19 @@ fn an_account_with_no_bank_goes_straight_to_the_rows() {
         },
 
         > Action::ToStore {
-            call_id: 3,
+            call_id: 4,
             action: ActionStore::LoadAccessTokens { .. },
         },
         < Event::FromStore {
-            call_id: 3,
+            call_id: 4,
             event: EventStore::AccessTokensLoaded { tokens: vec![] },
         },
 
         > Action::ToStore {
-            call_id: 4,
+            call_id: 5,
             action: ActionStore::DeleteUser { .. },
         },
-        < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
 
         > @r#"ToRouter { request_id: 1, action: Deleted }"#,
     );
@@ -349,6 +606,7 @@ fn somebody_who_never_paid_can_still_delete_their_account() {
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
             event: EventRouter::DeleteRequested {
                 token_sha256: hash_token("session-1"),
+                code: "123456".to_string(),
             },
         },
 
@@ -361,27 +619,42 @@ fn somebody_who_never_paid_can_still_delete_their_account() {
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 
-        // No cancellation: there is nothing to cancel.
         > Action::ToStore {
             call_id: 2,
-            action: ActionStore::LoadAccessTokens { user_id: SUBSCRIBER },
+            action: ActionStore::LoadDeleteCode { .. },
         },
         < Event::FromStore {
             call_id: 2,
+            event: EventStore::DeleteCodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("123456"),
+                    expires_at: Timestamp::from_secs(T0.as_secs() + 600),
+                    attempts: 0,
+                }),
+            },
+        },
+
+        // No cancellation: there is nothing to cancel.
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::LoadAccessTokens { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 3,
             event: EventStore::AccessTokensLoaded { tokens: vec![] },
         },
 
         > Action::ToStore {
-            call_id: 3,
+            call_id: 4,
             action: ActionStore::DeleteUser { .. },
         },
-        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
 
         > @r#"ToRouter { request_id: 1, action: Deleted }"#,
     );
 }
 
-/// And so can somebody whose subscription lapsed. The route is not gated on
+/// And so can somebody whose subscription lapsed. Neither route is gated on
 /// entitlement, deliberately.
 #[test]
 fn somebody_whose_subscription_lapsed_can_still_delete_their_account() {
@@ -429,6 +702,7 @@ fn somebody_whose_subscription_lapsed_can_still_delete_their_account() {
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
             event: EventRouter::DeleteRequested {
                 token_sha256: hash_token("session-1"),
+                code: "123456".to_string(),
             },
         },
 
@@ -441,12 +715,27 @@ fn somebody_whose_subscription_lapsed_can_still_delete_their_account() {
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 
-        > Action::ToSourceStripe {
+        > Action::ToStore {
             call_id: 3,
+            action: ActionStore::LoadDeleteCode { .. },
+        },
+        < Event::FromStore {
+            call_id: 3,
+            event: EventStore::DeleteCodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("123456"),
+                    expires_at: Timestamp::from_secs(T0.as_secs() + 600),
+                    attempts: 0,
+                }),
+            },
+        },
+
+        > Action::ToSourceStripe {
+            call_id: 4,
             action: ActionSourceStripe::CancelSubscription { .. },
         },
         < Event::FromSourceStripe {
-            call_id: 3,
+            call_id: 4,
             event: EventSourceStripe::SubscriptionCancelled {
                 user_id: SUBSCRIBER,
                 good_until: None,
@@ -454,13 +743,14 @@ fn somebody_whose_subscription_lapsed_can_still_delete_their_account() {
         },
 
         > Action::ToStore {
-            call_id: 4,
+            call_id: 5,
             action: ActionStore::LoadAccessTokens { .. },
         },
     );
 }
 
-/// A token that names nobody deletes nothing.
+/// A token that names nobody deletes nothing, and is not told whether a code
+/// stands.
 #[test]
 fn a_token_that_names_nobody_deletes_nothing() {
     let mut state = state_subscribed();
@@ -471,6 +761,7 @@ fn a_token_that_names_nobody_deletes_nothing() {
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
             event: EventRouter::DeleteRequested {
                 token_sha256: hash_token("stale"),
+                code: "123456".to_string(),
             },
         },
 
@@ -492,7 +783,8 @@ fn a_token_that_names_nobody_deletes_nothing() {
 /// Deliberately not "carry on anyway": deleting the rows while the
 /// subscription still renews is the one outcome nobody can recover from
 /// afterwards, because the row that says who was being charged is gone. The
-/// caller is told to try again.
+/// caller is told to try again — and the code row still stands for the retry,
+/// which is why an accepted code is not spent by an action of its own.
 #[test]
 fn a_stripe_that_will_not_cancel_deletes_nothing() {
     let mut state = state_subscribed();
@@ -503,6 +795,7 @@ fn a_stripe_that_will_not_cancel_deletes_nothing() {
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
             event: EventRouter::DeleteRequested {
                 token_sha256: hash_token("session-1"),
+                code: "123456".to_string(),
             },
         },
 
@@ -515,12 +808,27 @@ fn a_stripe_that_will_not_cancel_deletes_nothing() {
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 
-        > Action::ToSourceStripe {
+        > Action::ToStore {
             call_id: 2,
+            action: ActionStore::LoadDeleteCode { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::DeleteCodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("123456"),
+                    expires_at: Timestamp::from_secs(T0.as_secs() + 600),
+                    attempts: 0,
+                }),
+            },
+        },
+
+        > Action::ToSourceStripe {
+            call_id: 3,
             action: ActionSourceStripe::CancelSubscription { .. },
         },
         < Event::FromSourceStripe {
-            call_id: 2,
+            call_id: 3,
             event: EventSourceStripe::StripeFailed {
                 user_id: SUBSCRIBER,
                 message: "stripe said no".to_string(),
@@ -547,6 +855,7 @@ fn a_deleted_account_is_forgotten_whole() {
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
             event: EventRouter::DeleteRequested {
                 token_sha256: hash_token("session-1"),
+                code: "123456".to_string(),
             },
         },
 
@@ -559,12 +868,27 @@ fn a_deleted_account_is_forgotten_whole() {
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 
-        > Action::ToSourceStripe {
+        > Action::ToStore {
             call_id: 2,
+            action: ActionStore::LoadDeleteCode { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::DeleteCodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("123456"),
+                    expires_at: Timestamp::from_secs(T0.as_secs() + 600),
+                    attempts: 0,
+                }),
+            },
+        },
+
+        > Action::ToSourceStripe {
+            call_id: 3,
             action: ActionSourceStripe::CancelSubscription { .. },
         },
         < Event::FromSourceStripe {
-            call_id: 2,
+            call_id: 3,
             event: EventSourceStripe::SubscriptionCancelled {
                 user_id: SUBSCRIBER,
                 good_until: Some(1818633600),
@@ -572,19 +896,19 @@ fn a_deleted_account_is_forgotten_whole() {
         },
 
         > Action::ToStore {
-            call_id: 3,
+            call_id: 4,
             action: ActionStore::LoadAccessTokens { .. },
         },
         < Event::FromStore {
-            call_id: 3,
+            call_id: 4,
             event: EventStore::AccessTokensLoaded { tokens: vec![] },
         },
 
         > Action::ToStore {
-            call_id: 4,
+            call_id: 5,
             action: ActionStore::DeleteUser { .. },
         },
-        < Event::FromStore { call_id: 4, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
 
         > @r#"ToRouter { request_id: 1, action: Deleted }"#,
 
@@ -599,11 +923,11 @@ fn a_deleted_account_is_forgotten_whole() {
         },
 
         > Action::ToStore {
-            call_id: 5,
+            call_id: 6,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 5,
+            call_id: 6,
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 

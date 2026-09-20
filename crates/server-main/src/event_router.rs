@@ -108,9 +108,14 @@ pub enum EventRouter {
     /// No session: Apple is not signed in as anybody.
     AppleNotificationReceived { signed: String },
 
+    /// `POST /account/delete/request` — email whoever this token signs in a
+    /// code that confirms the deletion. Carries no code: the machine makes
+    /// it, from the seeded RNG.
+    DeleteCodeRequested { token_sha256: Vec<u8> },
+
     /// `POST /account/delete` — cancel the subscription, stop the banks, and
-    /// delete everything.
-    DeleteRequested { token_sha256: Vec<u8> },
+    /// delete everything, if the code is the one that was emailed.
+    DeleteRequested { token_sha256: Vec<u8>, code: String },
 }
 
 impl EventRouter {
@@ -131,7 +136,8 @@ impl EventRouter {
             | EventRouter::CheckoutRequested { token_sha256, .. }
             | EventRouter::BillingStatusRequested { token_sha256 }
             | EventRouter::AppleTransactionReceived { token_sha256, .. }
-            | EventRouter::DeleteRequested { token_sha256 } => Some(token_sha256),
+            | EventRouter::DeleteCodeRequested { token_sha256 }
+            | EventRouter::DeleteRequested { token_sha256, .. } => Some(token_sha256),
 
             EventRouter::CodeRequested { .. }
             | EventRouter::CodeSubmitted { .. }
@@ -162,6 +168,7 @@ impl EventRouter {
             EventRouter::CheckoutRequested { .. } => Some(Route::BillingCheckout),
             EventRouter::BillingStatusRequested { .. } => Some(Route::BillingStatus),
             EventRouter::AppleTransactionReceived { .. } => Some(Route::BillingApple),
+            EventRouter::DeleteCodeRequested { .. } => Some(Route::AccountDeleteRequest),
             EventRouter::DeleteRequested { .. } => Some(Route::AccountDelete),
 
             EventRouter::WebhookReceived { .. }
@@ -178,6 +185,10 @@ impl EventRouter {
     pub fn recipient(&self) -> Option<&str> {
         match self {
             EventRouter::CodeRequested { email } => Some(email),
+
+            // Mails too, but its own account only: the address is not known
+            // at the edge, and the per-user window is the same inbox.
+            EventRouter::DeleteCodeRequested { .. } => None,
 
             EventRouter::SnapshotRequested { .. }
             | EventRouter::CodeSubmitted { .. }

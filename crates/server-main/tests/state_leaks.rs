@@ -699,6 +699,7 @@ fn leaving_leaves_nothing_behind() {
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
             event: EventRouter::DeleteRequested {
                 token_sha256: hash_token("session-1"),
+                code: "123456".to_string(),
             },
         },
 
@@ -713,12 +714,27 @@ fn leaving_leaves_nothing_behind() {
             },
         },
 
-        > Action::ToSourceStripe {
+        > Action::ToStore {
             call_id: 2,
+            action: ActionStore::LoadDeleteCode { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::DeleteCodeLoaded {
+                stored: Some(StoredCode {
+                    code_sha256: hash_code("123456"),
+                    expires_at: Timestamp::from_secs(T0.as_secs() + 600),
+                    attempts: 0,
+                }),
+            },
+        },
+
+        > Action::ToSourceStripe {
+            call_id: 3,
             action: ActionSourceStripe::CancelSubscription { .. },
         },
         < Event::FromSourceStripe {
-            call_id: 2,
+            call_id: 3,
             event: EventSourceStripe::SubscriptionCancelled {
                 user_id: uuid::Uuid::nil(),
                 good_until: Some(1818633600),
@@ -726,22 +742,22 @@ fn leaving_leaves_nothing_behind() {
         },
 
         > Action::ToStore {
-            call_id: 3,
+            call_id: 4,
             action: ActionStore::LoadAccessTokens { .. },
         },
         < Event::FromStore {
-            call_id: 3,
+            call_id: 4,
             event: EventStore::AccessTokensLoaded {
                 tokens: vec![("item-1".to_string(), "token-1".to_string())],
             },
         },
 
         > Action::ToSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             action: ActionSourcePlaid::RemoveItem { .. },
         },
         < Event::FromSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             event: EventSourcePlaid::ItemRemoved {
                 item_id: "item-1".to_string(),
                 removed: true,
@@ -749,10 +765,10 @@ fn leaving_leaves_nothing_behind() {
         },
 
         > Action::ToStore {
-            call_id: 5,
+            call_id: 6,
             action: ActionStore::DeleteUser { .. },
         },
-        < Event::FromStore { call_id: 5, event: EventStore::WriteSuccess },
+        < Event::FromStore { call_id: 6, event: EventStore::WriteSuccess },
 
         > @r#"ToRouter { request_id: 1, action: Deleted }"#,
 

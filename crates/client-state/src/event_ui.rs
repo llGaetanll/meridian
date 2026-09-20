@@ -83,6 +83,25 @@ pub enum EventUi {
     /// Sign out, on the Account tab. Everything the app holds belongs to the
     /// account, so this puts the machine back to where a fresh install starts.
     SignOutRequested,
+
+    /// Delete my account, on the Account tab. Opens the confirmation; nothing
+    /// is asked of the server by the press.
+    DeleteAccountRequested,
+
+    /// Yes, on the confirmation. This is what asks the server to email the
+    /// code.
+    DeleteConfirmed,
+
+    /// The way out of the delete flow at any step. Nothing already asked for
+    /// is taken back — a code that was sent simply goes unused.
+    DeleteCancelled,
+
+    /// The delete code field, as it reads — a whole value for the reason
+    /// [`CodeTyped`](EventUi::CodeTyped) is.
+    DeleteCodeTyped { digits: String },
+
+    /// Delete everything, under the code. Only offered once all six are in.
+    DeleteCodeSubmitted,
 }
 
 /// Which half of the filter panel.

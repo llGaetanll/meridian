@@ -1833,3 +1833,138 @@ fn a_repair_they_backed_out_of_frees_the_button() {
         },
     );
 }
+
+/// Deleting, end to end: the button, the "are you sure", the emailed code,
+/// and the machine going back to where a fresh install starts.
+#[test]
+fn deleting_confirms_then_trades_the_emailed_code_for_the_account() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Account } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        // The button opens the confirmation, and nothing is sent by it.
+        < Event::FromUi { event: EventUi::DeleteAccountRequested },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Account { view }, .. } } => {
+            let confirm = view.delete.clone().expect("the confirmation is up");
+
+            assert_eq!(confirm.confirm_label.as_deref(), Some("Email me the code"));
+            assert!(confirm.code.is_none(), "no code field until one is sent");
+        },
+
+        // Yes is what asks the server to email the code.
+        < Event::FromUi { event: EventUi::DeleteConfirmed },
+        > Action::ToSource { action: ActionSource::SendDeleteCode },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource { event: EventSource::DeleteCodeSent },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Account { view }, .. } } => {
+            let confirm = view.delete.clone().expect("the code screen is up");
+
+            assert_eq!(confirm.code.as_deref(), Some(""));
+            assert!(confirm.confirm_label.is_none(), "no button under six digits");
+        },
+
+        < Event::FromUi { event: EventUi::DeleteCodeTyped { digits: "470977".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Account { view }, .. } } => {
+            let confirm = view.delete.clone().expect("the code screen is up");
+
+            assert_eq!(confirm.confirm_label.as_deref(), Some("Delete everything"));
+        },
+
+        < Event::FromUi { event: EventUi::DeleteCodeSubmitted },
+        > @r#"ToSource { action: DeleteAccount { code: "470977" } }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        // The rows are gone, and so is everything this machine held.
+        < Event::FromSource { event: EventSource::AccountDeleted },
+        > Action::ToSource { action: ActionSource::ForgetSession },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { .. }, .. } },
+    );
+}
+
+/// Keep my account closes the flow at any step, and nothing is sent — a code
+/// already emailed simply goes unused.
+#[test]
+fn keeping_the_account_closes_the_flow_and_sends_nothing() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Account } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::DeleteAccountRequested },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::DeleteCancelled },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Account { view }, .. } } => {
+            assert!(view.delete.is_none(), "the confirmation is down");
+        },
+    );
+}
+
+/// A refused code empties the boxes and says so, because the server counts
+/// every wrong guess — digits worth resubmitting do not exist.
+#[test]
+fn a_refused_code_empties_the_boxes_and_says_so() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Account } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::DeleteAccountRequested },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::DeleteConfirmed },
+        > Action::ToSource { action: ActionSource::SendDeleteCode },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource { event: EventSource::DeleteCodeSent },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::DeleteCodeTyped { digits: "000000".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::DeleteCodeSubmitted },
+        > Action::ToSource { action: ActionSource::DeleteAccount { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource { event: EventSource::DeleteCodeRejected },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Account { view }, .. } } => {
+            let confirm = view.delete.clone().expect("the code screen is still up");
+
+            assert_eq!(confirm.code.as_deref(), Some(""), "the boxes are emptied");
+            assert_eq!(
+                confirm.error.as_deref(),
+                Some("That code was not right. Check the email and try again."),
+            );
+        },
+    );
+}
+
+/// A request that fails closes the flow: the account stands, and the banner
+/// says why.
+#[test]
+fn a_delete_request_that_fails_closes_the_flow() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Account } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::DeleteAccountRequested },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::DeleteConfirmed },
+        > Action::ToSource { action: ActionSource::SendDeleteCode },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Offline } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Account { view }, .. } } => {
+            assert!(view.delete.is_none(), "the confirmation is down");
+        },
+        > Action::ToUi { action: ActionUi::ShowError { .. } },
+    );
+}

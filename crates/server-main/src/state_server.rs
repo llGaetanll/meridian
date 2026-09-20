@@ -68,6 +68,7 @@ use crate::StripePayer;
 use crate::Syncing;
 use crate::WebhookFacts;
 use crate::entitlement;
+use crate::login_code;
 use crate::rate_limit::ServerRateCtx;
 use crate::rate_limit::ServerRateLimiter;
 
@@ -323,6 +324,7 @@ impl StateServer {
             | EventRouter::CheckoutRequested { .. }
             | EventRouter::BillingStatusRequested { .. }
             | EventRouter::AppleTransactionReceived { .. }
+            | EventRouter::DeleteCodeRequested { .. }
             | EventRouter::DeleteRequested { .. } => {
                 unreachable!("a request carrying a token is resolved before it is decided")
             }
@@ -790,15 +792,43 @@ impl StateServer {
                 }
             }
 
-            // Answered from what the machine holds. Nothing to read: the
-            // entitlement is already here, and asking the store would be a
-            // second copy that can disagree with it.
+            // The code goes to the address the account is written to, and the
+            // store is the only thing that holds one — the same first call a
+            // subscribe with no customer makes.
+            Authenticated::DeleteCodeRequested => {
+                self.signup.waits_on(
+                    request_id,
+                    Pending::Loading {
+                        user_id,
+                        event: event.clone(),
+                    },
+                );
+
+                actions.push(Action::ToStore {
+                    call_id: self.signup.calling(request_id, self.now),
+                    action: ActionStore::LoadUser { user_id },
+                });
+            }
+
             // Cancelling and deleting are one action, because a paused
             // account is one we keep paying Plaid for: an Item bills for as
             // long as it exists, so there is no state where somebody stops
-            // paying us and we stop paying for them. Out is out.
-            Authenticated::DeleteRequested => {
-                self.delete_requested(request_id, user_id, actions);
+            // paying us and we stop paying for them. Out is out. What stands
+            // between the token and the rows is the emailed code, so the one
+            // the store holds is read first.
+            Authenticated::DeleteRequested { code } => {
+                self.signup.waits_on(
+                    request_id,
+                    Pending::DeleteSubmitted {
+                        user_id,
+                        code: code.clone(),
+                    },
+                );
+
+                actions.push(Action::ToStore {
+                    call_id: self.signup.calling(request_id, self.now),
+                    action: ActionStore::LoadDeleteCode { user_id },
+                });
             }
 
             // The App Store took the money before we heard about it, so this
@@ -2409,6 +2439,15 @@ impl StateServer {
                     return;
                 };
 
+                // The read was for the deletion code's envelope, not for
+                // Stripe: the machine mints and sends the code from here.
+                if matches!(event, Authenticated::DeleteCodeRequested) {
+                    self.signup
+                        .delete_code_requested(request_id, user_id, email, self.now, actions);
+
+                    return;
+                }
+
                 // The same first call either way — the customer — and the
                 // step notes which conversation the answer carries on.
                 let step = match &event {
@@ -2460,6 +2499,55 @@ impl StateServer {
                 };
 
                 self.remove_banks_to_delete(request_id, user_id, tokens, actions);
+            }
+
+            // The code a deletion carried, checked against the one the store
+            // holds. Only an accepted code reaches the chain that cancels,
+            // stops the banks and deletes the rows.
+            EventStore::DeleteCodeLoaded { stored } => {
+                let Some(request_id) = self.signup.answered(call_id) else {
+                    return;
+                };
+
+                let Some(Pending::DeleteSubmitted { user_id, code }) =
+                    self.signup.resumed(request_id)
+                else {
+                    tracing::error!(call_id, "the store answered a deletion nobody submitted");
+
+                    return;
+                };
+
+                // No code standing, and a rejection like any other: a
+                // deletion is confirmed by asking for a code first.
+                let Some(stored) = stored else {
+                    self.signup
+                        .answer(request_id, ActionRouter::Rejected, self.now, actions);
+
+                    return;
+                };
+
+                let verdict = login_code::verify(stored, &code, self.now);
+
+                if verdict != login_code::Verdict::Accepted {
+                    // Counted whatever the reason, expiry included, for the
+                    // reason a sign-in counts them.
+                    actions.push(Action::ToStore {
+                        call_id: self.signup.calling(request_id, self.now),
+                        action: ActionStore::RecordDeleteAttempt { user_id },
+                    });
+
+                    tracing::warn!(%user_id, ?verdict, "a deletion code was rejected");
+
+                    self.signup
+                        .answer(request_id, ActionRouter::Rejected, self.now, actions);
+
+                    return;
+                }
+
+                // The code is not spent by an action of its own: the row goes
+                // with the account, and a deletion that fails part way leaves
+                // it standing for the retry.
+                self.delete_requested(request_id, user_id, actions);
             }
 
             EventStore::CodeLoaded { stored } => {

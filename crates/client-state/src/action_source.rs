@@ -35,6 +35,15 @@ pub enum ActionSource {
     /// the bank's consent instead of attaching a new one.
     StartBankRepair { item_id: String },
 
+    /// Ask the server to email the signed-in user the code that confirms
+    /// deleting their account. No address: the server sends it to the one
+    /// the account is written to.
+    SendDeleteCode,
+
+    /// Delete the account, with the code the email carried. There is no undo:
+    /// the server answers once the rows are gone.
+    DeleteAccount { code: String },
+
     /// Ask the server for a Stripe Checkout page and open it in a window of
     /// its own. The money is taken there: no card detail ever reaches this
     /// app, and nothing about the page is a thing to put in an event log.

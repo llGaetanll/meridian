@@ -17,3 +17,30 @@
 /* Nobody reads this until something is wrong, and then it is the first thing
    we ask for. */
 .account-page .build { margin-top: 36px; font-size: 11.5px; color: var(--text-faint); }
+
+.account-page .session-actions { display: flex; gap: 10px; }
+
+/* The delete confirmation. A placeholder over the page until the designed
+   screen replaces it — the board draws this as a pushed screen. */
+.dialog-overlay {
+  position: fixed; inset: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+.dialog {
+  width: min(420px, calc(100vw - 48px));
+  padding: 22px 24px;
+  background: var(--bg-panel);
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+}
+.dialog h2 { margin: 0 0 8px; font-size: 16px; }
+.dialog p { margin: 0 0 14px; font-size: 13px; color: var(--text-muted); }
+.dialog .dialog-error { color: var(--down); }
+.dialog-code {
+  width: 100%; margin: 0 0 14px; padding: 10px 12px;
+  font-size: 18px; letter-spacing: 6px; text-align: center;
+  color: var(--text); background: var(--bg-input);
+  border: 1px solid var(--divider); border-radius: 8px;
+}
+.dialog-actions { display: flex; gap: 10px; justify-content: flex-end; }

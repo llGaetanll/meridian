@@ -208,6 +208,22 @@ pub enum ActionStore {
     /// removals need, and deleting the user takes `items` with it.
     LoadAccessTokens { user_id: uuid::Uuid },
 
+    /// What deletion code stands against this user, if any.
+    LoadDeleteCode { user_id: uuid::Uuid },
+
+    /// Hold a deletion code against a user, replacing any that stood.
+    ///
+    /// The hash, never the code. The plaintext goes only to
+    /// [`ActionEmail::SendDeleteCode`](crate::ActionEmail).
+    SaveDeleteCode {
+        user_id: uuid::Uuid,
+        code_sha256: Vec<u8>,
+        expires_at: api_common::Timestamp,
+    },
+
+    /// Count a wrong guess against the deletion code standing for this user.
+    RecordDeleteAttempt { user_id: uuid::Uuid },
+
     /// Delete the account and everything that hangs off it.
     DeleteUser { user_id: uuid::Uuid },
 }

@@ -21,6 +21,7 @@ use crate::EventSource;
 use crate::EventUi;
 use crate::LoadFailure;
 use crate::Screen;
+use crate::StateDelete;
 use crate::StateLedger;
 use crate::StateOnboarding;
 use crate::Unpaid;
@@ -120,6 +121,10 @@ pub struct StateApp {
     /// reports. `Some` is that bank's button waiting instead of taking
     /// another tap.
     reconnecting: Option<String>,
+
+    /// Deleting the account, from the button on the Account tab until it is
+    /// cancelled or the rows are gone. `None` means nobody is leaving.
+    deleting: Option<StateDelete>,
 }
 
 impl Default for StateApp {
@@ -142,6 +147,7 @@ impl Default for StateApp {
             onboarding: Some(StateOnboarding::new()),
             payment: StatePayment::default(),
             reconnecting: None,
+            deleting: None,
         }
     }
 }
@@ -399,6 +405,63 @@ impl StateApp {
                     action: ActionSource::ForgetSession,
                 });
             }
+
+            EventUi::DeleteAccountRequested => {
+                // Only from the Account tab, which first run does not have.
+                if self.onboarding.is_none() && self.deleting.is_none() {
+                    self.deleting = Some(StateDelete::Confirming);
+                }
+            }
+
+            EventUi::DeleteConfirmed => {
+                if self.deleting == Some(StateDelete::Confirming) {
+                    self.deleting = Some(StateDelete::SendingCode);
+
+                    actions.push(Action::ToSource {
+                        action: ActionSource::SendDeleteCode,
+                    });
+                }
+            }
+
+            // From any step, the account still exists and nothing has to be
+            // taken back: a code already sent simply goes unused. While the
+            // deletion itself is out there is no backing out of what the
+            // server may already be doing, so the tap waits.
+            EventUi::DeleteCancelled => {
+                if self.deleting != Some(StateDelete::Deleting) {
+                    self.deleting = None;
+                }
+            }
+
+            EventUi::DeleteCodeTyped { digits } => {
+                if let Some(StateDelete::Code {
+                    digits: typed,
+                    wrong,
+                }) = &mut self.deleting
+                {
+                    *typed = digits
+                        .chars()
+                        .filter(char::is_ascii_digit)
+                        .take(crate::state_onboarding::CODE_LENGTH)
+                        .collect();
+
+                    *wrong = false;
+                }
+            }
+
+            EventUi::DeleteCodeSubmitted => {
+                if let Some(StateDelete::Code { digits, .. }) = &self.deleting
+                    && digits.len() == crate::state_onboarding::CODE_LENGTH
+                {
+                    let code = digits.clone();
+
+                    self.deleting = Some(StateDelete::Deleting);
+
+                    actions.push(Action::ToSource {
+                        action: ActionSource::DeleteAccount { code },
+                    });
+                }
+            }
         }
 
         self.render(actions);
@@ -488,6 +551,46 @@ impl StateApp {
                 if let Some(flow) = &mut self.onboarding {
                     flow.code_rejected();
                 }
+
+                self.render(actions);
+            }
+
+            EventSource::DeleteCodeSent => {
+                if self.deleting == Some(StateDelete::SendingCode) {
+                    self.deleting = Some(StateDelete::Code {
+                        digits: String::new(),
+                        wrong: false,
+                    });
+                }
+
+                self.render(actions);
+            }
+
+            EventSource::DeleteCodeRejected => {
+                // Emptied rather than left standing: the server counts every
+                // wrong guess, so digits worth resubmitting do not exist.
+                if self.deleting == Some(StateDelete::Deleting) {
+                    self.deleting = Some(StateDelete::Code {
+                        digits: String::new(),
+                        wrong: true,
+                    });
+                }
+
+                self.render(actions);
+            }
+
+            EventSource::AccountDeleted => {
+                // Everything the machine holds belonged to the account that
+                // is gone, so the way out is the sign-out reset: a machine as
+                // new as a fresh install's, keeping only the device's clock.
+                let now = self.device_now;
+
+                *self = Self::new();
+                self.device_now = now;
+
+                actions.push(Action::ToSource {
+                    action: ActionSource::ForgetSession,
+                });
 
                 self.render(actions);
             }
@@ -687,6 +790,10 @@ impl StateApp {
                     // started, so Subscribe is offered again under the banner.
                     self.payment.failed();
 
+                    // A delete flow whose request failed is closed the same
+                    // way: the account stands, and the banner says why.
+                    self.deleting = None;
+
                     // Still render: what the screen says depends on whether
                     // anything was ever loaded.
                     self.render(actions);
@@ -803,6 +910,11 @@ impl StateApp {
     /// The bank being repaired, if a Reconnect tap is still being answered.
     pub(crate) fn reconnecting(&self) -> Option<&str> {
         self.reconnecting.as_deref()
+    }
+
+    /// Where deleting the account has got, while somebody is leaving.
+    pub(crate) fn deleting(&self) -> Option<&StateDelete> {
+        self.deleting.as_ref()
     }
 
     pub(crate) fn masked(&self) -> bool {

@@ -4,6 +4,7 @@ use leptos::prelude::*;
 use web_components::BankList;
 use web_components::Sec;
 
+use crate::pages::DeleteDialog;
 use crate::runtime_app::RuntimeApp;
 
 /// Which banks are attached, and the way out, as the phone draws them.
@@ -30,16 +31,24 @@ pub fn AccountPhone(view: Signal<ViewAccount>) -> impl IntoView {
             </Sec>
 
             <Sec title=text(|view| &view.session_label)>
-                // The one button on the tab, and quiet: nothing here is the
-                // thing you came to do, so nothing here is violet.
+                // Quiet buttons: nothing here is the thing you came to do,
+                // so nothing here is violet.
                 <div class="session">
                     <button class="btn lg block" on:click=move |_| runtime.ui(EventUi::SignOutRequested)>
                         {text(|view| &view.sign_out_label)}
+                    </button>
+                    <button class="btn lg block" on:click=move |_| runtime.ui(EventUi::DeleteAccountRequested)>
+                        {text(|view| &view.delete_label)}
                     </button>
                 </div>
             </Sec>
 
             <div class="build">{text(|view| &view.build)}</div>
+
+            {move || {
+                view.with(|view| view.delete.clone())
+                    .map(|confirm| view! { <DeleteDialog confirm=confirm /> })
+            }}
         </div>
     }
 }
