@@ -119,10 +119,6 @@ fn Sidebar(
                 // pretended the app was four pages would have to grow later
                 // and move everything under it.
                 <a class="dead" aria-disabled="true">
-                    <Icon kind=IconKind::Home class="icon" />
-                    Home
-                </a>
-                <a class="dead" aria-disabled="true">
                     <Icon kind=IconKind::Portfolio class="icon" />
                     Portfolios
                 </a>

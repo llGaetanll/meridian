@@ -4,7 +4,6 @@ use leptos::prelude::*;
 /// `currentColor` strokes, so sizing and coloring is left to CSS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IconKind {
-    Home,
     Portfolio,
     Markets,
     Spending,
@@ -21,9 +20,6 @@ pub enum IconKind {
 impl IconKind {
     fn paths(&self) -> &'static str {
         match self {
-            Self::Home => {
-                r#"<path d="M3 10.2 12 3l9 7.2"/><path d="M5.5 9.2V20a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1V9.2"/>"#
-            }
             Self::Portfolio => {
                 r#"<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>"#
             }
