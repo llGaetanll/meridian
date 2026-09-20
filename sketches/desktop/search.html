@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../shared/theme.css">
 <link rel="stylesheet" href="../shared/app.css">
+<link rel="stylesheet" href="search.css">
 <style>
   .asset-layout {
     display: grid;
@@ -230,185 +231,6 @@
     color: var(--violet-300); font: inherit; font-size: 12px; font-weight: 500;
   }
 
-  /* search overlay — the page behind it is blurred and pushed back */
-
-  .dimmed {
-    filter: blur(7px) saturate(0.7);
-    transform: scale(1.012);
-    transform-origin: 50% 40%;
-    pointer-events: none;
-  }
-
-  .overlay {
-    position: fixed; inset: 0; z-index: 40;
-    display: flex; justify-content: center; align-items: flex-start;
-    padding: 11vh 24px 40px;
-    background: color-mix(in srgb, var(--bg) 62%, transparent);
-    overflow-y: auto;
-  }
-
-  /* one card, two columns: query and results on the left, a preview of the
-     highlighted result on the right */
-  .telescope {
-    display: grid;
-    grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
-    width: 100%; max-width: 1080px;
-    height: min(620px, 74vh);
-    background: var(--bg-panel);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--r-lg);
-    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
-    overflow: hidden;
-  }
-  @media (max-width: 900px) {
-    .telescope { grid-template-columns: 1fr; height: min(560px, 80vh); }
-    .preview { display: none; }
-  }
-
-  .palette {
-    display: flex; flex-direction: column; min-height: 0;
-    border-right: 1px solid var(--divider);
-  }
-
-  .palette-input {
-    display: flex; align-items: center; gap: 13px;
-    height: 60px; padding: 0 18px;
-    border-bottom: 1px solid var(--divider);
-    color: var(--text-faint);
-  }
-  .palette-input > svg { width: 20px; height: 20px; flex: none; }
-  .palette-input input {
-    flex: 1; background: none; border: 0; outline: none;
-    color: var(--violet-300); caret-color: var(--violet-300);
-    font: inherit; font-size: 18px; font-weight: 600;
-    letter-spacing: -0.015em;
-  }
-  .palette-input input::placeholder { color: var(--text-faint); font-weight: 400; }
-
-  .res-list { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 8px 10px; }
-  .res-list::-webkit-scrollbar { width: 8px; }
-  .res-list::-webkit-scrollbar-thumb { background: var(--bg-input); border-radius: 4px; }
-  .res-list::-webkit-scrollbar-track { background: transparent; }
-
-  .res-label {
-    display: flex; align-items: baseline; justify-content: space-between;
-    padding: 12px 20px 8px;
-    font-size: 11px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.08em;
-    color: var(--text-faint);
-  }
-
-  .res {
-    display: flex; align-items: center; gap: 12px;
-    padding: 9px 12px; border-radius: var(--r-md);
-    cursor: pointer;
-  }
-  .res:hover { background: var(--bg-raised); }
-  .res .logo { flex: none; font-size: 9px; letter-spacing: -0.02em; }
-  .res.sel { background: var(--bg-input); }
-  .res-id { min-width: 0; flex: 1; }
-  .res-sym {
-    font-size: 14px; font-weight: 600; letter-spacing: -0.01em;
-    display: flex; align-items: center; gap: 8px;
-  }
-  .res-name {
-    display: flex; align-items: center; gap: 8px; margin-top: 2px;
-    font-size: 12px; color: var(--text-faint);
-    min-width: 0;
-  }
-  .res-name .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .res-price { text-align: right; flex: none; font-size: 13px; font-weight: 600; }
-  .res-chg { font-size: 11px; font-weight: 500; }
-
-  /* the source a result came from — one chip per price source */
-  .src {
-    display: inline-flex; align-items: center; gap: 6px; flex: none;
-    padding: 3px 9px; border-radius: var(--r-pill);
-    background: var(--bg-input);
-    font-size: 11px; font-weight: 500; color: var(--text-muted);
-  }
-  .src .swatch { width: 6px; height: 6px; border-radius: 50%; flex: none; }
-  .src.yahoo .swatch { background: var(--series-1); }
-  .src.coingecko .swatch { background: var(--series-3); }
-
-  /* preview — the highlighted result, drawn like a small asset page */
-
-  .preview { display: flex; flex-direction: column; min-height: 0; }
-
-  .pv-head {
-    display: flex; align-items: flex-start; justify-content: space-between;
-    gap: 18px; padding: 18px 20px 14px;
-  }
-  .pv-id { display: flex; align-items: center; gap: 12px; min-width: 0; }
-  .pv-id .logo { width: 38px; height: 38px; font-size: 11px; }
-  .pv-sym { font-size: 22px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.15; }
-  .pv-name { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 12px; color: var(--text-faint); }
-  .pv-price { text-align: right; flex: none; }
-  .pv-price .p { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
-  .pv-price .d { font-size: 12px; font-weight: 500; margin-top: 4px; }
-
-  .pv-window {
-    display: flex; align-items: baseline; justify-content: space-between;
-    padding: 0 20px 10px;
-    font-size: 11px; color: var(--text-faint);
-    text-transform: uppercase; letter-spacing: 0.07em;
-  }
-  .pv-window .open-badge {
-    display: inline-flex; align-items: center; gap: 6px;
-    text-transform: none; letter-spacing: 0;
-  }
-  .pv-window .open-badge .status-dot { background: var(--up); }
-
-  .pv-chart-wrap { position: relative; flex: 1; min-height: 150px; margin: 0 20px; }
-  /* an svg sizes itself from its viewBox unless width is spelled out, so the
-     right inset alone would not hold it back from the y-axis */
-  .pv-grid, .pv-fill, .pv-chart {
-    position: absolute; inset: 0 0 0 56px;
-    width: calc(100% - 56px); height: 100%;
-  }
-  .pv-y {
-    position: absolute; inset: 0 auto 0 0; width: 56px; pointer-events: none;
-  }
-  .pv-y span {
-    position: absolute; right: 10px; transform: translateY(-50%);
-    font-size: 11px; color: var(--text-faint);
-    font-variant-numeric: tabular-nums;
-  }
-  .pv-x {
-    display: flex; justify-content: space-between;
-    margin: 8px 20px 0; padding-left: 56px;
-    font-size: 11px; color: var(--text-faint);
-    font-variant-numeric: tabular-nums;
-  }
-  .pv-fill {
-    clip-path: url(#previewClip);
-    background-image: radial-gradient(circle at center,
-      color-mix(in srgb, var(--up) 58%, transparent) 0.7px, transparent 1px);
-    background-size: 4px 4px;
-    -webkit-mask-image: linear-gradient(to bottom, #000 25%, transparent 96%);
-    mask-image: linear-gradient(to bottom, #000 25%, transparent 96%);
-  }
-
-  .pv-stats {
-    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 14px 20px; padding: 18px 20px 20px;
-  }
-  .pv-stat .k {
-    font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em;
-    color: var(--text-faint);
-  }
-  .pv-stat .v { font-size: 13px; font-weight: 600; margin-top: 3px; }
-
-  .palette-foot {
-    display: flex; align-items: center; gap: 18px;
-    padding: 9px 16px;
-    border-top: 1px solid var(--divider);
-    background: var(--bg);
-    font-size: 11px; color: var(--text-faint);
-  }
-  .palette-foot span { display: inline-flex; align-items: center; gap: 6px; }
-  .palette-foot .kbd { font-size: 10px; padding: 2px 6px; }
-
   .mini-list { display: flex; flex-direction: column; gap: 2px; }
   .mini-row {
     display: flex; align-items: center; justify-content: space-between;
@@ -442,10 +264,6 @@
     </div>
 
     <nav class="nav">
-      <a href="home.html">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.2 12 3l9 7.2"/><path d="M5.5 9.2V20a1 1 0 0 0 1 1H10v-6h4v6h3.5a1 1 0 0 0 1-1V9.2"/></svg>
-        Home
-      </a>
       <a href="portfolio.html">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
         Portfolio

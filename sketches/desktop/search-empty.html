@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridian — Search, nothing typed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared/theme.css">
+<link rel="stylesheet" href="../shared/app.css">
+<link rel="stylesheet" href="search.css">
+</head>
+<body>
+
+<!--
+  The palette the moment it opens, before a key is pressed. search.html is the
+  same component three letters in.
+
+  Nothing is typed, so there is nothing to rank, and the two things it can
+  offer instead are what was looked at last and where the palette can send
+  you. Recent is first because it is the shorter walk: most openings of a
+  search box are a return to something.
+
+  The preview has no result to preview. Rather than leave the right half of
+  the card empty, it says what the palette reaches, which is the one thing a
+  reader cannot work out from an empty list.
+-->
+
+<div class="overlay">
+  <div class="telescope">
+
+    <div class="palette">
+
+      <div class="palette-input">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>
+        <input placeholder="Search assets, trades, merchants…" autofocus>
+        <span class="kbd">esc</span>
+      </div>
+
+      <div class="res-list">
+
+        <div class="res-label"><span>Recent</span></div>
+
+        <div class="res">
+          <span class="logo">BTC</span>
+          <div class="res-id">
+            <div class="res-sym">BTC</div>
+            <div class="res-name">
+              <span class="nm">Bitcoin</span>
+              <span class="src coingecko"><span class="swatch"></span> CoinGecko</span>
+            </div>
+          </div>
+          <div class="res-price">
+            <div class="num">$94,210.55</div>
+            <div class="res-chg up num">+3.4%</div>
+          </div>
+        </div>
+
+        <div class="res">
+          <span class="logo">VOO</span>
+          <div class="res-id">
+            <div class="res-sym">VOO</div>
+            <div class="res-name">
+              <span class="nm">Vanguard S&amp;P 500 · ETF</span>
+              <span class="src yahoo"><span class="swatch"></span> Yahoo Finance</span>
+            </div>
+          </div>
+          <div class="res-price">
+            <div class="num">$548.12</div>
+            <div class="res-chg up num">+0.6%</div>
+          </div>
+        </div>
+
+        <div class="res">
+          <span class="logo">WF</span>
+          <div class="res-id">
+            <div class="res-sym">Whole Foods Market</div>
+            <div class="res-name">
+              <span class="nm">Groceries · 14 transactions</span>
+            </div>
+          </div>
+          <div class="res-price">
+            <div class="num">−$412.86</div>
+            <div class="res-chg num faint">this year</div>
+          </div>
+        </div>
+
+        <div class="res-label"><span>Pages</span></div>
+
+        <div class="res">
+          <span class="logo">
+            <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="9" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+          </span>
+          <div class="res-id">
+            <div class="res-sym">Ledger</div>
+            <div class="res-name"><span class="nm">Every transaction</span></div>
+          </div>
+        </div>
+
+        <div class="res">
+          <span class="logo">
+            <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11a9 9 0 0 1 15-6.7L21 7"/><polyline points="21 3 21 7 17 7"/><path d="M21 13a9 9 0 0 1-15 6.7L3 17"/><polyline points="3 21 3 17 7 17"/></svg>
+          </span>
+          <div class="res-id">
+            <div class="res-sym">Recurring</div>
+            <div class="res-name"><span class="nm">What comes back every month</span></div>
+          </div>
+        </div>
+
+        <div class="res">
+          <span class="logo">
+            <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+          </span>
+          <div class="res-id">
+            <div class="res-sym">Balances</div>
+            <div class="res-name"><span class="nm">What every account holds</span></div>
+          </div>
+        </div>
+
+        <div class="res">
+          <span class="logo">
+            <svg viewBox="0 0 24 24" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></svg>
+          </span>
+          <div class="res-id">
+            <div class="res-sym">Account</div>
+            <div class="res-name"><span class="nm">Banks, and the way out</span></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="palette-foot">
+        <span><span class="kbd">↑↓</span> navigate</span>
+        <span><span class="kbd">↵</span> open</span>
+        <span><span class="kbd">esc</span> close</span>
+      </div>
+
+    </div>
+
+    <div class="preview">
+      <div class="pv-empty">
+        <div class="say">Start typing and the whole app narrows to what you wrote.</div>
+        <div class="reaches">
+          <div class="reach"><span class="k">Assets</span><span class="v">Ticker or name, from Yahoo Finance and CoinGecko</span></div>
+          <div class="reach"><span class="k">Transactions</span><span class="v">Merchant, category or amount</span></div>
+          <div class="reach"><span class="k">Streams</span><span class="v">Anything Recurring has found</span></div>
+          <div class="reach"><span class="k">Accounts</span><span class="v">A bank, or one account inside it</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

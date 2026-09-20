@@ -25,7 +25,9 @@ h2 {
   text-transform: uppercase; letter-spacing: 0.09em;
   color: var(--text-faint);
 }
-ul { list-style: none; margin-top: 8px; }
+ul { list-style: none; margin-top: 18px; }
+h2 + ul { margin-top: 8px; }
+.lead { max-width: 64ch; margin-top: 10px; color: var(--text-muted); }
 a { color: var(--violet-300); text-decoration: none; }
 a:hover { text-decoration: underline; }
 </style>
@@ -33,47 +35,26 @@ a:hover { text-decoration: underline; }
 <body>
 
 <h1>Sketches</h1>
+<p class="lead">
+  Every screen drawn before it is built. The two boards hold every page of a
+  platform; the rest is a road through the app, the controls it is built from,
+  and the mark.
+</p>
 
-<h2>Phone and desktop</h2>
 <ul>
-  <li><a href="screens/ledger.html">Ledger</a></li>
-  <li><a href="screens/recurring.html">Recurring</a></li>
-  <li><a href="screens/balances.html">Balances</a></li>
-  <li><a href="screens/account.html">Account</a></li>
-  <li><a href="screens/shell.html">Shell</a></li>
+  <li><a href="desktop.html">Desktop screens</a></li>
+  <li><a href="mobile.html">Phone screens</a></li>
+  <li><a href="screens/first-run-flow.html">Onboarding, desktop</a></li>
+  <li><a href="screens/first-run-phone-flow.html">Onboarding, phone</a></li>
+  <li><a href="design-language.html">Design language</a></li>
+  <li><a href="brand/logo.html">Logo</a></li>
 </ul>
 
-<h2>Flows</h2>
-<ul>
-  <li><a href="screens/first-run-flow.html">First run, desktop</a></li>
-  <li><a href="screens/first-run-phone-flow.html">First run, phone</a></li>
-</ul>
-
-<h2>Design language</h2>
-<ul>
-  <li><a href="design-language.html">Every control</a></li>
-</ul>
-
-<h2>Phone</h2>
+<h2>The phone, earlier passes</h2>
 <ul>
   <li><a href="mobile/transactions.html">Ledger, Balances, Recurring</a></li>
   <li><a href="mobile/redesign.html">Ledger, Recurring, Balances, proposed</a></li>
   <li><a href="mobile/account.html">Account</a></li>
-</ul>
-
-<h2>Desktop, markets</h2>
-<ul>
-  <li><a href="desktop/home.html">Home</a></li>
-  <li><a href="desktop/portfolio.html">Portfolios</a></li>
-  <li><a href="desktop/portfolio-detail.html">Portfolio</a></li>
-  <li><a href="desktop/asset.html">Asset</a></li>
-  <li><a href="desktop/search.html">Search</a></li>
-  <li><a href="desktop/spending.html">Spending</a></li>
-</ul>
-
-<h2>Brand</h2>
-<ul>
-  <li><a href="brand/logo.html">Logo</a></li>
 </ul>
 
 </body>

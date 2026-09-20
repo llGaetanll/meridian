@@ -6,6 +6,20 @@ is argued about once rather than three times. Open any of them in a browser;
 
 Nothing here runs. Every file is a picture.
 
+## Every page, on one board
+
+Two boards, one per platform, each a single scrollable page with every page of
+the app on it, one under the other, in a frame of its own:
+
+- `desktop.html` — desktop screens
+- `mobile.html` — phone screens
+
+A page is drawn once, on the board for its platform, and nowhere else — there
+is no second sketch of the Ledger to keep in step with this one. A page the app
+does not draw yet is on them too, either as the drawing we are building towards
+or as a marked gap, so what is missing is as plain as what is not. First run is
+a road rather than a page and is on its own board, below.
+
 ## First run, the flow
 
 Two boards, one per platform, and they are the thing to read before touching
@@ -91,8 +105,10 @@ the foot of the page.
 - `design-language.html` — every control the app draws, once, with a note on
   why each is the way it is. **Read it before designing anything.** The styles
   behind it are `shared/components.css`; the colours are `shared/theme.css`.
-- `screens/` — the web and desktop screens: the shell, the ledger, recurring,
-  balances, the account page.
+- `screens/` — the first-run boards, and the stylesheets the boards are drawn
+  with: `sheet.css` for the frames, `shell.css` and `pages.css` for the web,
+  `phone.css` for the phone.
 - `mobile/` — the phone's own screens.
-- `desktop/` — the markets side.
+- `desktop/` — the markets side, and the search palette with and without a
+  query in it (`search-empty.html`, `search.html`, which share `search.css`).
 - `brand/` — the mark, and the script that draws it.

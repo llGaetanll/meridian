@@ -1,5 +1,5 @@
 /* The ledger: every transaction under its month and its day, and the filter
-   in the rail. `sketches/screens/ledger.html` is the drawing.
+   in the rail. `sketches/desktop.html` is the drawing.
 
    The row is where the width goes. The phone stacks the merchant over its
    category and calls that a row; here the category and the account each get a
