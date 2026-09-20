@@ -27,8 +27,8 @@
 .p-track { position: relative; height: 5px; border-bottom: 1px solid var(--divider); }
 .p-track .track { position: absolute; left: 0; right: 0; bottom: 0; }
 
-/* The tabs: `PhoneShell`. The title, the band, the glass, the dock and the
-   month strip are the design language's; this only places them. */
+/* The tabs: `PhoneShell`. The title, the band, the dock and the month strip
+   are the design language's; this only places them. */
 .p-banner { flex: none; padding: 8px 20px 0; }
 .p-body { position: relative; flex: 1; min-height: 0; }
 .p-scroll {

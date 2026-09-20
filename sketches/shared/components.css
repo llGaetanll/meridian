@@ -170,7 +170,8 @@
   display: inline-flex; align-items: center; gap: 7px;
   border: 1px solid var(--slate-800);
   border-radius: var(--r-sm);
-  background: linear-gradient(to bottom, var(--border-strong), var(--bg-input));
+  background: radial-gradient(ellipse 100% 125% at 50% 100%,
+    color-mix(in srgb, var(--bars) 52%, var(--bg-input)), var(--bg-input) 78%);
   color: var(--text);
   font: inherit; font-size: 13px; font-weight: 600;
   padding: 8px 14px;
@@ -181,16 +182,17 @@
 /* Solid violet is one action per screen: the thing you are here to do. */
 .ui .btn.primary,
 .ui .btn-group .btn.on {
-  /* Two steps of the same violet — enough to catch a highlight across the top,
-     not enough to read as a gradient. */
-  background: linear-gradient(to bottom, var(--accent-soft), var(--accent));
+  /* Lit from the middle of its base: a glow the shape of the button that
+     falls off before the corners, rather than a lighter violet laid along the
+     top edge. */
+  background: radial-gradient(ellipse 100% 125% at 50% 100%,
+    color-mix(in srgb, var(--violet-300) 45%, var(--accent-soft)), var(--accent) 78%);
   border-color: var(--accent-strong);
   color: #fff;
   box-shadow:
     0 2px 0 color-mix(in srgb, var(--accent) 48%, #000),
     var(--glow-lg);
 }
-.ui .btn.sm { font-size: 11.5px; padding: 6px 11px; }
 .ui .btn:active { transform: translateY(2px); box-shadow: none; }
 .ui .btn svg { width: 14px; height: 14px; flex: none; }
 
@@ -199,8 +201,12 @@
 .ui .btn.plain {
   border: 0; background: none; box-shadow: none;
   color: var(--violet-300);
-  padding: 6px 4px;
+  padding: 6px 10px;
+  transition: background 90ms ease, transform 70ms ease;
 }
+/* A wash of the colour it is already lettered in — the least a button can do
+   and still answer the pointer. */
+.ui .btn.plain:hover { background: color-mix(in srgb, var(--accent) 11%, transparent); }
 .ui .btn.plain:active { transform: translateY(1px); opacity: 0.75; }
 /* Back, on a screen with no title bar to hold it: a plain button that is only
    the chevron, and grey rather than violet, because going back is never what
@@ -322,7 +328,7 @@
 
 /* A share, drawn on the rule under the thing it belongs to: square ends, no
    inset, standing on the line rather than straddling it, and starting at the
-   measure the words are set to rather than at the edge of the glass. */
+   measure the words are set to rather than at the edge of the panel. */
 
 .ui .track { height: 4px; }
 .ui .track i {
@@ -355,7 +361,7 @@
    you read down is the reason that face exists. */
 .ui .tally .r { display: flex; align-items: baseline; gap: 14px; padding: 12px 0; }
 .ui .tally .v {
-  min-width: 46px;
+  min-width: 46px; text-align: right;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
   font-variant-numeric: tabular-nums;
   font-size: 22px; font-weight: 600;
@@ -549,13 +555,17 @@
   color: var(--text-faint);
 }
 
-/* A glyph over the title, on a screen that is an outcome: the tick on the one
-   that finished, the warning on the one that did not. Coloured by what it
-   means, in the row's words for it. */
+/* A glyph beside the title, on a screen that is an outcome: the tick on the
+   one that finished, the warning on the one that did not. Coloured by what it
+   means, in the row's words for it.
+
+   On the title's line and not above it, because the glyph is an adjective on
+   the sentence rather than a thing of its own — stacked, it read as a mark at
+   the head of the screen and the eye stopped at it twice. */
+.ui .say-outcome { display: flex; align-items: center; gap: 13px; }
 .ui .say-icon {
-  display: block;
-  width: 40px; height: 40px;
-  margin-bottom: 18px;
+  display: block; flex: none;
+  width: 30px; height: 30px;
   color: var(--text-faint);
 }
 .ui .say-icon.done { color: var(--up); }
@@ -680,7 +690,7 @@
 /* What a page's headline becomes once it has scrolled away.
 
    One line of it on the page's own ground, and a strong rule under it. No
-   panel and no glass: the rule is what separates it, as it separates every
+   panel and nothing floating: the rule is what separates it, as it separates every
    other part of a page. What goes in differs — the Ledger's is what its filter
    is set to, and the chevron says it opens; the others are the figure the page
    opens on — but the height and the boundaries are the band's. */
@@ -710,33 +720,18 @@
    the direction on a hero, so the figures carry it. */
 .ui .band .flows { display: flex; gap: 10px; font-size: 13px; }
 
-/* Glass, faked.
-
-   A backdrop blur and two inset highlights. Real glass bends what is behind
-   it, which a browser cannot do and a phone below iOS 26 cannot either, so
-   this is what both draw — and it is why the dock stands on a fade. */
-.ui .glass {
-  background:
-    linear-gradient(to bottom, rgba(255,255,255,0.10), rgba(255,255,255,0.02) 42%, rgba(255,255,255,0.05));
-  backdrop-filter: blur(28px) saturate(180%) brightness(1.25);
-  -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(1.25);
-  border: 1px solid rgba(255,255,255,0.14);
-  box-shadow:
-    0 1px 0 rgba(255,255,255,0.22) inset,
-    0 -1px 0 rgba(255,255,255,0.05) inset,
-    0 18px 40px rgba(0,0,0,0.55);
-}
-
 /* The dock.
 
-   The tabs on a pane of glass at the foot of the screen, and search in a
-   circle of its own beside them, both floating over the page. Which tab is lit
-   is the machine's answer, and it sits on one pill that slides there rather
-   than one per tab that come and go.
+   The tabs on a bar at the foot of the screen, and search on a square of its
+   own beside it, both floating over the page. Icons only: four tabs that never
+   move are learned once, and the words under them were read once and skipped
+   past ever after. Which tab is lit is the machine's answer, and it sits on
+   one pill that slides there rather than one per tab that come and go.
 
-   A blur cannot hold a dark list on its own, so the page fades out under the
-   dock, down to the screen's edge, rather than showing through it
-   mid-sentence. */
+   It is a panel: its own ground, the chip's corner, and a shadow that says it
+   is above the page. No outline — at this size the shadow is enough. The list
+   still fades out under it, so no row is caught half-showing in the gutter
+   either side. */
 .ui .dockrow {
   position: absolute; left: 16px; right: 16px; bottom: 22px; z-index: 3;
   display: flex; align-items: center; gap: 10px;
@@ -744,18 +739,27 @@
 .ui .dockrow::before {
   content: "";
   position: absolute; z-index: -1;
-  top: -28px; bottom: -22px; left: -16px; right: -16px;
+  top: -38px; bottom: -22px; left: -16px; right: -16px;
   background: linear-gradient(to bottom, transparent, var(--bg) 50%, var(--bg));
   pointer-events: none;
 }
-/* The bar stands exactly as tall as the search circle beside it, and takes
-   the rest of the row whatever its words come to. */
+/* One step up from the page, because it is above it — the same step a row
+   takes under the pointer. The bar stands exactly as tall as the square beside
+   it and takes the rest of the row. */
+.ui .dock,
+.ui .dock-search {
+  background: var(--bg-raised);
+  border: 0;
+  border-radius: var(--r-md);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
 .ui .dock {
-  display: flex; align-items: center;
+  /* Stretch, not centre: the tabs take the bar's full inner height, so the
+     lit tile is the height of the row rather than the height of a glyph. */
+  display: flex; align-items: stretch;
   flex: 1; min-width: 0;
-  height: 62px;
-  padding: 0 6px;
-  border-radius: 31px;
+  height: 54px;
+  padding: 4px;
 }
 .ui .dock .tabs {
   position: relative; flex: 1;
@@ -763,34 +767,49 @@
 }
 .ui .dock .tab {
   position: relative;
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: 6px 2px;
+  display: grid; place-items: center;
+  height: 100%;
   border: 0; background: none;
-  font: inherit; font-size: 9.5px; font-weight: 500; line-height: 1.2;
-  color: rgba(255,255,255,0.62);
+  font: inherit;
+  color: var(--text-muted);
   cursor: pointer;
 }
-.ui .dock .tab svg { width: 20px; height: 20px; }
+/* The glyph alone. Four tabs that never change are learned in a day, and the
+   words under them were four labels the eye read once and then skipped past
+   forever. The name stays for anything that reads the page aloud. */
+.ui .dock .tab span {
+  position: absolute; width: 1px; height: 1px;
+  overflow: hidden; white-space: nowrap;
+  clip-path: inset(50%);
+}
+.ui .dock .tab svg { width: 23px; height: 23px; }
 .ui .dock .tab.on { color: var(--violet-300); }
 .ui .dock .pill {
   position: absolute; top: 0; bottom: 0; left: 0;
   width: calc((100% - (var(--tabs) - 1) * 2px) / var(--tabs));
-  border-radius: 22px;
-  background: color-mix(in srgb, var(--violet-400) 16%, transparent);
   transform: translateX(calc(var(--lit) * (100% + 2px)));
   transition: transform 320ms cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.ui .dock .pill::before {
+  content: "";
+  position: absolute; top: 0; bottom: 0; left: 50%;
+  /* Square: the tabs stand 46px tall, the dock's height less its padding. */
+  width: 46px; transform: translateX(-50%);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--violet-400) 16%, transparent);
 }
 .ui .dock .pill.none { opacity: 0; }
 /* Drawn and dead: nothing has drawn the screen behind it. */
 .ui .dock-search {
   display: grid; place-items: center; flex: none;
-  width: 62px; height: 62px;
+  width: 54px; height: 54px;
   padding: 0;
-  border-radius: 50%;
   font: inherit;
-  color: rgba(255,255,255,0.82);
+  color: var(--text);
 }
-.ui .dock-search:disabled { opacity: 0.55; }
+/* Dimmed on the glyph, not the button: fading the whole thing made its ground
+   translucent and the list showed through it. */
+.ui .dock-search:disabled svg { opacity: 0.5; }
 .ui .dock-search svg { width: 23px; height: 23px; }
 
 /* A month strip: the month, run sideways, with a column of the month either

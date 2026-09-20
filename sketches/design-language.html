@@ -370,7 +370,7 @@ body {
       <div class="demo inline">
         <button class="btn primary">Reconnect</button>
         <button class="btn">Clear</button>
-        <button class="btn sm">Retry</button>
+        <button class="btn">Retry</button>
         <button class="btn dead">Add a bank</button>
       </div>
       <div class="body">
@@ -386,9 +386,16 @@ body {
           The edge has to be darker than the button <em>and</em> lighter than
           the page, or it disappears against one of them — which is why the
           quiet button sits a step up from the ground it stands on rather than
-          flush with it. The violet one carries two steps of the same violet,
-          enough to catch a highlight across the top and not enough to read as
-          a gradient.
+          flush with it. Both are lit from the middle of their base, and the
+          glow is measured in the button's own width and height, so it is the
+          shape of whatever it is lighting: a wide button gets a wide one and
+          Retry gets a small one, and neither reaches its corners. A gradient
+          run top to bottom drew a line across the top edge whatever its steps
+          were set to; this reads as one colour catching the light. The violet
+          one carries it openly because it is the action, the quiet one about
+          half as far. There is one button size: a smaller one for a lesser
+          place made the same action look like a lesser action, which is not
+          what a banner's Retry is.
         </div>
       </div>
     </div>
@@ -405,7 +412,7 @@ body {
           screen is both; a row of buttons beside a list is neither.
         </p>
         <div class="why">
-          The edge, the corner and the two violets stay exactly as they are, so
+          The edge, the corner and the violet stay exactly as they are, so
           this is the same button rather than a second one for phones. A
           control that has a different shape on every platform is three
           controls to keep in agreement.
@@ -513,10 +520,14 @@ body {
           its row — Reconnect, sitting in a list of bank names.
         </p>
         <div class="why">
-          An icon here is worth its space when it says something the label
-          cannot: “open in new” on Reconnect is true, because Plaid Link in
-          update mode is a hosted page and the tap leaves the app.
+          Under the pointer it takes a wash of the colour it is already
+          lettered in — enough to say it is a button, not enough to give it the
+          frame the quiet one has. An icon here is worth its space when it says
+          something the label cannot: “open in new” on Reconnect is true,
+          because Plaid Link in update mode is a hosted page and the tap leaves
+          the app.
         </div>
+        <div class="use">.btn.plain (:hover)</div>
       </div>
     </div>
 
@@ -622,10 +633,12 @@ body {
 
     <div class="entry">
       <div class="demo">
-        <svg class="say-icon done"><use href="#i-tick-c"/></svg>
-        <div class="say-title">You're set.</div>
+        <div class="say-outcome">
+          <svg class="say-icon done"><use href="#i-tick-c"/></svg>
+          <div class="say-title">You're set.</div>
+        </div>
         <div class="say-body"><b>First Platypus Bank</b> is connected and syncing.</div>
-        <div style="margin-top:28px">
+        <div class="say-outcome" style="margin-top:28px">
           <svg class="say-icon needs"><use href="#i-warn"/></svg>
           <div class="say-title">That didn't finish</div>
         </div>
@@ -633,16 +646,18 @@ body {
       <div class="body">
         <h3>An outcome</h3>
         <p>
-          A glyph over the title, for a screen that is the result of something
-          rather than a step towards it: the tick where it finished, the
-          warning where it did not.
+          A glyph beside the title, for a screen that is the result of
+          something rather than a step towards it: the tick where it finished,
+          the warning where it did not.
         </p>
         <div class="why">
-          The glyph carries the colour so the title does not have to. The two
+          The glyph carries the colour so the title does not have to. It sits
+          on the title's line because it is an adjective on the sentence, not a
+          thing of its own — stacked over it, the eye stopped twice. The two
           words are the row's, <code>.done</code> and <code>.needs</code>, so a
-          colour means the same thing on a row and over a title.
+          colour means the same thing on a row and beside a title.
         </div>
-        <div class="use">svg.say-icon · .done · .needs</div>
+        <div class="use">.say-outcome &gt; (svg.say-icon.done, svg.say-icon.needs, .say-title)</div>
       </div>
     </div>
 
@@ -650,7 +665,7 @@ body {
       <div class="demo">
         <div class="banner">
           <span class="say">Meridian can't reach the server.</span>
-          <button class="btn sm">Retry</button>
+          <button class="btn">Retry</button>
         </div>
       </div>
       <div class="body">
@@ -668,7 +683,7 @@ body {
           what money going out is drawn in. The phone's is the same block
           under its title.
         </div>
-        <div class="use">.banner &gt; (.say, .btn.sm)</div>
+        <div class="use">.banner &gt; (.say, .btn)</div>
       </div>
     </div>
   </div>
@@ -1076,7 +1091,7 @@ body {
           moves by the band's height the moment the band arrives jumps under a
           finger that is already moving. It arrives as the last of the
           headline goes and leaves a little later than that, so the two
-          cannot chase each other. No panel and no glass — the rule under it
+          cannot chase each other. No panel and nothing floating — the rule under it
           is what separates it, as it separates every part of a page.
         </div>
         <div class="use">.band &gt; (svg, .cats &gt; .chip.sm, .fig, .k, .end) · .opens</div>
@@ -1090,7 +1105,7 @@ body {
           <div class="row"><div class="rt">Spotify<div class="rs">Monthly · next Aug 28</div></div><span class="rv hard money">−$11.99</span></div>
         </div>
         <div class="dockrow">
-          <nav class="dock glass">
+          <nav class="dock">
             <div class="tabs" style="--tabs: 4">
               <span class="pill" style="--lit: 1"></span>
               <button class="tab"><svg><use href="#i-ledger"/></svg><span>Ledger</span></button>
@@ -1099,26 +1114,36 @@ body {
               <button class="tab"><svg><use href="#i-user"/></svg><span>Account</span></button>
             </div>
           </nav>
-          <button class="dock-search glass" disabled aria-label="Search"><svg><use href="#i-search"/></svg></button>
+          <button class="dock-search" disabled aria-label="Search"><svg><use href="#i-search"/></svg></button>
         </div>
       </div>
       <div class="body">
         <h3>Dock</h3>
         <p>
-          The tabs, on a pane of glass floating over the foot of the phone,
-          and search in a circle of its own beside them. The lit tab sits on
-          one pill, which slides to whichever tab is lit.
+          The tabs, on a bar floating over the foot of the screen, and search
+          on a square of its own beside it. Glyphs only, no words. The lit tab
+          sits on one tile, which slides to whichever tab is lit.
         </p>
         <div class="why">
-          One pill that travels rather than four that come and go, so a change
-          of tab is something you see move. The glass is faked — a blur and two
-          highlights — because real glass bends what is behind it, and neither
-          a browser nor a phone below iOS 26 can. A blur cannot hold a dark
-          list on its own, so the page fades out under the dock rather than
-          showing through it mid-sentence. Search is drawn and dead, as it is
-          on the phone: nothing has drawn the screen behind it.
+          One tile that travels rather than four that come and go, so a change
+          of tab is something you see move. It is a square the height of the
+          row — the words are gone, so what it marks is a glyph, and a lozenge
+          cut for a label under one would sit round the icon with nothing in
+          the rest of it. The bar is a panel and nothing
+          else — its own ground, the chip's corner, and a shadow that says it
+          is above the page. No outline: at this size the shadow is enough, and
+          a line round it only fought the pill inside. It used to be frosted
+          glass, which is a look borrowed from one phone's operating system
+          into a stylesheet three platforms read, and nothing else here is made
+          of it. The words under the glyphs are gone because four tabs that
+          never move are learned once and the labels were read once and skipped
+          past ever after; each name stays in the markup for anything that
+          reads the page aloud. The list still fades out under the bar, so no
+          row is caught half-showing in the gutter either side. Search is drawn
+          and dead, as it is on the phone: nothing has drawn the screen behind
+          it.
         </div>
-        <div class="use">.dockrow &gt; (.dock.glass &gt; .tabs &gt; (.pill, .tab.on), .dock-search.glass)</div>
+        <div class="use">.dockrow &gt; (.dock &gt; .tabs &gt; (.pill, .tab.on), .dock-search)</div>
       </div>
     </div>
   </div>
