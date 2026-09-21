@@ -187,6 +187,186 @@ fn leaving_asks_the_inbox_first_and_the_code_deletes_everything() {
     );
 }
 
+/// A deletion code asked for twice at almost the same moment is emailed once
+/// — the twin `flow_a_signing_in.rs` pins for sign-in codes, on the other
+/// route that sends mail. The session and the address are still read, because
+/// whose inbox it is has to be settled before anything can be absorbed; what
+/// must not come out twice is the save and the mail.
+#[test]
+fn a_deletion_code_asked_for_twice_at_once_is_emailed_once() {
+    let mut state = state_subscribed();
+
+    eval!(&mut state,
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
+
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::DeleteCodeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadUser { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::UserLoaded {
+                email: Some("gaetan@example.com".to_string()),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::SaveDeleteCode { user_id: SUBSCRIBER, .. },
+        },
+
+        > Action::ToEmail { action: ActionEmail::SendDeleteCode { .. } },
+
+        // The twin arrives before the first save has landed.
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::DeleteCodeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 4,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToStore {
+            call_id: 5,
+            action: ActionStore::LoadUser { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 5,
+            event: EventStore::UserLoaded {
+                email: Some("gaetan@example.com".to_string()),
+            },
+        },
+
+        > Action::ToRouter { request_id: 2, action: ActionRouter::Accepted },
+
+        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+
+        > Action::ToRouter { request_id: 1, action: ActionRouter::Accepted },
+    );
+}
+
+/// And once the cooldown has passed, asking again is served whole — the same
+/// boundary `flow_a_signing_in.rs` pins, on this route.
+#[test]
+fn a_deletion_code_asked_for_after_the_cooldown_is_emailed_again() {
+    let mut state = state_subscribed();
+
+    eval!(&mut state,
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
+
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::DeleteCodeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadUser { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::UserLoaded {
+                email: Some("gaetan@example.com".to_string()),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::SaveDeleteCode { user_id: SUBSCRIBER, .. },
+        },
+
+        > Action::ToEmail { action: ActionEmail::SendDeleteCode { .. } },
+
+        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+
+        > Action::ToRouter { request_id: 1, action: ActionRouter::Accepted },
+
+        // The cooldown runs out, to the second.
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + CODE_COOLDOWN_SECS),
+            },
+        },
+
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::DeleteCodeRequested {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 4,
+            event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
+        },
+
+        > Action::ToStore {
+            call_id: 5,
+            action: ActionStore::LoadUser { user_id: SUBSCRIBER },
+        },
+        < Event::FromStore {
+            call_id: 5,
+            event: EventStore::UserLoaded {
+                email: Some("gaetan@example.com".to_string()),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 6,
+            action: ActionStore::SaveDeleteCode { user_id: SUBSCRIBER, .. },
+        },
+
+        > @r#"ToEmail { action: SendDeleteCode { email: "gaetan@example.com", code: "257670" } }"#,
+
+        < Event::FromStore { call_id: 6, event: EventStore::WriteSuccess },
+
+        > Action::ToRouter { request_id: 2, action: ActionRouter::Accepted },
+    );
+}
+
 /// A wrong code deletes nothing, and spends a guess.
 ///
 /// Counted in the store rather than waved through, because the cap is what

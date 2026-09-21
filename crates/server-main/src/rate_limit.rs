@@ -193,7 +193,7 @@ impl ServerRateCtx {
 /// the mail lands. A guess, deliberately in the cheap direction: a provider
 /// that treats `+` as ordinary has two addresses sharing one budget, the other
 /// way round is a mailbomb. Only the bucket is reduced.
-fn inbox_of(email: &str) -> String {
+pub(crate) fn inbox_of(email: &str) -> String {
     let email = email.trim().to_lowercase();
 
     let Some((local, domain)) = email.split_once('@') else {

@@ -55,11 +55,21 @@ use crate::Waiting;
 use crate::WebOrigins;
 use crate::email_address;
 use crate::login_code;
+use crate::rate_limit::inbox_of;
 use crate::session_token;
 
 /// How long a session lasts. Long, because the alternative is asking somebody
 /// to check their email to look at their own balance.
 pub const SESSION_GOOD_FOR_SECS: u64 = 90 * 24 * 60 * 60;
+
+/// How long after a code goes out — sign-in or deletion — before another is
+/// minted for the same recipient.
+///
+/// The app already makes somebody wait a minute before Resend, so this sits
+/// just under it: what it absorbs is the same ask arriving twice — production
+/// saw a pair 4 ms apart, and the second overwrote the hash the first had
+/// mailed — never a resend the app allows.
+pub const CODE_COOLDOWN_SECS: u64 = 50;
 
 /// How often the expired sessions are swept out of the store. Nothing depends
 /// on it being prompt — an expired session signs nobody in either way — so
@@ -152,6 +162,17 @@ pub struct StateSignup {
     /// holds a copy of.
     exchanging: BTreeMap<CallId, Timestamp>,
 
+    /// When a sign-in code last went to each inbox, for the cooldown that
+    /// absorbs a doubled request. An entry is inert once the cooldown has
+    /// passed, and the hourly sweep drops it.
+    mailed: BTreeMap<String, Timestamp>,
+
+    /// The same cooldown for deletion codes, keyed by the user the way the
+    /// store keys the code. Its own map, because the two codes are different
+    /// asks: a sign-in moments earlier must not swallow the code that
+    /// confirms leaving.
+    delete_mailed: BTreeMap<Uuid, Timestamp>,
+
     /// Each bank whose write is in flight, keyed by the call it is out on.
     /// Its own table rather than a [`Pending`] step, because the route that
     /// caused it is not always the one waiting on it: a webhook attaches a
@@ -197,6 +218,23 @@ impl StateSignup {
             return;
         }
 
+        // A code went to this inbox moments ago, so this is the same ask
+        // arrived twice: the app makes somebody wait out a minute before
+        // asking again. The first was served whole; this one sends nothing
+        // and is answered the same, because answered differently the route
+        // would say which request of a pair was first.
+        let inbox = inbox_of(email);
+
+        if let Some(sent) = self.mailed.get(&inbox)
+            && now.since(*sent).as_secs() < CODE_COOLDOWN_SECS
+        {
+            tracing::info!("a code just went to this inbox; not minting another");
+
+            self.answer(request_id, ActionRouter::Accepted, now, actions);
+
+            return;
+        }
+
         let Some(rng) = self.rng.as_mut() else {
             tracing::error!("asked for a sign-in code by a machine that mints none");
 
@@ -208,6 +246,8 @@ impl StateSignup {
         let code = login_code::generate(rng);
 
         let expires_at = Timestamp::from_secs(now.as_secs() + login_code::GOOD_FOR.as_secs());
+
+        self.mailed.insert(inbox, now);
 
         // Two actions because they go to different places, and only one of
         // them may ever hold the plaintext.
@@ -339,6 +379,18 @@ impl StateSignup {
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) {
+        // The same twin `code_requested` absorbs: a deletion code went out
+        // moments ago, so nothing is minted and the answer is the same.
+        if let Some(sent) = self.delete_mailed.get(&user_id)
+            && now.since(*sent).as_secs() < CODE_COOLDOWN_SECS
+        {
+            tracing::info!(%user_id, "a deletion code just went out; not minting another");
+
+            self.answer(request_id, ActionRouter::Accepted, now, actions);
+
+            return;
+        }
+
         let Some(rng) = self.rng.as_mut() else {
             tracing::error!("asked for a deletion code by a machine that mints none");
 
@@ -350,6 +402,8 @@ impl StateSignup {
         let code = login_code::generate(rng);
 
         let expires_at = Timestamp::from_secs(now.as_secs() + login_code::GOOD_FOR.as_secs());
+
+        self.delete_mailed.insert(user_id, now);
 
         actions.push(Action::ToStore {
             call_id: self.calling(request_id, now),
@@ -1183,6 +1237,14 @@ impl StateSignup {
         }
 
         self.swept = Some(now);
+
+        // The cooldown entries ride the same clock: each is dead weight the
+        // moment its window has passed.
+        self.mailed
+            .retain(|_, sent| now.since(*sent).as_secs() < CODE_COOLDOWN_SECS);
+
+        self.delete_mailed
+            .retain(|_, sent| now.since(*sent).as_secs() < CODE_COOLDOWN_SECS);
 
         actions.push(Action::ToStore {
             call_id: self.call(),

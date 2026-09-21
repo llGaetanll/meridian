@@ -128,6 +128,105 @@ fn a_sign_in_asked_for_with_something_that_is_not_an_address_sends_nothing() {
     );
 }
 
+/// A code asked for twice at almost the same moment is emailed once.
+///
+/// Production, 2026-09-21: the web app sent `/auth/request` twice, 4 ms
+/// apart. Both fit the rate limit, so two codes went out and the second
+/// save overwrote the first hash — two emails in one inbox, and no way to
+/// tell from either which of the two codes still works.
+///
+/// First come is served. The twin stores nothing and sends nothing, and is
+/// answered `Accepted` all the same: the two must not be told apart from
+/// outside, for the same reason the route hides whether an address exists.
+#[test]
+fn a_code_asked_for_twice_at_once_is_emailed_once() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
+
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "gaetan@example.com".to_string(),
+            },
+        },
+
+        > Action::ToStore { call_id: 1, action: ActionStore::SaveCode { .. } },
+
+        > @r#"ToEmail { action: SendCode { email: "gaetan@example.com", code: "470977" } }"#,
+
+        // The twin arrives before the first save has landed, which is what
+        // "at the same time" means to the machine. Answered and nothing else.
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "gaetan@example.com".to_string(),
+            },
+        },
+
+        > Action::ToRouter { request_id: 2, action: ActionRouter::Accepted },
+
+        < Event::FromStore { call_id: 1, event: EventStore::WriteSuccess },
+
+        > Action::ToRouter { request_id: 1, action: ActionRouter::Accepted },
+    );
+}
+
+/// The cooldown is for the twin, not for Resend. The app lets somebody ask
+/// again after a minute, and the window sits under that on purpose — so once
+/// it has passed, the ask is served whole: a fresh code, minted and mailed.
+#[test]
+fn a_code_asked_for_after_the_cooldown_is_emailed_again() {
+    let mut state = state();
+
+    eval!(&mut state,
+        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
+
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "gaetan@example.com".to_string(),
+            },
+        },
+
+        > Action::ToStore { call_id: 1, action: ActionStore::SaveCode { .. } },
+
+        > Action::ToEmail { action: ActionEmail::SendCode { .. } },
+
+        < Event::FromStore { call_id: 1, event: EventStore::WriteSuccess },
+
+        > Action::ToRouter { request_id: 1, action: ActionRouter::Accepted },
+
+        // The cooldown runs out, to the second: strictly inside it is the
+        // twin, and this is the first moment that is not.
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + CODE_COOLDOWN_SECS),
+            },
+        },
+
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::CodeRequested {
+                email: "gaetan@example.com".to_string(),
+            },
+        },
+
+        > Action::ToStore { call_id: 2, action: ActionStore::SaveCode { .. } },
+
+        > @r#"ToEmail { action: SendCode { email: "gaetan@example.com", code: "257670" } }"#,
+
+        < Event::FromStore { call_id: 2, event: EventStore::WriteSuccess },
+
+        > Action::ToRouter { request_id: 2, action: ActionRouter::Accepted },
+    );
+}
+
 /// The whole reason the generator is in here: the same seed produces the same
 /// code, so an event log replays to the value it produced the first time. Two
 /// seeds, two codes, both written down — a test that only said "they differ"

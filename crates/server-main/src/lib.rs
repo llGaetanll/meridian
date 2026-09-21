@@ -134,6 +134,7 @@ pub use state_server::WEBHOOK_KEY_MISS_GOOD_FOR_SECS;
 pub use state_server::WEBHOOK_KEYS_AT_MOST;
 pub use state_signup::ATTACH_ATTEMPTS;
 pub use state_signup::CALL_GOOD_FOR_SECS;
+pub use state_signup::CODE_COOLDOWN_SECS;
 pub use state_signup::EXCHANGE_GOOD_FOR_SECS;
 pub use state_signup::LINK_ANSWER_GOOD_FOR_SECS;
 pub use state_signup::OUTCOME_GOOD_FOR_SECS;
