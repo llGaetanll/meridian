@@ -8,8 +8,11 @@
 use std::cmp::Ordering;
 
 use api_common::Timestamp;
+use api_ledger::Connection;
+use api_ledger::ConnectionStatus;
 
 use crate::StateOnboarding;
+use crate::ViewAccountBank;
 use crate::ViewCodeCell;
 use crate::ViewField;
 use crate::ViewIconRow;
@@ -33,7 +36,11 @@ const STEP_SYNC: &str = "Step 3 of 3 · Sync";
 /// of [`SyncStage`].
 const SYNC_STAGES: f64 = 4.0;
 
-pub(crate) fn onboarding(flow: &StateOnboarding, now: Timestamp) -> ViewOnboarding {
+pub(crate) fn onboarding(
+    flow: &StateOnboarding,
+    connections: &[Connection],
+    now: Timestamp,
+) -> ViewOnboarding {
     // Plaid's page is up, whichever screen opened it, and the flow waits
     // behind it on a screen of its own.
     if flow.window_up() {
@@ -44,6 +51,7 @@ pub(crate) fn onboarding(flow: &StateOnboarding, now: Timestamp) -> ViewOnboardi
         Step::Welcome => welcome(flow),
         Step::Email => email(flow),
         Step::Code => code(flow, now),
+        Step::WelcomeBack => welcome_back(flow, connections),
         Step::Bank => bank(flow),
         Step::Sync => sync(flow),
         Step::Ready => ready(flow),
@@ -156,6 +164,44 @@ fn resend(flow: &StateOnboarding, now: Timestamp) -> ViewResend {
             fmt::countdown(RESEND_AFTER.saturating_sub(waited)),
         ),
         wrong_address: "Wrong address?".to_string(),
+    }
+}
+
+/// The screen a returning address lands on: the account is made, the banks
+/// are attached, and the road to Plaid is not walked twice. The list is the
+/// proof, and it is worded like the Account tab's so the two read as the
+/// same banks.
+fn welcome_back(flow: &StateOnboarding, connections: &[Connection]) -> ViewOnboarding {
+    ViewOnboarding::WelcomeBack {
+        title: "You already have an account".to_string(),
+
+        body: vec![
+            strong(flow.email()),
+            run(" is already set up. Your banks are still connected."),
+        ],
+
+        banks: connections.iter().map(returning_bank).collect(),
+
+        another: "Add another bank".to_string(),
+        open: "Open Meridian".to_string(),
+    }
+}
+
+/// One attached bank: its mark, its name, and how many accounts it carries.
+/// No sync age — how fresh a bank is belongs to the screens that draw its
+/// money.
+fn returning_bank(connection: &Connection) -> ViewAccountBank {
+    ViewAccountBank {
+        id: connection.id.clone(),
+        name: connection.name.clone(),
+        initials: connection.initials.clone(),
+        detail: match &connection.status {
+            ConnectionStatus::Ok { .. } => {
+                fmt::plural(connection.accounts.len(), "account", "accounts")
+            }
+            ConnectionStatus::LoginRequired => "Sign-in expired · not syncing".to_string(),
+        },
+        needs_reconnect: connection.status == ConnectionStatus::LoginRequired,
     }
 }
 
@@ -443,7 +489,7 @@ mod tests {
             streams: 0,
         });
 
-        let ViewOnboarding::Sync { progress, rows, .. } = onboarding(&flow, Timestamp::EPOCH)
+        let ViewOnboarding::Sync { progress, rows, .. } = onboarding(&flow, &[], Timestamp::EPOCH)
         else {
             unreachable!("a linked bank puts the flow on the sync screen")
         };

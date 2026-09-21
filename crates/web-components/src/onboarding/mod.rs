@@ -18,6 +18,7 @@ mod sync;
 mod tally;
 mod waiting;
 mod welcome;
+mod welcome_back;
 
 use back::Back;
 use bank::Bank;
@@ -38,3 +39,4 @@ use sync::Syncing;
 use tally::Tally;
 use waiting::Waiting;
 use welcome::Welcome;
+use welcome_back::WelcomeBack;

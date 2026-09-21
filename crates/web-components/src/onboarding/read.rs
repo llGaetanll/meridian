@@ -5,6 +5,7 @@
 //! screen it left is taken down. So every read answers for every arm: empty
 //! where that arm has no such part.
 
+use client_state::ViewAccountBank;
 use client_state::ViewCodeCell;
 use client_state::ViewField;
 use client_state::ViewIconRow;
@@ -36,7 +37,9 @@ pub(super) fn step(view: &ViewOnboarding) -> &str {
         | ViewOnboarding::Waiting { step, .. }
         | ViewOnboarding::Sync { step, .. }
         | ViewOnboarding::Failed { step, .. } => step,
-        ViewOnboarding::Welcome { .. } | ViewOnboarding::Ready { .. } => "",
+        ViewOnboarding::Welcome { .. }
+        | ViewOnboarding::WelcomeBack { .. }
+        | ViewOnboarding::Ready { .. } => "",
     }
 }
 
@@ -45,6 +48,7 @@ pub(super) fn title(view: &ViewOnboarding) -> &str {
         ViewOnboarding::Welcome { title, .. }
         | ViewOnboarding::Email { title, .. }
         | ViewOnboarding::Code { title, .. }
+        | ViewOnboarding::WelcomeBack { title, .. }
         | ViewOnboarding::Bank { title, .. }
         | ViewOnboarding::Waiting { title, .. }
         | ViewOnboarding::Sync { title, .. }
@@ -58,6 +62,7 @@ pub(super) fn body(view: &ViewOnboarding) -> &[ViewRun] {
         ViewOnboarding::Welcome { body, .. }
         | ViewOnboarding::Email { body, .. }
         | ViewOnboarding::Code { body, .. }
+        | ViewOnboarding::WelcomeBack { body, .. }
         | ViewOnboarding::Bank { body, .. }
         | ViewOnboarding::Waiting { body, .. }
         | ViewOnboarding::Sync { body, .. }
@@ -74,7 +79,8 @@ pub(super) fn fault(view: &ViewOnboarding) -> Option<&str> {
             fault.as_deref()
         }
         ViewOnboarding::Email { field, .. } => field.fault.as_deref(),
-        ViewOnboarding::Bank { .. }
+        ViewOnboarding::WelcomeBack { .. }
+        | ViewOnboarding::Bank { .. }
         | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
         | ViewOnboarding::Ready { .. }
@@ -91,7 +97,7 @@ pub(super) fn action(view: &ViewOnboarding) -> Option<&str> {
         | ViewOnboarding::Waiting { action, .. }
         | ViewOnboarding::Failed { action, .. } => Some(action),
         ViewOnboarding::Code { action, .. } => action.as_deref(),
-        ViewOnboarding::Ready { open, .. } => Some(open),
+        ViewOnboarding::Ready { open, .. } | ViewOnboarding::WelcomeBack { open, .. } => Some(open),
         ViewOnboarding::Sync { .. } => None,
     }
 }
@@ -100,7 +106,9 @@ pub(super) fn action(view: &ViewOnboarding) -> Option<&str> {
 /// Open Meridian on Failed once a bank has connected.
 pub(super) fn aside(view: &ViewOnboarding) -> Option<&str> {
     match view {
-        ViewOnboarding::Ready { another, .. } => Some(another),
+        ViewOnboarding::Ready { another, .. } | ViewOnboarding::WelcomeBack { another, .. } => {
+            Some(another)
+        }
         ViewOnboarding::Failed { open, .. } => open.as_deref(),
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
@@ -116,6 +124,7 @@ pub(super) fn legal(view: &ViewOnboarding) -> &str {
         ViewOnboarding::Welcome { legal, .. } | ViewOnboarding::Bank { legal, .. } => legal,
         ViewOnboarding::Email { .. }
         | ViewOnboarding::Code { .. }
+        | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
         | ViewOnboarding::Ready { .. }
@@ -128,6 +137,7 @@ pub(super) fn field(view: &ViewOnboarding) -> Option<&ViewField> {
         ViewOnboarding::Email { field, .. } => Some(field),
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Code { .. }
+        | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Bank { .. }
         | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
@@ -141,6 +151,7 @@ pub(super) fn cells(view: &ViewOnboarding) -> &[ViewCodeCell] {
         ViewOnboarding::Code { cells, .. } => cells,
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
+        | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Bank { .. }
         | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
@@ -154,6 +165,7 @@ pub(super) fn resend(view: &ViewOnboarding) -> Option<&ViewResend> {
         ViewOnboarding::Code { resend, .. } => Some(resend),
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
+        | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Bank { .. }
         | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
@@ -172,6 +184,7 @@ pub(super) fn opening(view: &ViewOnboarding) -> Option<&str> {
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
         | ViewOnboarding::Code { .. }
+        | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
         | ViewOnboarding::Ready { .. } => None,
@@ -184,6 +197,7 @@ pub(super) fn progress(view: &ViewOnboarding) -> f64 {
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
         | ViewOnboarding::Code { .. }
+        | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Bank { .. }
         | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Ready { .. }
@@ -199,6 +213,7 @@ pub(super) fn rows(view: &ViewOnboarding) -> &[ViewIconRow] {
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
         | ViewOnboarding::Code { .. }
+        | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Ready { .. } => &[],
     }
@@ -210,9 +225,25 @@ pub(super) fn tally(view: &ViewOnboarding) -> &[ViewTally] {
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
         | ViewOnboarding::Code { .. }
+        | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Bank { .. }
         | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
+        | ViewOnboarding::Failed { .. } => &[],
+    }
+}
+
+/// The banks a returning address already carries.
+pub(super) fn banks(view: &ViewOnboarding) -> &[ViewAccountBank] {
+    match view {
+        ViewOnboarding::WelcomeBack { banks, .. } => banks,
+        ViewOnboarding::Welcome { .. }
+        | ViewOnboarding::Email { .. }
+        | ViewOnboarding::Code { .. }
+        | ViewOnboarding::Bank { .. }
+        | ViewOnboarding::Waiting { .. }
+        | ViewOnboarding::Sync { .. }
+        | ViewOnboarding::Ready { .. }
         | ViewOnboarding::Failed { .. } => &[],
     }
 }

@@ -489,6 +489,16 @@ impl StateApp {
                         self.unpaid = None;
                         self.payment = StatePayment::default();
 
+                        // Banks in the snapshot while first run is asking for
+                        // one mean this address already has an account that
+                        // walked the road, on some other device. The flow
+                        // stands aside and offers the app.
+                        if !self.connections.is_empty()
+                            && let Some(flow) = &mut self.onboarding
+                        {
+                            flow.already_connected();
+                        }
+
                         debug_assert!(
                             self.entries.windows(2).all(|w| w[0].ts() >= w[1].ts()),
                             "the ledger should arrive newest first",

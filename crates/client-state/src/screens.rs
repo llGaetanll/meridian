@@ -80,7 +80,7 @@ pub fn screen(state: &StateApp) -> ViewScreen {
     // First run is a road with an end, so it owns the screen — tabs included.
     if let Some(flow) = state.onboarding() {
         return ViewScreen::Onboarding {
-            view: screens_onboarding::onboarding(flow, state.now()),
+            view: screens_onboarding::onboarding(flow, state.connections(), state.now()),
         };
     }
 

@@ -389,6 +389,148 @@ fn an_unpaid_account_meets_the_paywall_before_the_bank() {
     );
 }
 
+/// The code screen, then a code accepted for an address whose account
+/// already has banks attached: the snapshot the acceptance asks for carries
+/// them, and the flow stands aside on Welcome back.
+fn at_welcome_back() -> StateApp {
+    let mut state = at_the_code_screen();
+
+    state.handle_events(
+        &[
+            Event::FromUi {
+                event: EventUi::CodeTyped {
+                    digits: "407193".to_string(),
+                },
+            },
+            Event::FromUi {
+                event: EventUi::CodeSubmitted,
+            },
+            Event::FromSource {
+                event: EventSource::CodeAccepted,
+            },
+            Event::FromSource {
+                event: EventSource::SnapshotLoaded {
+                    json: r#"{"connections":[
+                        {"id":"c1","name":"First Platypus Bank","initials":"FP",
+                         "status":"ok","accounts":[{"id":"a1","name":"Checking",
+                         "balance":100.0,"group":"depository"}]}]}"#
+                        .to_string(),
+                },
+            },
+        ],
+        &mut Vec::new(),
+    );
+
+    state
+}
+
+/// An address that already has an account with banks on it does not walk the
+/// road again: the snapshot answering the code carries them, and the flow
+/// lands on Welcome back — the banks as proof, worded like the Account tab's
+/// list, with the app one tap away.
+#[test]
+fn an_account_with_banks_lands_on_welcome_back() {
+    let mut state = at_the_code_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
+        < Event::FromUi { event: EventUi::CodeSubmitted },
+        < Event::FromSource { event: EventSource::CodeAccepted },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToSource { action: ActionSource::VerifyCode { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToSource { action: ActionSource::LoadSnapshot },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource {
+            event: EventSource::SnapshotLoaded {
+                json: r#"{"connections":[
+                    {"id":"c1","name":"First Platypus Bank","initials":"FP",
+                     "status":"ok","accounts":[{"id":"a1","name":"Checking",
+                     "balance":100.0,"group":"depository"}]},
+                    {"id":"c2","name":"Tattersall Federal","initials":"TF",
+                     "status":"ok","accounts":[{"id":"a2","name":"Checking",
+                     "balance":50.0,"group":"depository"},{"id":"a3",
+                     "name":"Savings","balance":50.0,"group":"depository"}]}]}"#
+                    .to_string(),
+            },
+        },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: WelcomeBack { title: "You already have an account", body: [ViewRun { text: "al@example.com", strong: true }, ViewRun { text: " is already set up. Your banks are still connected.", strong: false }], banks: [ViewAccountBank { id: "c1", name: "First Platypus Bank", initials: "FP", detail: "1 account", needs_reconnect: false }, ViewAccountBank { id: "c2", name: "Tattersall Federal", initials: "TF", detail: "2 accounts", needs_reconnect: false }], another: "Add another bank", open: "Open Meridian" } }, dock: None } }"#,
+    );
+}
+
+/// Add another bank, from Welcome back, is the ordinary road: Plaid opens,
+/// and the bank screen waits behind it with its button busy.
+#[test]
+fn welcome_back_goes_through_plaid_for_one_more_bank() {
+    let mut state = at_welcome_back();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        > Action::ToSource { action: ActionSource::StartBankLink },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
+            view: ViewOnboarding::Bank { opening: Some(_), .. } }, .. } },
+    );
+}
+
+/// A sign-in abandoned from Welcome back is not a fresh install's failure:
+/// the banks this account already has are untouched, so the screen says
+/// nothing was added and keeps the way through to the app.
+#[test]
+fn a_sign_in_abandoned_from_welcome_back_keeps_the_way_out() {
+    let mut state = at_welcome_back();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromSource { event: EventSource::BankAbandoned },
+        > Action::ToSource { action: ActionSource::StartBankLink },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 2 of 3 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so nothing was added.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your bank is still connected", sub: Some("Nothing about it changed. This attempt is the only thing that did not finish."), value: None }], action: "Try again", opening: None, open: Some("Open Meridian") } }, dock: None } }"#,
+    );
+}
+
+/// Open Meridian, from Welcome back, is the same door as Ready's: the flow
+/// is over, the session is kept, and the app opens on the ledger the account
+/// already has.
+#[test]
+fn welcome_back_opens_meridian() {
+    let mut state = at_welcome_back();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::OnboardingFinished },
+        > Action::ToSource { action: ActionSource::SaveSession },
+        > Action::ToSource { action: ActionSource::LoadSnapshot },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { .. },
+            dock: Some(_) } },
+    );
+}
+
+/// Banks landing while a sign-in is under way move nothing: the screen under
+/// the user is theirs, and the window about to open would be orphaned by a
+/// flow that walked off.
+#[test]
+fn banks_landing_mid_sign_in_do_not_move_the_screen() {
+    let mut state = at_the_bank_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        > Action::ToSource { action: ActionSource::StartBankLink },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource {
+            event: EventSource::SnapshotLoaded {
+                json: r#"{"connections":[
+                    {"id":"c1","name":"First Platypus Bank","initials":"FP",
+                     "status":"ok","accounts":[{"id":"a1","name":"Checking",
+                     "balance":100.0,"group":"depository"}]}]}"#
+                    .to_string(),
+            },
+        },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
+            view: ViewOnboarding::Bank { opening: Some(_), .. } }, .. } },
+    );
+}
+
 /// There is no version of this app without a bank in it — every screen is a
 /// view of transactions — so nothing here offers a way past this one, back
 /// included.

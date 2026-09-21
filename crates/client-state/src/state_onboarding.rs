@@ -26,6 +26,9 @@ pub(crate) enum Step {
     Welcome,
     Email,
     Code,
+    /// The address already has an account with banks attached, so the road
+    /// to Plaid is offered rather than walked.
+    WelcomeBack,
     Bank,
     Sync,
     Ready,
@@ -103,9 +106,10 @@ pub struct StateOnboarding {
     /// The bank most recently connected, which is the one the sync is for.
     bank: Option<String>,
 
-    /// Whether a bank has ever finished connecting in this flow. Never goes
-    /// back to false, unlike [`Self::bank`], which is cleared while the next
-    /// connection is being made.
+    /// Whether this account is known to have a bank attached: one that
+    /// finished connecting in this flow, or ones a snapshot said were already
+    /// there. Never goes back to false, unlike [`Self::bank`], which is
+    /// cleared while the next connection is being made.
     linked: bool,
 
     /// When the server last said it did not know how the sign-in ended.
@@ -300,6 +304,26 @@ impl StateOnboarding {
     pub(crate) fn code_accepted(&mut self) {
         self.fault = None;
         self.step = Step::Bank;
+    }
+
+    /// The snapshot answering the code carries banks: this address already
+    /// has an account, walked past Plaid on some other device. The flow
+    /// stands aside and offers the app instead of the road.
+    ///
+    /// Only from the bank step with nothing under way. Once a sign-in is
+    /// opening, or a bank has connected in this flow, the screen stays where
+    /// the user put it.
+    pub(crate) fn already_connected(&mut self) {
+        if self.step != Step::Bank || self.window != Window::None || self.linked {
+            return;
+        }
+
+        self.step = Step::WelcomeBack;
+
+        // Attached before this flow began rather than during it, but linked
+        // all the same: a failed attempt from here reads "nothing was
+        // added", and keeps its way through to the app.
+        self.linked = true;
     }
 
     pub(crate) fn code_rejected(&mut self) {

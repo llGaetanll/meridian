@@ -4,6 +4,8 @@
 //! among them — the bank sign-in happens on `secure.plaid.com`, in a web
 //! session the app opens and does not draw.
 
+use crate::ViewAccountBank;
+
 /// Where the flow is, and everything that screen prints.
 ///
 /// An enum rather than one record of optional fields, for the same reason
@@ -47,6 +49,21 @@ pub enum ViewOnboarding {
         /// present-and-dim, because a dim button still invites a press.
         action: Option<String>,
         resend: ViewResend,
+    },
+
+    /// The address already has an account with banks attached, so the road
+    /// is not walked again: the banks as proof, a way into the app, and a
+    /// way to add one more.
+    WelcomeBack {
+        title: String,
+        body: Vec<ViewRun>,
+        /// The same rows the Account tab draws, so the two lists read as the
+        /// same banks.
+        banks: Vec<ViewAccountBank>,
+        /// `"Add another bank"`.
+        another: String,
+        /// `"Open Meridian"`.
+        open: String,
     },
 
     /// What connecting a bank means, and the button that does it. No skip:
