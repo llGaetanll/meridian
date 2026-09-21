@@ -27,10 +27,10 @@ downgrade is a refusal rather than a fallback.
 
 **At rest.** Plaid access tokens — the credential that reads a bank — are
 sealed at the application level with AES-256-GCM before they reach Postgres
-(`crates/src-postgres/src/postgres_secret.rs`). The ledger around them is
-not encrypted at rest today; that gap is #33, accepted 2026-09-04 and being
-closed by moving the database onto an encrypted DigitalOcean Volume, behind
-the backup work in #38.
+(`crates/src-postgres/src/postgres_secret.rs`). The database itself lives on
+a DigitalOcean Block Storage Volume, LUKS-encrypted by DigitalOcean with a
+key they hold (#33, closed 2026-09-21); droplet snapshots taken before that
+date hold it in plain text until they age out, by 2026-10-19.
 
 **Access.** ssh to the droplet is by key, from one authorized machine. There
 is no admin panel, no support tooling, and no read of production data to
@@ -79,10 +79,10 @@ accepted.
    answered after the fact by the incident plan below. The KMS move (#124) is
    what shrinks this risk rather than containing it.
 2. **A copy of the disk leaks** — a snapshot, a decommissioned drive, a
-   backup somewhere it should not be. Today the ledger is plaintext in that
-   copy (#33, accepted 2026-09-04); the tokens are not, being sealed. Closing
-   #33 and encrypting dumps (#38) reduce this to key material leaking, which
-   the password manager holds.
+   backup somewhere it should not be. The database is on an encrypted Volume
+   (#33) and every dump in the bucket is age-encrypted (#38), so this is
+   reduced to key material leaking, which the password manager holds — plus
+   the pre-move droplet snapshots that hold plaintext until 2026-10-19.
 3. **A console account is taken over.** DigitalOcean is the box and its
    backups in one account; Plaid and Stripe are the data and the money.
    MFA everywhere is the control, verified in #125.

@@ -590,36 +590,29 @@ docker exec -i restore pg_restore -U postgres -d postgres --create --no-owner < 
 and the Postgres password exist on the box and nowhere else, so losing it
 loses both — #54, the last open piece of #38.
 
-## Encryption at rest, and why there is none
+## Encryption at rest
 
-Postgres writes to a docker named volume on the droplet's own disk, and a
-droplet's disk is not encrypted at rest. DigitalOcean is explicit about this
-and it is the one place their two storage products differ: Block Storage
-Volumes are LUKS-encrypted by DigitalOcean, with snapshots inheriting it, and
-a droplet's local disk is not.
+Postgres writes to the `meridian-db` Block Storage Volume, mounted at
+`/mnt/meridian-db` and bound into the container by `docker-compose.prod.yml`
+— the second of that file's two exceptions to "this file only adds". Block
+Storage Volumes are LUKS-encrypted by DigitalOcean with a key they hold, and
+that is the one place their two storage products differ: a droplet's local
+disk is not encrypted at rest, which is where the database lived until
+2026-09-21 as a risk accepted while everything was Sandbox.
 
-So balances, transactions, merchant names and email addresses sit in the clear
-on the box and in every weekly droplet backup. **This is accepted, as of
-2026-09-04, not overlooked.** Everything here is Plaid Sandbox: invented
-transactions belonging to nobody, on a box no one else can reach.
+Three residues of the move, none urgent and none invisible:
 
-Moving the data onto a Volume is the fix and it is cheap — about a dollar a
-month at any size this database will be for a long time, and no key management,
-because DigitalOcean holds that key rather than us. What makes it not worth
-doing today is that it is not urgent, and what makes it worth doing early is
-that the migration only gets more expensive: right now `0007` has just emptied
-`items` and cascaded the ledger with it, so there is nearly nothing to move.
-
-**Revisit before the first real customer**, which is the same trigger as
-applying for Plaid Production. Two things to know when that day comes:
-
-- Droplet backups snapshot the *droplet's* disk. The moment Postgres lives on
-  a Volume they stop covering the database, and Volume snapshots are not
-  scheduled for you. The move and a working `pg_dump` have to land together or
-  there is a window with neither.
-- A LUKS layer of our own on top of the Volume buys protection from
-  DigitalOcean themselves and costs a passphrase at every unattended reboot.
-  Decided against, for now, for that reason rather than for the effort.
+- The old named volume's blocks sit freed on the droplet's disk until
+  something overwrites them, and the weekly droplet snapshots taken before
+  the move hold the plaintext database until they age out of DO's four-week
+  retention — gone by 2026-10-19.
+- Droplet backups snapshot the *droplet's* disk, so they no longer cover the
+  database at all. The nightly encrypted dump to Spaces (above) is what
+  does, and it landed first on purpose. Volume snapshots exist but are not
+  scheduled by DO; nothing schedules them here either.
+- A LUKS layer of our own on top of the Volume would buy protection from
+  DigitalOcean themselves and cost a passphrase at every unattended reboot.
+  Decided against, for that reason rather than for the effort.
 
 Worth being clear what any of this buys, because it is easy to overstate. Disk
 encryption protects a volume that is **not mounted**: a stolen drive, a
@@ -676,12 +669,13 @@ question above.
 The box being up is not the same as it being ready, and #20 tracks the rest.
 What is specifically about facing the internet:
 
-- **The volume is not encrypted at rest** (#33) — accepted, with a trigger. The
-  server no longer talks to Postgres in plain text (#34); the section above has
-  both.
-- **Backups are weekly whole-disk snapshots, plus a dump somebody remembers to
-  take** (#38). Neither is off-site. `MERIDIAN_DB_KEY` is escrowed separately,
-  which is the right way round — see the backups section.
+- **Pre-2026-09-21 droplet snapshots hold the database in plain text** until
+  they age out, by 2026-10-19 (#33 — the database itself is on an encrypted
+  Volume now, and the server does not talk to Postgres in plain text either,
+  #34; the sections above have both).
+- **The Plaid secret and the Postgres password exist only on the box** (#54).
+  Backups are nightly, encrypted, off-site and rehearsed (#38), but a restore
+  needs that password to be worth anything more than the dump alone.
 - **An OAuth bank has nowhere to hand control back to.** The server half is
   deployed and switched off; what is missing is the Apple Developer account
   that lets the app claim the link. The section above has the four steps.

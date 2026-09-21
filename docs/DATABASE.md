@@ -145,11 +145,11 @@ Not the ledger. Encrypting transactions at the column level would make them
 permanently unqueryable in SQL — no date ranges, no aggregation, no indexes —
 to duplicate what an encrypted volume does.
 
-That volume does not exist yet. The droplet's disk is not encrypted at rest, so
-today the ledger really is in the clear and the sentence above is an argument
-for what to do rather than a description of what is true. Accepted on
-2026-09-04 because everything here is Sandbox; `docs/DEPLOY.md` has the
-decision and what triggers revisiting it.
+Since 2026-09-21 that volume exists: on the box, Postgres writes to a
+DigitalOcean Block Storage Volume, which DigitalOcean encrypts at rest with a
+key they hold (#33). On a laptop it is a docker named volume on an
+unencrypted disk, and that is fine — a dev database holds Sandbox fictions.
+`docs/DEPLOY.md` has the encryption-at-rest section.
 
 ## Resetting
 

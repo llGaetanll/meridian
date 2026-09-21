@@ -21,6 +21,15 @@ services:
     # the stack comes back only when somebody notices it is gone.
     restart: unless-stopped
 
+    # The second exception to "this file only adds". On a laptop Postgres
+    # writes to the meridian-db named volume; on the box that would be the
+    # droplet's own disk, which DigitalOcean does not encrypt at rest. This
+    # bind mount supersedes it — compose merges volume mounts by container
+    # path — and points at the meridian-db block-storage Volume mounted at
+    # /mnt/meridian-db, which DigitalOcean encrypts with a key it holds (#33).
+    volumes:
+      - /mnt/meridian-db/data:/var/lib/postgresql/data
+
     # Docker's default is an unbounded log file, which fills a disk in weeks and
     # takes Postgres down with it — a failure that reads as a database problem
     # and is not one.

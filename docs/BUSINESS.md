@@ -12,13 +12,14 @@ confirm is at the bottom.
 | --- | --- | --- |
 | DigitalOcean droplet `s-1vcpu-1gb` | 6.00 | 25 GB. Server 11 MiB, Postgres 98 MiB — it is not close to full |
 | Droplet backups (20%, weekly) | 1.20 | Cheapest backup DO sells |
+| Volume: `meridian-db`, 10 GiB | 1.00 | Postgres data, encrypted at rest by DO (#33) |
 | Spaces: `meridiancash-backups` | 5.00 | Daily encrypted `pg_dump`, 30-day retention (#38). $5 is the Spaces minimum |
 | Resend | 0.00 | Free to 3,000 emails/mo, capped 100/day |
 | `meridiancash.io` renewal | 3.33 (?) | `.io` is ~$40/yr; amortised |
 | Apple Developer Program | 8.25 | $99/yr, unavoidable to ship on iOS |
 | Google Play | 0.17 | $25 once |
 | New York LLC upkeep | 2.46 (?) | $25/yr state filing fee, $9 biennial statement. See below |
-| **Total** | **26.41** | Of which **12.20** is the server and its backups |
+| **Total** | **27.41** | Of which **13.20** is the server and its storage |
 
 Next step up is $12/mo (2 GB) — only when Postgres or the image build on the
 box says so, which is not soon.
@@ -143,7 +144,7 @@ entirely on the per-Item rate:
 | 2.00 | 2.55 | 0.55 | −1.45 |
 | 3.00 | 1.55 | −1.45 | −4.45 |
 
-Fixed costs are $26.41/mo, so break-even is a single-digit number of
+Fixed costs are $27.41/mo, so break-even is a single-digit number of
 subscribers at any rate in the top half of that table. **The price is set by
 what the product is worth, not by what it costs to run** — the risk is not the
 server, it is the bottom-right of that table.
