@@ -550,26 +550,45 @@ compressed format, which `pg_restore` can read a table out of without restoring
 the rest. `backups/` is gitignored: a dump holds every transaction, every email
 address and the sealed access tokens, and is as sensitive as the box.
 
-What is still missing is most of #38.
+The timer is the box's own — `deploy/box/backup.sh`, run daily at 06:17 UTC
+by `meridian-backup.timer` (since 2026-09-21). It takes the same `pg_dump
+-Fc`, encrypts it with `age`, and uploads it to the `meridiancash-backups`
+Space in nyc3, where a lifecycle rule expires dumps after 30 days.
+`systemctl status meridian-backup` on the box says whether last night's ran;
+the timer is `Persistent`, so a box that was down at 06:17 takes the dump
+when it comes back.
 
-**It is a person, not a timer.** A backup nobody remembers to take is a weekly
-snapshot with extra steps.
+**The box can write backups it cannot read.** `.env` carries only the age
+*public* key (`BACKUP_AGE_RECIPIENT`); the private key is in the password
+manager. The Spaces key beside it (`SPACES_ACCESS_KEY`/`SPACES_SECRET_KEY`,
+named `meridian-droplet-backups` in DO) is scoped to this one bucket, so it
+opens nothing else.
 
-**It is on a laptop, which is not off-site from a laptop.** `pg_dump` on a
-timer to Spaces is still the shape.
+**The bucket shares the DO account with the droplet, and that is accepted.**
+A second vendor would survive the account itself being lost, and a Spaces key
+that can write can also delete, so someone on the box could wipe the bucket.
+Accepted 2026-09-21 at this size; the by-hand laptop dump above is the copy
+that lives outside the account, and the `age` layer means a leaked bucket is
+ciphertext either way.
 
-**`MERIDIAN_DB_KEY` is escrowed, the backups are not.** The key that opens the
-access token column is in `/srv/meridian/.env` on the box and in a password
-manager, so a dump can actually be restored — without it the restore is a
-ledger with every bank unlinked. It is deliberately not *in* a backup: a dump
-that carried its own key would undo the sealing.
+**Restoring needs two keys from the password manager** — the age private key
+to open the archive, and `MERIDIAN_DB_KEY` to make the sealed access tokens
+inside it mean anything. Neither is *in* a backup, deliberately: a dump that
+carried its own keys would undo both layers. The restore has actually been
+run, 2026-09-21, from the bucket into a throwaway Postgres as if the box were
+gone:
 
-**The other two secrets in that file are not escrowed.** The Plaid secret and
-the Postgres password exist on the box and nowhere else, so losing it loses
-both — #54.
+```sh
+aws s3api get-object --bucket meridiancash-backups --key meridian-STAMP.dump.age \
+    --endpoint-url https://nyc3.digitaloceanspaces.com out.dump.age
+age -d -i meridian-backup-age.key out.dump.age > out.dump
+docker run -d --rm --name restore -e POSTGRES_PASSWORD=throwaway postgres:17-alpine
+docker exec -i restore pg_restore -U postgres -d postgres --create --no-owner < out.dump
+```
 
-**No restore has been run.** A backup that has never been restored is a belief,
-not a backup.
+**The other two secrets in `.env` are still not escrowed.** The Plaid secret
+and the Postgres password exist on the box and nowhere else, so losing it
+loses both — #54, the last open piece of #38.
 
 ## Encryption at rest, and why there is none
 

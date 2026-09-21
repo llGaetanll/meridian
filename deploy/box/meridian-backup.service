@@ -1,0 +1,13 @@
+# The on-box half of #38: deploy/box/backup.sh, run by the timer beside this
+# file. A unit rather than cron so a failure lands in the journal and
+# `systemctl status meridian-backup` answers "did last night's run work".
+[Unit]
+Description=Encrypted database dump to Spaces
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=meridian
+WorkingDirectory=/srv/meridian
+ExecStart=/srv/meridian/backup.sh

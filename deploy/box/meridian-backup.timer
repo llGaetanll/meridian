@@ -1,0 +1,12 @@
+# Daily, at a fixed minute chosen to be no one's round number. Persistent, so
+# a box that was down at 06:17 takes the dump when it comes back instead of
+# skipping a day.
+[Unit]
+Description=Daily encrypted database dump to Spaces
+
+[Timer]
+OnCalendar=*-*-* 06:17:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

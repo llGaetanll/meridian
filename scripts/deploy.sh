@@ -110,6 +110,7 @@ case "$cmd" in
         # that resets it is a deploy that logs somebody out.
         ssh "$MERIDIAN_HOST" "mkdir -p '$MERIDIAN_PATH'"
         scp docker-compose.yml docker-compose.prod.yml Caddyfile \
+            deploy/box/backup.sh \
             "$MERIDIAN_HOST:$MERIDIAN_PATH/"
 
         # Before `up`, because the compose file just copied mounts `./certs`

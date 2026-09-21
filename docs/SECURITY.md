@@ -54,9 +54,13 @@ data; that is #126.
 Plaid Items, the Stripe customer — behind a confirmation and an emailed
 six-digit code. Tested server-side (`crates/server-main/tests/flow_h_leaving.rs`).
 
-**Backups.** Weekly droplet snapshots, plus a `pg_dump` by hand. Daily
-encrypted dumps to object storage, with a rehearsed restore, are landing in
-#38; until they do, backups are the weakest control named in this document.
+**Backups.** A daily `pg_dump`, age-encrypted on the box with a public key it
+cannot decrypt with, uploaded to a Spaces bucket with 30-day retention; the
+restore has been run end to end from the bucket with only what the password
+manager holds (`docs/DEPLOY.md`, Backups). Weekly droplet snapshots and a
+by-hand laptop dump are the second and third copies. The bucket shares the
+DigitalOcean account with the droplet — accepted 2026-09-21, revisited when
+there are real users at scale.
 
 **Review.** This program is re-read at every Plaid milestone — the
 questionnaire, the application, the first real customer — and at least
