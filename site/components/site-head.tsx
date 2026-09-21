@@ -22,9 +22,9 @@ export function SiteHead() {
         </nav>
 
         <div className="head-right">
-          {/* No action yet. The app does not exist, and a bar that offers to
-              open it is the first thing a visitor would find untrue. */}
-          <span className="soon">Coming soon</span>
+          <a className="btn primary" href={site.app}>
+            Open the app
+          </a>
         </div>
       </div>
     </header>

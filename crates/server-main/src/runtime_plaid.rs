@@ -210,11 +210,11 @@ pub async fn remove_item(client: &PlaidClient, access_token: &str) -> Result<(),
 ///
 /// This used to refuse anything but Sandbox, and that one `if` was the whole
 /// protection for the account's ten Production Item slots. What replaced it is
-/// the three things it was standing in for: who may sign up at all
-/// (`email_address::allowed`), a budget on every call that can spend a slot
-/// (`PlaidEndpoint`), and a write that is retried rather than dropped once one
-/// has been spent ([`Attaching`](crate::Attaching)). A refusal here
-/// could only ever say no to everything; those say no to the thing that costs.
+/// what it was standing in for: entitlement on every route that can reach a
+/// bank, a budget on every call that can spend a slot (`PlaidEndpoint`), and
+/// a write that is retried rather than dropped once one has been spent
+/// ([`Attaching`](crate::Attaching)). A refusal here could only ever say no
+/// to everything; those say no to the thing that costs.
 pub fn client(credentials: PlaidCredentials) -> Result<PlaidClient, PlaidError> {
     PlaidClient::new(credentials)
 }

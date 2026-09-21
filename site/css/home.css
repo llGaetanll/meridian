@@ -69,18 +69,6 @@
 .store.dead { cursor: default; opacity: 0.5; }
 .store:not(.dead):hover { border-color: var(--bars); background: var(--bg-raised); }
 
-/* Where the action will be. A chip rather than a button, because the whole
-   point is that there is nothing to press yet. */
-.soon {
-  display: inline-flex; align-items: center;
-  padding: 8px 14px;
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--r-pill);
-  font-size: 12.5px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.08em;
-  color: var(--text-faint);
-}
-
 /* Under the machine rather than beside the words: the eye arrives at the
    action having already seen what it is opening. */
 /* Pulled up into the foot of the render. The bottom of the image is the

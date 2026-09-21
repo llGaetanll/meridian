@@ -58,7 +58,7 @@ fn a_first_run_asks_for_a_code_and_signs_in_with_it() {
         // would be a code the next request cannot find.
         < Event::FromStore { call_id: 1, event: EventStore::WriteSuccess },
 
-        > @r#"ToRouter { request_id: 1, action: Accepted }"#,
+        > Action::ToRouter { request_id: 1, action: ActionRouter::Accepted },
 
         // 5. The digits that came out of the machine above, typed back in.
         < Event::FromRouter {
@@ -122,58 +122,6 @@ fn a_sign_in_asked_for_with_something_that_is_not_an_address_sends_nothing() {
             request_id: 1,
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
             event: EventRouter::CodeRequested { email: "alex".to_string() },
-        },
-
-        > @r#"ToRouter { request_id: 1, action: Accepted }"#,
-    );
-}
-
-/// An address that is not the one address allowed to sign up is taken, and
-/// nothing is sent.
-///
-/// The same answer as the test above and for the same reason: `Accepted` is
-/// what this route says to everybody, so a gate that answered differently
-/// would be the thing that says who has an account. The claim is the two
-/// actions that do *not* come out.
-///
-/// The gate is about the ten Plaid Item slots and not about attackers — every
-/// account that links a bank spends one and none of them come back. It goes
-/// when the plan stops rationing them; issue #76.
-#[test]
-fn a_sign_in_asked_for_by_an_address_that_may_not_sign_up_sends_nothing() {
-    let mut state = state();
-
-    eval!(&mut state,
-        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
-
-        < Event::FromRouter {
-            request_id: 1,
-            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
-            event: EventRouter::CodeRequested {
-                email: "someone@example.com".to_string(),
-            },
-        },
-
-        > @r#"ToRouter { request_id: 1, action: Accepted }"#,
-    );
-}
-
-/// A tag on the allowed address is somebody else, because `identities` keys on
-/// the address as written — so one inbox would otherwise be as many accounts
-/// as it cares to ask for, and each of those a Plaid Item slot.
-#[test]
-fn a_tag_on_the_allowed_address_is_not_the_allowed_address() {
-    let mut state = state();
-
-    eval!(&mut state,
-        < Event::FromProcess { event: EventProcess::Seeded { seed: [7; 32] } },
-
-        < Event::FromRouter {
-            request_id: 1,
-            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
-            event: EventRouter::CodeRequested {
-                email: "gaetan.almela+1@gmail.com".to_string(),
-            },
         },
 
         > @r#"ToRouter { request_id: 1, action: Accepted }"#,

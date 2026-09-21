@@ -1,8 +1,4 @@
 /// Everything about the site that is a name or an address, in one place.
-///
-/// The app lives on its own subdomain and does not exist yet. It is written
-/// here as a link anyway, so that turning it on is a DNS record and a deploy
-/// rather than an edit to every page that offers it.
 export const site = {
   name: "Meridian",
   domain: "meridiancash.io",

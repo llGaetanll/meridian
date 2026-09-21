@@ -197,21 +197,6 @@ impl StateSignup {
             return;
         }
 
-        // Who may have an account at all. Refused here rather than at the edge
-        // and answered as though it had been taken, for the same reason the
-        // line above is: this route does not say which addresses have an
-        // account, and a gate that answered differently would be what says it.
-        if !email_address::allowed(email) {
-            tracing::warn!(
-                email,
-                "a sign-in was asked for by an address that may not sign up"
-            );
-
-            self.answer(request_id, ActionRouter::Accepted, now, actions);
-
-            return;
-        }
-
         let Some(rng) = self.rng.as_mut() else {
             tracing::error!("asked for a sign-in code by a machine that mints none");
 

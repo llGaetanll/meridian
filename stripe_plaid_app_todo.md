@@ -51,7 +51,7 @@ quarterly filing chore.
 
 ## After the switch
 - [ ] #115 Somebody whose card stopped working has nothing to press
-- [ ] #76 Only one email address can sign up — very last, it is what rations
+- [x] #76 Only one email address can sign up — very last, it is what rations
       Plaid's ten Item slots
 
 # Plaid application
@@ -65,11 +65,11 @@ quarterly filing chore.
       consent screen
 - [x] Hosted homepage, and the support address on it is live
 - [ ] Security Questionaire
-    - #33 The database volume is not encrypted at rest
-    - #38 pg_dump on a timer, off the box
-    - #16 Handling user financial data: what we're on the hook for
-    - #64 There is no way to delete an account
-    - #102 Nothing calls /account/delete, so there is no way to leave
+    - [ ] #33 The database volume is not encrypted at rest
+    - [ ] #38 pg_dump on a timer, off the box
+    - [ ] #16 Handling user financial data: what we're on the hook for
+    - [ ] #64 There is no way to delete an account
+    - [ ] #102 Nothing calls /account/delete, so there is no way to leave
 issue knockouts:
 - [x] #60 client_name is a literal, and it is what the user reads on Plaid's
       consent screen

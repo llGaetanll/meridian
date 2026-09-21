@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AppStore } from "@/components/app-store";
 import { Icon, type IconKind } from "@/components/icon";
 import { Institution } from "@/components/institution";
+import { site } from "@/lib/site";
 
 /// What the markets side of the app actually gives you. Written as capability
 /// rather than as feature names: "a charting engine" is a phrase, and "chart
@@ -110,10 +111,10 @@ export default function Home() {
 
         <div className="wrap">
           <div className="cta">
-            {/* Where the button will go. The app does not exist yet, and a
-                live-looking action that opens nothing is the one thing a
-                landing page must not do. */}
-            <span className="soon">Coming soon</span>
+            <a className="btn primary lg" href={site.app}>
+              Open the app
+              <Icon kind="arrowRight" />
+            </a>
             <AppStore />
             <a className="btn plain" href="#coverage">
               Learn more
@@ -291,7 +292,10 @@ export default function Home() {
             no data sold, and no advice you did not ask for.
           </p>
           <div className="cta">
-            <span className="soon">Coming soon</span>
+            <a className="btn primary lg" href={site.app}>
+              Open the app
+              <Icon kind="arrowRight" />
+            </a>
             <AppStore />
             <Link className="btn plain" href="/terms">
               Read the terms
