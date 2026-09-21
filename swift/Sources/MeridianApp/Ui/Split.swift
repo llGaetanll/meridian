@@ -2,7 +2,7 @@
 /// rule under it.
 ///
 /// Square ends, resting on the line rather than straddling it, and starting at
-/// the measure the words are set to rather than at the edge of the glass — so
+/// the measure the words are set to rather than at the edge of the panel — so
 /// a share is a share of the line you are reading rather than of the screen.
 ///
 /// `share` is the exception `docs/FFI.md` carves out: geometry crosses as a

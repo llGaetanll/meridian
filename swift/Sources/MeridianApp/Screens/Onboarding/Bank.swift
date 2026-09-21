@@ -69,11 +69,7 @@ struct FailedScreen: View {
 
             OnbFill(upTo: 36)
 
-            Icon(name: "warn", size: 36, weight: 1.9)
-                .foregroundStyle(Theme.amber300)
-
-            OnbTitle(text: title)
-                .padding(.top, 18)
+            OnbOutcome(icon: "warn", tint: Theme.amber300, title: title)
 
             OnbBody(runs: runs)
 

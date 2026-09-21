@@ -82,6 +82,29 @@ struct OnbTitle: View {
     }
 }
 
+/// A glyph beside the title, on a screen that is the result of something
+/// rather than a step towards it: the tick where it finished, the warning
+/// where it did not.
+///
+/// On the title's line and not above it, because the glyph is an adjective on
+/// the sentence rather than a thing of its own — stacked, it read as a mark at
+/// the head of the screen and the eye stopped at it twice. The glyph carries
+/// the colour, so the title does not have to.
+struct OnbOutcome: View {
+    let icon: String
+    let tint: Color
+    let title: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 13) {
+            Icon(name: icon, size: 30, weight: 1.9)
+                .foregroundStyle(tint)
+
+            OnbTitle(text: title)
+        }
+    }
+}
+
 /// The body, in runs.
 ///
 /// `strong` is the sketch's `<b>` — the address on the code screen, Plaid's
@@ -161,7 +184,7 @@ struct OnbTally: View {
                 HStack(alignment: .firstTextBaseline, spacing: 14) {
                     Text(row.value)
                         .font(.system(size: 22, weight: .semibold, design: .monospaced))
-                        .frame(minWidth: 46, alignment: .leading)
+                        .frame(minWidth: 46, alignment: .trailing)
 
                     Text(row.label)
                         .font(.system(size: 13.5))

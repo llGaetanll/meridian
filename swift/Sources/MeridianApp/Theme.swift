@@ -36,6 +36,14 @@ enum Theme {
     static let accentStrong = Color(hex: 0x6D28D9)
     static let accentTint = Color(hex: 0x8B5CF6).opacity(0.14)
 
+    /// The middle of a violet button's base, where the light comes from:
+    /// `color-mix(in srgb, var(--violet-300) 45%, var(--accent-soft))`.
+    static let accentLit = Color(hex: 0xB49EFB)
+
+    /// The same for the quiet button:
+    /// `color-mix(in srgb, var(--bars) 52%, var(--bg-input))`.
+    static let bgInputLit = Color(hex: 0x1C2631)
+
     /// The edge a violet button stands on: the accent mixed halfway into
     /// black, which is `color-mix(in srgb, var(--accent) 48%, #000)`.
     static let accentEdge = Color(hex: 0x432C76)

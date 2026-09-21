@@ -60,11 +60,7 @@ struct ReadyScreen: View {
         OnbColumn {
             OnbFill(upTo: 56)
 
-            Icon(name: "tick-circle", size: 40, weight: 1.9)
-                .foregroundStyle(Theme.up)
-
-            OnbTitle(text: title)
-                .padding(.top, 18)
+            OnbOutcome(icon: "tick-circle", tint: Theme.up, title: title)
 
             OnbBody(runs: runs)
 

@@ -51,7 +51,7 @@ struct PhoneShell<Band: View, Content: View>: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     // Clears the floating dock, so the last row is reachable.
-                    .padding(.bottom, 132)
+                    .padding(.bottom, 124)
                     // A new screen is a new body, which is what lets one cross
                     // into the next. Scoped to the body: the header, the dock
                     // and the scroller itself keep their identity, so a tab
@@ -180,7 +180,7 @@ private struct Banner: View {
             Spacer(minLength: 0)
 
             Button("Retry") { runtime.ui(.refreshRequested) }
-                .buttonStyle(RaisedButton(size: .small))
+                .buttonStyle(.raised)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -198,14 +198,14 @@ private struct Banner: View {
 private struct Dock: View {
     @EnvironmentObject private var runtime: RuntimeApp
 
-    /// The lit pill is one pill that moves between tabs rather than three that
-    /// appear and disappear. Each tab offers its frame under its own screen,
-    /// and the pill takes whichever frame belongs to the lit one — so changing
-    /// which one that is moves the pill there.
+    /// The lit tile is one tile that moves between tabs rather than three
+    /// that appear and disappear. Each tab offers its centre under its own
+    /// screen, and the tile takes whichever centre belongs to the lit one — so
+    /// changing which one that is moves the tile there.
     @Namespace private var selection
 
     var body: some View {
-        GlassGroup(spacing: 10) {
+        HStack(spacing: 10) {
             HStack(spacing: 2) {
                 // Keyed on the tab, not on the whole item — `selected`
                 // changes on every tab, and keying on it would make each
@@ -216,59 +216,75 @@ private struct Dock: View {
             }
             .background {
                 if let lit {
-                    SelectionPill()
-                        .matchedGeometryEffect(id: lit, in: selection, isSource: false)
+                    SelectionTile()
+                        .matchedGeometryEffect(
+                            id: lit,
+                            in: selection,
+                            properties: .position,
+                            anchor: .center,
+                            isSource: false
+                        )
                 }
             }
             .animation(.smooth(duration: 0.32), value: lit)
-            .padding(.horizontal, 6)
-            // The bar takes the row and the search button takes its circle,
+            .padding(.horizontal, 4)
+            // The bar takes the row and the search button takes its square,
             // which is `flex: 1` in the stylesheet. Without this the bar is as
-            // wide as the words inside it happen to make it, and a screen whose
-            // content is a little wider than another moves the dock.
+            // wide as the glyphs inside it happen to make it, and a screen
+            // whose content is a little wider than another moves the dock.
             .frame(maxWidth: .infinity)
-            .frame(height: 62)
-            .glass(in: Capsule())
+            .frame(height: 54)
+            .background { ground }
 
             // The sketch draws this button but never the screen behind it, so
-            // it stays inert rather than opening something invented.
+            // it stays inert rather than opening something invented. The glyph
+            // is what dims, not the button: fading the whole thing made its
+            // ground translucent and the list showed through it.
             Button {} label: {
                 Icon(name: "search", size: 23, weight: 1.9)
-                    .foregroundStyle(Color.white.opacity(0.82))
-                    .frame(width: 62, height: 62)
-                    .glass(in: Circle())
+                    .foregroundStyle(Theme.text)
+                    .opacity(0.5)
+                    .frame(width: 54, height: 54)
+                    .background { ground }
             }
             .buttonStyle(.plain)
             .disabled(true)
-            .opacity(0.55)
             .accessibilityLabel("Search")
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 22)
         .background {
-            // Real glass refracts what is behind it, so on iOS 26 there must
-            // be something behind it: the fade this used to draw put the page's
-            // own black under the dock, and glass over a flat colour is a flat
-            // colour. Below 26 the effect is a blur that cannot hold a dark
-            // list on its own, and the fade is what stops a row showing through
-            // mid-sentence.
-            if #unavailable(iOS 26.0) {
-                LinearGradient(
-                    colors: [Theme.bg.opacity(0), Theme.bg, Theme.bg],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .padding(.top, -28)
-                // Down to the screen's edge, not to the safe area's: the home
-                // indicator sits over the list too, and a row ending half way
-                // through the fade reads as a rendering fault.
-                .ignoresSafeArea(edges: .bottom)
-                .allowsHitTesting(false)
-            }
+            // The bar is opaque, but the list still runs through the gutter
+            // either side of it, so the page fades out underneath rather than
+            // showing a row half way through a sentence.
+            LinearGradient(
+                colors: [Theme.bg.opacity(0), Theme.bg, Theme.bg],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .padding(.top, -38)
+            // Down to the screen's edge, not to the safe area's: the home
+            // indicator sits over the list too, and a row ending half way
+            // through the fade reads as a rendering fault.
+            .ignoresSafeArea(edges: .bottom)
+            .allowsHitTesting(false)
         }
     }
 
-    /// Which tab is lit, so the pill has something to animate against.
+    /// What the bar and the square beside it are made of: one step up from the
+    /// page because they are above it, the chip's corner rather than a capsule,
+    /// and a shadow that says so. No outline — at this size the shadow is
+    /// enough, and a line round it only fought the tile inside.
+    ///
+    /// The shadow goes on the ground and not on the whole row, or the glyphs
+    /// standing on it cast one too.
+    private var ground: some View {
+        RoundedRectangle(cornerRadius: Theme.radiusMd)
+            .fill(Theme.bgRaised)
+            .shadow(color: .black.opacity(0.5), radius: 14, y: 10)
+    }
+
+    /// Which tab is lit, so the tile has something to animate against.
     private var lit: Screen? {
         runtime.dock?.items.first(where: \.selected)?.screen
     }
@@ -284,37 +300,33 @@ private struct Tab: View {
         Button {
             runtime.ui(.screenOpened(screen: item.screen))
         } label: {
-            VStack(spacing: 3) {
-                Icon(name: item.icon, size: 20)
-                Text(item.label).font(.system(size: 9.5, weight: .medium))
-            }
-            .foregroundStyle(item.selected ? Theme.accentBright : Color.white.opacity(0.62))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
-            // Where the pill goes when this tab is the lit one.
-            .matchedGeometryEffect(id: item.screen, in: selection, isSource: true)
-            // The whole tab, not the ink in it. An `Icon` is a stroked path,
-            // and SwiftUI hit-tests a stroke on the stroke — so without this
-            // the target is a few 1.5pt lines, and only the selected tab,
-            // which has a filled background, is comfortably tappable.
-            .contentShape(Rectangle())
+            Icon(name: item.icon, size: 23)
+                .foregroundStyle(item.selected ? Theme.accentBright : Theme.textMuted)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Where the tile goes when this tab is the lit one.
+                .matchedGeometryEffect(id: item.screen, in: selection, isSource: true)
+                // The whole tab, not the ink in it. An `Icon` is a stroked
+                // path, and SwiftUI hit-tests a stroke on the stroke — so
+                // without this the target is a few 1.5pt lines, and only the
+                // selected tab, which has a filled ground, is comfortably
+                // tappable.
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // The words under the glyphs are gone; the name is not.
+        .accessibilityLabel(item.label)
     }
 }
 
 /// The lit tab's ground.
 ///
-/// On iOS 26 it is glass in its own right, inside the dock's glass and sharing
-/// its container. Below 26 there is no glass, so it is the tint on its own.
-private struct SelectionPill: View {
+/// A square the height of the row: the words are gone, so what it marks is a
+/// glyph, and a capsule cut for a label under one would sit round the icon
+/// with nothing in the rest of it. 46pt is the bar's height less its padding.
+private struct SelectionTile: View {
     var body: some View {
-        if #available(iOS 26.0, *) {
-            Capsule()
-                .fill(Theme.accentSoft.opacity(0.16))
-                .glassEffect(.regular.tint(Theme.accentSoft.opacity(0.20)), in: Capsule())
-        } else {
-            Capsule().fill(Theme.accentSoft.opacity(0.16))
-        }
+        RoundedRectangle(cornerRadius: 7)
+            .fill(Theme.accentSoft.opacity(0.16))
+            .frame(width: 46, height: 46)
     }
 }

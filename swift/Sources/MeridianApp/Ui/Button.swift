@@ -37,15 +37,16 @@ extension ButtonStyle where Self == QuietButton {
 }
 
 struct RaisedButton: ButtonStyle {
-    /// The three sizes the stylesheet has: `.sm`, the default, and `.lg`.
+    /// The two sizes the stylesheet has: the default, and `.lg` for the one
+    /// action a phone screen is about. There is no smaller one — a button cut
+    /// down for a lesser place made the same action look like a lesser action,
+    /// which is not what a banner's Retry is.
     enum Size {
-        case small
         case regular
         case large
 
         var text: CGFloat {
             switch self {
-            case .small: 11.5
             case .regular: 13
             case .large: 15
             }
@@ -53,7 +54,6 @@ struct RaisedButton: ButtonStyle {
 
         var padding: (CGFloat, CGFloat) {
             switch self {
-            case .small: (11, 6)
             case .regular: (14, 8)
             case .large: (18, 13)
             }
@@ -93,15 +93,22 @@ struct RaisedButton: ButtonStyle {
             .offset(y: configuration.isPressed ? 2 : 0)
     }
 
-    /// Two steps of the same shade — enough to catch a highlight across the
-    /// top, not enough to read as a gradient.
-    private var face: LinearGradient {
-        LinearGradient(
+    /// Lit from the middle of its base: a glow the shape of the button that
+    /// falls off before it reaches the corners, which reads as one colour
+    /// catching the light rather than two stacked. A gradient run top to
+    /// bottom drew a line across the top edge whatever its steps were set to.
+    ///
+    /// Elliptical rather than radial because it takes the frame's proportions,
+    /// which is what the stylesheet's percentage radii do: a wide button gets
+    /// a wide glow and Retry gets a small one.
+    private var face: EllipticalGradient {
+        EllipticalGradient(
             colors: primary
-                ? [Theme.accentSoft, Theme.accent]
-                : [Theme.borderStrong, Theme.bgInput],
-            startPoint: .top,
-            endPoint: .bottom
+                ? [Theme.accentLit, Theme.accent]
+                : [Theme.bgInputLit, Theme.bgInput],
+            center: .bottom,
+            startRadiusFraction: 0,
+            endRadiusFraction: 0.62
         )
     }
 }
@@ -111,6 +118,9 @@ struct QuietButton: ButtonStyle {
         configuration.label
             .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(Theme.accentBright)
+            // The web's is wider, because its hover wash needs ground to sit
+            // on and takes it back with a negative margin. There is no hover
+            // here, so the padding is the measure and nothing has to undo it.
             .padding(.horizontal, 4)
             .padding(.vertical, 6)
             .opacity(configuration.isPressed ? 0.75 : 1)

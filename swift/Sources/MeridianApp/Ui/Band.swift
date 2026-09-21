@@ -6,8 +6,8 @@
 /// is set to, the other two are the figure the page opens on — but a band is a
 /// band, so the height and the boundaries are here rather than in each of them.
 ///
-/// It stands on the page's own ground. No panel and no glass: a rule under it
-/// is what separates it, the same as every other boundary in the app.
+/// It stands on the page's own ground. No panel and nothing floating: a rule
+/// under it is what separates it, the same as every other boundary in the app.
 
 import SwiftUI
 
