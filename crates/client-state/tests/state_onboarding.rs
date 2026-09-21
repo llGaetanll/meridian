@@ -65,6 +65,8 @@ fn at_the_code_screen() -> StateApp {
 }
 
 /// The same, up to the bank screen, which is the one the flow exists for.
+/// The empty snapshot is what puts it there: an address with no banks on it
+/// is the one that walks the road.
 fn at_the_bank_screen() -> StateApp {
     let mut state = at_the_code_screen();
 
@@ -77,6 +79,11 @@ fn at_the_bank_screen() -> StateApp {
             },
             Event::FromSource {
                 event: EventSource::CodeAccepted,
+            },
+            Event::FromSource {
+                event: EventSource::SnapshotLoaded {
+                    json: "{}".to_string(),
+                },
             },
         ],
         &mut Vec::new(),
@@ -337,12 +344,17 @@ fn wrong_address_goes_back_to_the_field_with_it_still_in() {
     );
 }
 
-/// A verified code moves the flow to the bank screen and asks the server for
-/// the snapshot in the same turn. Whether payment is settled is that ask's to
-/// answer: refused unpaid, the paywall covers the flow here — between the
-/// account and the bank — and somebody who has paid walks straight on.
+/// A verified code asks the server for the snapshot and waits on it, because
+/// that snapshot is what says which of two screens comes next: an address
+/// with banks on it has been here before. Neither is drawn until it lands —
+/// a screen swapped under the user a moment after it appears is the thing
+/// this wait exists to stop.
+///
+/// Whether payment is settled is the same ask's to answer: refused unpaid,
+/// the paywall covers the flow here — between the account and the bank — and
+/// somebody who has paid walks straight on.
 #[test]
-fn a_verified_code_asks_for_a_bank_and_whether_its_paid_for() {
+fn a_verified_code_waits_for_the_snapshot_before_drawing_either_screen() {
     let mut state = at_the_code_screen();
 
     eval!(&mut state,
@@ -353,7 +365,34 @@ fn a_verified_code_asks_for_a_bank_and_whether_its_paid_for() {
         > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToSource { action: LoadSnapshot }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Waiting { step: "Step 1 of 3 · Account", title: "Signing you in", body: [ViewRun { text: "One moment while we look up your account.", strong: false }], action: "Signing in…" } }, dock: None } }"#,
+
+        // No banks on it, so the road is the one that gets walked.
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: "{}".to_string() } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Bank { .. } }, .. } },
+    );
+}
+
+/// A snapshot that never comes cannot decide anything, and a loader nothing
+/// ends is worse than the wrong guess: the flow takes the bank step, which
+/// is the one with a button on it.
+#[test]
+fn a_snapshot_that_fails_still_lands_the_flow_somewhere() {
+    let mut state = at_the_code_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
+        < Event::FromUi { event: EventUi::CodeSubmitted },
+        < Event::FromSource { event: EventSource::CodeAccepted },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToSource { action: ActionSource::VerifyCode { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToSource { action: ActionSource::LoadSnapshot },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Offline } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Bank { .. } }, .. } },
+        > Action::ToUi { action: ActionUi::ShowError { .. } },
     );
 }
 

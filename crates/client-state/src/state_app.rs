@@ -489,14 +489,14 @@ impl StateApp {
                         self.unpaid = None;
                         self.payment = StatePayment::default();
 
-                        // Banks in the snapshot while first run is asking for
-                        // one mean this address already has an account that
-                        // walked the road, on some other device. The flow
-                        // stands aside and offers the app.
-                        if !self.connections.is_empty()
-                            && let Some(flow) = &mut self.onboarding
-                        {
-                            flow.already_connected();
+                        // Which screen follows the code is this snapshot's
+                        // to say. Banks on it mean the address already has an
+                        // account that walked the road, on some other device,
+                        // and the flow stands aside and offers the app.
+                        let has_banks = !self.connections.is_empty();
+
+                        if let Some(flow) = &mut self.onboarding {
+                            flow.snapshot(has_banks);
                         }
 
                         debug_assert!(
@@ -740,81 +740,93 @@ impl StateApp {
                 self.render(actions);
             }
 
-            EventSource::LoadFailed { failure } => match failure {
-                // The session is gone, and everything held under it went with
-                // it. First run is where a fresh install starts, so it is
-                // where this lands — with a line on the Welcome screen saying
-                // why, because arriving there having done nothing is otherwise
-                // unexplained.
-                LoadFailure::SignedOut => {
-                    let now = self.device_now;
+            EventSource::LoadFailed { failure } => {
+                // The snapshot first run was waiting on is not coming, so the
+                // screen it would have chosen has to be chosen without it.
+                // Not on a lost session, which puts the flow back to its
+                // first screen anyway.
+                if !matches!(failure, LoadFailure::SignedOut)
+                    && let Some(flow) = &mut self.onboarding
+                {
+                    flow.snapshot_failed();
+                }
 
-                    *self = Self::new();
-                    self.device_now = now;
+                match failure {
+                    // The session is gone, and everything held under it went with
+                    // it. First run is where a fresh install starts, so it is
+                    // where this lands — with a line on the Welcome screen saying
+                    // why, because arriving there having done nothing is otherwise
+                    // unexplained.
+                    LoadFailure::SignedOut => {
+                        let now = self.device_now;
 
-                    if let Some(flow) = &mut self.onboarding {
-                        flow.signed_out();
+                        *self = Self::new();
+                        self.device_now = now;
+
+                        if let Some(flow) = &mut self.onboarding {
+                            flow.signed_out();
+                        }
+
+                        actions.push(Action::ToSource {
+                            action: ActionSource::ForgetSession,
+                        });
+
+                        self.render(actions);
                     }
 
-                    actions.push(Action::ToSource {
-                        action: ActionSource::ForgetSession,
-                    });
+                    // Not news and not a failure: it is where the app is until
+                    // somebody pays, so it takes the screen rather than printing
+                    // a banner over one.
+                    LoadFailure::Unpaid { reason } => {
+                        self.unpaid = Some(reason.clone());
 
-                    self.render(actions);
-                }
+                        // Refused while a bank sign-in was being opened is why it
+                        // never opened, and first run is under the paywall until
+                        // it is paid for.
+                        if let Some(flow) = &mut self.onboarding {
+                            flow.link_unpaid();
+                        }
 
-                // Not news and not a failure: it is where the app is until
-                // somebody pays, so it takes the screen rather than printing
-                // a banner over one.
-                LoadFailure::Unpaid { reason } => {
-                    self.unpaid = Some(reason.clone());
-
-                    // Refused while a bank sign-in was being opened is why it
-                    // never opened, and first run is under the paywall until
-                    // it is paid for.
-                    if let Some(flow) = &mut self.onboarding {
-                        flow.link_unpaid();
+                        self.render(actions);
                     }
 
-                    self.render(actions);
+                    // Nothing to buy: the server has a subscription for this
+                    // person already. Whether the app opens is the snapshot's to
+                    // say, so it is asked rather than a banner drawn — a card
+                    // form over a subscription that exists is the second one this
+                    // is here to stop.
+                    LoadFailure::Subscribed => {
+                        self.payment.already(self.device_now, actions);
+
+                        self.render(actions);
+                    }
+
+                    LoadFailure::Offline
+                    | LoadFailure::TooMany
+                    | LoadFailure::Server { .. }
+                    | LoadFailure::Unreadable => {
+                        self.load_failed = Some(failure.clone());
+
+                        // A subscription the server could not start was not
+                        // started, so Subscribe is offered again under the banner.
+                        self.payment.failed();
+
+                        // A delete flow whose request failed is closed the same
+                        // way: the account stands, and the banner says why.
+                        self.deleting = None;
+
+                        // Still render: what the screen says depends on whether
+                        // anything was ever loaded.
+                        self.render(actions);
+
+                        actions.push(Action::ToUi {
+                            action: ActionUi::ShowError {
+                                message: screens::failure(failure),
+                            },
+                        });
+                    }
                 }
-
-                // Nothing to buy: the server has a subscription for this
-                // person already. Whether the app opens is the snapshot's to
-                // say, so it is asked rather than a banner drawn — a card
-                // form over a subscription that exists is the second one this
-                // is here to stop.
-                LoadFailure::Subscribed => {
-                    self.payment.already(self.device_now, actions);
-
-                    self.render(actions);
-                }
-
-                LoadFailure::Offline
-                | LoadFailure::TooMany
-                | LoadFailure::Server { .. }
-                | LoadFailure::Unreadable => {
-                    self.load_failed = Some(failure.clone());
-
-                    // A subscription the server could not start was not
-                    // started, so Subscribe is offered again under the banner.
-                    self.payment.failed();
-
-                    // A delete flow whose request failed is closed the same
-                    // way: the account stands, and the banner says why.
-                    self.deleting = None;
-
-                    // Still render: what the screen says depends on whether
-                    // anything was ever loaded.
-                    self.render(actions);
-
-                    actions.push(Action::ToUi {
-                        action: ActionUi::ShowError {
-                            message: screens::failure(failure),
-                        },
-                    });
-                }
-            },
+            }
         }
     }
 

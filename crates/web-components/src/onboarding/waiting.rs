@@ -6,9 +6,10 @@ use super::Runs;
 use super::read;
 use super::read::part;
 
-/// The screen behind Plaid's window, while it is up. Nothing to press: the
-/// window going away is what moves the flow on, so the one button is busy
-/// the whole time and only says what the wait is for.
+/// The flow waiting on something out of its hands — the snapshot that decides
+/// which screen follows the code, or Plaid's window while it is up. Nothing to
+/// press: what is waited on arriving is what moves the flow on, so the one
+/// button is busy the whole time and only says what the wait is for.
 #[component]
 pub(super) fn Waiting(view: Signal<ViewOnboarding>) -> impl IntoView {
     let step = part(view, |view| read::step(view).to_string());

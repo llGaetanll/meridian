@@ -51,6 +51,7 @@ pub(crate) fn onboarding(
         Step::Welcome => welcome(flow),
         Step::Email => email(flow),
         Step::Code => code(flow, now),
+        Step::Checking => checking(),
         Step::WelcomeBack => welcome_back(flow, connections),
         Step::Bank => bank(flow),
         Step::Sync => sync(flow),
@@ -371,6 +372,20 @@ fn failed(flow: &StateOnboarding) -> ViewOnboarding {
         opening: opening(flow),
 
         open: linked.then(|| "Open Meridian".to_string()),
+    }
+}
+
+/// The gap between a code that was right and the screen it leads to. Which
+/// of the two that is — the road to Plaid, or an account that has already
+/// walked it — is the snapshot's to say, and it is still on its way. Drawing
+/// either before it lands means drawing the wrong one half the time and
+/// swapping it under the user a moment later.
+fn checking() -> ViewOnboarding {
+    ViewOnboarding::Waiting {
+        step: STEP_ACCOUNT.to_string(),
+        title: "Signing you in".to_string(),
+        body: plain("One moment while we look up your account."),
+        action: "Signing in…".to_string(),
     }
 }
 

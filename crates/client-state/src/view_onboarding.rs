@@ -81,14 +81,16 @@ pub enum ViewOnboarding {
         legal: String,
     },
 
-    /// Plaid's page is up, in a window of its own, and the flow waits behind
-    /// it. Nothing to press: the window going away is what moves the flow on.
+    /// The flow is waiting on something out of its hands: the snapshot that
+    /// decides which screen follows the code, or Plaid's page, up in a window
+    /// of its own. Nothing to press either way — what is waited on arriving
+    /// is what moves the flow on.
     Waiting {
         step: String,
         title: String,
         body: Vec<ViewRun>,
-        /// `"Waiting on Plaid…"` — the one button, busy for as long as the
-        /// screen is up, saying what the wait is for.
+        /// `"Signing in…"`, `"Waiting on Plaid…"` — the one button, busy for
+        /// as long as the screen is up, saying what the wait is for.
         action: String,
     },
 

@@ -26,6 +26,10 @@ pub(crate) enum Step {
     Welcome,
     Email,
     Code,
+    /// The code was right, and the snapshot that says which screen comes
+    /// next has not arrived. Drawing either of them before it lands means
+    /// drawing the wrong one and swapping it under the user.
+    Checking,
     /// The address already has an account with banks attached, so the road
     /// to Plaid is offered rather than walked.
     WelcomeBack,
@@ -301,23 +305,46 @@ impl StateOnboarding {
         self.step = Step::Code;
     }
 
+    /// The code was right, and the snapshot that decides the next screen has
+    /// been asked for. Neither of the two it decides between is drawn until
+    /// it answers.
     pub(crate) fn code_accepted(&mut self) {
         self.fault = None;
-        self.step = Step::Bank;
+        self.step = Step::Checking;
     }
 
-    /// The snapshot answering the code carries banks: this address already
-    /// has an account, walked past Plaid on some other device. The flow
-    /// stands aside and offers the app instead of the road.
+    /// A snapshot arrived, and whether it carries banks is what the flow was
+    /// waiting to hear: an address with them has an account that walked past
+    /// Plaid already, on some other device, so the flow stands aside and
+    /// offers the app instead of the road.
     ///
-    /// Only from the bank step with nothing under way. Once a sign-in is
-    /// opening, or a bank has connected in this flow, the screen stays where
-    /// the user put it.
-    pub(crate) fn already_connected(&mut self) {
-        if self.step != Step::Bank || self.window != Window::None || self.linked {
-            return;
-        }
+    /// Later snapshots only ever stand the flow aside, and only from the bank
+    /// step with nothing under way. Once a sign-in is opening, or a bank has
+    /// connected in this flow, the screen stays where the user put it.
+    pub(crate) fn snapshot(&mut self, has_banks: bool) {
+        match self.step {
+            Step::Checking if has_banks => self.welcome_back(),
+            Step::Checking => self.step = Step::Bank,
 
+            Step::Bank if has_banks && self.window == Window::None && !self.linked => {
+                self.welcome_back();
+            }
+
+            _ => {}
+        }
+    }
+
+    /// The snapshot the flow was waiting on is not coming — no signal, or a
+    /// server that would not serve it. The bank step is where it would have
+    /// gone had the answer said no banks, and it is the one with a button on
+    /// it: a loader nothing will ever end is the worse of the two wrongs.
+    pub(crate) fn snapshot_failed(&mut self) {
+        if self.step == Step::Checking {
+            self.step = Step::Bank;
+        }
+    }
+
+    fn welcome_back(&mut self) {
         self.step = Step::WelcomeBack;
 
         // Attached before this flow began rather than during it, but linked
