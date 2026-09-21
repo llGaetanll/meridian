@@ -29,9 +29,10 @@ function drawFlow(edges) {
     // Along the road: out of one screen's right side, into the next one's left.
     if (e.kind === 'fwd') {
       // `bend` moves the turn off centre, for a screen that forks into several
-      // and would otherwise send every wire down the same line.
+      // and would otherwise send every wire down the same line. `dy` moves the
+      // exit off the middle of the side, for the same reason.
       const mid = (a.r + b.l) / 2 + (e.bend ?? 0);
-      d = `M${a.r} ${a.cy} H${mid} V${b.cy} H${b.l}`;
+      d = `M${a.r} ${a.cy + (e.dy ?? 0)} H${mid} V${b.cy} H${b.l}`;
       lx = mid; ly = b.cy;
 
     // Down into a screen that is a place of its own, not a state of the one above.
