@@ -198,10 +198,15 @@
 
 /* No frame and no edge, so it presses down a pixel of its own. For an action
    that must be available without being the loudest thing in its row. */
+/* The room the hover wash needs is taken outwards, not inwards: the padding
+   grows and the margin takes it straight back, so the letters stay exactly
+   where they were and only the ground under them is wider. A plain button
+   sits in a left-aligned column, and text that started six pixels right of
+   the measure would be the most visible thing on the screen. */
 .ui .btn.plain {
   border: 0; background: none; box-shadow: none;
   color: var(--violet-300);
-  padding: 6px 10px;
+  padding: 6px 10px; margin: 0 -6px;
   transition: background 90ms ease, transform 70ms ease;
 }
 /* A wash of the colour it is already lettered in — the least a button can do

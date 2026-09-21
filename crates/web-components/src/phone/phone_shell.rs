@@ -189,7 +189,7 @@ pub fn PhoneShell(
                             <div class="phone-banner">
                                 <div class="banner">
                                     <span class="say">{message}</span>
-                                    <button class="btn sm" on:click=move |_| on_refresh.run(())>
+                                    <button class="btn" on:click=move |_| on_refresh.run(())>
                                         "Retry"
                                     </button>
                                 </div>

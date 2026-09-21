@@ -34,7 +34,7 @@
   overflow-y: auto;
   overscroll-behavior-y: contain;
   /* Clears the floating dock, so the last row can be scrolled up to. */
-  padding-bottom: 132px;
+  padding-bottom: 124px;
   scrollbar-width: none;
 }
 .phone-scroll::-webkit-scrollbar { display: none; }
@@ -194,10 +194,12 @@
   .onboarding .brand-mark,
   .paywall .brand-mark { width: 50px; height: 50px; }
 
-  .onboarding .back { margin: -2px 0 6px -10px; }
+  .onboarding .back { margin: -2px 0 6px -16px; }
 
-  .onboarding .measure > .say-icon.done { margin-top: 56px; }
-  .onboarding .say-step + .say-icon.needs { width: 36px; height: 36px; margin-top: 36px; }
+  /* The glyph is beside the title now, so what moves down the screen is the
+     line, not the mark over it. */
+  .onboarding .measure > .say-outcome { margin-top: 56px; }
+  .onboarding .say-step + .say-outcome { margin-top: 36px; }
 
   /* Under 16px, Safari zooms the page to a field as it takes focus, and
      leaves it zoomed. */

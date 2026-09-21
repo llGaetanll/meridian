@@ -4,10 +4,11 @@ use client_state::ViewDockItem;
 use leptos::prelude::*;
 use web_ui::Glyph;
 
-/// The machine's tabs on a pane of glass at the foot of the phone, and search
-/// in a circle of its own beside them.
+/// The machine's tabs on a bar at the foot of the phone, and search on a
+/// square of its own beside it. Glyphs only: each tab keeps its name for
+/// anything that reads the page aloud, and the stylesheet clips it.
 ///
-/// Which tab is lit is the machine's answer. The lit ground is one pill that
+/// Which tab is lit is the machine's answer. The lit ground is one tile that
 /// slides to whichever tab that is, rather than one per tab coming and going.
 #[component]
 pub fn Dock(
@@ -34,7 +35,7 @@ pub fn Dock(
 
     view! {
         <div class="dockrow">
-            <nav class="dock glass">
+            <nav class="dock">
                 <div class="tabs" style=move || format!("--tabs: {}", count.get())>
                     <span
                         class="pill"
@@ -78,7 +79,7 @@ pub fn Dock(
 
             // Drawn and dead, as it is on the phone: nothing has drawn the
             // screen behind it.
-            <button type="button" class="dock-search glass" disabled aria-label="Search">
+            <button type="button" class="dock-search" disabled aria-label="Search">
                 <Glyph name="search" />
             </button>
         </div>

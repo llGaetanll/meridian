@@ -24,8 +24,10 @@ pub(super) fn Failed(view: Signal<ViewOnboarding>, ui: Callback<EventUi>) -> imp
 
     view! {
         <div class="say-step">{move || step.get()}</div>
-        <Glyph name="warn" class="say-icon needs" />
-        <div class="say-title">{move || title.get()}</div>
+        <div class="say-outcome">
+            <Glyph name="warn" class="say-icon needs" />
+            <div class="say-title">{move || title.get()}</div>
+        </div>
         <Runs view=view />
         <IconRows view=view />
 

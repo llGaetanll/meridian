@@ -21,8 +21,10 @@ pub(super) fn Ready(view: Signal<ViewOnboarding>, ui: Callback<EventUi>) -> impl
     });
 
     view! {
-        <Glyph name="tick-circle" class="say-icon done" />
-        <div class="say-title">{move || title.get()}</div>
+        <div class="say-outcome">
+            <Glyph name="tick-circle" class="say-icon done" />
+            <div class="say-title">{move || title.get()}</div>
+        </div>
         <Runs view=view />
         <Tally view=view />
 

@@ -28,7 +28,7 @@
 
 /* The chevron stands above the step, as it does on the phone, and starts
    where the words start. */
-.onboarding .back { margin: -6px 0 10px -4px; }
+.onboarding .back { margin: -6px 0 10px -10px; }
 
 /* The field, or the boxes, and what they carry under them. */
 .onboarding .entry { margin-top: 24px; }

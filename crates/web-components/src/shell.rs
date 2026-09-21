@@ -188,7 +188,7 @@ fn Banner(message: String, on_retry: Callback<()>) -> impl IntoView {
         <div class="ui">
             <div class="banner">
                 <span class="say">{message}</span>
-                <button class="btn sm" on:click=move |_| on_retry.run(())>
+                <button class="btn" on:click=move |_| on_retry.run(())>
                     Retry
                 </button>
             </div>
