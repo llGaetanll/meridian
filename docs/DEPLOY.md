@@ -23,8 +23,9 @@ proxy, each in a container of its own.
     └─────────┘
 ```
 
-The server publishes 8082 on loopback only; the web app and the site publish
-nothing.
+The server publishes 8082 and the web app 8080, both on loopback only —
+`SERVER_BIND` and `WEB_BIND` in `.env` are what pin them there (#145); the
+site publishes nothing.
 
 Everything is driven from a laptop with `scripts/deploy.sh`, which is ssh and
 nothing else — no registry, no CI, and a deploy that still works on the day
@@ -290,6 +291,11 @@ TLS_EMAIL=you@example.com
 # the compose network; the published port is only good for a `curl` from a
 # shell on the box.
 SERVER_BIND=127.0.0.1
+
+# Same story for the web app's port. The dev file publishes 8080 for a phone
+# on the laptop's LAN, the merge carries that to the box, and without this
+# line the box serves the app over plain HTTP to the internet (#145).
+WEB_BIND=127.0.0.1
 
 # The database, inside the network. Generate the password — do not reuse the
 # development one, which is `meridian` and is in the repo.

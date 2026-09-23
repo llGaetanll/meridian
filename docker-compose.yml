@@ -247,6 +247,11 @@ services:
       # Every interface, like the server, so a phone on the LAN can open the web
       # app too. The browser should still say `127.0.0.1:8080`, which is what
       # WEB_ORIGINS names and what CORS is checked against.
+      #
+      # This line reaches the box as well: the prod file's `web` merges over
+      # this one, and a merge appends ports rather than removing them. So the
+      # box sets WEB_BIND=127.0.0.1, or the web app answers plain HTTP to the
+      # internet around Caddy (#145).
       - "${WEB_BIND:-0.0.0.0}:8080:8080"
 
   # `stripe listen`, which is the only way a webhook reaches a laptop: Stripe

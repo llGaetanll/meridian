@@ -23,7 +23,9 @@ and DigitalOcean, named in the privacy policy at `meridiancash.io/privacy`.
 **In transit.** TLS on every hop. The public surface terminates at Caddy with
 certificates it manages; the server reaches Postgres with
 `sslmode=verify-full` against a CA of our own (`docs/DEPLOY.md`), so a
-downgrade is a refusal rather than a fallback.
+downgrade is a refusal rather than a fallback. The web container briefly
+answered plain HTTP on port 8080 publicly; found and closed 2026-09-23
+(#145) — the box now binds it to loopback with `WEB_BIND`.
 
 **At rest.** Plaid access tokens — the credential that reads a bank — are
 sealed at the application level with AES-256-GCM before they reach Postgres

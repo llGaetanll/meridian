@@ -63,8 +63,11 @@ services:
   # the same tag, so one commit is one deploy of all three and a rollback names
   # all three.
   #
-  # No ports. Caddy below reaches each by service name, and there is nothing
-  # in either worth asking for from a shell on the box.
+  # No ports of their own — Caddy below reaches each by service name, and
+  # there is nothing in either worth asking for from a shell on the box. But
+  # the dev file's 8080 on `web` still merges in, since a merge appends ports
+  # rather than removing them, which is why the box's `.env` sets
+  # WEB_BIND=127.0.0.1 (#145).
   web:
     profiles: ["server"]
     image: meridian-web:${MERIDIAN_SHA:?}
