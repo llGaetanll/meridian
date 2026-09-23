@@ -67,20 +67,26 @@ const INSTITUTIONS = [
 const POINTS = [
   {
     title: "No ads, ever.",
-    body: "Meridian is paid for by the people who use it. There is no second business here that your ledger would be the raw material for, and nothing about you is for sale.",
+    body: "Meridian is a monthly subscription service, and we don't sell your information.",
   },
   {
-    title: "We don't store your credentials.",
-    body: "You sign in to your bank on your bank's own page, inside Plaid. Meridian is handed a token that reads and nothing more — it never sees what you typed, and it cannot move money.",
+    title: "Security at the forefront",
+    body: "Meridian never stores your bank credentials, and it never moves your money.",
   },
   {
-    title: "One tap, and it's gone.",
-    body: "Disconnecting an institution deletes the accounts, transactions and holdings that came through it. Closing your account deletes the rest. No email, no retention period, no talking you out of it.",
+    title: "Want out? No problem.",
+    body: "We never retain any information of a leaving user. Your information leaves with you.",
   },
   {
     title: "Encrypted at the source.",
-    body: "Your data is encrypted in transit and at rest, and the connection to your bank is encrypted end to end by Plaid before it ever reaches us.",
+    body: "Your data is encrypted in transit and at rest, and the connection to your bank is encrypted end before it ever reaches us.",
   },
+];
+
+const INCLUDED = [
+  "One ledger, with every account you connect in it",
+  "Every recurring expense, found and totalled",
+  "What you own and what you owe, in one balance",
 ];
 
 export default function Home() {
@@ -147,15 +153,15 @@ export default function Home() {
             <p className="lede">
               Every subscription, every bill, every standing order — found for
               you, totalled, and laid out on the month they land on. No
-              spreadsheet, no combing through a year of statements, no
+              more spreadsheets, no combing through a year of statements, no
               discovering in March that you have been paying for something since
               June.
             </p>
-            <p className="lede">
-              It is the question almost nobody can answer about their own money:
-              what leaves the account every month without being decided again.
-              Meridian answers it on the first screen.
-            </p>
+            {/* <p className="lede">
+                  It is the question almost nobody can answer about their own money:
+                  what leaves the account every month without being decided again.
+                  Meridian answers it on the first screen.
+                </p> */}
           </div>
 
           <Device
@@ -262,40 +268,20 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="sec" id="price">
-        <div className="wrap split">
-          <div>
-            <div className="eyebrow">Price</div>
-            <h2>One price, and nothing else to choose.</h2>
-            <p className="lede">
-              Everybody pays the same, and it buys the whole app — every account
-              you connect, every tool on the markets side, and the assistant.
-              There is nothing above this and nothing below it.
-            </p>
-            <p className="lede">
-              No free tier paid for by what it learns about you, and no upgrade
-              you find out about the week you need it. Cancel whenever you like
-              and it runs to the end of the period you have paid for.
-            </p>
-          </div>
-
-          <Price />
-        </div>
-      </section>
-
-      <section className="close">
+      <section className="close" id="price">
         <div className="wrap">
           <div className="eyebrow">Meridian</div>
-          <h2>See where you actually stand.</h2>
+          <h2>See where you stand.</h2>
           <p>
             One ledger, every account, and the tools to ask it anything. No ads,
-            no data sold, and no advice you did not ask for.
+            no data sold, and no advice you did not ask for. Everybody pays the
+            same and it buys the whole app — there is nothing above this and
+            nothing below it.
           </p>
+
+          <Price />
+
           <div className="cta">
-            <a className="btn primary lg" href={site.app}>
-              Open the app
-              <Icon kind="arrowRight" />
-            </a>
             <AppStore />
             <Link className="btn plain" href="/terms">
               Read the terms
@@ -307,45 +293,36 @@ export default function Home() {
   );
 }
 
-/// The price: the figure in the app's money face, and the facts under it in the
-/// app's rows.
+/// The price, and the page's last action: the whole card is the link into the
+/// app, so the thing you press is the thing you are buying.
 ///
 /// A panel rather than one of a row of cards. There is one price, so there is
 /// nothing to compare it against and no grid to put it in — the shape a pricing
 /// page usually takes is an argument between three columns, and this page has no
-/// argument to stage.
+/// argument to stage. The figure is the app's money face at the size of a
+/// headline, because every figure in Meridian is set in that face.
 function Price() {
   return (
-    <div className="price">
+    <a className="price" href={site.app}>
       <div className="price-fig">
         <span className="money">$5.99</span>
-        <span className="per">a month</span>
+        <span className="per">/mo</span>
       </div>
+      <ul className="price-has">
+        {INCLUDED.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
 
-      <div className="rows">
-        <div className="row flat">
-          <span className="rt">Included</span>
-          <span className="rv hard">Every account, every tool</span>
-        </div>
-        <div className="row flat">
-          <span className="rt">Billed</span>
-          <span className="rv hard">Monthly, by card</span>
-        </div>
-        <div className="row flat">
-          <span className="rt">Tax</span>
-          <span className="rv hard">Included, not added at the end</span>
-        </div>
-        <div className="row flat">
-          <span className="rt">Cancel</span>
-          <span className="rv hard">Whenever you like</span>
-        </div>
-      </div>
+      <span className="btn primary lg">
+        Create your account
+        <Icon kind="arrowRight" />
+      </span>
 
       <div className="price-note">
-        Payments are taken by Stripe. Your card goes to them and never reaches
-        Meridian.
+        Payments handled by Stripe. Cancel anytime.
       </div>
-    </div>
+    </a>
   );
 }
 
