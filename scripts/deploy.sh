@@ -7,6 +7,7 @@
 #
 #     ./scripts/deploy.sh ship          build here, load it there, swap
 #     ./scripts/deploy.sh rollback SHA  run an image the box already has
+#     ./scripts/deploy.sh prune         drop all but the last five commits
 #     ./scripts/deploy.sh up            after a down, or after editing .env
 #     ./scripts/deploy.sh down          stop and remove everything
 #     ./scripts/deploy.sh restart       restart, same image and same .env
@@ -60,6 +61,10 @@ fi
 # Caddyfile, the box's own `.env`, and nothing else — this is configuration,
 # not a checkout.
 MERIDIAN_PATH="${MERIDIAN_PATH:-/srv/meridian}"
+
+# How many commits' images the box keeps. `rollback` reaches back exactly this
+# far, because an image is the only copy of a commit that exists there.
+KEEP="${MERIDIAN_KEEP:-5}"
 
 # What the box is running, written by `ship` and read by everything else.
 #
@@ -133,11 +138,16 @@ case "$cmd" in
 
         remote "echo '$sha' > .sha"
         remote "$COMPOSE up -d"
+
+        # After the swap, so the commit being pruned against is the one that is
+        # now running. Every ship lands three more images on a 25 GB box, and a
+        # trim nobody has to remember is the only kind that happens.
+        ssh "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && sh -s -- $KEEP" < scripts/prune-images.sh
         ;;
 
-    # Every image the box has ever been shipped is still on it under its own
-    # tag, so going back is naming one. There is no source here to rebuild
-    # from, which is exactly why the old images are worth their disk.
+    # Every image within the last few commits is still on the box under its own
+    # tag, so going back that far is naming one. There is no source here to
+    # rebuild from, which is exactly why the old images are worth their disk.
     #
     #     ./scripts/deploy.sh rollback 6f31686
     rollback)
@@ -177,6 +187,15 @@ case "$cmd" in
     certs)
         ssh "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && sh -s -- $*" < scripts/db-certs.sh
         ;;
+    # What `ship` already does on its own, for a box that has got ahead of it —
+    # one shipped before this existed, or one trimmed to a different depth.
+    #
+    #     ./scripts/deploy.sh prune       keep the last five commits
+    #     ./scripts/deploy.sh prune 10    keep the last ten
+    prune)
+        ssh "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && sh -s -- ${1:-$KEEP}" < scripts/prune-images.sh
+        ;;
+
     down)    remote "$COMPOSE down $*" ;;
     restart) remote "$COMPOSE restart $*" ;;
     ps)      remote "$COMPOSE ps $*" ;;
@@ -263,7 +282,7 @@ case "$cmd" in
     shell)   exec ssh -t "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && exec \$SHELL -l" ;;
 
     *)
-        echo "usage: $0 [ship|rollback|up|down|restart|certs|ps|logs|watch|health|shell] [args...]" >&2
+        echo "usage: $0 [ship|rollback|up|down|restart|certs|prune|ps|logs|watch|health|shell] [args...]" >&2
         exit 1
         ;;
 esac

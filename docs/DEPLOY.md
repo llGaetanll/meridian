@@ -390,16 +390,23 @@ It refuses a dirty tree, because the commit it stamps into every log line is
 decided on the laptop now and an image labelled with a commit that does not
 contain it sends the next reader to the wrong source.
 
-Going back does not rebuild anything. Every image the box has been shipped is
-still on it under its own tag:
+Going back does not rebuild anything. The last five commits' images are on the
+box under their own tags:
 
 ```sh
 ./scripts/deploy.sh rollback 6f31686
 ```
 
 which is worth the disk precisely because there is no source on the box to
-rebuild an old one from. `docker image prune` there when it matters; at ~98 MB
-an image and 25 GB of disk, it will not be soon.
+rebuild an old one from. Five is also how far back `rollback` reaches, and
+`MERIDIAN_KEEP` moves it.
+
+Every `ship` trims the rest, by piping `scripts/prune-images.sh` to the box
+after the swap — a 25 GB droplet that also holds Postgres does not want every
+commit it has ever run, and a trim somebody has to remember is one that stops
+happening. The commit in `.sha` is kept whatever its age, so a box left on an
+old image by a `rollback` does not have it removed under it. `./scripts/deploy.sh
+prune` runs the same trim on its own, for a box that got ahead of this.
 
 The three images go back together. A commit shipped before the web app and the
 site had images of their own has only the server's on the box, and `rollback`
