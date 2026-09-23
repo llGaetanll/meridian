@@ -405,6 +405,32 @@ The three images go back together. A commit shipped before the web app and the
 site had images of their own has only the server's on the box, and `rollback`
 refuses it rather than bringing the stack half up.
 
+## Reading the box's logs
+
+Two ways, and the second is the one to leave open:
+
+```sh
+./scripts/deploy.sh logs               the last 5m of everything, and it returns
+./scripts/deploy.sh logs server        the last 5m of the server alone
+MERIDIAN_SINCE=30m ./scripts/deploy.sh logs server
+
+./scripts/deploy.sh watch              follow everything
+./scripts/deploy.sh watch server       follow the server alone
+```
+
+`logs` is one shot and prints a slice; `MERIDIAN_SINCE` widens it, and anything
+after the subcommand is handed to `docker compose logs`, so a service name
+narrows it. `watch` follows, in a tmux window of its own, the way
+`scripts/dev.sh` with no arguments is the laptop's.
+
+`watch` reconnects in a loop, which is what makes both the connection and the
+service argument safe. ssh dies with the wifi, with a lid closing, with a
+sleep, and `logs -f` given a service dies with that container — so the next
+`ship` ends it too. Neither is anything having gone wrong, and both are the
+same two-second gap: the window comes back on the new container having missed
+only the swap. It does not bring the stack up first, on purpose: a window
+opened to read logs should not be the thing that decides the box is running.
+
 ## The web app and the site
 
 Two containers, `web` and `site`, each a `caddy:2-alpine` with files in it and

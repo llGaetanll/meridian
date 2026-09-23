@@ -186,6 +186,9 @@ case "$cmd" in
     # The box's logs in a tmux window, the way `scripts/dev.sh` with no
     # arguments is the laptop's.
     #
+    #     ./scripts/deploy.sh watch           everything
+    #     ./scripts/deploy.sh watch server    the server alone
+    #
     # The loop is not decoration. This runs over whatever connection the laptop
     # has, and ssh dies with the wifi, with a lid closing, with a sleep — none
     # of which is anything having gone wrong on the box. dev.sh reattaches for
@@ -193,21 +196,23 @@ case "$cmd" in
     # train going into a tunnel. `ServerAliveInterval` is what makes a dropped
     # connection noticed in seconds rather than whenever TCP gives up.
     #
-    # No service argument, for dev.sh's reason: `logs -f` given one attaches to
-    # that container and dies with it, and this window has to survive the next
-    # `ship` replacing the server underneath it.
+    # The same loop is what makes a service argument safe, which is where this
+    # parts company with dev.sh. `logs -f` given one attaches to that container
+    # and dies with it, so the next `ship` would end a window meant to outlive
+    # it — but ending is all it does, and reattaching is what the loop is
+    # already for. So the window comes back on the new container, a couple of
+    # seconds later, having missed nothing but the swap.
     #
-    # It does not bring anything up first, which is where it parts company with
-    # dev.sh. On a laptop starting the stack is free; here it is a deploy, and
-    # a window opened to read logs should not be the thing that decides the box
-    # is running.
+    # It does not bring anything up first. On a laptop starting the stack is
+    # free; here it is a deploy, and a window opened to read logs should not be
+    # the thing that decides the box is running.
     watch)
         while :; do
             ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
                 "$MERIDIAN_HOST" \
-                "cd '$MERIDIAN_PATH' && $COMPOSE logs -f --tail=20" || true
+                "cd '$MERIDIAN_PATH' && $COMPOSE logs -f --tail=20 $*" || true
 
-            echo "-- lost the connection to $MERIDIAN_HOST; retrying"
+            echo "-- lost $MERIDIAN_HOST, or the container went away; retrying"
             sleep 2
         done
         ;;
