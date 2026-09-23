@@ -619,9 +619,9 @@ docker run -d --rm --name restore -e POSTGRES_PASSWORD=throwaway postgres:17-alp
 docker exec -i restore pg_restore -U postgres -d postgres --create --no-owner < out.dump
 ```
 
-**The other two secrets in `.env` are still not escrowed.** The Plaid secret
-and the Postgres password exist on the box and nowhere else, so losing it
-loses both — #54, the last open piece of #38.
+**Every secret a restore needs is in the password manager** — the age private
+key, `MERIDIAN_DB_KEY`, the Plaid secret and the Postgres password, escrowed
+2026-09-23 (#54). Losing the box loses no key.
 
 ## Encryption at rest
 
@@ -706,9 +706,6 @@ What is specifically about facing the internet:
   they age out, by 2026-10-19 (#33 — the database itself is on an encrypted
   Volume now, and the server does not talk to Postgres in plain text either,
   #34; the sections above have both).
-- **The Plaid secret and the Postgres password exist only on the box** (#54).
-  Backups are nightly, encrypted, off-site and rehearsed (#38), but a restore
-  needs that password to be worth anything more than the dump alone.
 - **An OAuth bank has nowhere to hand control back to.** The server half is
   deployed and switched off; what is missing is the Apple Developer account
   that lets the app claim the link. The section above has the four steps.

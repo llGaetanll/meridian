@@ -40,9 +40,10 @@ with paying customers. MFA on every console that can reach the data — DigitalO
 Plaid, Stripe, GitHub, Apple, email — is being verified door by door in #125.
 
 **Secrets.** The box's secrets live in `/srv/meridian/.env`, readable only on
-the box. The sealing key `MERIDIAN_DB_KEY` is escrowed in a password manager;
-the Plaid secret and Postgres password are being escrowed the same way (#54).
-Keys in a KMS rather than an env var is a known step up, tracked in #124.
+the box. The sealing key `MERIDIAN_DB_KEY`, the age backup key, the Plaid
+secret, and the Postgres password are all escrowed in a password manager
+(#54, closed 2026-09-23). Keys in a KMS rather than an env var is a known
+step up, tracked in #124.
 
 **Logging.** Every call crossing the network is logged, both halves, with
 credentials stripped — a `secret` or `access_token` is logged as its length,
@@ -93,9 +94,10 @@ accepted.
 3. **A console account is taken over.** DigitalOcean is the box and its
    backups in one account; Plaid and Stripe are the data and the money.
    MFA everywhere is the control, verified in #125.
-4. **The box is lost** — deleted, corrupted, region gone. Risk is currently
-   availability and the un-escrowed secrets (#54), not data exposure. #38's
-   off-site dumps and a restore that has actually been run are the control.
+4. **The box is lost** — deleted, corrupted, region gone. Risk is
+   availability alone, not data exposure: every secret a rebuild needs is in
+   the password manager (#54), and #38's off-site dumps with a restore that
+   has actually been run are the control.
 5. **Data is misused rather than stolen.** The standing rules from #16: no
    selling or sharing, no transactions to third-party LLMs without zero
    retention, no tokens in logs, no data kept after deletion, no scopes
