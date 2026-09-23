@@ -53,8 +53,12 @@ revisited at the Plaid application.
 **Secrets.** The box's secrets live in `/srv/meridian/.env`, readable only on
 the box. The sealing key `MERIDIAN_DB_KEY`, the age backup key, the Plaid
 secret, and the Postgres password are all escrowed in a password manager
-(#54, closed 2026-09-23). Keys in a KMS rather than an env var is a known
-step up, tracked in #124.
+(#54, closed 2026-09-23). The sealing key being an env var rather than in a
+KMS is accepted 2026-09-23 at this size (#124): the key is escrowed apart
+from the data, the Volume and the backups are encrypted under other keys,
+and the sealed blob carries a version byte so a rotation or a KMS migration
+can open old rows. The trigger for the KMS move is the Plaid application —
+the paid-plan, one-way door — not the questionnaire.
 
 **Logging.** Every call crossing the network is logged, both halves, with
 credentials stripped — a `secret` or `access_token` is logged as its length,
@@ -96,7 +100,8 @@ accepted.
    compromise reads banks. Contained by the small surface (one binary, Caddy,
    Postgres, nothing else), key-only ssh from one machine, and the Item cap;
    answered after the fact by the incident plan below. The KMS move (#124) is
-   what shrinks this risk rather than containing it.
+   what shrinks this risk rather than containing it; deferred 2026-09-23
+   until the Plaid application.
 2. **A copy of the disk leaks** — a snapshot, a decommissioned drive, a
    backup somewhere it should not be. The database is on an encrypted Volume
    (#33) and every dump in the bucket is age-encrypted (#38), so this is
