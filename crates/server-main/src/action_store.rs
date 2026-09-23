@@ -226,4 +226,21 @@ pub enum ActionStore {
 
     /// Delete the account and everything that hangs off it.
     DeleteUser { user_id: uuid::Uuid },
+
+    /// Write down that this user's data was served, in the audit log.
+    ///
+    /// Sent beside the answer that serves it, and waited on by nobody: the
+    /// answer is not held for the record of it.
+    RecordAccess {
+        user_id: uuid::Uuid,
+        scope: src_postgres::AuditScope,
+
+        /// The address bucket the caller is named by, already parsed at the
+        /// edge — the same name the app logs and the rate limit use.
+        client: String,
+
+        /// The machine's clock, so the row says when the machine reckoned the
+        /// answer went, the way every other stamped write does.
+        at: api_common::Timestamp,
+    },
 }

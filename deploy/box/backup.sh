@@ -47,6 +47,13 @@ tmp=$(mktemp /srv/meridian/.backup-XXXXXX)
 
 trap 'rm -f "$tmp"' EXIT
 
+# A backup reads every row there is, so the audit log gets its line first —
+# before the dump, so the record of the backup rides inside the backup. NULL
+# is the log's word for every user at once.
+COMPOSE_PROFILES=server MERIDIAN_SHA=$(cat .sha) \
+    docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+    exec -T db sh -c 'psql -qc "INSERT INTO audit_log (at, user_id, scope, client) VALUES (now(), NULL, '\''backup'\'', '\''box'\'')" -U "$POSTGRES_USER" "$POSTGRES_DB"'
+
 # The same exec scripts/backup.sh uses: credentials stay the container's own.
 COMPOSE_PROFILES=server MERIDIAN_SHA=$(cat .sha) \
     docker compose -f docker-compose.yml -f docker-compose.prod.yml \

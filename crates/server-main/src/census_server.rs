@@ -55,6 +55,10 @@ pub struct CensusServer {
     /// stays, being live at Plaid and owned nowhere.
     pub producing: usize,
 
+    /// Routes in flight whose caller has been resolved to a user, held for
+    /// the audit row their answer may write. Emptied by the answer going out.
+    pub callers: usize,
+
     /// Webhook signing keys remembered, misses included. A key is kept for
     /// the life of the process — Plaid gives a rotated one a new id — so this
     /// one only has to stay under

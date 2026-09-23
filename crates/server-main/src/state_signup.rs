@@ -41,6 +41,7 @@ use crate::ActionStore;
 use crate::Attaching;
 use crate::Authenticated;
 use crate::CallId;
+use crate::ClientIp;
 use crate::ItemFacts;
 use crate::LinkOpener;
 use crate::LinkOutcome;
@@ -154,6 +155,11 @@ pub struct StateSignup {
     /// a request arrives and left on the turn it is answered, so what a
     /// request was doing outlives the turn it arrived in.
     requests: BTreeMap<RequestId, Pending>,
+
+    /// Who each authenticated route in flight turned out to be, and where
+    /// they asked from. Written when the session resolves and taken when the
+    /// answer goes out, which is the moment the audit log wants both halves.
+    callers: BTreeMap<RequestId, (Uuid, ClientIp)>,
 
     /// The exchanges out, and when each went out.
     ///
@@ -1429,6 +1435,14 @@ impl StateSignup {
         self.requests.insert(request_id, step);
     }
 
+    /// Remember who a route turned out to be and where they asked from, for
+    /// the audit row its answer may write. Beside the step rather than on it,
+    /// because most steps have no use for the address and every one would
+    /// have to carry it.
+    pub fn identify(&mut self, request_id: RequestId, user_id: Uuid, ip: ClientIp) {
+        self.callers.insert(request_id, (user_id, ip));
+    }
+
     /// The step a request was at, now that what it was waiting for has
     /// arrived. Absent is a route that was already answered and let go of.
     pub fn resumed(&mut self, request_id: RequestId) -> Option<Pending> {
@@ -1479,7 +1493,32 @@ impl StateSignup {
         actions: &mut Vec<Action>,
     ) {
         match owed {
-            Owed::Answer(action) => actions.push(Action::ToRouter { request_id, action }),
+            Owed::Answer(action) => {
+                // Taken whichever answer this is: the request is over. What
+                // makes it a row is the answer serving customer data, on a
+                // route that authenticated somebody to serve it to.
+                let caller = self.callers.remove(&request_id);
+
+                let audit = action
+                    .reveals()
+                    .and_then(|scope| caller.map(|(user_id, ip)| (user_id, scope, ip)));
+
+                actions.push(Action::ToRouter { request_id, action });
+
+                // After the answer, and waited on by nobody: the caller is
+                // not held for the record that they read.
+                if let Some((user_id, scope, ip)) = audit {
+                    actions.push(Action::ToStore {
+                        call_id: self.call(),
+                        action: ActionStore::RecordAccess {
+                            user_id,
+                            scope,
+                            client: ip.to_string(),
+                            at: now,
+                        },
+                    });
+                }
+            }
 
             Owed::Snapshot { user_id } => {
                 self.waits_on(request_id, Pending::Reading);
@@ -1674,6 +1713,11 @@ impl StateSignup {
     /// How many Link sessions an exchange went out for and has not resolved.
     pub fn producing(&self) -> usize {
         self.producing.len()
+    }
+
+    /// How many routes in flight are known by name and address.
+    pub fn callers(&self) -> usize {
+        self.callers.len()
     }
 }
 

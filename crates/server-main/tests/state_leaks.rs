@@ -374,6 +374,11 @@ fn a_first_run_and_the_launch_after_it_give_back_everything_they_took() {
             action: ActionRouter::Serve { .. },
         },
 
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
+
         // And another quiet minute, so the launch's own windows — this
         // server's and Plaid's both — go idle too.
         < Event::FromProcess {

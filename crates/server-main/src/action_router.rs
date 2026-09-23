@@ -4,6 +4,7 @@
 //! own comes back, so an event that produced none never answers.
 
 use server_wire::WireUnpaid;
+use src_postgres::AuditScope;
 
 use crate::ConnId;
 
@@ -134,4 +135,39 @@ pub enum ActionRouter {
     /// The account is gone. Answered once the rows are actually deleted, so a
     /// client that hears this can forget its session without wondering.
     Deleted,
+}
+
+impl ActionRouter {
+    /// The customer data this answer serves, if it serves any — what the
+    /// audit log records about it.
+    ///
+    /// Derived from the variant rather than named where the answer is made,
+    /// so an answer added later cannot forget to be audited — this match will
+    /// not compile until it says whether it carries customer data. A refusal
+    /// is `None`: it tells the caller about themselves and serves nothing
+    /// stored.
+    pub fn reveals(&self) -> Option<AuditScope> {
+        match self {
+            ActionRouter::Serve { .. } => Some(AuditScope::Snapshot),
+            ActionRouter::BillingStatus { .. } => Some(AuditScope::Billing),
+            ActionRouter::Watching { .. } => Some(AuditScope::Sync),
+
+            ActionRouter::Accepted
+            | ActionRouter::Unauthorized
+            | ActionRouter::Unavailable
+            | ActionRouter::SignedIn { .. }
+            | ActionRouter::LinkOpened { .. }
+            | ActionRouter::Linked { .. }
+            | ActionRouter::LinkAbandoned
+            | ActionRouter::LinkPending
+            | ActionRouter::TooMany
+            | ActionRouter::Rejected
+            | ActionRouter::PaymentRequired { .. }
+            | ActionRouter::Claimed
+            | ActionRouter::Subscribed
+            | ActionRouter::Subscribing { .. }
+            | ActionRouter::CheckoutOpened { .. }
+            | ActionRouter::Deleted => None,
+        }
+    }
 }

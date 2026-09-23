@@ -276,6 +276,11 @@ fn a_burst_of_refreshes_is_rate_limited() {
         },
 
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
     );
 }
 
@@ -364,11 +369,11 @@ fn a_caller_past_its_budget_is_refused() {
         },
 
         > Action::ToStore {
-            call_id: 61,
+            call_id: 81,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 61,
+            call_id: 81,
             event: EventStore::SessionResolved {
                 user_id: Some(uuid::Uuid::nil()),
             },
@@ -398,11 +403,11 @@ fn the_budget_returns_when_the_window_passes() {
         },
 
         > Action::ToStore {
-            call_id: 61,
+            call_id: 81,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 61,
+            call_id: 81,
             event: EventStore::SessionResolved {
                 user_id: Some(uuid::Uuid::nil()),
             },
@@ -426,37 +431,42 @@ fn the_budget_returns_when_the_window_passes() {
         },
 
         > Action::ToStore {
-            call_id: 62,
+            call_id: 82,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 62,
+            call_id: 82,
             event: EventStore::SessionResolved {
                 user_id: Some(uuid::Uuid::nil()),
             },
         },
 
         > Action::ToStore {
-            call_id: 63,
+            call_id: 83,
             action: ActionStore::LoadItems { .. },
         },
         < Event::FromStore {
-            call_id: 63,
+            call_id: 83,
             event: EventStore::ItemsLoaded { items: vec![] },
         },
 
         > Action::ToStore {
-            call_id: 64,
+            call_id: 84,
             action: ActionStore::LoadSnapshot { .. },
         },
         < Event::FromStore {
-            call_id: 64,
+            call_id: 84,
             event: EventStore::SnapshotLoaded {
                 snapshot: WireSnapshot::default(),
             },
         },
 
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
     );
 }
 

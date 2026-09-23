@@ -512,6 +512,10 @@ impl StateServer {
             return;
         };
 
+        // Known from here on, so whatever this route ends up serving can be
+        // written down against who it was served to.
+        self.signup.identify(request_id, user_id, ip.clone());
+
         let route = event.route();
         let ctx = ServerRateCtx::new(route, Client::new(ip.clone(), Some(user_id)));
 
@@ -2975,6 +2979,7 @@ impl StateServer {
             exchanging: self.signup.exchanging(),
             attaching: self.signup.attaching(),
             producing: self.signup.producing(),
+            callers: self.signup.callers(),
             keys: self.keys.len(),
             request_windows: self.requests.kept(),
             plaid_windows: self.limiter.kept(),

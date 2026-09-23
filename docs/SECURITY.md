@@ -47,8 +47,15 @@ Keys in a KMS rather than an env var is a known step up, tracked in #124.
 **Logging.** Every call crossing the network is logged, both halves, with
 credentials stripped — a `secret` or `access_token` is logged as its length,
 never its value (`docs/LOGGING.md`). Lines carry the commit that produced
-them. What the logs do not yet hold is an audit trail of who read customer
-data; that is #126.
+them.
+
+**Audit log.** Separate from the app logs, an append-only `audit_log` table
+records every answer that serves customer data — whose data, what of it, from
+what address, when — and every backup, which reads all of it. The table
+refuses `UPDATE` and `DELETE` outright, rows survive account deletion, and the
+nightly dump carries the log off the box, which is what makes a quiet rewrite
+visible. Direct database access is not audited; the control there is that
+production reads do not happen, plus MFA on the box (#125).
 
 **Deletion.** A user can delete their account end to end — the ledger, the
 Plaid Items, the Stripe customer — behind a confirmation and an emailed
@@ -93,8 +100,9 @@ accepted.
    selling or sharing, no transactions to third-party LLMs without zero
    retention, no tokens in logs, no data kept after deletion, no scopes
    beyond what is used. One person means no insider to guard against, but
-   also no second pair of eyes — which is why direct database reads get an
-   audit trail in #126.
+   also no second pair of eyes — which is why every served read and every
+   backup lands in the append-only audit log, and why production is not read
+   directly at all.
 
 ## The incident response plan
 

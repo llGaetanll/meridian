@@ -78,6 +78,11 @@ fn a_launch_is_served_the_ledger_without_asking_plaid() {
         },
 
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
     );
 }
 
@@ -204,6 +209,11 @@ fn a_user_with_no_banks_is_just_served() {
         },
 
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
     );
 }
 
@@ -334,6 +344,11 @@ fn asking_twice_over_does_not_refetch_a_fresh_bank() {
 
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
 
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
+
         < Event::FromRouter {
             request_id: 2,
             client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
@@ -343,19 +358,19 @@ fn asking_twice_over_does_not_refetch_a_fresh_bank() {
         },
 
         > Action::ToStore {
-            call_id: 4,
+            call_id: 5,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 4,
+            call_id: 5,
             event: EventStore::SessionResolved {
                 user_id: Some(uuid::Uuid::nil()),
             },
         },
 
-        > Action::ToStore { call_id: 5, action: ActionStore::LoadItems { .. } },
+        > Action::ToStore { call_id: 6, action: ActionStore::LoadItems { .. } },
         < Event::FromStore {
-            call_id: 5,
+            call_id: 6,
             event: EventStore::ItemsLoaded {
                 items: vec![ItemFacts {
                     item_id: "item-1".to_string(),
@@ -368,17 +383,22 @@ fn asking_twice_over_does_not_refetch_a_fresh_bank() {
         },
 
         > Action::ToStore {
-            call_id: 6,
+            call_id: 7,
             action: ActionStore::LoadSnapshot { .. },
         },
         < Event::FromStore {
-            call_id: 6,
+            call_id: 7,
             event: EventStore::SnapshotLoaded {
                 snapshot: WireSnapshot::default(),
             },
         },
 
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
     );
 }
 
@@ -435,6 +455,11 @@ fn a_login_required_bank_is_not_retried_however_stale() {
         },
 
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
     );
 }
 
@@ -589,6 +614,11 @@ fn a_snapshot_is_answered_after_its_last_bank() {
         },
 
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
     );
 }
 
@@ -719,6 +749,11 @@ fn a_failed_write_still_answers_the_route() {
         },
 
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
     );
 }
 
@@ -817,9 +852,19 @@ fn two_routes_asking_at_once_get_their_own_answers() {
             request_id: 7,
         },
 
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
+
         > Action::ToRouter {
             action: ActionRouter::Serve { .. },
             request_id: 9,
+        },
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
         },
     );
 }

@@ -1185,6 +1185,15 @@ impl RuntimeServer {
                 src_postgres::record_attempt(db, email).await?;
             }
 
+            ActionStore::RecordAccess {
+                user_id,
+                scope,
+                client,
+                at,
+            } => {
+                src_postgres::record_access(db, *user_id, *scope, client, *at).await?;
+            }
+
             ActionStore::SaveDeleteCode {
                 user_id,
                 code_sha256,
@@ -1497,7 +1506,8 @@ impl RuntimeServer {
             | ActionStore::LoadSubscriptions
             | ActionStore::LoadUser { .. }
             | ActionStore::LoadAccessTokens { .. }
-            | ActionStore::DeleteUser { .. } => {}
+            | ActionStore::DeleteUser { .. }
+            | ActionStore::RecordAccess { .. } => {}
         }
 
         Ok(())

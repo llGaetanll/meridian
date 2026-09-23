@@ -562,6 +562,11 @@ fn a_stale_delivery_after_a_newer_one_moves_nothing() {
         },
 
         > @r#"ToRouter { request_id: 3, action: BillingStatus { entitled: true, unpaid: None, good_until: Some(1818633600), cancel_at_period_end: false } }"#,
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
     );
 }
 
@@ -994,6 +999,11 @@ fn a_period_ends_because_a_tick_says_so() {
             action: ActionRouter::Serve { .. },
         },
 
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
+
         // A minute later, and nothing else has happened.
         < Event::FromProcess {
             event: EventProcess::Tick {
@@ -1010,11 +1020,11 @@ fn a_period_ends_because_a_tick_says_so() {
         },
 
         > Action::ToStore {
-            call_id: 4,
+            call_id: 5,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 4,
+            call_id: 5,
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 
@@ -1048,6 +1058,11 @@ fn an_unpaid_session_can_still_ask_where_it_stands() {
         },
 
         > @r#"ToRouter { request_id: 1, action: BillingStatus { entitled: false, unpaid: Some(WireUnpaid { reason: "never", ran_out: None }), good_until: None, cancel_at_period_end: false } }"#,
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
     );
 }
 
@@ -1075,6 +1090,11 @@ fn a_paid_session_is_told_what_it_has() {
         },
 
         > @r#"ToRouter { request_id: 1, action: BillingStatus { entitled: true, unpaid: None, good_until: Some(1818633600), cancel_at_period_end: false } }"#,
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
     );
 }
 
@@ -1232,6 +1252,11 @@ fn a_deleted_subscription_closes_the_app_at_once() {
             action: ActionRouter::Serve { .. },
         },
 
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
+
         // The subscription is deleted.
         < Event::FromProcess { event: EventProcess::Tick { now: ended_at } },
 
@@ -1244,7 +1269,7 @@ fn a_deleted_subscription_closes_the_app_at_once() {
         > @r#"ToRouter { request_id: 2, action: Accepted }"#,
 
         > Action::ToStore {
-            call_id: 4,
+            call_id: 5,
             action: ActionStore::ApplySubscriptionEvent { .. },
         },
 
@@ -1258,11 +1283,11 @@ fn a_deleted_subscription_closes_the_app_at_once() {
         },
 
         > Action::ToStore {
-            call_id: 5,
+            call_id: 6,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 5,
+            call_id: 6,
             event: EventStore::SessionResolved { user_id: Some(SUBSCRIBER) },
         },
 
@@ -2180,6 +2205,11 @@ fn a_late_delivery_about_a_replaced_subscription_takes_nothing_away() {
         },
 
         > @r#"ToRouter { request_id: 4, action: BillingStatus { entitled: true, unpaid: None, good_until: Some(1818633600), cancel_at_period_end: false } }"#,
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
     );
 }
 

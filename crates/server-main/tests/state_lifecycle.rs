@@ -391,6 +391,11 @@ fn a_call_that_never_answers_is_given_up_on() {
         },
 
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
     );
 }
 
@@ -611,6 +616,11 @@ fn shutting_down_stops_new_work() {
         },
 
         > Action::ToRouter { action: ActionRouter::Serve { .. }, .. },
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
     );
 
     assert!(state.shutting_down());

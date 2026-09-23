@@ -58,6 +58,10 @@ COMPOSE='COMPOSE_PROFILES=server MERIDIAN_SHA=$(cat .sha) docker compose -f dock
 # box's shell hands them to the container's.
 DUMP='exec -T db sh -c "pg_dump --format=custom -U \"\$POSTGRES_USER\" \"\$POSTGRES_DB\""'
 
+# A dump reads every user's rows, so the audit log gets its line first — and
+# before rather than after, so the record of the backup rides inside it.
+AUDIT='exec -T db sh -c "psql -qc \"INSERT INTO audit_log (at, user_id, scope, client) VALUES (now(), NULL, '\''backup'\'', '\''laptop'\'')\" -U \"\$POSTGRES_USER\" \"\$POSTGRES_DB\""'
+
 case "${1:-dump}" in
     dump)
         mkdir -p "$DIR"
@@ -71,6 +75,7 @@ case "${1:-dump}" in
         trap 'rm -f "$tmp"' EXIT
 
         echo "dumping $MERIDIAN_HOST → $out"
+        ssh "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && $COMPOSE $AUDIT"
         ssh "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && $COMPOSE $DUMP" > "$tmp"
 
         # Three checks before this counts as a backup, because the failure

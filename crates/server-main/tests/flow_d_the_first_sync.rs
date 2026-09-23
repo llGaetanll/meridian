@@ -86,6 +86,11 @@ fn a_first_sync_is_pushed_from_the_fetch_to_the_totals() {
 
         > @r#"ToRouter { request_id: 1, action: Watching { conn_id: 1, status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: false } } }"#,
 
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
+
         // 2. The balances answered, which is the first place the bank's name
         // exists — it is in neither the Link session nor the exchange. Nobody
         // asked for this and it goes out anyway, which is the whole point.
@@ -133,9 +138,9 @@ fn a_first_sync_is_pushed_from_the_fetch_to_the_totals() {
 
         // 6a. One page, and it is the last one, so 7 goes out behind it. The
         // diff goes to the store — the machine holds no ledger to apply it to.
-        > @r#"ToSourcePlaid { call_id: 4, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
+        > @r#"ToSourcePlaid { call_id: 5, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
         < Event::FromSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             event: EventSourcePlaid::TransactionsLoaded {
                 item_id: "item-9".to_string(),
                 added: vec![Entry::from_tx(
@@ -158,9 +163,9 @@ fn a_first_sync_is_pushed_from_the_fetch_to_the_totals() {
 
         // 8a and 10. The last answer, and the totals reach the screen that
         // says "You're set." on the same turn.
-        > @r#"ToSourcePlaid { call_id: 6, action: FetchRecurring { item_id: "item-9" } }"#,
+        > @r#"ToSourcePlaid { call_id: 7, action: FetchRecurring { item_id: "item-9" } }"#,
         < Event::FromSourcePlaid {
-            call_id: 6,
+            call_id: 7,
             event: EventSourcePlaid::RecurringLoaded {
                 item_id: "item-9".to_string(),
                 streams: vec![],
@@ -222,6 +227,11 @@ fn a_history_that_pages_is_asked_for_one_page_at_a_time() {
 
         > Action::ToRouter { action: ActionRouter::Watching { .. }, .. },
 
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
+
         < Event::FromSourcePlaid {
             call_id: 1,
             event: EventSourcePlaid::BalancesLoaded {
@@ -242,9 +252,9 @@ fn a_history_that_pages_is_asked_for_one_page_at_a_time() {
 
         // More behind it, so the page is written down and the next one asked
         // for from where this one stopped.
-        > @r#"ToSourcePlaid { call_id: 4, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
+        > @r#"ToSourcePlaid { call_id: 5, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
         < Event::FromSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             event: EventSourcePlaid::TransactionsLoaded {
                 item_id: "item-9".to_string(),
                 added: vec![Entry::from_tx(
@@ -267,9 +277,9 @@ fn a_history_that_pages_is_asked_for_one_page_at_a_time() {
 
         // The last one. What the screen is told is both pages and not the
         // second, which is the count nobody else is holding.
-        > @r#"ToSourcePlaid { call_id: 6, action: SyncTransactions { item_id: "item-9", cursor: Some("cursor-2") } }"#,
+        > @r#"ToSourcePlaid { call_id: 7, action: SyncTransactions { item_id: "item-9", cursor: Some("cursor-2") } }"#,
         < Event::FromSourcePlaid {
-            call_id: 6,
+            call_id: 7,
             event: EventSourcePlaid::TransactionsLoaded {
                 item_id: "item-9".to_string(),
                 added: vec![Entry::from_tx(
@@ -290,7 +300,7 @@ fn a_history_that_pages_is_asked_for_one_page_at_a_time() {
 
         > Action::ToStore { action: ActionStore::SaveTransactions { .. }, .. },
 
-        > @r#"ToSourcePlaid { call_id: 8, action: FetchRecurring { item_id: "item-9" } }"#,
+        > @r#"ToSourcePlaid { call_id: 9, action: FetchRecurring { item_id: "item-9" } }"#,
     );
 }
 
@@ -344,6 +354,11 @@ fn a_failed_recurring_call_leaves_the_sync_finished() {
 
         > Action::ToRouter { action: ActionRouter::Watching { .. }, .. },
 
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
+
         < Event::FromSourcePlaid {
             call_id: 1,
             event: EventSourcePlaid::BalancesLoaded {
@@ -363,11 +378,11 @@ fn a_failed_recurring_call_leaves_the_sync_finished() {
         > Action::ToStore { action: ActionStore::SaveAccounts { .. }, .. },
 
         > Action::ToSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             action: ActionSourcePlaid::SyncTransactions { .. },
         },
         < Event::FromSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             event: EventSourcePlaid::TransactionsLoaded {
                 item_id: "item-9".to_string(),
                 added: vec![Entry::from_tx(
@@ -391,11 +406,11 @@ fn a_failed_recurring_call_leaves_the_sync_finished() {
         // Finished, with the transactions it did get. Nothing is written down
         // about it: there is no list of charges to write and nothing to fix.
         > Action::ToSourcePlaid {
-            call_id: 6,
+            call_id: 7,
             action: ActionSourcePlaid::FetchRecurring { .. },
         },
         < Event::FromSourcePlaid {
-            call_id: 6,
+            call_id: 7,
             event: EventSourcePlaid::PlaidFailed {
                 item_id: "item-9".to_string(),
                 stage: server_wire::SyncStage::Streams,
@@ -457,6 +472,11 @@ fn a_transactions_call_that_is_not_ready_is_asked_again() {
 
         > Action::ToRouter { action: ActionRouter::Watching { .. }, .. },
 
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
+
         < Event::FromSourcePlaid {
             call_id: 1,
             event: EventSourcePlaid::BalancesLoaded {
@@ -476,14 +496,14 @@ fn a_transactions_call_that_is_not_ready_is_asked_again() {
         > Action::ToStore { action: ActionStore::SaveAccounts { .. }, .. },
 
         > Action::ToSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             action: ActionSourcePlaid::SyncTransactions { .. },
         },
 
         // Not ready is not failure: the sync keeps running and the watcher
         // hears nothing, because nothing it is told about has changed.
         < Event::FromSourcePlaid {
-            call_id: 4,
+            call_id: 5,
             event: EventSourcePlaid::PlaidFailed {
                 item_id: "item-9".to_string(),
                 stage: server_wire::SyncStage::Transactions,
@@ -504,9 +524,9 @@ fn a_transactions_call_that_is_not_ready_is_asked_again() {
             },
         },
 
-        > @r#"ToSourcePlaid { call_id: 5, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
+        > @r#"ToSourcePlaid { call_id: 6, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
         < Event::FromSourcePlaid {
-            call_id: 5,
+            call_id: 6,
             event: EventSourcePlaid::PlaidFailed {
                 item_id: "item-9".to_string(),
                 stage: server_wire::SyncStage::Transactions,
@@ -528,9 +548,9 @@ fn a_transactions_call_that_is_not_ready_is_asked_again() {
             },
         },
 
-        > @r#"ToSourcePlaid { call_id: 6, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
+        > @r#"ToSourcePlaid { call_id: 7, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
         < Event::FromSourcePlaid {
-            call_id: 6,
+            call_id: 7,
             event: EventSourcePlaid::PlaidFailed {
                 item_id: "item-9".to_string(),
                 stage: server_wire::SyncStage::Transactions,
@@ -544,9 +564,9 @@ fn a_transactions_call_that_is_not_ready_is_asked_again() {
             },
         },
 
-        > @r#"ToSourcePlaid { call_id: 7, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
+        > @r#"ToSourcePlaid { call_id: 8, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
         < Event::FromSourcePlaid {
-            call_id: 7,
+            call_id: 8,
             event: EventSourcePlaid::PlaidFailed {
                 item_id: "item-9".to_string(),
                 stage: server_wire::SyncStage::Transactions,
@@ -560,12 +580,12 @@ fn a_transactions_call_that_is_not_ready_is_asked_again() {
             },
         },
 
-        > @r#"ToSourcePlaid { call_id: 8, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
+        > @r#"ToSourcePlaid { call_id: 9, action: SyncTransactions { item_id: "item-9", cursor: None } }"#,
 
         // The fourth retry was the last. This failure is a failure, and the
         // watcher is told the sync is over the way any dead fetch says it.
         < Event::FromSourcePlaid {
-            call_id: 8,
+            call_id: 9,
             event: EventSourcePlaid::PlaidFailed {
                 item_id: "item-9".to_string(),
                 stage: server_wire::SyncStage::Transactions,
@@ -604,6 +624,11 @@ fn a_user_with_nothing_syncing_is_told_so_and_kept() {
         },
 
         > @r#"ToRouter { request_id: 1, action: Watching { conn_id: 1, status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
 
         // Still connected, so the sync that starts afterwards reaches them
         // without their asking again.
@@ -660,6 +685,11 @@ fn a_sync_reaches_only_the_user_whose_bank_it_is() {
         },
 
         > @r#"ToRouter { request_id: 1, action: Watching { conn_id: 1, status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: true } } }"#,
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
 
         // Al's bank, Al's sync. Mia is watching and hears none of it.
         < Event::FromStore {
@@ -748,6 +778,11 @@ fn a_failed_sync_stops_being_something_to_watch() {
 
         > @r#"ToRouter { request_id: 1, action: Watching { conn_id: 1, status: WireSyncStatus { stage: "accounts", institution: None, accounts: 0, transactions: 0, streams: 0, finished: false } } }"#,
 
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
+
         < Event::FromSourcePlaid {
             call_id: 1,
             event: EventSourcePlaid::PlaidFailed {
@@ -791,6 +826,11 @@ fn a_closed_stream_stops_being_written_to() {
 
         > Action::ToRouter { action: ActionRouter::Watching { .. }, .. },
 
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
+            ..
+        },
+
         < Event::FromSocket { event: EventSocket::Closed { conn_id: 1 } },
 
         < Event::FromStore {
@@ -823,8 +863,9 @@ fn an_eleventh_stream_is_refused() {
     // The ten it is allowed, opened the ordinary way. Not the claim, so they
     // are reached rather than written out.
     for conn_id in 1..=WATCHERS_AT_MOST as u64 {
-        // One call each, for the session read every authenticated route makes.
-        let call_id = conn_id;
+        // Two calls each: the session read, and the audit row the
+        // opened watch writes.
+        let call_id = 2 * conn_id - 1;
 
         state.handle_events(
             &[
@@ -859,11 +900,11 @@ fn an_eleventh_stream_is_refused() {
         },
 
         > Action::ToStore {
-            call_id: 11,
+            call_id: 21,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 11,
+            call_id: 21,
             event: EventStore::SessionResolved { user_id: Some(AL) },
         },
 
@@ -883,16 +924,21 @@ fn an_eleventh_stream_is_refused() {
         },
 
         > Action::ToStore {
-            call_id: 12,
+            call_id: 22,
             action: ActionStore::LoadSession { .. },
         },
         < Event::FromStore {
-            call_id: 12,
+            call_id: 22,
             event: EventStore::SessionResolved { user_id: Some(AL) },
         },
 
         > Action::ToRouter {
             action: ActionRouter::Watching { conn_id: 12, .. },
+            ..
+        },
+
+        > Action::ToStore {
+            action: ActionStore::RecordAccess { .. },
             ..
         },
     );
