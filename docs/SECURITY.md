@@ -36,8 +36,17 @@ date hold it in plain text until they age out, by 2026-10-19.
 is no admin panel, no support tooling, and no read of production data to
 debug — a rule from #16, not an accident. Linking a bank requires a paid
 subscription and the Items held are capped (#77), so exposure grows only
-with paying customers. MFA on every console that can reach the data — DigitalOcean,
-Plaid, Stripe, GitHub, Apple, email — is being verified door by door in #125.
+with paying customers.
+
+**MFA.** Every door was walked 2026-09-23 (#125). ssh to the droplet is
+key-only — password and keyboard-interactive authentication off, root login
+off — and Postgres listens on loopback only, so neither has a password to
+put a second factor behind. Plaid, Stripe, GitHub, and Apple each have 2FA
+on. DigitalOcean is entered through Google sign-in, so its second factor is
+the Google account's, which has 2FA on — that account is a door of the same
+rank as the console it opens. Bitwarden, which holds every escrowed key, is
+guarded by its master password alone; considered and accepted 2026-09-23,
+revisited at the Plaid application.
 
 **Secrets.** The box's secrets live in `/srv/meridian/.env`, readable only on
 the box. The sealing key `MERIDIAN_DB_KEY`, the age backup key, the Plaid
