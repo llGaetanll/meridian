@@ -538,14 +538,13 @@ fn an_exchange_that_fails_settles_the_session_too() {
     );
 }
 
-/// C2 8c. Plaid never said. Not a failure — the bank may still be landing — so
-/// the answer is neither of the other two, and the screen it sends somebody to
-/// is the one that polls and will see a late bank arrive.
+/// Plaid never said, and no exchange went out for either session, so silence
+/// is an abandon: the sheets were closed.
 ///
 /// One route, two sessions, still one answer: the route can only send one
 /// response, so a second session timing out must not produce a second.
 #[test]
-fn a_session_nobody_reports_on_is_answered_pending_exactly_once() {
+fn two_closed_sessions_are_abandoned_with_one_answer() {
     let mut state = state_subscribed_by_webhook();
 
     eval!(&mut state,
@@ -596,7 +595,206 @@ fn a_session_nobody_reports_on_is_answered_pending_exactly_once() {
             },
         },
 
-        > @r#"ToRouter { request_id: 1, action: LinkPending }"#,
+        > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
+    );
+}
+
+/// The contract that replaces 8c's `pending`, not yet built. Ten seconds is
+/// the server's whole patience: a webhook that beat the close is 8a, one
+/// arriving inside the park is the ordinary race — and silence past ten
+/// seconds means nobody is coming. Plaid's page cannot say "exited" for a
+/// sheet that was torn down around it, so silence is what an abandoned
+/// session sounds like, and the phone is told so outright rather than sent
+/// to the sync screen to wait for a bank that is not coming.
+///
+/// This is only for sessions the server knows nothing about. A session whose
+/// webhook already arrived and whose write failed is a bank live at Plaid,
+/// and stays `pending` — that is `a_bank_the_store_would_not_write_is_not_taken_from_plaid`.
+#[test]
+fn a_session_nobody_reports_on_in_ten_seconds_is_abandoned() {
+    let mut state = state_subscribed_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
+            },
+        },
+
+        // Ten seconds of nobody saying anything, about a session nothing has
+        // been heard about at all. That is the whole finding.
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(
+                    T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS,
+                ),
+            },
+        },
+
+        > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
+    );
+}
+
+/// The other half of the same contract: answering `abandoned` gives up on the
+/// route, never on the session. A webhook late enough to miss the park — a
+/// retry after an outage, or Plaid slower than it has ever been — still lands
+/// the bank, because the exchange rides the webhook and owes the closed route
+/// nothing. The user was told "that didn't finish" and the bank appears on
+/// the next snapshot anyway, which is the honest order: nobody lied, the
+/// answer was just in before the news.
+#[test]
+fn a_webhook_later_than_the_answer_still_lands_the_bank() {
+    let mut state = state_subscribed_by_webhook();
+
+    eval!(&mut state,
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::LinkClosed {
+                token_sha256: hash_token("session-1"),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadSession { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadPendingLinks { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::PendingLinksLoaded {
+                links: vec![
+                    PendingLinkFacts {
+                        link_token: "link-1".to_string(),
+                        repair_of: None,
+                    },
+                ],
+            },
+        },
+
+        // The park expires and the phone is answered.
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(
+                    T0.as_secs() + LINK_ANSWER_GOOD_FOR_SECS,
+                ),
+            },
+        },
+
+        > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
+
+        // A minute later Plaid gets through after all.
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::WebhookReceived {
+                jwt: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}",
+                    T0.as_secs() + 60,
+                )
+                .0,
+                body: signed(
+                    "{\"webhook_type\":\"LINK\",\"webhook_code\":\"SESSION_FINISHED\",\"link_token\":\"link-1\",\"public_tokens\":[\"public-1\"]}",
+                    T0.as_secs() + 60,
+                )
+                .1,
+            },
+        },
+
+        > Action::ToSourcePlaid {
+            call_id: 3,
+            action: ActionSourcePlaid::FetchWebhookKey { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 3,
+            event: EventSourcePlaid::WebhookKeyLoaded {
+                kid: "kid-1".to_string(),
+                key: Some(webhook_jwk()),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::LoadLinkRepair { .. },
+        },
+        < Event::FromStore {
+            call_id: 4,
+            event: EventStore::LinkRepairLoaded { repair_of: None },
+        },
+
+        // The exchange rides the webhook, exactly as if the route had never
+        // asked.
+        > Action::ToSourcePlaid {
+            call_id: 5,
+            action: ActionSourcePlaid::ExchangePublicToken { .. },
+        },
+        < Event::FromSourcePlaid {
+            call_id: 5,
+            event: EventSourcePlaid::ItemLinked {
+                link_token: "link-1".to_string(),
+                item_id: "item-9".to_string(),
+            },
+        },
+
+        > Action::ToStore { call_id: 6, action: ActionStore::SaveItem { .. } },
+        < Event::FromStore {
+            call_id: 6,
+            event: EventStore::ItemSaved {
+                item: Some(ItemFacts {
+                    item_id: "item-9".to_string(),
+                    user_id: uuid::Uuid::nil(),
+                    cursor: None,
+                    synced_at: None,
+                    login_required: false,
+                }),
+            },
+        },
+
+        // The first sync starts on the write, and Plaid is told "taken".
+        > Action::ToSourcePlaid {
+            call_id: 7,
+            action: ActionSourcePlaid::FetchBalances { .. },
+        },
+        > @r#"ToRouter { request_id: 2, action: Accepted }"#,
     );
 }
 
@@ -701,7 +899,7 @@ fn an_outcome_nobody_comes_back_for_expires() {
             },
         },
 
-        > Action::ToRouter { action: ActionRouter::LinkPending, .. },
+        > Action::ToRouter { action: ActionRouter::LinkAbandoned, .. },
     );
 }
 

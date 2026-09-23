@@ -49,6 +49,12 @@ pub struct CensusServer {
     /// that gives up on one that never does.
     pub attaching: usize,
 
+    /// Link sessions an exchange went out for, so a timeout on one is
+    /// `pending` and not `abandoned`. Emptied when the bank is written down or
+    /// the exchange is refused; a bank a store would not write five times
+    /// stays, being live at Plaid and owned nowhere.
+    pub producing: usize,
+
     /// Webhook signing keys remembered, misses included. A key is kept for
     /// the life of the process — Plaid gives a rotated one a new id — so this
     /// one only has to stay under

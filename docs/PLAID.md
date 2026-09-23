@@ -277,17 +277,30 @@ successful connection and must listen for `SESSION_FINISHED` or call
 - Otherwise the route parks on the caller's open sessions, matched by
   `link_token`. `SESSION_FINISHED` carries one and `link_sessions` already
   stores it, so this needs nothing new in the schema.
-- After ten seconds it answers **pending**. Not failure: the bank may still be
-  landing, and the screen that follows watches `/sync/status` and will see it.
+- After ten seconds the wait is over, and what it answers turns on whether an
+  exchange went out for that session. If one did — a bank is live at Plaid and
+  only the write is late — it answers **pending**, and the screen that follows
+  watches `/sync/status` and will see the bank land. If none did, the session
+  is one Plaid never produced a token for, and ten seconds of silence is an
+  **abandon**: a sheet swiped away or a tab closed destroys Plaid's page
+  before it can say `EXITED`, so silence is the only word an abandoned OAuth
+  hand-off has. Answering `pending` there would send somebody to a sync screen
+  to wait for a bank that is not coming — which is the bug that had First-run
+  stuck on "Reading your history" forever.
 
 A session is collected — `collected_at` — by whatever *reports* it, and not a
 moment earlier. A collected session is one `/link/finish` can no longer see,
 so collecting it when the webhook lands would throw away the record the route
 is about to match against.
 
-The three answers are `linked`, `abandoned` and `pending`. `abandoned` is now
-something Plaid *said* — `SESSION_FINISHED` carries `status: SUCCESS | EXITED`
-— where it used to be inferred from a poll that came back empty.
+The three answers are `linked`, `abandoned` and `pending`. `abandoned` is
+either something Plaid *said* — `SESSION_FINISHED` carries `status: SUCCESS |
+EXITED` — or ten seconds of silence about a session no exchange went out for.
+`pending` is the narrow remaining case: an exchange did go out and its write
+has not landed, so the bank exists and the phone waits. A late webhook lands
+that bank whether or not the route is still open, because the exchange rides
+the webhook and owes the closed route nothing — so `abandoned` is never a
+bank quietly lost, only an answer that arrived before the news.
 
 ### Believing one
 

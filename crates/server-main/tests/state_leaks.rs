@@ -508,7 +508,7 @@ fn a_route_parked_on_a_session_nobody_reports_on_is_let_go_of_whole() {
             },
         },
 
-        > @r#"ToRouter { request_id: 1, action: LinkPending }"#,
+        > @r#"ToRouter { request_id: 1, action: LinkAbandoned }"#,
 
         // And a minute in which the window it was metered in goes idle.
         < Event::FromProcess {

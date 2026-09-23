@@ -2974,6 +2974,7 @@ impl StateServer {
             sessions: self.signup.sessions(),
             exchanging: self.signup.exchanging(),
             attaching: self.signup.attaching(),
+            producing: self.signup.producing(),
             keys: self.keys.len(),
             request_windows: self.requests.kept(),
             plaid_windows: self.limiter.kept(),

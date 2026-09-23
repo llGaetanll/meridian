@@ -21,6 +21,7 @@
 //! numbers.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 use api_common::Timestamp;
 use api_common::ratelimit::RateLimiter;
@@ -178,6 +179,20 @@ pub struct StateSignup {
     /// caused it is not always the one waiting on it: a webhook attaches a
     /// bank that `/link/finish` is the one to hear about.
     attaching: BTreeMap<CallId, Attaching>,
+
+    /// The Link sessions an exchange was sent for, by `link_token`. A bank is
+    /// live at Plaid for each, so a `/link/finish` that waits out its ten
+    /// seconds on one of these is answered `pending` — the write may still
+    /// land, and the sync screen it goes to is watching for it — rather than
+    /// `abandoned`, which is a sentence about a bank that does not exist. A
+    /// session Plaid never produced a token for is not in here, and its
+    /// timeout is the ordinary abandon: the sheet was closed.
+    ///
+    /// Dropped when the bank is written down, or when Plaid refuses the
+    /// exchange. One that a store refuses five times stays: a bank live at
+    /// Plaid and written nowhere is exactly the thing a timeout must not call
+    /// abandoned.
+    producing: BTreeSet<String>,
 }
 
 impl StateSignup {
@@ -937,6 +952,10 @@ impl StateSignup {
             return;
         };
 
+        // The bank is written down, so the session's timeout is settled by its
+        // outcome rather than left to guess.
+        self.producing.remove(&attaching.link_token);
+
         // Plaid's POST is owed nothing beyond "taken": the outcome goes to
         // whichever `/link/finish` asks for it, now or in a moment.
         if self.collects_by_webhook() {
@@ -1053,6 +1072,10 @@ impl StateSignup {
             return;
         }
 
+        // The exchange was refused, so no bank exists: a timeout on this
+        // session is the ordinary abandon again.
+        self.producing.remove(link_token);
+
         // An exchange that failed, on a session Plaid told us about: nothing
         // came of it, and somebody is waiting to hear that.
         if self.collects_by_webhook() {
@@ -1150,6 +1173,10 @@ impl StateSignup {
                 break;
             }
 
+            // A slot is being spent, so a timeout on this session is `pending`
+            // and not `abandoned` from here on.
+            self.producing.insert(link_token.to_string());
+
             actions.push(Action::ToSourcePlaid {
                 call_id: self.exchanges(request_id, now),
                 action: ActionSourcePlaid::ExchangePublicToken {
@@ -1184,41 +1211,47 @@ impl StateSignup {
     /// Let go of the routes waiting on a Link session Plaid has not reported,
     /// and drop the outcomes nobody ever came back for.
     ///
-    /// `Pending` rather than "nothing came of it", because neither is known
-    /// yet: the screen that follows it polls `/sync/status`, so a bank landing
-    /// a moment later still shows up.
+    /// Ten seconds is the server's whole patience. Silence past it means one
+    /// of two things, and which decides the answer. A session an exchange went
+    /// out for is a bank live at Plaid whose write may still land, so it is
+    /// `pending` and the phone goes to the sync screen watching for it. A
+    /// session Plaid never produced a token for is a sheet that was closed:
+    /// Plaid's page cannot say "exited" for a sheet torn down around it, so
+    /// silence is what an abandon sounds like, and the phone is told so rather
+    /// than sent to wait for a bank that is not coming.
     pub fn link_timed_out(&mut self, now: Timestamp, actions: &mut Vec<Action>) {
         self.sessions.retain(|_, session| match session {
             LinkSession::Settled { at, .. } => now.since(*at).as_secs() < OUTCOME_GOOD_FOR_SECS,
             LinkSession::Watched { .. } => true,
         });
 
-        let mut waited_out: Vec<RequestId> = self
-            .sessions
-            .values()
-            .filter_map(|session| match session {
-                LinkSession::Watched { request_id, since }
-                    if now.since(*since).as_secs() >= LINK_ANSWER_GOOD_FOR_SECS =>
-                {
-                    Some(*request_id)
-                }
-                _ => None,
-            })
-            .collect();
+        // A route parked on two sessions times out once and is owed one
+        // answer — `pending` if either produced a bank, since one landing is
+        // what it is waiting for.
+        let mut waited_out: BTreeMap<RequestId, bool> = BTreeMap::new();
 
-        // One route parked on two sessions times out twice, owed one answer.
-        waited_out.sort_unstable();
-        waited_out.dedup();
+        for (link_token, session) in &self.sessions {
+            if let LinkSession::Watched { request_id, since } = session
+                && now.since(*since).as_secs() >= LINK_ANSWER_GOOD_FOR_SECS
+            {
+                *waited_out.entry(*request_id).or_default() |= self.producing.contains(link_token);
+            }
+        }
 
-        for request_id in waited_out {
+        for (request_id, producing) in waited_out {
             self.unwatch(request_id);
 
-            tracing::info!(
-                request_id,
-                "plaid has not said what a link session came to yet",
-            );
+            let answer = if producing {
+                tracing::info!(request_id, "a linked bank has not been written down yet");
 
-            self.answer(request_id, ActionRouter::LinkPending, now, actions);
+                ActionRouter::LinkPending
+            } else {
+                tracing::info!(request_id, "plaid never said a link session finished");
+
+                ActionRouter::LinkAbandoned
+            };
+
+            self.answer(request_id, answer, now, actions);
         }
     }
 
@@ -1636,6 +1669,11 @@ impl StateSignup {
     /// How many banks are waiting on the write that attaches them.
     pub fn attaching(&self) -> usize {
         self.attaching.len()
+    }
+
+    /// How many Link sessions an exchange went out for and has not resolved.
+    pub fn producing(&self) -> usize {
+        self.producing.len()
     }
 }
 

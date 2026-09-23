@@ -160,11 +160,11 @@ app switch and a request to get through, and Plaid has none of that.
    c. `503 Service Unavailable`: *The machine could not take it, so Plaid sends it again in a minute. That is what we want.*
 8. `phone` <- `server` - one of:
    a. `200 {"outcome":"linked","count":n}`: *The webhook landed first, or landed while this request waited.*
-   b. `200 {"outcome":"abandoned"}`: *Plaid said the session produced nothing. The first time this is something Plaid said rather than something inferred from a poll that came back empty.*
-   c. `200 {"outcome":"pending"}`: *Ten seconds passed and Plaid still has not said. Not "no bank": the phone goes to the sync screen and opens its stream, and a late bank arrives on it. It gives up after twenty.*
+   b. `200 {"outcome":"abandoned"}`: *Plaid said the session produced nothing, or ten seconds passed with no exchange ever sent for it — an OAuth sheet closed mid-hand-off leaves Plaid's page no chance to say `EXITED`, so silence is the abandon. The phone goes to the "that didn't finish" screen.*
+   c. `200 {"outcome":"pending"}`: *An exchange went out and its write has not landed, so a bank is live at Plaid and only late here. The phone goes to the sync screen and opens its stream, and the bank arrives on it when the write does.*
    d. `401 Unauthorized`: *No bearer token, or one the server no longer honours.*
    e. `429 Too Many Requests`: *Too many closes from this caller.*
-   f. `500 Internal Server Error`: *This user's open sessions could not be read. Not `abandoned` and not `pending`: both of those are things Plaid said, and this is Postgres. A session Plaid reported and we could not write answers `pending` rather than this, because the webhook it asked Plaid to re-send may yet be the turn that writes it.*
+   f. `500 Internal Server Error`: *This user's open sessions could not be read. Not `abandoned`: that is a sentence about somebody's bank, and this is Postgres.*
 
 ## D. The first sync, and watching it
 
@@ -265,7 +265,7 @@ disabled (issue #58).
 5. The collection, by whichever channel `PLAID_COLLECT` names:
    a. polling: *`/link/finish` polls as C1 does. A finished repair session clears the item's `error_code` and is collected; whether they signed in or closed the sheet is not in the session record, so the error is cleared on finish either way — cleared wrongly, the next sync is refused again and writes it back.*
    b. webhook: *`SESSION_FINISHED` arrives as C2's 2, and its `status` is the answer: `SUCCESS` clears the `error_code`, `EXITED` clears nothing. Plaid also sends `ITEM: LOGIN_REPAIRED`, which clears the same column — either arriving first is fine, because both writes say the same thing.*
-6. `phone` <- `server` - on `/link/finish`, as C's step 6: *`linked` is a repair that happened, `abandoned` a sheet closed without one, `pending` an answer not in yet.*
+6. `phone` <- `server` - on `/link/finish`, as C's step 6: *`linked` is a repair that happened, `abandoned` a sheet closed without one. A repair sends no exchange, so it never answers `pending`: ten seconds of silence is an abandon.*
 
 A cleared `error_code` is the whole cure: `should_fetch` stops refusing the
 bank, and the next snapshot whose freshness window has expired syncs it. No
