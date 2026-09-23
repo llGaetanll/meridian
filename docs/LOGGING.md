@@ -186,6 +186,15 @@ Native builds write `logs/meridian.log`, flushed line by line. The browser has
 no file to append to, so the web build keeps the last 4096 lines in memory;
 `wasmBindings.meridian_logs()` in the devtools console saves them.
 
+**A released web build writes nothing to the browser console.** That console is
+on a machine we do not own, and a line there is somebody's ledger and their
+email address sitting in the devtools of a tab anyone can open. The guard is
+`console` in `api_trace`: the console sink is installed for every build except
+wasm without `debug_assertions`, which is `trunk build --release` and nothing
+else — `trunk serve` is a debug build and still prints. The buffer is not
+touched, so `meridian_logs()` still hands back the last 4096 lines in
+production, and that is the only way logs leave a browser.
+
 Only the terminal gets colour, and only when stdout is a terminal that has not
 set `NO_COLOR`. The file and the buffer are read back as text long afterwards,
 and escape codes in them are noise.

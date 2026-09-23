@@ -104,7 +104,11 @@ impl Default for Config {
 /// would be ignored anyway, and losing the app to a logging mistake is not a
 /// trade worth making.
 pub fn init(config: Config) {
-    let mut sinks: Vec<Box<dyn Sink>> = vec![Box::new(Console::new())];
+    let mut sinks: Vec<Box<dyn Sink>> = Vec::new();
+
+    if console() {
+        sinks.push(Box::new(Console::new()));
+    }
 
     if config.buffer > 0 {
         let buffer = BUFFER
@@ -155,6 +159,16 @@ pub fn init(config: Config) {
     }
 
     panic_hook();
+}
+
+/// Whether lines are written to the console at all.
+///
+/// Every build gets one except a released web build, whose console belongs to
+/// a machine we do not own and whose lines carry somebody's ledger and their
+/// email address. The buffer is unaffected, so [`download`] still has
+/// everything.
+const fn console() -> bool {
+    !cfg!(target_arch = "wasm32") || cfg!(debug_assertions)
 }
 
 /// Panics go through the log too, so the last line before a crash is in the
