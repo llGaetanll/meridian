@@ -85,6 +85,16 @@ fn at_the_bank_screen() -> StateApp {
                     json: "{}".to_string(),
                 },
             },
+            // The name stands between the snapshot and the bank now, so
+            // getting to the bank screen means answering it.
+            Event::FromUi {
+                event: EventUi::NameTyped {
+                    text: "Al".to_string(),
+                },
+            },
+            Event::FromUi {
+                event: EventUi::NameSubmitted,
+            },
         ],
         &mut Vec::new(),
     );
@@ -367,9 +377,10 @@ fn a_verified_code_waits_for_the_snapshot_before_drawing_either_screen() {
         > @r#"ToSource { action: LoadSnapshot }"#,
         > @r#"ToUi { action: Render { screen: Onboarding { view: Waiting { step: "Step 1 of 4 · Account", title: "Signing you in", body: [ViewRun { text: "One moment while we look up your account.", strong: false }], action: "Signing in…" } }, dock: None, who: None } }"#,
 
-        // No banks on it, so the road is the one that gets walked.
+        // No banks on it, so the road is the one that gets walked, and its
+        // first screen past the payment is the name.
         < Event::FromSource { event: EventSource::SnapshotLoaded { json: "{}".to_string() } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Bank { .. } }, .. } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Name { .. } }, .. } },
     );
 }
 
@@ -567,6 +578,42 @@ fn banks_landing_mid_sign_in_do_not_move_the_screen() {
         },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
             view: ViewOnboarding::Bank { opening: Some(_), .. } }, .. } },
+    );
+}
+
+/// The name screen, whole: what it says, and the button that is not there
+/// until there is something to send.
+///
+/// Absent rather than dim, which is the code screen's rule: a dim button still
+/// invites a press, and there is nothing wrong with an empty field — there is
+/// simply nothing in it.
+#[test]
+fn the_name_screen_offers_nothing_to_press_until_a_name_is_typed() {
+    let mut state = at_the_code_screen();
+
+    eval!(&mut state,
+        < Event::FromUi { event: EventUi::CodeTyped { digits: "407193".to_string() } },
+        < Event::FromSource { event: EventSource::CodeAccepted },
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: "{}".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > Action::ToSource { action: ActionSource::LoadSnapshot },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Name { step: "Step 2 of 4 · Your name", title: "What should we call you?", body: [ViewRun { text: "This name is used to personalize the app, think of it as your account name. You can change it later.", strong: false }], field: ViewField { icon: "user", value: "", placeholder: "Your name", fault: None }, action: None } }, dock: None, who: None } }"#,
+
+        // Spaces are not a name, so the button stays away.
+        < Event::FromUi { event: EventUi::NameTyped { text: "  ".to_string() } },
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Name { step: "Step 2 of 4 · Your name", title: "What should we call you?", body: [ViewRun { text: "This name is used to personalize the app, think of it as your account name. You can change it later.", strong: false }], field: ViewField { icon: "user", value: "  ", placeholder: "Your name", fault: None }, action: None } }, dock: None, who: None } }"#,
+
+        < Event::FromUi { event: EventUi::NameTyped { text: "Gaetan".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
+            view: ViewOnboarding::Name { action: Some(_), .. } }, .. } },
+
+        // The flow moves on the tap and the write follows it, rather than the
+        // screen waiting on a server that has nothing to answer.
+        < Event::FromUi { event: EventUi::NameSubmitted },
+        > @r#"ToSource { action: SetName { name: "Gaetan" } }"#,
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
+            view: ViewOnboarding::Bank { .. } }, .. } },
     );
 }
 

@@ -24,6 +24,7 @@ use crate::StateDelete;
 use crate::ViewAccount;
 use crate::ViewAccountBank;
 use crate::ViewAccountDelete;
+use crate::ViewAccountName;
 use crate::ViewAccountRow;
 use crate::ViewBalances;
 use crate::ViewBreakdownSlice;
@@ -37,6 +38,7 @@ use crate::ViewDayRow;
 use crate::ViewDaySection;
 use crate::ViewDock;
 use crate::ViewDockItem;
+use crate::ViewField;
 use crate::ViewFilter;
 use crate::ViewLedger;
 use crate::ViewMonthSection;
@@ -127,17 +129,9 @@ pub fn dock(current: Screen) -> ViewDock {
 pub fn who(user: Option<&User>) -> Option<ViewWho> {
     let user = user?;
 
-    // The name leads when there is one and the address goes under it;
-    // otherwise the address leads and there is no second line, because a chip
-    // that prints the same string twice reads as a bug.
-    let (title, subtitle) = match user.name.as_deref() {
-        Some(name) => (name.to_string(), Some(user.email.clone())),
-        None => (user.email.clone(), None),
-    };
-
     Some(ViewWho {
-        title,
-        subtitle,
+        title: user.name.clone(),
+        subtitle: user.email.clone(),
         settings_label: "Settings".to_string(),
         sign_out_label: "Sign out".to_string(),
         delete_label: "Delete my account".to_string(),
@@ -676,6 +670,7 @@ fn account(state: &StateApp) -> ViewAccount {
         .collect();
 
     ViewAccount {
+        name: account_name(state),
         banks_label: "Banks".to_string(),
         banks_empty: banks.is_empty().then(|| no_banks_message(state)),
         banks,
@@ -685,6 +680,37 @@ fn account(state: &StateApp) -> ViewAccount {
         delete: state.deleting().map(delete_confirmation),
         build: format!("Meridian {}", env!("CARGO_PKG_VERSION")),
     }
+}
+
+/// The name, and what it takes to change it.
+///
+/// The field draws the draft if there is one and the kept name if there is
+/// not, so arriving on this screen shows what the app calls you rather than an
+/// empty box you have to guess the contents of.
+fn account_name(state: &StateApp) -> Option<ViewAccountName> {
+    let kept = state.user()?.name.as_str();
+    let value = state.renaming().unwrap_or(kept);
+
+    Some(ViewAccountName {
+        label: "Your name".to_string(),
+
+        field: ViewField {
+            icon: "user".to_string(),
+            value: value.to_string(),
+            placeholder: "Your name".to_string(),
+
+            // A name is whatever somebody says it is. The only two values
+            // this refuses are none at all and the one already saved, and
+            // neither is a thing gone wrong — they are just nothing to do.
+            fault: None,
+        },
+
+        action: {
+            let typed = value.trim();
+
+            (!typed.is_empty() && typed != kept).then(|| "Save".to_string())
+        },
+    })
 }
 
 /// The delete confirmation, worded for the step it is on.

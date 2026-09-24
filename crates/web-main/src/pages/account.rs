@@ -1,15 +1,17 @@
-//! Which banks are attached, and the way out.
+//! Who you are, which banks are attached, and the way out.
 //!
 //! Deliberately small: everything a setting could configure already lives on
-//! the page it affects, so what is left here is the banks and the session. No
-//! address at the top, because nothing the server sends says who is signed in.
+//! the page it affects, so what is left is what belongs to the account rather
+//! than to a page — the name the app calls you by, the banks, and the session.
 
 use client_state::EventUi;
 use client_state::ViewAccount;
 use client_state::ViewAccountDelete;
+use client_state::ViewAccountName;
 use leptos::prelude::*;
 use web_components::BankList;
 use web_components::Sec;
+use web_ui::Glyph;
 
 use crate::runtime_app::RuntimeApp;
 
@@ -24,9 +26,12 @@ pub fn AccountPage(view: Signal<ViewAccount>) -> impl IntoView {
     let banks = Signal::derive(move || view.with(|v| v.banks.clone()));
     let empty = move || view.with(|v| v.banks_empty.clone());
     let delete = Signal::derive(move || view.with(|v| v.delete.clone()));
+    let name = Signal::derive(move || view.with(|v| v.name.clone()));
 
     view! {
         <div class="account-page">
+            {move || name.get().map(|name| view! { <NameSection name=name /> })}
+
             <Sec title=text(|v| &v.banks_label)>
                 <Show
                     when=move || view.with(|v| v.banks_empty.is_none())
@@ -54,6 +59,48 @@ pub fn AccountPage(view: Signal<ViewAccount>) -> impl IntoView {
 
             {move || delete.get().map(|confirm| view! { <DeleteDialog confirm=confirm /> })}
         </div>
+    }
+}
+
+/// The name the app calls you by, and the field it is changed in.
+///
+/// Saved on Enter or on the button, never on a keystroke: a name saved as it
+/// is typed is half a dozen writes and a chip that flickers through every
+/// prefix of it. The button is absent while the field is blank or unchanged,
+/// which is the same rule first run's Continue follows.
+#[component]
+fn NameSection(name: ViewAccountName) -> impl IntoView {
+    let runtime = expect_context::<RuntimeApp>();
+
+    view! {
+        <Sec title=name.label>
+            <form
+                class="account-name"
+                on:submit=move |event| {
+                    event.prevent_default();
+                    runtime.ui(EventUi::NameSubmitted);
+                }
+            >
+                <span class="field">
+                    <span class="in">
+                        <Glyph name=name.field.icon />
+                        <input
+                            type="text"
+                            autocomplete="name"
+                            placeholder=name.field.placeholder
+                            prop:value=name.field.value
+                            on:input=move |event| {
+                                runtime.ui(EventUi::NameTyped { text: event_target_value(&event) })
+                            }
+                        />
+                    </span>
+                </span>
+
+                {name
+                    .action
+                    .map(|label| view! { <button type="submit" class="btn">{label}</button> })}
+            </form>
+        </Sec>
     }
 }
 

@@ -20,6 +20,12 @@
 
 .account-page .session-actions { display: flex; gap: 10px; }
 
+/* The name, and the button that appears beside it once there is something to
+   save. The field takes a reading measure rather than the column's full width:
+   a name is a few words and a box the width of a page invites a sentence. */
+.account-page .account-name { display: flex; align-items: center; gap: 10px; }
+.account-page .account-name .field { flex: 1; max-width: 340px; }
+
 /* The delete confirmation. A placeholder over the page until the designed
    screen replaces it — the board draws this as a pushed screen. */
 .dialog-overlay {

@@ -74,10 +74,10 @@ impl WireSnapshot {
 pub struct WireUser {
     pub email: String,
 
-    /// Absent until they have been asked. Every account made before first run
-    /// asked has none, and there is nowhere to get one from.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
+    /// Never empty. An account is seeded with one when its row is made and
+    /// keeps whatever it is changed to, so nothing downstream has to carry a
+    /// "might have no name" through the machine and into every view.
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

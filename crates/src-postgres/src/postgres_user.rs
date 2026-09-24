@@ -37,8 +37,13 @@ pub async fn upsert_user(db: &Db, email: &str) -> Result<Uuid, PostgresError> {
         Some(row) => row.user_id,
 
         None => {
+            // Seeded with the address's local part, because `users.name` is
+            // NOT NULL and the row is made the moment a code is verified —
+            // long before the road asks what to call anybody. A starting
+            // value, one edit away from being right, and never empty.
             let row = sqlx::query!(
-                "INSERT INTO users (email) VALUES ($1) RETURNING user_id",
+                "INSERT INTO users (email, name) VALUES ($1, split_part($1, '@', 1))
+                 RETURNING user_id",
                 email,
             )
             .fetch_one(&mut *tx)
@@ -74,8 +79,7 @@ pub async fn load_email(db: &Db, user_id: Uuid) -> Result<Option<String>, Postgr
     Ok(row.map(|row| row.email))
 }
 
-/// Who a user is, as far as anything here knows: the address, and the name if
-/// they have given one.
+/// Who a user is, as far as anything here knows: the address and the name.
 ///
 /// Both in one read because both are printed in the same place — the account
 /// chip — and two queries for two columns of one row is two ways for the app
@@ -83,9 +87,9 @@ pub async fn load_email(db: &Db, user_id: Uuid) -> Result<Option<String>, Postgr
 pub struct StoredUser {
     pub email: String,
 
-    /// Absent for every account made before the name was asked for, and for
-    /// anyone who has not been asked yet.
-    pub name: Option<String>,
+    /// Never empty: seeded from the address when the row is made, and replaced
+    /// by whatever they answer. 0014 says why.
+    pub name: String,
 }
 
 pub async fn load_user(db: &Db, user_id: Uuid) -> Result<Option<StoredUser>, PostgresError> {
@@ -99,24 +103,28 @@ pub async fn load_user(db: &Db, user_id: Uuid) -> Result<Option<StoredUser>, Pos
     }))
 }
 
-/// Set the name, or clear it.
+/// Set the name.
 ///
-/// Trimmed, and blank means absent: a field somebody tabbed through leaves the
-/// column NULL rather than a name made of spaces, so "has a name" stays one
-/// question with one answer.
-pub async fn save_name(db: &Db, user_id: Uuid, name: &str) -> Result<(), PostgresError> {
+/// Trimmed, and blank does nothing: there is no such thing as clearing a name
+/// now that the column cannot be empty, and a field somebody tabbed through is
+/// not an instruction to erase what was there. `false` is that — a call that
+/// wrote nothing, which the caller refuses rather than reports as done.
+pub async fn save_name(db: &Db, user_id: Uuid, name: &str) -> Result<bool, PostgresError> {
     let name = name.trim();
-    let name = (!name.is_empty()).then_some(name);
+
+    if name.is_empty() {
+        return Ok(false);
+    }
 
     sqlx::query!(
         "UPDATE users SET name = $2 WHERE user_id = $1",
         user_id,
-        name,
+        name
     )
     .execute(db)
     .await?;
 
-    Ok(())
+    Ok(true)
 }
 
 /// Every access token this user's banks were reached with, for the calls that

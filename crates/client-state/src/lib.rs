@@ -60,6 +60,7 @@ pub use view::ViewScreen;
 pub use view_account::ViewAccount;
 pub use view_account::ViewAccountBank;
 pub use view_account::ViewAccountDelete;
+pub use view_account::ViewAccountName;
 pub use view_balances::ViewAccountRow;
 pub use view_balances::ViewBalances;
 pub use view_balances::ViewConnection;

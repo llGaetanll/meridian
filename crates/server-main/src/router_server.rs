@@ -403,8 +403,9 @@ struct NameBody {
 /// is a store call: the name is written on the way past and the caller sees it
 /// on their next snapshot.
 ///
-/// Blank is not a refusal. Clearing a name is a thing somebody may do, and the
-/// store is where "blank means none" is decided so that every caller agrees.
+/// A blank one is refused here rather than written as nothing: `users.name` is
+/// NOT NULL, so there is no way to say "no name" any more, and a caller that
+/// sent one has sent something this route cannot do.
 async fn account_name(
     State(to_loop): State<ToLoop>,
     Extension(ip): Extension<ClientIp>,
@@ -413,13 +414,16 @@ async fn account_name(
 ) -> Result<StatusCode, Refusal> {
     let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
 
+    let name = body.name.trim().to_string();
+
+    if name.is_empty() {
+        return Err(StatusCode::BAD_REQUEST.into());
+    }
+
     let answer = runtime_router::dispatch(
         &to_loop,
         Client::anonymous(ip),
-        EventRouter::NameSubmitted {
-            token_sha256,
-            name: body.name.trim().to_string(),
-        },
+        EventRouter::NameSubmitted { token_sha256, name },
     )
     .await;
 

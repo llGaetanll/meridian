@@ -41,11 +41,16 @@ pub fn Shell(
         <div class="shell">
             <Sidebar dock=dock who=who markets=markets on_screen=on_screen ui=ui />
             <div class="main">
-                <div class="content" class:leaving=move || leaving.get()>
+                <div class="content">
+                    <SearchRow />
+
                     {move || {
                         error.get().map(|message| view! { <Banner message=message on_retry=on_retry /> })
                     }}
-                    {children()}
+
+                    <div class="showing" class:leaving=move || leaving.get()>
+                        {children()}
+                    </div>
                 </div>
             </div>
         </div>
@@ -293,7 +298,7 @@ fn Chip(who: ViewWho, on_press: Callback<()>) -> impl IntoView {
             </div>
             <div class="account-id">
                 <div class="account-name">{who.title}</div>
-                {who.subtitle.map(|mail| view! { <div class="account-mail">{mail}</div> })}
+                <div class="account-mail">{who.subtitle}</div>
             </div>
             <span class="more">
                 <Icon kind=IconKind::ChevronUpDown />

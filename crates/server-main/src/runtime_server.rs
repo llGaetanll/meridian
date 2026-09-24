@@ -1325,7 +1325,12 @@ impl RuntimeServer {
             }
 
             ActionStore::SaveName { user_id, name } => {
-                src_postgres::save_name(db, *user_id, name).await?;
+                // `false` is a blank one, which writes nothing. Logged rather
+                // than failed: the row is exactly as it was, and there is
+                // nothing for a caller to retry.
+                if !src_postgres::save_name(db, *user_id, name).await? {
+                    tracing::warn!(%user_id, "a blank name was not written");
+                }
             }
 
             ActionStore::DeleteCode { email } => {

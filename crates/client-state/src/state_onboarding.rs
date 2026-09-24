@@ -356,11 +356,10 @@ impl StateOnboarding {
     /// Later snapshots only ever stand the flow aside, and only from the bank
     /// step with nothing under way. Once a sign-in is opening, or a bank has
     /// connected in this flow, the screen stays where the user put it.
-    pub(crate) fn snapshot(&mut self, has_banks: bool, has_name: bool) {
+    pub(crate) fn snapshot(&mut self, has_banks: bool) {
         match self.step {
             Step::Checking if has_banks => self.welcome_back(),
-            Step::Checking if !has_name => self.step = Step::Name,
-            Step::Checking => self.step = Step::Bank,
+            Step::Checking => self.step = Step::Name,
 
             Step::Bank if has_banks && self.window == Window::None && !self.linked => {
                 self.welcome_back();

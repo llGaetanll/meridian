@@ -118,10 +118,9 @@ fn name(flow: &StateOnboarding) -> ViewOnboarding {
         step: STEP_NAME.to_string(),
         title: "What should we call you?".to_string(),
 
-        // Said plainly, because the honest answer to "why do you want this?"
-        // is that the app has one corner with a name in it.
         body: plain(
-            "It goes at the foot of the sidebar, beside your account. Nothing else uses it.",
+            "This name is used to personalize the app, think of it as your account name. \
+             You can change it later.",
         ),
 
         field: ViewField {

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO users (email) VALUES ($1) RETURNING user_id",
+  "query": "INSERT INTO users (email, name) VALUES ($1, split_part($1, '@', 1))\n                 RETURNING user_id",
   "describe": {
     "columns": [
       {
@@ -24,5 +24,5 @@
       false
     ]
   },
-  "hash": "fc3b6f63e32e6c27b5e5c3871bc95300eef1389546243754edd8f6390ed709e2"
+  "hash": "af42dee2a63f964d06defb738bcdbfd39ad4066ece16ba405cbb008cab6da15a"
 }

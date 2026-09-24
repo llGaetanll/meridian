@@ -7,13 +7,13 @@
 /// The two lines the account chip prints, and the words of the menu behind it.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewWho {
-    /// The line it leads with: the name, or the address for an account that
-    /// has never been asked for one.
+    /// The line it leads with: the name. Never empty — an account is seeded
+    /// with one when it is made, so there is no state where the chip has
+    /// nothing to lead with.
     pub title: String,
 
-    /// The line under it, which is the address — absent when the title is
-    /// already the address, so the chip never prints it twice.
-    pub subtitle: Option<String>,
+    /// The line under it: the address.
+    pub subtitle: String,
 
     /// `"Settings"`.
     pub settings_label: String,

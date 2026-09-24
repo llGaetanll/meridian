@@ -130,6 +130,12 @@ pub struct StateApp {
     /// one has arrived: the account chip has nothing to print before that and
     /// a placeholder would be a guess.
     user: Option<User>,
+
+    /// The name being typed on the Account screen, while it differs from the
+    /// kept one. `None` is a field nobody has touched, which draws the kept
+    /// name — so the field has one value and the machine has one fact about
+    /// it rather than two that can disagree.
+    renaming: Option<String>,
 }
 
 /// Who the device is signed in as.
@@ -140,9 +146,10 @@ pub struct StateApp {
 pub struct User {
     pub email: String,
 
-    /// Absent for every account made before first run asked, and until it is
-    /// answered by anyone made after.
-    pub name: Option<String>,
+    /// Never empty. An account is seeded with one when it is made, so the chip
+    /// always has something to print and no view has to decide what to draw
+    /// when it does not.
+    pub name: String,
 }
 
 impl Default for StateApp {
@@ -167,6 +174,7 @@ impl Default for StateApp {
             reconnecting: None,
             deleting: None,
             user: None,
+            renaming: None,
         }
     }
 }
@@ -319,11 +327,14 @@ impl StateApp {
                 }
             }
 
-            EventUi::NameTyped { text } => {
-                if let Some(flow) = &mut self.onboarding {
-                    flow.type_name(text);
-                }
-            }
+            // The same two events on both screens that ask, because it is the
+            // same question: first run's is the first answer and the Account
+            // screen's is a later one. Which machine holds the draft is the
+            // only difference, and first run owns it while it is up.
+            EventUi::NameTyped { text } => match &mut self.onboarding {
+                Some(flow) => flow.type_name(text),
+                None => self.renaming = Some(text.to_string()),
+            },
 
             // The flow moves on the tap and the write follows it. Nothing
             // waits: the name is the caller's own value, the server has no
@@ -337,7 +348,7 @@ impl StateApp {
 
                 if let Some(name) = name {
                     self.user = self.user.take().map(|user| User {
-                        name: Some(name.clone()),
+                        name: name.clone(),
                         ..user
                     });
 
@@ -547,13 +558,8 @@ impl StateApp {
                             name: user.name.clone(),
                         });
 
-                        // A snapshot that says nothing about who this is
-                        // cannot be the reason to ask a name: an older server
-                        // would put a screen in front of everyone.
-                        let has_name = self.user.as_ref().is_none_or(|user| user.name.is_some());
-
                         if let Some(flow) = &mut self.onboarding {
-                            flow.snapshot(has_banks, has_name);
+                            flow.snapshot(has_banks);
                         }
 
                         debug_assert!(
@@ -887,6 +893,25 @@ impl StateApp {
         }
     }
 
+    /// Save the name the Account screen is holding. `None` when there is
+    /// nothing to save — a blank field, or one that says what is already
+    /// kept, both of which the absent button should have prevented.
+    ///
+    /// The draft is dropped either way: what is saved is what the field then
+    /// draws, so a draft that survived its own save would be a second copy of
+    /// the same string waiting to disagree.
+    fn submit_rename(&mut self) -> Option<String> {
+        let draft = self.renaming.take()?;
+        let draft = draft.trim();
+
+        let kept = self.user.as_ref().map(|user| user.name.as_str());
+
+        match draft.is_empty() || kept == Some(draft) {
+            true => None,
+            false => Some(draft.to_string()),
+        }
+    }
+
     /// Hand the view the whole screen. Called at the end of every event, which
     /// is what lets the view hold no state of its own.
     fn render(&self, actions: &mut Vec<Action>) {
@@ -1000,6 +1025,16 @@ impl StateApp {
     /// Where deleting the account has got, while somebody is leaving.
     pub(crate) fn deleting(&self) -> Option<&StateDelete> {
         self.deleting.as_ref()
+    }
+
+    pub(crate) fn user(&self) -> Option<&User> {
+        self.user.as_ref()
+    }
+
+    /// What is in the Account screen's name field: the draft if there is one,
+    /// otherwise the kept name.
+    pub(crate) fn renaming(&self) -> Option<&str> {
+        self.renaming.as_deref()
     }
 
     pub(crate) fn masked(&self) -> bool {

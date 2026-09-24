@@ -1,12 +1,21 @@
-//! The Account screen: which banks are attached, and the way out.
+//! The Account screen: who you are, which banks are attached, and the way out.
 //!
 //! Deliberately small — everything a setting could configure already lives on
-//! the screen it affects. No address either: nothing the server sends says who
-//! the device is signed in as.
+//! the screen it affects. What is here is what belongs to the account rather
+//! than to a screen: the name the app calls you by, the banks, and the two
+//! doors out.
+
+use crate::ViewField;
 
 /// Everything the Account tab shows.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct ViewAccount {
+    /// The name the app calls them by, and the field it is changed in.
+    ///
+    /// Absent until a snapshot has said who this is — the same moment the
+    /// account chip gets its two lines.
+    pub name: Option<ViewAccountName>,
+
     /// `"Banks"`.
     pub banks_label: String,
 
@@ -31,6 +40,23 @@ pub struct ViewAccount {
 
     /// `"Meridian 0.1.0"`.
     pub build: String,
+}
+
+/// The name, and what it takes to change it.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct ViewAccountName {
+    /// `"Your name"`.
+    pub label: String,
+
+    /// What is in the field — the kept name until somebody starts typing over
+    /// it, and what they have typed after that.
+    pub field: ViewField,
+
+    /// `Some("Save")` once the field holds something that is not what is
+    /// already saved. Absent while it is blank, and absent while it is
+    /// unchanged: a button that writes what is already there does nothing and
+    /// says it did something.
+    pub action: Option<String>,
 }
 
 /// The delete confirmation, at whichever step it is on: the "are you sure"
