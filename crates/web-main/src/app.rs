@@ -3,7 +3,7 @@ use std::time::Duration;
 use client_state::EventUi;
 use client_state::Screen;
 use client_state::ViewAccount;
-use client_state::ViewBalances;
+use client_state::ViewConnections;
 use client_state::ViewLedger;
 use client_state::ViewOnboarding;
 use client_state::ViewPaywall;
@@ -15,7 +15,7 @@ use web_components::Shell;
 use crate::frame::Frame;
 use crate::io::calm::calm;
 use crate::pages::AccountPage;
-use crate::pages::BalancesPage;
+use crate::pages::ConnectionsPage;
 use crate::pages::LedgerPage;
 use crate::pages::MarketsPage;
 use crate::pages::OnboardingPage;
@@ -179,6 +179,7 @@ fn AppShell() -> impl IntoView {
         <Shell
             dock=dock
             who=runtime.who()
+            settings=runtime.settings()
             markets=markets
             leaving=leaving
             error=runtime.error()
@@ -216,12 +217,12 @@ fn AppShell() -> impl IntoView {
                         })
                         .into_any()
                 }
-                Some(Tab::Balances) => {
-                    follow(screen, balances)
+                Some(Tab::Connections) => {
+                    follow(screen, connections)
                         .map(|view| {
                             view! {
                                 <div class="ui">
-                                    <BalancesPage view=view />
+                                    <ConnectionsPage view=view />
                                 </div>
                             }
                         })
@@ -284,9 +285,9 @@ pub(crate) fn recurring(screen: &ViewScreen) -> Option<&ViewRecurring> {
     }
 }
 
-pub(crate) fn balances(screen: &ViewScreen) -> Option<&ViewBalances> {
+pub(crate) fn connections(screen: &ViewScreen) -> Option<&ViewConnections> {
     match screen {
-        ViewScreen::Balances { view } => Some(view),
+        ViewScreen::Connections { view } => Some(view),
         _ => None,
     }
 }

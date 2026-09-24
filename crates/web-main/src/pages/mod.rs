@@ -1,5 +1,5 @@
 mod account;
-mod balances;
+mod connections;
 mod ledger;
 mod markets;
 mod onboarding;
@@ -8,7 +8,7 @@ mod recurring;
 
 pub use account::AccountPage;
 pub use account::DeleteDialog;
-pub use balances::BalancesPage;
+pub use connections::ConnectionsPage;
 pub use ledger::LedgerPage;
 pub use markets::MarketsPage;
 pub use onboarding::OnboardingPage;

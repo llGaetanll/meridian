@@ -77,30 +77,31 @@ pub fn relative_day(ts: Timestamp, now: Timestamp) -> String {
     }
 }
 
-/// `"synced 2m ago"`, `"synced just now"`.
-pub fn relative_time(ts: Timestamp, now: Timestamp) -> String {
+/// `"2m ago"`, `"just now"` — how long ago, with nothing said about what
+/// happened then, so a caller can set it after its own word.
+pub fn ago(ts: Timestamp, now: Timestamp) -> String {
     let secs = now.since(ts).as_secs();
 
     if secs < 60 {
-        return "synced just now".to_string();
+        return "just now".to_string();
     }
 
     let minutes = secs / 60;
     if minutes < 60 {
-        return format!("synced {minutes}m ago");
+        return format!("{minutes}m ago");
     }
 
     let hours = minutes / 60;
     if hours < 24 {
-        return format!("synced {hours}h ago");
+        return format!("{hours}h ago");
     }
 
-    format!("synced {}d ago", hours / 24)
+    format!("{}d ago", hours / 24)
 }
 
-/// `"synced 2m"` — the shorter form the balances screen uses.
-pub fn short_sync(ts: Timestamp, now: Timestamp) -> String {
-    relative_time(ts, now).replace(" ago", "")
+/// `"synced 2m ago"`, `"synced just now"` — for where it follows a count.
+pub fn relative_time(ts: Timestamp, now: Timestamp) -> String {
+    format!("synced {}", ago(ts, now))
 }
 
 /// `"0:42"` — what is left of a countdown, in the shape a clock is read in.
@@ -315,10 +316,7 @@ mod tests {
             relative_time(TODAY - Duration::from_secs(7_200), TODAY),
             "synced 2h ago"
         );
-        assert_eq!(
-            short_sync(TODAY - Duration::from_secs(120), TODAY),
-            "synced 2m"
-        );
+        assert_eq!(ago(TODAY - Duration::from_secs(120), TODAY), "2m ago");
     }
 
     #[test]

@@ -1,0 +1,10 @@
+/* The settings window.
+
+   The dialog out of the design language, with the account's own page in it:
+   the window, the rail, the rows and the settings are all the sheet's, so
+   what is left here is only where it stands in the app.
+
+   Above everything else the shell draws, the account card included — the card
+   is what opened it. */
+
+.settings-window .scrim { z-index: 60; }

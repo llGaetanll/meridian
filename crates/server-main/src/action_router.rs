@@ -136,6 +136,11 @@ pub enum ActionRouter {
     /// client that hears this can forget its session without wondering.
     Deleted,
 
+    /// One bank is gone: stopped at Plaid and forgotten here. Answered once
+    /// the rows are actually deleted, for the reason
+    /// [`Deleted`](ActionRouter::Deleted) is.
+    BankRemoved,
+
     /// Answer with one series of bars, whatever the store holds over the
     /// window once everything the request set going has landed.
     ///
@@ -180,6 +185,7 @@ impl ActionRouter {
             | ActionRouter::Subscribing { .. }
             | ActionRouter::CheckoutOpened { .. }
             | ActionRouter::Deleted
+            | ActionRouter::BankRemoved
             // Market data is the same for everybody; nothing about a person
             // is served.
             | ActionRouter::ServeBars { .. }

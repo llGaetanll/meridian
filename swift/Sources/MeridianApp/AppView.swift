@@ -62,7 +62,7 @@ struct AppView: View {
             PaywallScreen(view: view)
                 .transition(.opacity)
 
-        case .ledger, .recurring, .balances, .account:
+        case .ledger, .recurring, .connections, .account:
             PhoneShell(
                 title: Self.title(of: screen),
                 screen: Self.title(of: screen),
@@ -79,7 +79,7 @@ struct AppView: View {
         switch screen {
         case .ledger: "Ledger"
         case .recurring: "Recurring"
-        case .balances: "Balances"
+        case .connections: "Connections"
         case .account: "Account"
         case .onboarding, .paywall: ""
         }
@@ -93,10 +93,9 @@ struct AppView: View {
         switch screen {
         case .ledger(let view): LedgerBand(filter: view.filter, scroller: scroller)
         case .recurring(let view): RecurringBand(view: view)
-        case .balances(let view): BalancesBand(view: view)
-        // No headline to stand in for, so nothing on this screen wears
+        // No headline to stand in for, so nothing on these screens wears
         // `bandAnchor()` and the band is never asked for.
-        case .account: EmptyView()
+        case .connections, .account: EmptyView()
         case .onboarding, .paywall: EmptyView()
         }
     }
@@ -106,7 +105,7 @@ struct AppView: View {
         switch screen {
         case .ledger(let view): LedgerScreen(view: view)
         case .recurring(let view): RecurringScreen(view: view)
-        case .balances(let view): BalancesScreen(view: view)
+        case .connections(let view): ConnectionsScreen(view: view)
         case .account(let view): AccountScreen(view: view)
         case .onboarding, .paywall: EmptyView()
         }

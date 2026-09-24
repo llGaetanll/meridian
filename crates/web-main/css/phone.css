@@ -142,24 +142,32 @@
 .ui .recurring-phone .stream .sub { margin-top: 4px; font-size: 12.5px; color: var(--text-faint); }
 .ui .recurring-phone .stream .amt { font-size: 15px; }
 
-/* Balances: what is held is the same section as the headline, so there is
-   no rule between them, only floor under the last block. */
+/* Connections: the count and the way to add another over the blocks, then one
+   block per login with the accounts it brings in under it. */
 
-.ui .balances-phone > .blocks { padding-bottom: 30px; }
-.ui .balances-phone .conn { margin-top: 0; }
-.ui .balances-phone .conn + .conn { margin-top: 30px; }
-.ui .balances-phone .conn-head { padding: 0 20px 2px; }
+.ui .conn-phone .conn-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 20px 20px;
+}
+.ui .conn-phone .conn-top .k {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
 
-.ui .balances-phone .acct-row { display: flex; align-items: flex-start; gap: 12px; padding: 15px 20px; }
-.ui .balances-phone .acct-row .t { flex: 1; min-width: 0; }
-.ui .balances-phone .acct-row .nm {
+.ui .conn-phone > .blocks { padding-bottom: 30px; }
+.ui .conn-phone .conn { margin-top: 0; }
+.ui .conn-phone .conn + .conn { margin-top: 30px; }
+.ui .conn-phone .conn-head { padding: 0 20px 2px; }
+
+.ui .conn-phone .acct-row { display: flex; align-items: flex-start; gap: 12px; padding: 15px 20px; }
+.ui .conn-phone .acct-row .t { flex: 1; min-width: 0; }
+.ui .conn-phone .acct-row .nm {
   font-size: 14.5px; font-weight: 600;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.ui .balances-phone .acct-row .sub { margin-top: 4px; font-size: 12.5px; color: var(--text-faint); }
-.ui .balances-phone .acct-row .amt { font-size: 14.5px; }
-
-.ui .balances-phone .conn-total { padding: 15px 20px 0; }
+.ui .conn-phone .acct-row .sub { margin-top: 4px; font-size: 12.5px; color: var(--text-faint); }
+.ui .conn-phone .acct-row .amt { font-size: 14.5px; }
 
 /* Account */
 

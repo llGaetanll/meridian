@@ -30,8 +30,27 @@
 .ui .conn-name { font-size: 13.5px; font-weight: 600; color: var(--text-muted); }
 /* The end of a bank's line: when it last synced, or the sign-in it wants,
    and the way to remove it. One box rather than two auto margins, which
-   would share the free space between them and stand the two apart. */
-.ui .conn-acts { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+   would share the free space between them and stand the two apart.
+
+   A plain button hangs six pixels outside its own box, so that its letters
+   stay on the measure of the column it sits in. Here there is no column: the
+   box is at the end of a line, so the hang comes off the buttons and goes on
+   the box, which keeps the glyph on the page's right edge without pulling it
+   over the words beside it. */
+.ui .conn-acts {
+  position: relative;
+  display: flex; align-items: center; gap: 8px;
+  margin-left: auto; margin-right: -6px;
+}
+.ui .conn-acts > .btn.plain { margin: 0; }
+
+/* The question the trash opens, under the button that opened it, with its
+   right edge on the page's own measure rather than on the box's hang. Over the rows below it, which is what `z-index` is
+   for; the card is the design language's menu and nothing here restyles it. */
+.ui .conn-ask {
+  position: absolute; top: calc(100% + 7px); right: 6px; z-index: 30;
+  width: 272px;
+}
 
 /* When a connection last synced, on the bank's own line — the same place the
    expired one puts the button that fixes it, because they answer the same

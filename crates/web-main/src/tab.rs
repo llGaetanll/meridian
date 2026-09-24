@@ -12,7 +12,7 @@ use leptos::prelude::*;
 pub enum Tab {
     Ledger,
     Recurring,
-    Balances,
+    Connections,
     Account,
     Markets,
 }
@@ -25,7 +25,7 @@ impl Tab {
             _ if markets => Self::Markets,
             ViewScreen::Ledger { .. } => Self::Ledger,
             ViewScreen::Recurring { .. } => Self::Recurring,
-            ViewScreen::Balances { .. } => Self::Balances,
+            ViewScreen::Connections { .. } => Self::Connections,
             ViewScreen::Account { .. } => Self::Account,
         };
 
@@ -36,7 +36,7 @@ impl Tab {
         match self {
             Self::Ledger => "Ledger",
             Self::Recurring => "Recurring",
-            Self::Balances => "Balances",
+            Self::Connections => "Connections",
             Self::Account => "Account",
             Self::Markets => "Markets",
         }

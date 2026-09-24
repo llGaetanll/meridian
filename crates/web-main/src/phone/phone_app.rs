@@ -1,17 +1,16 @@
 use client_state::EventUi;
 use client_state::Screen;
 use leptos::prelude::*;
-use web_components::BalancesBand;
 use web_components::LedgerBand;
 use web_components::PhoneShell;
 use web_components::RecurringBand;
 
 use super::AccountPhone;
-use super::BalancesPhone;
+use super::ConnectionsPhone;
 use super::LedgerPhone;
 use super::RecurringPhone;
 use crate::app::account;
-use crate::app::balances;
+use crate::app::connections;
 use crate::app::follow;
 use crate::app::ledger;
 use crate::app::recurring;
@@ -76,20 +75,9 @@ pub fn PhoneApp() -> impl IntoView {
             })
             .into_any(),
 
-        Some(Tab::Balances) => follow(screen, balances)
-            .map(|view| {
-                view! {
-                    <BalancesBand
-                        label=text(view, |view| &view.headline_label)
-                        headline=text(view, |view| &view.headline)
-                    />
-                }
-            })
-            .into_any(),
-
-        // No headline to stand in for, so nothing on Account is an anchor and
-        // the band never comes.
-        Some(Tab::Account | Tab::Markets) | None => ().into_any(),
+        // No headline to stand in for, so nothing on Connections or Account is
+        // an anchor and the band never comes.
+        Some(Tab::Connections | Tab::Account | Tab::Markets) | None => ().into_any(),
     });
 
     view! {
@@ -111,9 +99,9 @@ pub fn PhoneApp() -> impl IntoView {
                         .map(|view| view! { <RecurringPhone view=view /> })
                         .into_any()
                 }
-                Some(Tab::Balances) => {
-                    follow(screen, balances)
-                        .map(|view| view! { <BalancesPhone view=view /> })
+                Some(Tab::Connections) => {
+                    follow(screen, connections)
+                        .map(|view| view! { <ConnectionsPhone view=view /> })
                         .into_any()
                 }
                 Some(Tab::Account) => {

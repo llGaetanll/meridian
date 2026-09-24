@@ -5,14 +5,14 @@
 //! same components; what differs is the frame and the shape of each page.
 
 mod account;
-mod balances;
+mod connections;
 mod ledger;
 mod narrow;
 mod phone_app;
 mod recurring;
 
 use account::AccountPhone;
-use balances::BalancesPhone;
+use connections::ConnectionsPhone;
 use ledger::LedgerPhone;
 pub use narrow::narrow;
 pub use phone_app::PhoneApp;

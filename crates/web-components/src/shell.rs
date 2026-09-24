@@ -2,10 +2,12 @@ use client_state::EventUi;
 use client_state::Screen;
 use client_state::ViewDock;
 use client_state::ViewDockItem;
+use client_state::ViewSettings;
 use client_state::ViewWho;
 use leptos::prelude::*;
 use leptos::wasm_bindgen::JsCast;
 
+use crate::SettingsWindow;
 use crate::theme;
 use web_ui::Glyph;
 use web_ui::Icon;
@@ -30,6 +32,7 @@ const AVATAR: &str = r##"<rect width="40" height="40" fill="var(--bg-input)"/><c
 pub fn Shell(
     #[prop(into)] dock: Signal<Option<ViewDock>>,
     #[prop(into)] who: Signal<Option<ViewWho>>,
+    #[prop(into)] settings: Signal<Option<ViewSettings>>,
     #[prop(into)] markets: Signal<bool>,
     #[prop(into)] leaving: Signal<bool>,
     #[prop(into)] error: Signal<Option<String>>,
@@ -39,7 +42,17 @@ pub fn Shell(
     ui: Callback<EventUi>,
     children: Children,
 ) -> impl IntoView {
+    // Whether the settings window is up. The shell's and not the machine's:
+    // the window covers a page rather than replacing one, so nothing the
+    // machine decides turns on it.
+    let settings_open = RwSignal::new(false);
+
     view! {
+        // Outside the shell, which is a two-column grid: the window's wrapper
+        // would be a third cell in it, and the sidebar and the page would move
+        // over to make room for something that stands over both of them.
+        <SettingsWindow view=settings open=settings_open ui=ui />
+
         <div class="shell">
             <Sidebar
                 dock=dock
@@ -47,6 +60,7 @@ pub fn Shell(
                 markets=markets
                 on_screen=on_screen
                 on_markets=on_markets
+                on_settings=Callback::new(move |()| settings_open.set(true))
                 ui=ui
             />
             <div class="main">
@@ -94,6 +108,7 @@ fn Sidebar(
     markets: Signal<bool>,
     on_screen: Callback<Screen>,
     on_markets: Callback<()>,
+    on_settings: Callback<()>,
     ui: Callback<EventUi>,
 ) -> impl IntoView {
     // The dock's Account is the block at the foot rather than a row here.
@@ -186,7 +201,7 @@ fn Sidebar(
             <div class="sidebar-foot">
                 {move || {
                     who.get()
-                        .map(|who| view! { <Account who=who on_screen=on_screen ui=ui /> })
+                        .map(|who| view! { <Account who=who on_settings=on_settings ui=ui /> })
                 }}
             </div>
 
@@ -212,9 +227,6 @@ struct Lit {
     lift: f64,
 
     height: f64,
-
-    /// The row that cannot be undone, which lights rose rather than grey.
-    grave: bool,
 }
 
 /// Who is signed in, at the foot of the sidebar, and what can be done about
@@ -231,7 +243,7 @@ struct Lit {
 /// rather than a sheet of nothing over the page: a page you cannot scroll
 /// because a menu is open is a page that feels broken.
 #[component]
-fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> impl IntoView {
+fn Account(who: ViewWho, on_settings: Callback<()>, ui: Callback<EventUi>) -> impl IntoView {
     let open = RwSignal::new(false);
 
     // Which theme is on, as a word for the row to carry. Read as the sidebar
@@ -250,7 +262,7 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
     // the mouse and one that chases it.
     let travel = RwSignal::new(false);
 
-    let stand = move |row: &web_sys::HtmlElement, grave: bool| {
+    let stand = move |row: &web_sys::HtmlElement| {
         let Some(rows) = row.closest(".menu-rows").ok().flatten() else {
             return;
         };
@@ -263,7 +275,6 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
         lit.set(Some(Lit {
             lift: rows.bottom() - row.bottom(),
             height: row.height(),
-            grave,
         }));
 
         if arriving {
@@ -275,15 +286,13 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
         }
     };
 
-    let on_row = move |grave: bool| {
-        move |event: leptos::ev::PointerEvent| {
-            let row = event
-                .current_target()
-                .and_then(|target| target.dyn_into::<web_sys::HtmlElement>().ok());
+    let on_row = move |event: leptos::ev::PointerEvent| {
+        let row = event
+            .current_target()
+            .and_then(|target| target.dyn_into::<web_sys::HtmlElement>().ok());
 
-            if let Some(row) = row {
-                stand(&row, grave);
-            }
+        if let Some(row) = row {
+            stand(&row);
         }
     };
 
@@ -297,7 +306,7 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
         open.set(opening);
 
         match opening {
-            true => stand(&chip, false),
+            true => stand(&chip),
 
             // Shut, nothing is a row and there is nothing to light.
             false => lit.set(None),
@@ -312,7 +321,6 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
 
     let settings = who.settings_label.clone();
     let sign_out = who.sign_out_label.clone();
-    let delete = who.delete_label.clone();
 
     view! {
         <div class="ui">
@@ -327,7 +335,6 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
                     class="menu-pill"
                     class:off=move || lit.get().is_none()
                     class:still=move || !travel.get()
-                    class:grave=move || lit.get().is_some_and(|lit| lit.grave)
                     style=move || match lit.get() {
                         Some(lit) => format!("--b:{}px;--h:{}px", lit.lift, lit.height),
                         None => String::new(),
@@ -339,17 +346,10 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
                 // that animates.
                 <div class="options">
                     <div class="in">
-                        <button class="item" on:pointerenter=on_row(false)
-                            on:click=move |_| {
-                                open.set(false);
-                                on_screen.run(Screen::Account);
-                            }
-                        >
-                            <Icon kind=IconKind::Settings />
-                            {settings}
-                        </button>
-
-                        <button class="item" on:pointerenter=on_row(false)
+                        // The theme first: it is the one row you press more
+                        // than once, and it is the only one that answers on
+                        // the spot instead of taking you somewhere.
+                        <button class="item" on:pointerenter=on_row
                             on:click=move |_| theme.set(theme_label(theme::toggle() == "light"))
                         >
                             <Icon kind=IconKind::Theme />
@@ -357,9 +357,21 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
                             <span class="val">{move || theme.get()}</span>
                         </button>
 
+                        // Opens the window, which is where the name and the
+                        // door out of the account now are.
+                        <button class="item" on:pointerenter=on_row
+                            on:click=move |_| {
+                                open.set(false);
+                                on_settings.run(());
+                            }
+                        >
+                            <Icon kind=IconKind::Settings />
+                            {settings}
+                        </button>
+
                         <div class="cut" />
 
-                        <button class="item" on:pointerenter=on_row(false)
+                        <button class="item" on:pointerenter=on_row
                             on:click=move |_| {
                                 open.set(false);
                                 ui.run(EventUi::SignOutRequested);
@@ -367,20 +379,6 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
                         >
                             <Icon kind=IconKind::SignOut />
                             {sign_out}
-                        </button>
-
-                        // Opens the confirmation, which lives on the Account
-                        // screen: there is no undo, and a popup over the
-                        // ledger is not where that is asked.
-                        <button class="item grave" on:pointerenter=on_row(true)
-                            on:click=move |_| {
-                                open.set(false);
-                                on_screen.run(Screen::Account);
-                                ui.run(EventUi::DeleteAccountRequested);
-                            }
-                        >
-                            <Icon kind=IconKind::Trash />
-                            {delete}
                         </button>
 
                         <div class="cut" />
@@ -391,7 +389,7 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
                 // row among rows. Shut, it is the thing you press to open the
                 // card and nothing more — a rectangle appearing under it would
                 // be the card answering a pointer it has not been given.
-                <Chip who=who on_press=press lit=Signal::derive(move || open.get()) on_over=Box::new(on_row(false)) />
+                <Chip who=who on_press=press lit=Signal::derive(move || open.get()) on_over=Box::new(on_row) />
                 </div>
             </div>
         </div>

@@ -2,6 +2,7 @@
 
 use crate::ViewDock;
 use crate::ViewScreen;
+use crate::ViewSettings;
 use crate::ViewWho;
 
 /// Something for the view to do. These carry finished values, not
@@ -26,6 +27,11 @@ pub enum ActionUi {
         /// exactly when the dock is: both belong to the app rather than to
         /// the road in, and neither is drawn over first run or the paywall.
         who: Option<ViewWho>,
+
+        /// What the settings window draws, present exactly when the chip that
+        /// opens it is. Sent whether or not the window is open: whether it is
+        /// is the platform's, since nothing the machine decides turns on it.
+        settings: Option<ViewSettings>,
     },
 
     /// Tell the user something went wrong, in these words.

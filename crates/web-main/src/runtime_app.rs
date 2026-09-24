@@ -22,6 +22,7 @@ use client_state::EventUi;
 use client_state::StateApp;
 use client_state::ViewDock;
 use client_state::ViewScreen;
+use client_state::ViewSettings;
 use client_state::ViewWho;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
@@ -49,6 +50,10 @@ pub struct RuntimeApp {
 
     /// Who the device is signed in as, for the account chip.
     who: RwSignal<Option<ViewWho>>,
+
+    /// What the settings window draws. Held whether or not it is open: the
+    /// window is the shell's to open, and the machine only says what is in it.
+    settings: RwSignal<Option<ViewSettings>>,
 
     /// The last failure, for the banner. Cleared by the next successful load.
     error: RwSignal<Option<String>>,
@@ -84,6 +89,7 @@ impl RuntimeApp {
             screen: RwSignal::new(None),
             dock: RwSignal::new(None),
             who: RwSignal::new(None),
+            settings: RwSignal::new(None),
             error: RwSignal::new(None),
             loading: RwSignal::new(false),
             token: StoredValue::new(None),
@@ -130,6 +136,10 @@ impl RuntimeApp {
 
     pub fn who(&self) -> ReadSignal<Option<ViewWho>> {
         self.who.read_only()
+    }
+
+    pub fn settings(&self) -> ReadSignal<Option<ViewSettings>> {
+        self.settings.read_only()
     }
 
     /// What the banner says, if anything.
@@ -191,10 +201,16 @@ impl RuntimeApp {
 
     fn perform_action_ui(&self, action: ActionUi) {
         match action {
-            ActionUi::Render { screen, dock, who } => {
+            ActionUi::Render {
+                screen,
+                dock,
+                who,
+                settings,
+            } => {
                 self.screen.set(Some(screen));
                 self.dock.set(dock);
                 self.who.set(who);
+                self.settings.set(settings);
             }
 
             ActionUi::ShowError { message } => {
@@ -217,6 +233,7 @@ impl RuntimeApp {
             ActionSource::VerifyCode { email, code } => self.verify_code(email, code),
             ActionSource::StartBankLink => self.start_bank_link(),
             ActionSource::StartBankRepair { item_id } => self.start_bank_repair(item_id),
+            ActionSource::RemoveBank { item_id } => self.remove_bank(item_id),
             ActionSource::WatchSync => self.watch_sync(),
             ActionSource::StopWatchingSync => self.stop_watching_sync(),
             ActionSource::StartCheckout => self.start_checkout(),
@@ -388,6 +405,35 @@ impl RuntimeApp {
                 Err(failure) => EventSource::LoadFailed {
                     failure: failure.failure(),
                 },
+            };
+
+            runtime.source(event);
+        });
+    }
+
+    /// Remove one bank. The confirmation has already been answered, so this
+    /// is the request itself.
+    fn remove_bank(&self, item_id: String) {
+        let Some(token) = self.token.get_value() else {
+            tracing::error!("asked to remove a bank with no session");
+
+            self.source(EventSource::BankRemoveFailed);
+
+            return;
+        };
+
+        let runtime = *self;
+        let server = self.server.get_value();
+
+        spawn_local(async move {
+            let event = match server.remove_bank(&token, &item_id).await {
+                Ok(true) => EventSource::BankRemoved,
+                Ok(false) => EventSource::BankRemoveFailed,
+                Err(failure) => {
+                    tracing::warn!(?failure, "a bank could not be removed");
+
+                    EventSource::BankRemoveFailed
+                }
             };
 
             runtime.source(event);

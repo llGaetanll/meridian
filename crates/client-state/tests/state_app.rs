@@ -118,7 +118,7 @@ fn switching_tabs_asks_for_nothing() {
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Ledger } },
@@ -159,15 +159,15 @@ fn every_screen_renders() {
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Recurring } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Recurring { .. }, .. } },
 
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { .. }, .. } },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { .. }, .. } },
 
         < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Account } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Account { .. }, .. } },
     );
 }
 
-/// The Account tab lists the same banks Balances draws, read a second way
+/// The Account tab lists the same banks Connections draws, read a second way
 /// rather than fetched a second time.
 #[test]
 fn the_account_tab_lists_the_banks() {
@@ -185,6 +185,56 @@ fn the_account_tab_lists_the_banks() {
             assert_eq!(account.banks_empty, None);
             assert_eq!(account.banks[0].name, "First Platypus Bank");
             assert_eq!(account.banks[0].detail, "2 accounts · synced 2m ago");
+        },
+    );
+}
+
+/// The settings window rides beside every screen, so what it draws arrives
+/// with the chip rather than with a screen: the name is in the render whatever
+/// tab is up.
+#[test]
+fn the_settings_window_carries_the_name_on_any_screen() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "user":{"email":"a@b.c","name":"Gaetan"}}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { .. }, settings: Some(settings), .. } } => {
+            assert_eq!(settings.account_label, "Account Settings");
+            assert_eq!(settings.name.as_ref().map(|name| name.field.value.as_str()), Some("Gaetan"));
+
+            // The button is there in both states; until the field says
+            // something else it does nothing.
+            assert_eq!(settings.name.as_ref().map(|name| name.save_label.as_str()), Some("Save"));
+            assert_eq!(settings.name.as_ref().map(|name| name.can_save), Some(false));
+        },
+    );
+}
+
+/// The name is saved on the press and not on a keystroke, and what is saved is
+/// what the field then draws — the draft goes with the write rather than
+/// staying behind it as a second copy waiting to disagree.
+#[test]
+fn a_name_typed_in_the_settings_window_is_saved_on_the_press() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "user":{"email":"a@b.c","name":"Gaetan"}}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        // Typing alone writes nothing. It only offers the button.
+        < Event::FromUi { event: EventUi::NameTyped { text: "Gaetan Almela".to_string() } },
+        > Action::ToUi { action: ActionUi::Render { settings: Some(settings), .. } } => {
+            assert_eq!(settings.name.as_ref().map(|name| name.can_save), Some(true));
+        },
+
+        < Event::FromUi { event: EventUi::NameSubmitted },
+        > @r#"ToSource { action: SetName { name: "Gaetan Almela" } }"#,
+        > Action::ToUi { action: ActionUi::Render { who: Some(who), settings: Some(settings), .. } } => {
+            assert_eq!(who.title, "Gaetan Almela");
+            assert_eq!(settings.name.as_ref().map(|name| name.field.value.as_str()), Some("Gaetan Almela"));
+            assert_eq!(settings.name.as_ref().map(|name| name.can_save), Some(false));
         },
     );
 }
@@ -532,7 +582,7 @@ fn a_purchase_reads_as_money_leaving() {
     );
 }
 
-/// A row names the account it went through, the way Balances names it. An
+/// A row names the account it went through, the way Connections names it. An
 /// account the app has not been told about leaves the column empty rather than
 /// guessing.
 #[test]
@@ -963,8 +1013,9 @@ fn the_chip_counts_follow_the_time_range() {
     );
 }
 
-/// Revealed by default. The phone has no eye any more, so a covered figure
-/// would be one nothing on the screen could uncover.
+/// Revealed by default. Nothing on either platform dispatches
+/// `MaskToggled` today, so a covered figure would be one nothing on the
+/// screen could uncover.
 #[test]
 fn figures_start_revealed() {
     let mut state = app();
@@ -974,15 +1025,15 @@ fn figures_start_revealed() {
             "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[{"id":"acc","name":"Plaid Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            assert!(!balances.masked);
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            assert_eq!(page.connections[0].accounts[0].amount, "$100.00");
         },
     );
 }
 
 /// Covering still works, and the figure must not travel in the clear — what a
-/// covered headline carries is dots, not a number nobody drew.
+/// covered row carries is dots, not a number nobody drew.
 #[test]
 fn covering_hides_the_figure() {
     let mut state = app();
@@ -993,11 +1044,10 @@ fn covering_hides_the_figure() {
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi { event: EventUi::MaskToggled },
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            assert!(balances.masked);
-            assert_eq!(balances.headline, "••••••");
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            assert_eq!(page.connections[0].accounts[0].amount, "••••••");
         },
     );
 }
@@ -1041,8 +1091,10 @@ fn the_mask_leaves_ledger_rows_alone() {
     );
 }
 
+/// The page is about the logins rather than about a figure, so what stands
+/// under its name is a count of them and of what they bring in.
 #[test]
-fn balances_lead_with_what_is_held() {
+fn the_page_counts_the_banks_and_their_accounts() {
     let mut state = app();
 
     eval!(&mut state,
@@ -1052,18 +1104,19 @@ fn balances_lead_with_what_is_held() {
                 {"id":"acc-2","name":"Plaid Saving","balance":200.0,"group":"depository"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            assert_eq!(balances.headline_label, "Held");
-            assert_eq!(balances.headline, "$300.00", "the two balances, added");
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            assert_eq!(page.title, "Connections");
+            assert_eq!(page.count, "1 bank · 2 accounts");
+            assert!(page.empty.is_none());
         },
     );
 }
 
-/// A mortgage among the accounts you hold reads as something you owe. Debts
-/// get their own block, after everything held.
+/// One block per login, held and owed together: a mortgage is a minus sign on
+/// a row of the bank that reports it, not a second block for the same bank.
 #[test]
-fn debts_are_split_out_and_come_last() {
+fn a_login_is_one_block_whatever_it_holds() {
     let mut state = app();
 
     eval!(&mut state,
@@ -1073,17 +1126,36 @@ fn debts_are_split_out_and_come_last() {
                 {"id":"acc-2","name":"Plaid Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            let blocks: Vec<bool> = balances.connections.iter().map(|c| c.is_debts).collect();
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            assert_eq!(page.connections.len(), 1, "one login, one block");
 
-            assert_eq!(blocks, [false, true], "held first, owed after");
+            let rows = &page.connections[0].accounts;
 
-            let debts = &balances.connections[1];
+            assert_eq!(rows.len(), 2);
+            assert_eq!((rows[0].amount.as_str(), rows[0].owed), ("−$56,302.06", true));
+            assert_eq!((rows[1].amount.as_str(), rows[1].owed), ("$100.00", false));
+        },
+    );
+}
 
-            assert_eq!(debts.total, "−$56,302.06");
-            assert_eq!(debts.total_label, "1 account owed");
-            assert!(debts.accounts.iter().all(|a| a.owed));
+/// With no bank on it the page says so itself, because there is nowhere else
+/// in the app the answer would come from.
+#[test]
+fn nothing_connected_is_a_sentence_on_the_page() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            assert_eq!(page.count, "No banks");
+            assert_eq!(
+                page.empty.as_deref(),
+                Some("No bank is connected, so there is nothing to show anywhere else either."),
+            );
         },
     );
 }
@@ -1098,9 +1170,9 @@ fn a_credit_card_shows_what_is_used_of_its_limit() {
                 {"id":"acc","name":"Plaid Credit Card","subtype":"credit card","balance":410.0,"limit":2000.0,"group":"credit"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            let row = &balances.connections[0].accounts[0];
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            let row = &page.connections[0].accounts[0];
 
             assert_eq!(row.amount, "−$410.00");
             assert_eq!(row.utilisation.as_deref(), Some("$410.00 of $2,000.00 limit used"));
@@ -1120,9 +1192,9 @@ fn a_line_of_credit_shows_what_is_left() {
                 {"id":"acc","name":"Plaid Home Equity","subtype":"home equity","balance":2352.50,"available":47647.50,"limit":50000.0,"group":"credit"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            let row = &balances.connections[0].accounts[0];
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            let row = &page.connections[0].accounts[0];
 
             assert_eq!(row.utilisation.as_deref(), Some("$47,647.50 still available"));
         },
@@ -1142,9 +1214,9 @@ fn an_account_subtitle_reads_as_a_sentence() {
                 {"id":"acc-2","name":"Plaid 401k","subtype":"401k","mask":"6666","balance":23631.98,"group":"investment"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            let accounts = &balances.connections[0].accounts;
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            let accounts = &page.connections[0].accounts;
 
             assert_eq!(accounts[0].subtitle, "Checking ·0000 · $100.00 available");
             assert_eq!(accounts[1].subtitle, "401(k) ·6666");
@@ -1152,10 +1224,10 @@ fn an_account_subtitle_reads_as_a_sentence() {
     );
 }
 
-/// The web sets the kind and what else is worth knowing in columns of their
-/// own, so they arrive apart as well as joined.
+/// The web boxes the last four digits and sets the kind beside them, so they
+/// arrive apart as well as joined into the phone's sentence.
 #[test]
-fn an_account_row_carries_its_kind_and_detail_apart() {
+fn an_account_row_carries_its_digits_and_kind_apart() {
     let mut state = app();
 
     eval!(&mut state,
@@ -1165,12 +1237,13 @@ fn an_account_row_carries_its_kind_and_detail_apart() {
                 {"id":"acc-2","name":"Plaid 401k","subtype":"401k","mask":"6666","balance":23631.98,"group":"investment"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            let accounts = &balances.connections[0].accounts;
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            let accounts = &page.connections[0].accounts;
 
-            assert_eq!((accounts[0].kind.as_str(), accounts[0].detail.as_str()), ("Checking ·0000", "$100.00 available"));
-            assert_eq!((accounts[1].kind.as_str(), accounts[1].detail.as_str()), ("401(k) ·6666", ""));
+            assert_eq!((accounts[0].mask.as_str(), accounts[0].kind.as_str()), ("0000", "Checking"));
+            assert_eq!((accounts[1].mask.as_str(), accounts[1].kind.as_str()), ("6666", "401(k)"));
+            assert_eq!((accounts[0].detail.as_str(), accounts[1].detail.as_str()), ("$100.00 available", ""));
         },
     );
 }
@@ -1187,78 +1260,9 @@ fn an_account_without_a_mask_still_separates_what_is_available() {
                 {"id":"acc","name":"Plaid Checking","subtype":"checking","balance":100.0,"available":100.0,"group":"depository"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            assert_eq!(balances.connections[0].accounts[0].subtitle, "Checking · $100.00 available");
-        },
-    );
-}
-
-/// The split says how much of what is held each bank is holding, biggest
-/// first, and the same for what is owed. A bank with money on both sides is in
-/// both.
-#[test]
-fn the_split_says_where_the_money_sits() {
-    let mut state = app();
-
-    eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
-            "connections":[
-                {"id":"c-1","name":"Citi","initials":"CI","status":"ok","accounts":[
-                    {"id":"acc-1","name":"Citi Checking","balance":100.0,"group":"depository"},
-                    {"id":"acc-2","name":"Citi Double Cash","balance":50.0,"group":"credit"}]},
-                {"id":"c-2","name":"Fidelity","initials":"FI","status":"ok","accounts":[
-                    {"id":"acc-3","name":"Fidelity Brokerage","balance":300.0,"group":"investment"}]}]}"#.to_string() } },
-        > Action::ToUi { action: ActionUi::Render { .. } },
-
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            let held: Vec<(&str, &str, f64)> = balances.held_split.iter().map(|s| (s.label.as_str(), s.amount.as_str(), s.share)).collect();
-            let owed: Vec<(&str, &str, f64)> = balances.owed_split.iter().map(|s| (s.label.as_str(), s.amount.as_str(), s.share)).collect();
-
-            assert_eq!(held, [("Fidelity", "$300.00", 0.75), ("Citi", "$100.00", 0.25)], "biggest first");
-            assert_eq!(owed, [("Citi", "$50.00", 1.0)], "the card, and not the current account");
-        },
-    );
-}
-
-/// Covered, the split keeps its bars and loses its figures, as Recurring's
-/// does.
-#[test]
-fn a_covered_split_keeps_its_bars() {
-    let mut state = app();
-
-    eval!(&mut state,
-        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
-            "connections":[{"id":"c","name":"First Platypus Bank","initials":"FP","status":"ok","accounts":[
-                {"id":"acc","name":"Plaid Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
-        > Action::ToUi { action: ActionUi::Render { .. } },
-
-        < Event::FromUi { event: EventUi::MaskToggled },
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
-        > Action::ToUi { action: ActionUi::Render { .. } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            let slice = &balances.held_split[0];
-
-            assert_eq!((slice.amount.as_str(), slice.share), ("••••••", 1.0));
-        },
-    );
-}
-
-/// The eye is named for what pressing it does.
-#[test]
-fn the_eye_says_what_it_will_do() {
-    let mut state = app();
-
-    eval!(&mut state,
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            assert_eq!(balances.mask_label, "Cover figures");
-        },
-
-        < Event::FromUi { event: EventUi::MaskToggled },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            assert_eq!(balances.mask_label, "Show figures");
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            assert_eq!(page.connections[0].accounts[0].subtitle, "Checking · $100.00 available");
         },
     );
 }
@@ -1735,6 +1739,180 @@ fn the_app_draws_against_the_devices_clock() {
     );
 }
 
+/// Removing a bank: the trash asks, and only Remove sends. Nothing is asked
+/// of the server by the press that opens the card, and the card is on the
+/// block it is about.
+#[test]
+fn removing_a_bank_asks_before_it_sends() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "connections":[{"id":"item-9","name":"Citi","initials":"CI","status":"ok","accounts":[
+                {"id":"acc","name":"Citi Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        // The card, on the bank it is about, named after it, and no request.
+        < Event::FromUi {
+            event: EventUi::BankRemoveRequested { item_id: "item-9".to_string() },
+        },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            let ask = page.connections[0].remove.clone().expect("the card is open");
+
+            assert_eq!(ask.title, "Remove Citi?");
+            assert_eq!(ask.confirm_label.as_deref(), Some("Remove"));
+            assert_eq!(ask.cancel_label.as_deref(), Some("Cancel"));
+            assert!(!ask.busy);
+        },
+
+        // Remove is what sends, and the card reads busy with no way out of
+        // it: the bank may already be gone at Plaid.
+        < Event::FromUi { event: EventUi::BankRemoveConfirmed },
+        > @r#"ToSource { action: RemoveBank { item_id: "item-9" } }"#,
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            let ask = page.connections[0].remove.clone().expect("the card is still open");
+
+            assert!(ask.busy);
+            assert!(ask.confirm_label.is_none());
+            assert!(ask.cancel_label.is_none());
+        },
+
+        // Gone. The rows are the server's, so a fresh snapshot is what takes
+        // the bank off the page.
+        < Event::FromSource { event: EventSource::BankRemoved },
+        > @r#"ToSource { action: LoadSnapshot }"#,
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            assert!(page.connections[0].remove.is_none(), "the card is gone");
+        },
+    );
+}
+
+/// Cancel takes the card down and asks for nothing.
+#[test]
+fn a_removal_backed_out_of_sends_nothing() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "connections":[{"id":"item-9","name":"Citi","initials":"CI","status":"ok","accounts":[
+                {"id":"acc","name":"Citi Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi {
+            event: EventUi::BankRemoveRequested { item_id: "item-9".to_string() },
+        },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::BankRemoveCancelled },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            assert_eq!(page.connections.len(), 1, "the bank is still there");
+            assert!(page.connections[0].remove.is_none());
+        },
+    );
+}
+
+/// The server would not remove it. The card says so and offers the tap
+/// again: a bank still listed is a bank still billing.
+#[test]
+fn a_removal_the_server_refused_can_be_tried_again() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{
+            "connections":[{"id":"item-9","name":"Citi","initials":"CI","status":"ok","accounts":[
+                {"id":"acc","name":"Citi Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi {
+            event: EventUi::BankRemoveRequested { item_id: "item-9".to_string() },
+        },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::BankRemoveConfirmed },
+        > Action::ToSource { action: ActionSource::RemoveBank { .. } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource { event: EventSource::BankRemoveFailed },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            let ask = page.connections[0].remove.clone().expect("the card is still open");
+
+            assert_eq!(ask.error.as_deref(), Some("That did not work. Nothing was removed."));
+            assert_eq!(ask.confirm_label.as_deref(), Some("Try again"));
+            assert!(!ask.busy);
+        },
+
+        // And the tap again sends again.
+        < Event::FromUi { event: EventUi::BankRemoveConfirmed },
+        > @r#"ToSource { action: RemoveBank { item_id: "item-9" } }"#,
+        > Action::ToUi { action: ActionUi::Render { .. } },
+    );
+}
+
+/// Add connection, outside first run. The tap opens Plaid, the button waits so
+/// a second tap cannot open a second sheet, and the bank that lands arrives in
+/// a fresh snapshot.
+#[test]
+fn adding_a_connection_opens_plaid_and_the_button_waits() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        > @r#"ToSource { action: StartBankLink }"#,
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            assert!(page.adding, "the button waits");
+        },
+
+        // A second tap while the first is out asks for nothing.
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource { event: EventSource::BankLinked },
+        > @r#"ToSource { action: LoadSnapshot }"#,
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            assert!(!page.adding, "the button stops waiting");
+        },
+    );
+}
+
+/// They closed Plaid without signing in. Nothing landed, so nothing is
+/// fetched and the button goes back to being tappable.
+#[test]
+fn a_connection_they_backed_out_of_frees_the_button() {
+    let mut state = app();
+
+    eval!(&mut state,
+        < Event::FromSource { event: EventSource::SnapshotLoaded { json: r#"{}"#.to_string() } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromUi { event: EventUi::BankConnectRequested },
+        > Action::ToSource { action: ActionSource::StartBankLink },
+        > Action::ToUi { action: ActionUi::Render { .. } },
+
+        < Event::FromSource { event: EventSource::BankAbandoned },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            assert!(!page.adding, "the button is tappable again");
+        },
+    );
+}
+
 /// Reconnect, on a bank that has stopped answering. The tap starts Plaid's
 /// update mode against that bank, and the button waits so a second tap
 /// cannot open a second sheet.
@@ -1748,7 +1926,7 @@ fn tapping_reconnect_starts_a_repair_and_the_button_waits() {
                 {"id":"acc","name":"Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi {
@@ -1757,9 +1935,9 @@ fn tapping_reconnect_starts_a_repair_and_the_button_waits() {
             },
         },
         > @r#"ToSource { action: StartBankRepair { item_id: "item-9" } }"#,
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            assert!(balances.connections[0].needs_reconnect);
-            assert!(balances.connections[0].reconnecting, "the button waits");
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            assert!(page.connections[0].needs_reconnect);
+            assert!(page.connections[0].reconnecting, "the button waits");
         },
 
         < Event::FromUi {
@@ -1784,7 +1962,7 @@ fn a_repair_that_worked_asks_for_a_fresh_snapshot() {
                 {"id":"acc","name":"Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi {
@@ -1797,8 +1975,8 @@ fn a_repair_that_worked_asks_for_a_fresh_snapshot() {
 
         < Event::FromSource { event: EventSource::BankLinked },
         > @r#"ToSource { action: LoadSnapshot }"#,
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            assert!(!balances.connections[0].reconnecting, "the button stops waiting");
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            assert!(!page.connections[0].reconnecting, "the button stops waiting");
         },
     );
 }
@@ -1815,7 +1993,7 @@ fn a_repair_they_backed_out_of_frees_the_button() {
                 {"id":"acc","name":"Checking","balance":100.0,"group":"depository"}]}]}"#.to_string() } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
-        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Balances } },
+        < Event::FromUi { event: EventUi::ScreenOpened { screen: Screen::Connections } },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi {
@@ -1827,9 +2005,9 @@ fn a_repair_they_backed_out_of_frees_the_button() {
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromSource { event: EventSource::BankAbandoned },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Balances { view: balances }, .. } } => {
-            assert!(balances.connections[0].needs_reconnect, "the bank is still dead");
-            assert!(!balances.connections[0].reconnecting, "and the button is tappable again");
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Connections { view: page }, .. } } => {
+            assert!(page.connections[0].needs_reconnect, "the bank is still dead");
+            assert!(!page.connections[0].reconnecting, "and the button is tappable again");
         },
     );
 }

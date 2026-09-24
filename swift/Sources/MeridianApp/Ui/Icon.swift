@@ -76,10 +76,6 @@ struct Glyph: Shape {
             Svg.append("M21 13a9 9 0 0 1-15 6.7L3 17", to: &path)
             Svg.polyline([3, 21, 3, 17, 7, 17], to: &path)
 
-        case "balances":
-            Svg.append("M21.21 15.89A10 10 0 1 1 8 2.83", to: &path)
-            Svg.append("M22 12A10 10 0 0 0 12 2v10z", to: &path)
-
         case "search":
             Svg.circle(11, 11, 7, to: &path)
             Svg.line(16.5, 16.5, 21, 21, to: &path)

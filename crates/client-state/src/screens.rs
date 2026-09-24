@@ -21,18 +21,20 @@ use crate::RangeSelection;
 use crate::Screen;
 use crate::StateApp;
 use crate::StateDelete;
+use crate::StateRemove;
 use crate::ViewAccount;
 use crate::ViewAccountBank;
 use crate::ViewAccountDelete;
 use crate::ViewAccountName;
 use crate::ViewAccountRow;
-use crate::ViewBalances;
 use crate::ViewBreakdownSlice;
 use crate::ViewCalendar;
 use crate::ViewCalendarDay;
 use crate::ViewCalendarMonth;
 use crate::ViewCategoryChip;
 use crate::ViewConnection;
+use crate::ViewConnectionRemove;
+use crate::ViewConnections;
 use crate::ViewDayCard;
 use crate::ViewDayRow;
 use crate::ViewDaySection;
@@ -46,6 +48,7 @@ use crate::ViewRange;
 use crate::ViewRangeKind;
 use crate::ViewRecurring;
 use crate::ViewScreen;
+use crate::ViewSettings;
 use crate::ViewStreamGroup;
 use crate::ViewStreamRow;
 use crate::ViewTxRow;
@@ -71,6 +74,15 @@ const SUMMARY_CHIPS: usize = 2;
 /// them instead.
 const HEADLINE_CATEGORIES: usize = 2;
 
+/// What the Connections page says with no bank on it. Onboarding does not
+/// leave an account here, but a link that failed does.
+const NO_CONNECTIONS: &str =
+    "No bank is connected, so there is nothing to show anywhere else either.";
+
+/// The same case on the Account tab, where the list is one section of a page
+/// rather than the whole of it.
+const NO_BANKS: &str = "No banks connected.";
+
 pub fn screen(state: &StateApp) -> ViewScreen {
     // In front of everything, first run included: every route that feeds a
     // screen is refused for this session, so there is nothing behind it to
@@ -95,8 +107,8 @@ pub fn screen(state: &StateApp) -> ViewScreen {
         Screen::Recurring => ViewScreen::Recurring {
             view: recurring(state),
         },
-        Screen::Balances => ViewScreen::Balances {
-            view: balances(state),
+        Screen::Connections => ViewScreen::Connections {
+            view: connections(state),
         },
         Screen::Account => ViewScreen::Account {
             view: account(state),
@@ -116,7 +128,7 @@ pub fn dock(current: Screen) -> ViewDock {
         items: vec![
             item(Screen::Ledger, "Ledger", "ledger"),
             item(Screen::Recurring, "Recurring", "recurring"),
-            item(Screen::Balances, "Balances", "balances"),
+            item(Screen::Connections, "Connections", "bank"),
             item(Screen::Account, "Account", "user"),
         ],
     }
@@ -134,7 +146,24 @@ pub fn who(user: Option<&User>) -> Option<ViewWho> {
         subtitle: user.email.clone(),
         settings_label: "Settings".to_string(),
         sign_out_label: "Sign out".to_string(),
+    })
+}
+
+/// The settings window, drawn over whichever screen is up.
+///
+/// `None` for the same reason [`who`] is: until a snapshot has said who this
+/// is there is no name to change, and a window with an empty field in it is a
+/// window that has guessed.
+pub fn settings(state: &StateApp) -> Option<ViewSettings> {
+    state.user()?;
+
+    Some(ViewSettings {
+        title: "Settings".to_string(),
+        account_label: "Account Settings".to_string(),
+        close_label: "Close".to_string(),
+        name: account_name(state),
         delete_label: "Delete my account".to_string(),
+        delete: state.deleting().map(delete_confirmation),
     })
 }
 
@@ -428,169 +457,132 @@ fn range_summary(range: &RangeSelection) -> String {
     }
 }
 
-fn balances(state: &StateApp) -> ViewBalances {
-    let held: f64 = state.connections().iter().map(|c| c.held()).sum();
+/// Which logins the app has, and what each one brings in.
+fn connections(state: &StateApp) -> ViewConnections {
+    let banks = state.connections().len();
 
-    // Negated, so the heading reads as an amount owed.
-    let owed: f64 = state
+    let accounts: usize = state
         .connections()
         .iter()
-        .flat_map(|connection| connection.accounts.iter())
-        .filter(|account| account.is_debt())
-        .map(|account| -account.balance)
+        .map(|connection| connection.accounts.len())
         .sum();
 
-    ViewBalances {
-        headline_label: "Held".to_string(),
-        headline: fmt::money(held, state.masked()),
-        masked: state.masked(),
-        mask_label: if state.masked() {
-            "Show figures"
-        } else {
-            "Cover figures"
-        }
-        .to_string(),
-        owed_label: "Owed".to_string(),
-        owed_total: fmt::money(owed, state.masked()),
+    ViewConnections {
+        title: "Connections".to_string(),
+        count: match banks {
+            0 => "No banks".to_string(),
+            _ => format!(
+                "{} · {}",
+                fmt::plural(banks, "bank", "banks"),
+                fmt::plural(accounts, "account", "accounts"),
+            ),
+        },
+        add_label: "Add connection".to_string(),
+        adding: state.connecting(),
         connections: connection_views(state),
-        held_split_label: "Where it sits".to_string(),
-        held_split: bank_split(state, false),
-        owed_split_label: "Owed against it".to_string(),
-        owed_split: bank_split(state, true),
+        empty: state
+            .connections()
+            .is_empty()
+            .then(|| no_banks_message(state, NO_CONNECTIONS)),
     }
 }
 
-/// How one side of the page splits across the banks it sits with, largest
-/// first — Recurring's split, by bank rather than by category.
+/// What the "are you sure" under one bank's trash says, at whichever step it
+/// is on.
 ///
-/// Unsigned, because the heading over it says which side it is. Covered, the
-/// figures go and the bars stay, as they do on Recurring.
-fn bank_split(state: &StateApp, debts: bool) -> Vec<ViewBreakdownSlice> {
-    let mut totals: Vec<(&Connection, f64)> = state
+/// Named, even though the card stands on the block it is about: a question
+/// that says which bank it is about can be answered without looking up at
+/// what opened it.
+fn remove_confirmation(step: &StateRemove, name: &str) -> ViewConnectionRemove {
+    match step {
+        StateRemove::Asking { .. } | StateRemove::Refused { .. } => ViewConnectionRemove {
+            title: format!("Remove {name}?"),
+            body: "Its accounts, transactions and recurring bills are deleted \
+                   permanently from Meridian."
+                .to_string(),
+            error: matches!(step, StateRemove::Refused { .. })
+                .then(|| "That did not work. Nothing was removed.".to_string()),
+            confirm_label: Some(
+                match step {
+                    StateRemove::Refused { .. } => "Try again",
+                    _ => "Remove",
+                }
+                .to_string(),
+            ),
+            cancel_label: Some("Cancel".to_string()),
+            busy: false,
+        },
+
+        StateRemove::Sending { .. } => ViewConnectionRemove {
+            title: format!("Removing {name}…"),
+            body: "The bank is being disconnected and its transactions deleted.".to_string(),
+            error: None,
+            confirm_label: None,
+            cancel_label: None,
+            busy: true,
+        },
+    }
+}
+
+/// One block per login, held and owed together: the page answers which logins
+/// we have and whether they are working, and a bank split in two answers that
+/// twice.
+fn connection_views(state: &StateApp) -> Vec<ViewConnection> {
+    state
         .connections()
         .iter()
-        .filter(|connection| connection.accounts.iter().any(|a| a.is_debt() == debts))
         .map(|connection| {
-            let total = connection
-                .accounts
-                .iter()
-                .filter(|a| a.is_debt() == debts)
-                .map(|a| a.balance)
-                .sum();
-
-            (connection, total)
-        })
-        .collect();
-
-    let sum: f64 = totals.iter().map(|(_, total)| total).sum();
-
-    totals.sort_by(|a, b| b.1.total_cmp(&a.1));
-
-    totals
-        .into_iter()
-        .map(|(connection, total)| ViewBreakdownSlice {
-            label: connection.name.clone(),
-            token: connection.id.clone(),
-            // Guarded: nothing to split would divide by zero into a NaN
-            // width, and an overdrawn account would draw a negative one.
-            share: if sum > 0.0 {
-                (total / sum).clamp(0.0, 1.0)
-            } else {
-                0.0
-            },
-            amount: fmt::money(total, state.masked()),
+            connection_view(
+                connection,
+                state.masked(),
+                state.reconnecting() == Some(connection.id.as_str()),
+                state
+                    .removing()
+                    .filter(|step| step.item_id() == connection.id),
+                state.now(),
+            )
         })
         .collect()
 }
 
-/// One block per connection, with debts split into their own block: a mortgage
-/// listed between a checking account and an HSA reads as something you have.
-fn connection_views(state: &StateApp) -> Vec<ViewConnection> {
-    let mut views = Vec::new();
-
-    for connection in state.connections() {
-        let held: Vec<&Account> = connection
-            .accounts
-            .iter()
-            .filter(|a| !a.is_debt())
-            .collect();
-
-        if !held.is_empty() {
-            views.push(connection_view(
-                connection,
-                &held,
-                state.masked(),
-                false,
-                state.reconnecting() == Some(connection.id.as_str()),
-                state.now(),
-            ));
-        }
-    }
-
-    // Debt blocks come last, so the screen opens on what you have.
-    for connection in state.connections() {
-        let owed: Vec<&Account> = connection.accounts.iter().filter(|a| a.is_debt()).collect();
-
-        if !owed.is_empty() {
-            views.push(connection_view(
-                connection,
-                &owed,
-                state.masked(),
-                true,
-                state.reconnecting() == Some(connection.id.as_str()),
-                state.now(),
-            ));
-        }
-    }
-
-    views
-}
-
 fn connection_view(
     connection: &Connection,
-    accounts: &[&Account],
     masked: bool,
-    is_debts: bool,
     reconnecting: bool,
+    removing: Option<&StateRemove>,
     now: Timestamp,
 ) -> ViewConnection {
-    let total: f64 = accounts
-        .iter()
-        .map(|a| if is_debts { -a.balance } else { a.balance })
-        .sum();
-
     let needs_reconnect = connection.status == ConnectionStatus::LoginRequired;
 
     ViewConnection {
-        id: format!("{}{}", connection.id, if is_debts { "-owed" } else { "" }),
+        id: connection.id.clone(),
         item_id: connection.id.clone(),
         name: connection.name.clone(),
-        initials: connection.initials.clone(),
         synced: match &connection.status {
-            ConnectionStatus::Ok { synced_at } => fmt::short_sync(*synced_at, now),
+            ConnectionStatus::Ok { synced_at } => format!("Synced {}", fmt::ago(*synced_at, now)),
             ConnectionStatus::LoginRequired => String::new(),
         },
         needs_reconnect,
+        reconnect_label: "Sign in".to_string(),
+        remove_label: "Remove bank".to_string(),
         reconnecting,
-        is_debts,
-        accounts: accounts.iter().map(|a| account_row(a, masked)).collect(),
-        total_label: format!(
-            "{} {}",
-            fmt::plural(accounts.len(), "account", "accounts"),
-            if is_debts { "owed" } else { "held" },
-        ),
-        total: fmt::money(total, masked),
+        accounts: connection
+            .accounts
+            .iter()
+            .map(|account| account_row(account, masked, needs_reconnect))
+            .collect(),
+        remove: removing.map(|step| remove_confirmation(step, &connection.name)),
     }
 }
 
-fn account_row(account: &Account, masked: bool) -> ViewAccountRow {
-    let label = fmt::account_kind(account.subtype.as_deref(), account.group);
+fn account_row(account: &Account, masked: bool, stale: bool) -> ViewAccountRow {
+    let kind = fmt::account_kind(account.subtype.as_deref(), account.group);
 
     // The kind and the last four digits read as one phrase, so only what
     // comes after them gets a separator.
-    let kind = match &account.mask {
-        Some(mask) => format!("{label} ·{mask}"),
-        None => label,
+    let phrase = match &account.mask {
+        Some(mask) => format!("{kind} ·{mask}"),
+        None => kind.clone(),
     };
 
     // Only one fits, and available beats APY: it moves.
@@ -612,14 +604,16 @@ fn account_row(account: &Account, masked: bool) -> ViewAccountRow {
         id: account.id.clone(),
         name: account.name.clone(),
         subtitle: if detail.is_empty() {
-            kind.clone()
+            phrase
         } else {
-            format!("{kind} · {detail}")
+            format!("{phrase} · {detail}")
         },
+        mask: account.mask.clone().unwrap_or_default(),
         kind,
         detail,
         amount: fmt::money(amount, masked),
         owed: account.is_debt(),
+        stale,
         utilisation: utilisation(account, masked),
     }
 }
@@ -672,7 +666,7 @@ fn account(state: &StateApp) -> ViewAccount {
     ViewAccount {
         name: account_name(state),
         banks_label: "Banks".to_string(),
-        banks_empty: banks.is_empty().then(|| no_banks_message(state)),
+        banks_empty: banks.is_empty().then(|| no_banks_message(state, NO_BANKS)),
         banks,
         session_label: "Session".to_string(),
         sign_out_label: "Sign out".to_string(),
@@ -692,7 +686,7 @@ fn account_name(state: &StateApp) -> Option<ViewAccountName> {
     let value = state.renaming().unwrap_or(kept);
 
     Some(ViewAccountName {
-        label: "Your name".to_string(),
+        label: "User name".to_string(),
 
         field: ViewField {
             icon: "user".to_string(),
@@ -705,10 +699,12 @@ fn account_name(state: &StateApp) -> Option<ViewAccountName> {
             fault: None,
         },
 
-        action: {
+        save_label: "Save".to_string(),
+
+        can_save: {
             let typed = value.trim();
 
-            (!typed.is_empty() && typed != kept).then(|| "Save".to_string())
+            !typed.is_empty() && typed != kept
         },
     })
 }
@@ -758,11 +754,12 @@ fn delete_confirmation(step: &StateDelete) -> ViewAccountDelete {
     }
 }
 
-/// What the bank list says when it is empty.
+/// What a list of banks says when it is empty, and what it says instead while
+/// the snapshot behind it is missing.
 ///
-/// The failure comes first, with no `loaded` guard: this is the screen
-/// somebody opens *because* the app is not working.
-fn no_banks_message(state: &StateApp) -> String {
+/// The failure comes first, with no `loaded` guard: an empty list is what
+/// somebody is looking at *because* the app is not working.
+fn no_banks_message(state: &StateApp, settled: &str) -> String {
     if let Some(reason) = state.load_failed() {
         return failure(reason);
     }
@@ -771,7 +768,7 @@ fn no_banks_message(state: &StateApp) -> String {
         return "Loading…".to_string();
     }
 
-    "No banks connected.".to_string()
+    settled.to_string()
 }
 
 fn recurring(state: &StateApp) -> ViewRecurring {

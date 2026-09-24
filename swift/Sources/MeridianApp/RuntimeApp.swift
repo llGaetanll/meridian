@@ -109,7 +109,7 @@ final class RuntimeApp: ObservableObject {
         switch screen {
         case .ledger: "ledger"
         case .recurring: "recurring"
-        case .balances: "balances"
+        case .connections: "connections"
         case .account: "account"
         case .onboarding: "first-run"
         case .paywall: "paywall"

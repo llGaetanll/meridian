@@ -7,7 +7,7 @@
 //! events and actions are not, because a view value is data the UI owns.
 
 use crate::ViewAccount;
-use crate::ViewBalances;
+use crate::ViewConnections;
 use crate::ViewLedger;
 use crate::ViewOnboarding;
 use crate::ViewPaywall;
@@ -19,7 +19,7 @@ pub enum Screen {
     #[default]
     Ledger,
     Recurring,
-    Balances,
+    Connections,
     Account,
 }
 
@@ -31,7 +31,7 @@ pub enum Screen {
 pub enum ViewScreen {
     Ledger { view: ViewLedger },
     Recurring { view: ViewRecurring },
-    Balances { view: ViewBalances },
+    Connections { view: ViewConnections },
     Account { view: ViewAccount },
     Onboarding { view: ViewOnboarding },
     Paywall { view: ViewPaywall },

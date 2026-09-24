@@ -213,6 +213,14 @@ pub enum ActionStore {
     /// removals need, and deleting the user takes `items` with it.
     LoadAccessTokens { user_id: uuid::Uuid },
 
+    /// Forget one bank, and everything that came through it: its accounts,
+    /// its transactions and its streams, by the cascade the schema declares.
+    ///
+    /// Sent only after Plaid has stopped the Item. The other way round would
+    /// throw away the access token the removal needs and leave a subscription
+    /// nobody can stop.
+    ForgetItem { item_id: String },
+
     /// What deletion code stands against this user, if any.
     LoadDeleteCode { user_id: uuid::Uuid },
 

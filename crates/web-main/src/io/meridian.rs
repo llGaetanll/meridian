@@ -259,6 +259,37 @@ impl Meridian {
         }
     }
 
+    /// Remove one bank: stop the Item at Plaid, and delete the accounts,
+    /// transactions and streams that came through it. There is no undo, and
+    /// the server answers once the rows are gone.
+    ///
+    /// `false` is the server refusing: a bank the caller does not hold, or
+    /// one Plaid would not stop. Not a failure of the connection, so the
+    /// popup says so rather than the page.
+    pub async fn remove_bank(&self, token: &str, item_id: &str) -> Result<bool, Failure> {
+        let url = self.url("bank/remove")?;
+        let body = serde_json::json!({ "item_id": item_id }).to_string();
+        let call = ApiCall::post(module_path!(), SOURCE, &url, &body);
+
+        let request = self
+            .client
+            .post(url)
+            .bearer_auth(token)
+            .header("Content-Type", "application/json")
+            .body(body);
+
+        let (status, body) = self.send(request, call).await?;
+
+        if status == 404 || status == 503 {
+            return Ok(false);
+        }
+
+        match Failure::refusal(status, &body) {
+            Some(refusal) => Err(refusal),
+            None => Ok(true),
+        }
+    }
+
     /// Trade the emailed code for the deletion. There is no undo: the server
     /// answers once the rows are gone.
     ///

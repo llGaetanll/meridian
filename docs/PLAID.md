@@ -229,6 +229,28 @@ happened.
 the way to try it there is `/sandbox/item/reset_login`, which puts a linked
 Item into `ITEM_LOGIN_REQUIRED` on purpose.
 
+## Removing a bank
+
+`POST /bank/remove {"item_id"}` stops one bank and forgets everything that
+came through it. Two steps, in this order: `/item/remove` at Plaid, then
+`DELETE FROM items` here, whose cascade takes the accounts, the transactions
+and the streams. The other way round throws away the `access_token` the
+removal needs, and an Item nobody can reach is an Item nobody can stop paying
+for.
+
+`/item/remove` is the **only** thing that ends a Plaid subscription for an
+Item — it is billed for as long as it exists, not for as long as it is used.
+It does not give the Production Item **slot** back, which is the whole of the
+warning at the top of this file.
+
+A removal Plaid refuses deletes nothing. There the rows stay and the caller is
+told, because the access token is still the only thing that can stop the bill
+and a bank taken off the page would leave nothing to try again with. Account
+deletion takes the opposite decision for the opposite reason: there the
+alternative is an account nobody can delete.
+
+`docs/API_FLOW.md` writes it out as flow I.
+
 ## The two redirects
 
 Plaid takes two addresses with similar names, and conflating them is why this

@@ -85,7 +85,7 @@ struct StreamRow: View {
     }
 }
 
-/// One account on the balances screen.
+/// One account on the Connections screen.
 struct AccountRow: View {
     let row: ViewAccountRow
 
@@ -110,8 +110,7 @@ struct AccountRow: View {
 
             Spacer(minLength: 8)
 
-            // Owed is not red here: the section heading above already says
-            // these are balances owed, and the minus sign says it again.
+            // Owed is not red here: the minus sign says it.
             Text(row.amount)
                 .font(.system(size: 14.5, weight: .semibold, design: .monospaced))
         }
@@ -120,21 +119,21 @@ struct AccountRow: View {
     }
 }
 
-/// One connection: its accounts, and what they come to.
+/// One connection: the bank, then every account it brings in.
+///
+/// The mark is the bank glyph rather than the bank's initials: two letters in
+/// a square read as a monogram nobody chose, and four of them down a page read
+/// as four. No total under the rows either — a login that reports a current
+/// account and a mortgage has no figure worth adding them into.
 struct ConnectionBlock: View {
     let connection: ViewConnection
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 11) {
-                Text(connection.initials)
-                    .font(.system(size: 10, weight: .semibold))
+                Icon(name: "bank", size: 21)
                     .foregroundStyle(Theme.textFaint)
                     .frame(width: 24, height: 24)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.radiusSm)
-                            .stroke(Theme.borderStrong, lineWidth: 1)
-                    )
 
                 Text(connection.name)
                     .font(.system(size: 13.5, weight: .semibold))
@@ -143,10 +142,14 @@ struct ConnectionBlock: View {
 
                 Spacer(minLength: 8)
 
-                // A healthy connection says nothing at all now that "synced
-                // 2m" has gone; a stale one gets a button that does not shout.
+                // The sign-in and the sync time take the same place on the
+                // line, because they answer the same question.
                 if connection.needsReconnect {
-                    ReconnectButton()
+                    ReconnectButton(connection: connection)
+                } else {
+                    Text(connection.synced)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textFaint)
                 }
             }
             .padding(.horizontal, pageInset)
@@ -155,45 +158,32 @@ struct ConnectionBlock: View {
             ForEach(connection.accounts, id: \.id) { account in
                 AccountRow(row: account)
             }
-
-            RowRule()
-
-            HStack(alignment: .firstTextBaseline) {
-                Text(connection.totalLabel)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.textFaint)
-
-                Spacer(minLength: 8)
-
-                // A block total is scaffolding, not a figure to read — the
-                // account rows above it are the numbers.
-                Text(connection.total)
-                    .font(.system(size: 13.5, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Theme.textMuted)
-            }
-            .padding(.horizontal, pageInset)
-            .padding(.top, 15)
         }
     }
 }
 
-/// The action a stale connection needs.
+/// The sign-in a stale connection needs: Plaid Link in update mode against
+/// this bank, which repairs it rather than attaching another.
 ///
-/// Inert, and deliberately so: clearing `ITEM_LOGIN_REQUIRED` takes Plaid Link
-/// in update mode, which is a hosted page and a server round trip that do not
-/// exist yet. A button that looked live and did nothing would be worse than
-/// one that says what it is waiting for. The icon is honest about where the
-/// tap goes when it does work.
+/// While the machine says the repair is under way the button waits, so a
+/// second tap cannot open a second sheet.
 struct ReconnectButton: View {
+    let connection: ViewConnection
+
+    @EnvironmentObject private var runtime: RuntimeApp
+
     var body: some View {
-        Button {} label: {
+        Button {
+            runtime.ui(.bankReconnectRequested(itemId: connection.itemId))
+        } label: {
             HStack(spacing: 7) {
-                Icon(name: "ext", size: 14, weight: 1.9)
-                Text("Reconnect")
+                Icon(name: connection.reconnecting ? "spin" : "ext", size: 14, weight: 1.9)
+                Text(connection.reconnectLabel)
             }
         }
         .buttonStyle(.quiet)
-        .disabled(true)
-        .opacity(0.55)
+        .foregroundStyle(Theme.amber300)
+        .disabled(connection.reconnecting)
+        .opacity(connection.reconnecting ? 0.55 : 1)
     }
 }

@@ -272,6 +272,35 @@ bank, and the next snapshot whose freshness window has expired syncs it. No
 sync is forced here — the screen that follows asks for a snapshot, and that is
 enough.
 
+## I. Removing a bank
+
+H is leaving — `POST /account/delete/request` and `POST /account/delete` — and
+is not drawn here yet; `crates/server-main/tests/flow_h_leaving.rs` is what
+holds it.
+
+Starts on the trash on a bank's block, on the Connections page, and the app
+asks again before it sends: what goes is the connection's whole history.
+`/item/remove` is also the only thing that stops Plaid billing a subscription
+for an Item, so this is the route that matters to the bill (`docs/BUSINESS.md`).
+
+It does not give the Production Item **slot** back. Ten is ten for the life of
+the account, and this is not one of the ten returning.
+
+The web app is the client that walks this today; the phone has no trash yet
+(issue #63).
+
+1. `phone` -> `server` - `POST /bank/remove {"item_id"}` with `Authorization: Bearer <token>`: *Which bank, by the id the snapshot's connection carries. No code, unlike `/account/delete`: what is lost is one connection rather than the account.*
+2. `server` -> `store` - the caller's access tokens: *The ownership check and what the removal needs in one — a bank whose token is not among this caller's is not this caller's bank. Read before anything is deleted, because forgetting the Item takes the token with it.*
+3. `server` -> `plaid` - `POST /item/remove`: *The named bank's token and no other. The token stops working the moment this succeeds.*
+4. `server` -> `store` - `DELETE FROM items`: *The accounts, transactions and streams go with it by the cascade the schema declares. Only after Plaid has answered.*
+5. `phone` <- `server` - one of:
+   a. `204 No Content`: *Answered once the rows are actually gone, so the next snapshot cannot still draw them.*
+   b. `401 Unauthorized`: *No bearer token, or one the server no longer honours.*
+   c. `404 Not Found`: *Not this caller's bank, or no such bank. One status for both, for the reason G's 3c gives.*
+   d. `429 Too Many Requests`: *The caller's window, or Plaid's `item/remove` budget.*
+   e. `503 Service Unavailable`: *Plaid would not stop the Item. **Nothing was deleted** — the access token is still the only thing that can stop the bill, so the rows stay and the tap can be made again. This is where it differs from a deletion, which logs the failure and deletes the rows anyway.*
+6. `phone` -> `server` - `GET /snapshot`: *The app asks again on `204`. The bank coming off the page is the snapshot, not the answer.*
+
 ## Things worth knowing about the shape
 
 Every route but the webhook needs the bearer token, and the webhook needs a

@@ -104,6 +104,9 @@ pub enum Route {
     /// `POST /account/delete`
     AccountDelete,
 
+    /// `POST /bank/remove` — one bank, stopped and forgotten.
+    BankRemove,
+
     /// `GET /bars` — one series over one window.
     Bars,
 }
@@ -127,6 +130,7 @@ impl Route {
             Route::AccountName => "/account/name",
             Route::AccountDeleteRequest => "/account/delete/request",
             Route::AccountDelete => "/account/delete",
+            Route::BankRemove => "/bank/remove",
             Route::Bars => "/bars",
         }
     }
@@ -158,8 +162,10 @@ impl Route {
             Route::BillingApple => (SUBSCRIBES_PER_MINUTE, MINUTE),
 
             // As tight as subscribing, and for the mirror-image reason: each
-            // one makes calls to Plaid that cannot be undone.
+            // one makes calls to Plaid that cannot be undone. Removing one
+            // bank is the same call on one Item.
             Route::AccountDelete => (SUBSCRIBES_PER_MINUTE, MINUTE),
+            Route::BankRemove => (SUBSCRIBES_PER_MINUTE, MINUTE),
 
             Route::Bars => (BARS_PER_MINUTE, MINUTE),
 

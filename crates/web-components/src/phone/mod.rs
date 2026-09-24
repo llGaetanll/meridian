@@ -1,4 +1,3 @@
-mod balances_band;
 mod calendar_strip;
 mod dock;
 mod ledger_band;
@@ -9,7 +8,6 @@ mod phone_shell;
 mod recurring_band;
 mod stream_groups;
 
-pub use balances_band::BalancesBand;
 pub use calendar_strip::CalendarStrip;
 pub use dock::Dock;
 pub use ledger_band::LedgerBand;

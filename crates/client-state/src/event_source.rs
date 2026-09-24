@@ -67,6 +67,14 @@ pub enum EventSource {
     /// yet be attached.
     BankPending,
 
+    /// One bank is gone: stopped at Plaid, and its rows deleted. No id,
+    /// because only one removal is ever out.
+    BankRemoved,
+
+    /// The server would not remove it. Nothing was deleted, so the bank is
+    /// still on the page and the button comes back.
+    BankRemoveFailed,
+
     /// How far the first sync has got, as `server_wire::WireSyncStatus` in
     /// JSON, for the reason [`SnapshotLoaded`](EventSource::SnapshotLoaded) is.
     SyncStatusLoaded { json: String },

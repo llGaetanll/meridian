@@ -40,6 +40,11 @@ pub enum ActionSource {
     /// the bank's consent instead of attaching a new one.
     StartBankRepair { item_id: String },
 
+    /// Ask the server to remove one bank: stop the Item at Plaid, and delete
+    /// the accounts, transactions and streams that came through it. There is
+    /// no undo, and the tap that leads here has been confirmed.
+    RemoveBank { item_id: String },
+
     /// Ask the server to email the signed-in user the code that confirms
     /// deleting their account. No address: the server sends it to the one
     /// the account is written to.

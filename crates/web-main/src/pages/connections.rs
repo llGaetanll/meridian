@@ -7,7 +7,6 @@
 use client_state::EventUi;
 use client_state::ViewConnections;
 use leptos::prelude::*;
-use web_components::ConfirmRemove;
 use web_components::ConnectionBlocks;
 use web_ui::Glyph;
 
@@ -25,7 +24,6 @@ pub fn ConnectionsPage(view: Signal<ViewConnections>) -> impl IntoView {
     let empty = Signal::derive(move || view.with(|v| v.empty.clone()));
     let listing = move || empty.with(Option::is_none);
 
-    let remove = Signal::derive(move || view.with(|v| v.remove.clone()));
     let adding = Signal::derive(move || view.with(|v| v.adding));
     let ui = Callback::new(move |event| runtime.ui(event));
 
@@ -68,10 +66,6 @@ pub fn ConnectionsPage(view: Signal<ViewConnections>) -> impl IntoView {
                     </div>
                 </Show>
             </div>
-
-            {move || {
-                remove.get().map(|remove| view! { <ConfirmRemove remove=remove ui=ui /> })
-            }}
         </div>
     }
 }

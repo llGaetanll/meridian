@@ -226,6 +226,12 @@
    the screen is for. */
 .ui .btn.plain.back { color: var(--text-muted); }
 .ui .btn.plain.back svg { width: 20px; height: 20px; }
+/* The same grey, for a plain button that is neither the action nor a warning:
+   a control that has to be there without asking to be used. Removing a bank
+   is the one — rose would put the loudest thing on the page on every row of
+   it, and what it does is asked again before it happens anyway. */
+.ui .btn.plain.mute { color: var(--text-faint); }
+.ui .btn.plain.mute:hover { background: var(--bg-raised); color: var(--text-muted); }
 
 /* Connected buttons: the same buttons with the gap taken out. They share their
    side borders and their edges run into one line under the row, and the live
@@ -553,6 +559,28 @@
   cursor: pointer;
 }
 .ui .menu .item svg { width: 17px; height: 17px; flex: none; color: var(--text-faint); }
+/* A menu that asks rather than lists: the question at its head, above the
+   rule, and the rows under it are the answer. The bold line is what is being
+   asked and the grey one is what it costs, because a question you have to
+   read twice is one people answer by pressing the safe row. */
+.ui .menu .say {
+  padding: 9px 11px 8px;
+  font-size: 12.5px; line-height: 1.45; color: var(--text-muted);
+}
+.ui .menu .say b {
+  display: block; margin-bottom: 3px;
+  font-size: 13px; font-weight: 600; color: var(--text);
+}
+/* What went wrong with the answer they already gave, in the colour a fault is
+   everywhere else. */
+.ui .menu .fault { padding: 0 11px 8px; font-size: 12.5px; color: var(--bad); }
+/* The answer, where it is two rows rather than a list: they go on one line,
+   the safe one left and the one that cannot be undone right, each taking half
+   the card. Rows still and not buttons — the card is a menu and these are its
+   rows, side by side because two answers to one question are not a list of
+   two things you might do. */
+.ui .menu .acts { flex-direction: row; gap: 3px; }
+.ui .menu .acts .item { flex: 1; width: auto; }
 /* What the line is set to, for a line that is a setting rather than a door.
    At the right, quiet, in the weight the row's second line is: the label says
    what it is and this says where it stands, and pressing the row moves it. */
@@ -612,6 +640,16 @@
   caret-color: var(--accent-text);
 }
 .ui .field input::placeholder { color: var(--text-faint); opacity: 1; }
+
+/* A field taking a code rather than words: centred, spaced out, and in the
+   money face, so six digits read as six things and not as one number. For the
+   one place a code is asked for outside a flow that can spare a box per
+   digit. */
+.ui .field.digits input {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 16px; letter-spacing: 6px;
+}
 
 /* The insertion point, drawn rather than blinking: a sketch has no focus, and
    a still frame of a live field needs one to read as live. */
@@ -964,3 +1002,164 @@
 }
 .ui .strip-days { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 8px; }
 .ui .strip .cal-day:not(.outside) { cursor: pointer; }
+
+/* The dialog.
+
+   A window over the app, in the middle of the screen, with the page it
+   covers dimmed behind it rather than taken away: what is in here belongs to
+   the account and not to the page, so the page has no reason to go anywhere
+   while it is answered.
+
+   Two shapes, and they are the same card. The wide one has a rail down its
+   left with a row per page, which is how it grows: a second page is a row
+   added to a window that already has a shape. `.ask` is the narrow one with
+   no rail — a dialog that asks one question and has no pages at all.
+
+   The rail's rows are the menu's rows exactly, `.item` and all, because they
+   are the same thing: a flat line with a glyph that does something when it is
+   pressed. `.on` is the one you are on.
+
+   It fades up and does not travel. A window that is over everything has
+   nowhere to have come from, and one that slid in from an edge would be
+   claiming a direction it does not have.
+
+   The scrim is the way out, along with the cross in the corner and Escape.
+   Three of them, because a window with a field in it is one people press
+   Escape at. */
+
+.ui .scrim {
+  position: fixed; inset: 0; z-index: 40;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--sheet) 68%, transparent);
+  animation: scrim-up 120ms ease;
+}
+.ui .dialog {
+  display: flex;
+  width: min(760px, 100%); height: min(480px, 100%);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-pop);
+  animation: dialog-up 140ms ease;
+}
+/* One question and no pages: as wide as the words need and as tall as they
+   turn out to be. */
+.ui .dialog.ask {
+  width: min(420px, 100%); height: auto;
+  border-radius: var(--r-md);
+}
+
+/* The rail. One step darker than the page beside it, the way the app's own
+   sidebar is against its content. */
+.ui .dialog .rail {
+  display: flex; flex-direction: column; gap: 2px;
+  width: 196px; flex: none;
+  padding: 14px 10px;
+  border-right: 1px solid var(--divider);
+  background: var(--bg);
+}
+/* The window's own name, over the rail: the pane is headed by the page you
+   are on, so the window has to say what it is somewhere else. */
+.ui .dialog .rail-head {
+  padding: 4px 10px 12px;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.ui .dialog .rail .item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0; border-radius: 7px;
+  background: none;
+  font: inherit; font-size: 13.5px; font-weight: 500;
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+}
+.ui .dialog .rail .item svg { width: 17px; height: 17px; flex: none; color: var(--text-faint); }
+.ui .dialog .rail .item:hover { background: var(--bg-raised); color: var(--text); }
+.ui .dialog .rail .item.on {
+  background: var(--bg-raised);
+  color: var(--text); font-weight: 600;
+}
+/* The glyph takes the row's own colour rather than the accent. A rail with one
+   page on it would otherwise have a violet row in it at all times, which reads
+   as a thing that was just pressed rather than the page you are on. */
+.ui .dialog .rail .item.on svg { color: inherit; }
+
+/* The page itself, and the one thing that scrolls. A column, so that what is
+   meant to sit at its foot can. */
+.ui .dialog .pane {
+  display: flex; flex-direction: column;
+  flex: 1; min-width: 0;
+  overflow-y: auto;
+  padding: 22px 24px;
+}
+.ui .dialog .pane > h2 { font-size: 16px; font-weight: 600; }
+/* The rail says which page this is, so the head of the pane usually holds
+   only the cross. It stands at the end of the line rather than in the corner
+   of the window, which is the rail's. */
+.ui .dialog .pane-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 18px;
+}
+.ui .dialog .pane-head:not(:has(> :nth-child(2))) { justify-content: flex-end; }
+/* The foot of the page, wherever the page ends: pushed down by whatever room
+   is left, so a short page does not leave its last thing halfway up. What
+   goes here is the thing you should not meet on the way to something else. */
+.ui .dialog .pane-foot { margin-top: auto; }
+/* What the foot holds, along one line: the door with nothing behind it at one
+   end and the thing the page is for at the other, as far apart as the window
+   is wide. Nobody presses one while reaching for the other. */
+.ui .dialog .pane-acts { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ui .dialog .shut {
+  display: flex; flex: none;
+  padding: 5px; margin: -5px -5px -5px 0;
+  border: 0; border-radius: 7px;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.ui .dialog .shut svg { width: 17px; height: 17px; }
+.ui .dialog .shut:hover { background: var(--bg-raised); color: var(--text); }
+
+/* A dialog's actions run along the bottom rather than stacking: there are two
+   of them at most and they are a question's two answers. */
+.ui .dialog .acts { flex-direction: row; justify-content: flex-end; margin-top: 18px; }
+
+/* The rule above the last thing on a page of settings, and the room it needs.
+   The door with nothing behind it goes under it, nowhere near the control
+   above: a hand on its way to Save should not be able to overshoot onto it. */
+.ui .dialog .pane .rule-sec { margin: 28px 0 18px; }
+
+/* One setting: what it is called, and the control that sets it.
+
+   The label above rather than beside it, because the next setting's control
+   has to line up with this one's, and a column of labels sets their left edge
+   by the longest word among them.
+
+   A name is a few words, so the field takes a reading measure rather than the
+   width of the page: a box as wide as the pane invites a sentence. */
+.ui .setting { display: flex; flex-direction: column; gap: 7px; }
+.ui .setting > label { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+.ui .setting-row { display: flex; align-items: center; gap: 10px; }
+.ui .setting-row .field { flex: 1; max-width: 320px; }
+
+@keyframes scrim-up { from { opacity: 0; } }
+@keyframes dialog-up { from { opacity: 0; transform: translateY(6px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .ui .scrim, .ui .dialog { animation: none; }
+}
+
+/* The destructive button.
+
+   Rose, and quiet: the same frame every other quiet button has, lettered in
+   the colour that means a door with nothing behind it. It is never the violet
+   one — the loud button on a screen is the thing you came to do, and this is
+   never that. */
+.ui .btn.grave { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 30%, transparent); }
+.ui .btn.grave:hover { background: var(--down-tint); }

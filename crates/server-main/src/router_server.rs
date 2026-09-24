@@ -85,6 +85,7 @@ pub(crate) fn router(to_loop: ToLoop, origins: &WebOrigins) -> Router {
         .route("/account/name", post(account_name))
         .route("/account/delete/request", post(account_delete_request))
         .route("/account/delete", post(account_delete))
+        .route("/bank/remove", post(bank_remove))
         .route("/billing/apple", post(billing_apple))
         .route(STRIPE_WEBHOOK_PATH, post(stripe_webhook))
         .route(APPLE_WEBHOOK_PATH, post(apple_webhook))
@@ -482,6 +483,53 @@ async fn account_delete(
         Some(ActionRouter::Deleted) => Ok(StatusCode::NO_CONTENT),
         Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
         Some(ActionRouter::Rejected) => Err(StatusCode::FORBIDDEN.into()),
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),
+    }
+}
+
+/// What `POST /bank/remove` is asked with: which bank to remove.
+#[derive(Debug, Deserialize)]
+struct RemoveAsked {
+    item_id: String,
+}
+
+/// `POST /bank/remove`
+///
+/// Stop one bank at Plaid and forget everything that came through it: its
+/// accounts, its transactions and its recurring bills.
+///
+/// **There is no undo**, and no code either, unlike `/account/delete`: what is
+/// lost is one connection's history rather than the account, and the app asks
+/// before it sends. `/item/remove` is also the only thing that stops Plaid
+/// billing a subscription for an Item — see `docs/BUSINESS.md`.
+///
+/// Not this caller's bank and no such bank are one 404, because telling them
+/// apart says which Items exist. Answered only once the rows are actually
+/// gone, so the next snapshot cannot still draw them.
+async fn bank_remove(
+    State(to_loop): State<ToLoop>,
+    Extension(ip): Extension<ClientIp>,
+    headers: axum::http::HeaderMap,
+    Json(asked): Json<RemoveAsked>,
+) -> Result<StatusCode, Refusal> {
+    let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let answer = runtime_router::dispatch(
+        &to_loop,
+        Client::anonymous(ip),
+        EventRouter::BankRemoveRequested {
+            token_sha256,
+            item_id: asked.item_id,
+        },
+    )
+    .await;
+
+    refused(&answer)?;
+
+    match answer {
+        Some(ActionRouter::BankRemoved) => Ok(StatusCode::NO_CONTENT),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
+        Some(ActionRouter::Rejected) => Err(StatusCode::NOT_FOUND.into()),
         _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),
     }
 }

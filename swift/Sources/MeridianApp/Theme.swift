@@ -50,7 +50,7 @@ enum Theme {
 
     /// Named directly rather than through a role, as `--amber-300` and
     /// `--slate-300` are in the stylesheet: the pending tag and the "due soon"
-    /// date are amber, and a connection's initials are slate.
+    /// date are amber, as is the sign-in an expired login wants.
     static let amber300 = Color(hex: 0xFCD34D)
     static let slate300 = Color(hex: 0xCBD5E1)
 

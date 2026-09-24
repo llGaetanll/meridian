@@ -132,6 +132,7 @@ body {
     <symbol id="i-theme" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none"/></symbol>
     <symbol id="i-signout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20h4"/><polyline points="15.5 8 19.5 12 15.5 16"/><line x1="19.5" y1="12" x2="9.5" y2="12"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5h15"/><path d="M9 6.5V4.8h6v1.7"/><path d="M6.5 6.5 7.4 20h9.2l.9-13.5"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 5 8 12 15 19"/></symbol>
     <symbol id="i-tick-c" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="16 9.5 10.8 15 8 12.4"/></symbol>
     <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="7.5" x2="12" y2="13"/><circle cx="12" cy="16.5" r="0.6" fill="currentColor"/></symbol>
@@ -759,20 +760,34 @@ body {
       <div class="pair">
         <div data-theme="dark" class="demo">
         <div class="menu">
-          <button class="item"><svg><use href="#i-settings"/></svg>Settings</button>
           <button class="item"><svg><use href="#i-theme"/></svg>Theme<span class="val">Dark</span></button>
+          <button class="item"><svg><use href="#i-settings"/></svg>Settings</button>
           <div class="cut"></div>
           <button class="item"><svg><use href="#i-signout"/></svg>Sign out</button>
-          <button class="item grave"><svg><use href="#i-trash"/></svg>Delete my account</button>
+        </div>
+        <div class="menu" style="width:268px">
+          <p class="say"><b>Remove Citi?</b>Its accounts, transactions and recurring bills are deleted permanently. Connecting it again starts its history over.</p>
+          <div class="cut"></div>
+          <div class="acts">
+            <button class="item"><svg><use href="#i-back"/></svg>Cancel</button>
+            <button class="item grave"><svg><use href="#i-trash"/></svg>Remove</button>
+          </div>
         </div>
       </div>
         <div data-theme="light" class="demo">
         <div class="menu">
-          <button class="item"><svg><use href="#i-settings"/></svg>Settings</button>
           <button class="item"><svg><use href="#i-theme"/></svg>Theme<span class="val">Light</span></button>
+          <button class="item"><svg><use href="#i-settings"/></svg>Settings</button>
           <div class="cut"></div>
           <button class="item"><svg><use href="#i-signout"/></svg>Sign out</button>
-          <button class="item grave"><svg><use href="#i-trash"/></svg>Delete my account</button>
+        </div>
+        <div class="menu" style="width:268px">
+          <p class="say"><b>Remove Citi?</b>Its accounts, transactions and recurring bills are deleted permanently. Connecting it again starts its history over.</p>
+          <div class="cut"></div>
+          <div class="acts">
+            <button class="item"><svg><use href="#i-back"/></svg>Cancel</button>
+            <button class="item grave"><svg><use href="#i-trash"/></svg>Remove</button>
+          </div>
         </div>
       </div>
       </div>
@@ -796,12 +811,146 @@ body {
           sitting inside.
         </div>
         <div class="why">
-          <code>.grave</code> is the one that cannot be undone, in rose. That is
-          the third thing rose is for — money owed, a fault, and a door with
-          nothing behind it — and the rule above it is there so the hand on its
-          way to Sign out has somewhere to stop.
+          <code>.grave</code> is here too, in rose, for a row that cannot be
+          undone. A bare row is a thin place to ask something irreversible, so
+          where the menu <em>is</em> the question it says so first:
+          <code>.say</code> is the question at the head of the card, the bold
+          line what is being asked and the grey line what it costs, and the
+          answer is <code>.acts</code> — the card's own two rows, side by side
+          under the rule, safe on the left. That is the second card above,
+          which is what removing one bank opens. Side by side and not stacked,
+          because two answers to one question are not a list of two things you
+          might do.
         </div>
-        <div class="use">.menu &gt; (.item &gt; .val, .item.grave, .cut)</div>
+        <div class="why">
+          Asked in the card rather than over the page, because one bank of four
+          is not something the whole window has to stop for — and the card
+          stands under the button that was pressed, which is what says
+          <em>which</em> bank without the question having to be read to find
+          out. Deleting an account is the other way round: that one stops
+          everything, because there is nothing behind it to come back to.
+          <code>.fault</code> is where a refused answer is printed, in the
+          card, so the question is still there to answer again.
+        </div>
+        <div class="use">.menu &gt; (.say &gt; b, .fault, .acts &gt; .item(.grave), .item &gt; .val, .cut)</div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="pair">
+        <div data-theme="dark" class="demo inline">
+        <button class="btn grave"><svg><use href="#i-trash"/></svg>Delete my account</button>
+        <button class="btn plain mute" aria-label="Remove bank"><svg><use href="#i-trash"/></svg></button>
+      </div>
+        <div data-theme="light" class="demo inline">
+        <button class="btn grave"><svg><use href="#i-trash"/></svg>Delete my account</button>
+        <button class="btn plain mute" aria-label="Remove bank"><svg><use href="#i-trash"/></svg></button>
+      </div>
+      </div>
+      <div class="body">
+        <h3>Destructive button</h3>
+        <p>
+          The quiet button in rose: the same frame as every other, lettered and
+          edged in the colour that means there is nothing behind the door.
+          Beside it, the same action where it sits on a row rather than at the
+          foot of a page — removing one bank of four — which is
+          <code>.plain.mute</code>: no frame, a glyph and no word, and grey.
+        </p>
+        <div class="why">
+          Never the violet one. The loud button on a screen is the thing you
+          came to do, and deleting your account is never that — it is the thing
+          you came to do once, and it is asked again before it happens. Rose
+          says which of the two buttons in that question is the one that cannot
+          be taken back. That is also why the one on a row is <em>not</em>
+          rose: four rose trash cans down a list of banks would make the
+          loudest thing on the page the thing nobody came to do, and the card
+          it opens asks again in rose anyway. Grey and glyph-only for the same
+          reason — it carries its words for a screen reader.
+        </div>
+        <div class="use">.btn.grave · .btn.plain.mute (:hover)</div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
+        <div class="dialog">
+          <div class="rail">
+            <div class="rail-head">Settings</div>
+            <button class="item on"><svg><use href="#i-user"/></svg>Account Settings</button>
+          </div>
+          <div class="pane">
+            <div class="pane-head">
+              <button class="shut"><svg><use href="#i-close"/></svg></button>
+            </div>
+            <div class="setting">
+              <label>User name</label>
+              <div class="setting-row">
+                <span class="field"><span class="in">Gaetan</span></span>
+                <button class="btn">Save</button>
+              </div>
+            </div>
+            <div class="pane-foot">
+              <div class="rule-sec"></div>
+              <div class="pane-acts">
+                <button class="btn grave"><svg><use href="#i-trash"/></svg>Delete my account</button>
+                <button class="btn primary dead">Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="dialog ask">
+          <div class="pane">
+            <h2 class="say-title">Delete your account?</h2>
+            <p class="say-body">
+              Your banks, transactions and sign-in are deleted permanently. To
+              confirm, we will email a 6-digit code to your address.
+            </p>
+            <div class="acts">
+              <button class="btn primary">Keep my account</button>
+              <button class="btn grave">Email me the code</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+      <div class="body">
+        <h3>Dialog</h3>
+        <p>
+          A window in the middle of the app over a dimmed page. Two shapes and
+          one card: the wide one has a rail down its left with a row per page,
+          and <code>.ask</code> is the narrow one with no rail, for a dialog
+          that asks one question. Above, the settings window and the
+          confirmation that stands over it.
+        </p>
+        <div class="why">
+          The page stays where it is. What a dialog holds belongs to the
+          account and not to the page underneath, so taking somebody off the
+          ledger to change their name is a navigation they then have to undo.
+        </div>
+        <div class="why">
+          The rail's rows are the menu's rows exactly, because they are the same
+          thing: a flat line with a glyph that does something when pressed. One
+          page on it is fine — the rail is drawn so that the second page is a
+          row added to a window that already has a shape. The row you are on is
+          lit by its ground and not by a colour: a rail with one page on it
+          would otherwise have a violet row in it at all times. The rail names
+          the page, so the pane does not head itself with the same two words —
+          what is at the top of the pane is the way out of it.
+        </div>
+        <div class="why">
+          The one thing the page is for stands at the foot, drawn in both
+          states and dead until there is something to write: a button that
+          appears on the first keystroke is a button that was not there to be
+          aimed at. It fades up and does not travel: a window over everything
+          has nowhere to have come from. Three ways out — the scrim, the cross, and Escape
+          — because a window with a field in it is one people press Escape at.
+          The actions run along the bottom rather than stacking, and the loud
+          one is the safe one.
+        </div>
+        <div class="use">.scrim &gt; .dialog(.ask) &gt; (.rail &gt; (.rail-head, .item.on), .pane &gt; (.pane-head &gt; .shut, .setting &gt; .setting-row, .pane-foot &gt; .pane-acts, .acts))</div>
       </div>
     </div>
   </div>

@@ -52,11 +52,16 @@ pub struct ViewAccountName {
     /// it, and what they have typed after that.
     pub field: ViewField,
 
-    /// `Some("Save")` once the field holds something that is not what is
-    /// already saved. Absent while it is blank, and absent while it is
-    /// unchanged: a button that writes what is already there does nothing and
-    /// says it did something.
-    pub action: Option<String>,
+    /// `"Save"`, always. The button is drawn in both states rather than
+    /// coming and going: it stands at the foot of the window, and a button
+    /// that appears on the first keystroke is a button that was not there to
+    /// be aimed at.
+    pub save_label: String,
+
+    /// Whether pressing it would write anything. False while the field is
+    /// blank, and false while it says what is already saved: a button that
+    /// writes what is already there does nothing and says it did something.
+    pub can_save: bool,
 }
 
 /// The delete confirmation, at whichever step it is on: the "are you sure"

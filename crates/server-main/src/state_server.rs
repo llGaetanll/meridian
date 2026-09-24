@@ -300,6 +300,10 @@ impl StateServer {
                 unreachable!("a request carrying a token is resolved before it is decided")
             }
 
+            EventRouter::BankRemoveRequested { .. } => {
+                unreachable!("a request carrying a token is resolved before it is decided")
+            }
+
             EventRouter::CodeRequested { email } => {
                 self.signup
                     .code_requested(request_id, email, self.now, actions);
@@ -591,6 +595,24 @@ impl StateServer {
                 actions.push(Action::ToStore {
                     call_id: self.signup.calling(request_id, self.now),
                     action: ActionStore::LoadItems { user_id },
+                });
+            }
+
+            // The tokens are the ownership check and what the removal needs
+            // in one: a bank whose token is not among this caller's is not
+            // this caller's bank.
+            Authenticated::BankRemoveRequested { .. } => {
+                self.signup.waits_on(
+                    request_id,
+                    Pending::Loading {
+                        user_id,
+                        event: event.clone(),
+                    },
+                );
+
+                actions.push(Action::ToStore {
+                    call_id: self.signup.calling(request_id, self.now),
+                    action: ActionStore::LoadAccessTokens { user_id },
                 });
             }
 
@@ -1068,6 +1090,76 @@ impl StateServer {
                 },
             });
         }
+    }
+
+    /// One bank, stopped at Plaid.
+    ///
+    /// Not this caller's bank and no such bank are one answer, for the reason
+    /// a repair's are: telling them apart says which Items exist.
+    fn remove_one_bank(
+        &mut self,
+        request_id: RequestId,
+        user_id: Uuid,
+        item_id: &str,
+        tokens: &[(String, String)],
+        actions: &mut Vec<Action>,
+    ) {
+        let Some((_, access_token)) = tokens.iter().find(|(id, _)| id == item_id) else {
+            tracing::warn!(
+                %user_id,
+                item_id,
+                "a removal was asked for a bank the caller does not hold",
+            );
+
+            self.signup
+                .answer(request_id, ActionRouter::Rejected, self.now, actions);
+
+            return;
+        };
+
+        if !self.may_call(PlaidEndpoint::ItemRemove, Some(item_id)) {
+            tracing::warn!(%user_id, item_id, "a bank was not removed: too many this minute");
+
+            self.signup
+                .answer(request_id, ActionRouter::TooMany, self.now, actions);
+
+            return;
+        }
+
+        self.signup.waits_on(
+            request_id,
+            Pending::RemovingBank {
+                item_id: item_id.to_string(),
+            },
+        );
+
+        actions.push(Action::ToSourcePlaid {
+            call_id: self.signup.calling(request_id, self.now),
+            action: ActionSourcePlaid::RemoveItem {
+                item_id: item_id.to_string(),
+                access_token: access_token.clone(),
+            },
+        });
+    }
+
+    /// The rows the bank brought in, and the answer.
+    ///
+    /// Owed, so it goes out once the delete has actually landed: a client told
+    /// its bank is gone while its transactions are still there would draw them
+    /// on the next snapshot.
+    fn forget_the_bank(
+        &mut self,
+        request_id: RequestId,
+        item_id: String,
+        actions: &mut Vec<Action>,
+    ) {
+        actions.push(Action::ToStore {
+            call_id: self.signup.calling(request_id, self.now),
+            action: ActionStore::ForgetItem { item_id },
+        });
+
+        self.signup
+            .answer(request_id, ActionRouter::BankRemoved, self.now, actions);
     }
 
     /// Step 4: the rows, and the answer.
@@ -2045,32 +2137,57 @@ impl StateServer {
                     return;
                 };
 
-                let Some(Pending::DeletingBanks { user_id, left }) =
-                    self.signup.resumed(request_id)
-                else {
-                    tracing::error!(item_id, "a removal answered a request nobody is waiting on");
+                match self.signup.resumed(request_id) {
+                    Some(Pending::DeletingBanks { user_id, left }) => {
+                        if !removed {
+                            tracing::error!(
+                                item_id,
+                                %user_id,
+                                "a bank was not removed and is still billing; remove it by hand",
+                            );
+                        }
 
-                    return;
-                };
+                        let left = left.saturating_sub(1);
 
-                if !removed {
-                    tracing::error!(
-                        item_id,
-                        %user_id,
-                        "a bank was not removed and is still billing; remove it by hand",
-                    );
+                        if left > 0 {
+                            self.signup
+                                .waits_on(request_id, Pending::DeletingBanks { user_id, left });
+
+                            return;
+                        }
+
+                        self.delete_the_rows(request_id, user_id, actions);
+                    }
+
+                    // One bank on its own. A removal that failed keeps its
+                    // rows, unlike a deletion's: the access token is still
+                    // the only way to stop the Item being billed, and
+                    // forgetting it would make the bill permanent. The caller
+                    // is told, so the tap can be made again.
+                    Some(Pending::RemovingBank { item_id }) => {
+                        if !removed {
+                            tracing::error!(item_id, "a bank was not removed; nothing forgotten");
+
+                            self.signup.answer(
+                                request_id,
+                                ActionRouter::Unavailable,
+                                self.now,
+                                actions,
+                            );
+
+                            return;
+                        }
+
+                        self.forget_the_bank(request_id, item_id, actions);
+                    }
+
+                    _ => {
+                        tracing::error!(
+                            item_id,
+                            "a removal answered a request nobody is waiting on"
+                        );
+                    }
                 }
-
-                let left = left.saturating_sub(1);
-
-                if left > 0 {
-                    self.signup
-                        .waits_on(request_id, Pending::DeletingBanks { user_id, left });
-
-                    return;
-                }
-
-                self.delete_the_rows(request_id, user_id, actions);
             }
 
             EventSourcePlaid::WebhookKeyLoaded { kid, key } => {
@@ -2587,8 +2704,9 @@ impl StateServer {
                 self.bars_settled(settled, actions);
                 self.pump_markets(actions);
 
-                // Only once nothing else wants the turn: an idle machine
-                // spends it planning the universe symbol whose turn it is.
+                // Last, so a route's work this turn is decided first: the
+                // machine tops its own shallow queue up with the universe
+                // pair whose turn it is.
                 if !self.shutting_down()
                     && let Some((symbol, interval)) = self.markets.wants_plan(self.now)
                 {
@@ -2716,20 +2834,29 @@ impl StateServer {
                     .subscribe_requested(user_id, email, call_id, actions);
             }
 
+            // Two routes read these: a deletion, which stops every bank, and
+            // a removal, which stops the one it names.
             EventStore::AccessTokensLoaded { tokens } => {
                 let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
 
-                let Some(Pending::DeletingReadingTokens { user_id }) =
-                    self.signup.resumed(request_id)
-                else {
-                    tracing::error!(call_id, "tokens answered a deletion nobody asked for");
+                match self.signup.resumed(request_id) {
+                    Some(Pending::DeletingReadingTokens { user_id }) => {
+                        self.remove_banks_to_delete(request_id, user_id, tokens, actions);
+                    }
 
-                    return;
-                };
+                    Some(Pending::Loading {
+                        user_id,
+                        event: Authenticated::BankRemoveRequested { item_id },
+                    }) => {
+                        self.remove_one_bank(request_id, user_id, &item_id, tokens, actions);
+                    }
 
-                self.remove_banks_to_delete(request_id, user_id, tokens, actions);
+                    _ => {
+                        tracing::error!(call_id, "tokens answered a request nobody made");
+                    }
+                }
             }
 
             // The code a deletion carried, checked against the one the store

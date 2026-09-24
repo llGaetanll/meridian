@@ -80,6 +80,18 @@ pub enum EventUi {
     /// attaching another.
     BankReconnectRequested { item_id: String },
 
+    /// The trash on a bank, on the Connections screen. Opens the "are you
+    /// sure"; nothing is asked of the server by the press.
+    BankRemoveRequested { item_id: String },
+
+    /// Remove it, on that confirmation. This is what asks the server to stop
+    /// the bank at Plaid and delete what came through it.
+    BankRemoveConfirmed,
+
+    /// The way out of it. Nothing has been removed, so there is nothing to
+    /// take back.
+    BankRemoveCancelled,
+
     /// Open Meridian, on the last screen of first run.
     OnboardingFinished,
 

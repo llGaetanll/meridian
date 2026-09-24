@@ -5,7 +5,7 @@ use leptos::prelude::*;
 use super::ConnectionBlock;
 use crate::live;
 
-/// Every block on one side of the page, in the order the machine put them.
+/// Every block on the page, in the order the machine put them.
 #[component]
 pub fn ConnectionBlocks(
     #[prop(into)] connections: Signal<Vec<ViewConnection>>,

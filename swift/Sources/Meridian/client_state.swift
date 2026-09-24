@@ -768,6 +768,13 @@ public func FfiConverterTypeCore_lower(_ value: Core) -> UInt64 {
  */
 public struct ViewAccount: Equatable, Hashable {
     /**
+     * The name the app calls them by, and the field it is changed in.
+     *
+     * Absent until a snapshot has said who this is — the same moment the
+     * account chip gets its two lines.
+     */
+    public var name: ViewAccountName?
+    /**
      * `"Banks"`.
      */
     public var banksLabel: String
@@ -788,6 +795,15 @@ public struct ViewAccount: Equatable, Hashable {
      */
     public var signOutLabel: String
     /**
+     * `"Delete my account"`.
+     */
+    public var deleteLabel: String
+    /**
+     * The delete confirmation, while somebody is leaving. `None` draws
+     * nothing over the screen.
+     */
+    public var delete: ViewAccountDelete?
+    /**
      * `"Meridian 0.1.0"`.
      */
     public var build: String
@@ -795,6 +811,12 @@ public struct ViewAccount: Equatable, Hashable {
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(
+        /**
+         * The name the app calls them by, and the field it is changed in.
+         *
+         * Absent until a snapshot has said who this is — the same moment the
+         * account chip gets its two lines.
+         */name: ViewAccountName?, 
         /**
          * `"Banks"`.
          */banksLabel: String, 
@@ -811,13 +833,23 @@ public struct ViewAccount: Equatable, Hashable {
          * `"Sign out"`.
          */signOutLabel: String, 
         /**
+         * `"Delete my account"`.
+         */deleteLabel: String, 
+        /**
+         * The delete confirmation, while somebody is leaving. `None` draws
+         * nothing over the screen.
+         */delete: ViewAccountDelete?, 
+        /**
          * `"Meridian 0.1.0"`.
          */build: String) {
+        self.name = name
         self.banksLabel = banksLabel
         self.banks = banks
         self.banksEmpty = banksEmpty
         self.sessionLabel = sessionLabel
         self.signOutLabel = signOutLabel
+        self.deleteLabel = deleteLabel
+        self.delete = delete
         self.build = build
     }
 
@@ -837,21 +869,27 @@ public struct FfiConverterTypeViewAccount: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewAccount {
         return
             try ViewAccount(
+                name: FfiConverterOptionTypeViewAccountName.read(from: &buf), 
                 banksLabel: FfiConverterString.read(from: &buf), 
                 banks: FfiConverterSequenceTypeViewAccountBank.read(from: &buf), 
                 banksEmpty: FfiConverterOptionString.read(from: &buf), 
                 sessionLabel: FfiConverterString.read(from: &buf), 
                 signOutLabel: FfiConverterString.read(from: &buf), 
+                deleteLabel: FfiConverterString.read(from: &buf), 
+                delete: FfiConverterOptionTypeViewAccountDelete.read(from: &buf), 
                 build: FfiConverterString.read(from: &buf)
         )
     }
 
     public static func write(_ value: ViewAccount, into buf: inout [UInt8]) {
+        FfiConverterOptionTypeViewAccountName.write(value.name, into: &buf)
         FfiConverterString.write(value.banksLabel, into: &buf)
         FfiConverterSequenceTypeViewAccountBank.write(value.banks, into: &buf)
         FfiConverterOptionString.write(value.banksEmpty, into: &buf)
         FfiConverterString.write(value.sessionLabel, into: &buf)
         FfiConverterString.write(value.signOutLabel, into: &buf)
+        FfiConverterString.write(value.deleteLabel, into: &buf)
+        FfiConverterOptionTypeViewAccountDelete.write(value.delete, into: &buf)
         FfiConverterString.write(value.build, into: &buf)
     }
 }
@@ -956,6 +994,221 @@ public func FfiConverterTypeViewAccountBank_lower(_ value: ViewAccountBank) -> R
 }
 
 
+/**
+ * The delete confirmation, at whichever step it is on: the "are you sure"
+ * popup, then the emailed code.
+ */
+public struct ViewAccountDelete: Equatable, Hashable {
+    public var title: String
+    public var body: String
+    /**
+     * The digits typed so far, present exactly when the code field is drawn.
+     */
+    public var code: String?
+    /**
+     * `"That code was not right. Check the email and try again."`, after a
+     * refused code.
+     */
+    public var error: String?
+    /**
+     * The destructive button, absent while a request is out or the code is
+     * not yet six digits.
+     */
+    public var confirmLabel: String?
+    /**
+     * The safe way out. Absent only while the deletion itself is out, when
+     * there is nothing left to back out of.
+     */
+    public var cancelLabel: String?
+    /**
+     * Whether a request is out, so the popup can read busy.
+     */
+    public var busy: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(title: String, body: String, 
+        /**
+         * The digits typed so far, present exactly when the code field is drawn.
+         */code: String?, 
+        /**
+         * `"That code was not right. Check the email and try again."`, after a
+         * refused code.
+         */error: String?, 
+        /**
+         * The destructive button, absent while a request is out or the code is
+         * not yet six digits.
+         */confirmLabel: String?, 
+        /**
+         * The safe way out. Absent only while the deletion itself is out, when
+         * there is nothing left to back out of.
+         */cancelLabel: String?, 
+        /**
+         * Whether a request is out, so the popup can read busy.
+         */busy: Bool) {
+        self.title = title
+        self.body = body
+        self.code = code
+        self.error = error
+        self.confirmLabel = confirmLabel
+        self.cancelLabel = cancelLabel
+        self.busy = busy
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewAccountDelete: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewAccountDelete: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewAccountDelete {
+        return
+            try ViewAccountDelete(
+                title: FfiConverterString.read(from: &buf), 
+                body: FfiConverterString.read(from: &buf), 
+                code: FfiConverterOptionString.read(from: &buf), 
+                error: FfiConverterOptionString.read(from: &buf), 
+                confirmLabel: FfiConverterOptionString.read(from: &buf), 
+                cancelLabel: FfiConverterOptionString.read(from: &buf), 
+                busy: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewAccountDelete, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.body, into: &buf)
+        FfiConverterOptionString.write(value.code, into: &buf)
+        FfiConverterOptionString.write(value.error, into: &buf)
+        FfiConverterOptionString.write(value.confirmLabel, into: &buf)
+        FfiConverterOptionString.write(value.cancelLabel, into: &buf)
+        FfiConverterBool.write(value.busy, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewAccountDelete_lift(_ buf: RustBuffer) throws -> ViewAccountDelete {
+    return try FfiConverterTypeViewAccountDelete.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewAccountDelete_lower(_ value: ViewAccountDelete) -> RustBuffer {
+    return FfiConverterTypeViewAccountDelete.lower(value)
+}
+
+
+/**
+ * The name, and what it takes to change it.
+ */
+public struct ViewAccountName: Equatable, Hashable {
+    /**
+     * `"Your name"`.
+     */
+    public var label: String
+    /**
+     * What is in the field — the kept name until somebody starts typing over
+     * it, and what they have typed after that.
+     */
+    public var field: ViewField
+    /**
+     * `"Save"`, always. The button is drawn in both states rather than
+     * coming and going: it stands at the foot of the window, and a button
+     * that appears on the first keystroke is a button that was not there to
+     * be aimed at.
+     */
+    public var saveLabel: String
+    /**
+     * Whether pressing it would write anything. False while the field is
+     * blank, and false while it says what is already saved: a button that
+     * writes what is already there does nothing and says it did something.
+     */
+    public var canSave: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"Your name"`.
+         */label: String, 
+        /**
+         * What is in the field — the kept name until somebody starts typing over
+         * it, and what they have typed after that.
+         */field: ViewField, 
+        /**
+         * `"Save"`, always. The button is drawn in both states rather than
+         * coming and going: it stands at the foot of the window, and a button
+         * that appears on the first keystroke is a button that was not there to
+         * be aimed at.
+         */saveLabel: String, 
+        /**
+         * Whether pressing it would write anything. False while the field is
+         * blank, and false while it says what is already saved: a button that
+         * writes what is already there does nothing and says it did something.
+         */canSave: Bool) {
+        self.label = label
+        self.field = field
+        self.saveLabel = saveLabel
+        self.canSave = canSave
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewAccountName: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewAccountName: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewAccountName {
+        return
+            try ViewAccountName(
+                label: FfiConverterString.read(from: &buf), 
+                field: FfiConverterTypeViewField.read(from: &buf), 
+                saveLabel: FfiConverterString.read(from: &buf), 
+                canSave: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewAccountName, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.label, into: &buf)
+        FfiConverterTypeViewField.write(value.field, into: &buf)
+        FfiConverterString.write(value.saveLabel, into: &buf)
+        FfiConverterBool.write(value.canSave, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewAccountName_lift(_ buf: RustBuffer) throws -> ViewAccountName {
+    return try FfiConverterTypeViewAccountName.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewAccountName_lower(_ value: ViewAccountName) -> RustBuffer {
+    return FfiConverterTypeViewAccountName.lower(value)
+}
+
+
 public struct ViewAccountRow: Equatable, Hashable {
     public var id: String
     public var name: String
@@ -964,12 +1217,18 @@ public struct ViewAccountRow: Equatable, Hashable {
      */
     public var subtitle: String
     /**
-     * `"Checking ·0000"` — the first half of the subtitle, for where it gets
-     * a column of its own.
+     * `"0000"` — the account's last four digits, which are what tell two
+     * checking accounts apart, for where they get a box of their own. Empty
+     * where the source did not send them.
+     */
+    public var mask: String
+    /**
+     * `"Checking"` — what kind of account it is, on its own.
      */
     public var kind: String
     /**
-     * `"$100.00 available"` or `"4.10% APY"` — the rest of it, or empty.
+     * `"$100.00 available"` or `"4.10% APY"` — the rest of the subtitle, or
+     * empty.
      */
     public var detail: String
     /**
@@ -980,6 +1239,11 @@ public struct ViewAccountRow: Equatable, Hashable {
      * Whether this is money owed, for colour.
      */
     public var owed: Bool
+    /**
+     * Whether the login behind it has expired, so the row is still true as
+     * far as anyone knows and no longer arriving.
+     */
+    public var stale: Bool
     /**
      * `"$410 of $2,000 limit used"`, where a limit exists.
      */
@@ -992,11 +1256,16 @@ public struct ViewAccountRow: Equatable, Hashable {
          * `"Checking ·0000 · $100.00 available"` — the whole subtitle, assembled.
          */subtitle: String, 
         /**
-         * `"Checking ·0000"` — the first half of the subtitle, for where it gets
-         * a column of its own.
+         * `"0000"` — the account's last four digits, which are what tell two
+         * checking accounts apart, for where they get a box of their own. Empty
+         * where the source did not send them.
+         */mask: String, 
+        /**
+         * `"Checking"` — what kind of account it is, on its own.
          */kind: String, 
         /**
-         * `"$100.00 available"` or `"4.10% APY"` — the rest of it, or empty.
+         * `"$100.00 available"` or `"4.10% APY"` — the rest of the subtitle, or
+         * empty.
          */detail: String, 
         /**
          * `"$110.00"` or `"−$56,302.06"`.
@@ -1005,15 +1274,21 @@ public struct ViewAccountRow: Equatable, Hashable {
          * Whether this is money owed, for colour.
          */owed: Bool, 
         /**
+         * Whether the login behind it has expired, so the row is still true as
+         * far as anyone knows and no longer arriving.
+         */stale: Bool, 
+        /**
          * `"$410 of $2,000 limit used"`, where a limit exists.
          */utilisation: String?) {
         self.id = id
         self.name = name
         self.subtitle = subtitle
+        self.mask = mask
         self.kind = kind
         self.detail = detail
         self.amount = amount
         self.owed = owed
+        self.stale = stale
         self.utilisation = utilisation
     }
 
@@ -1036,10 +1311,12 @@ public struct FfiConverterTypeViewAccountRow: FfiConverterRustBuffer {
                 id: FfiConverterString.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf), 
                 subtitle: FfiConverterString.read(from: &buf), 
+                mask: FfiConverterString.read(from: &buf), 
                 kind: FfiConverterString.read(from: &buf), 
                 detail: FfiConverterString.read(from: &buf), 
                 amount: FfiConverterString.read(from: &buf), 
                 owed: FfiConverterBool.read(from: &buf), 
+                stale: FfiConverterBool.read(from: &buf), 
                 utilisation: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -1048,10 +1325,12 @@ public struct FfiConverterTypeViewAccountRow: FfiConverterRustBuffer {
         FfiConverterString.write(value.id, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
         FfiConverterString.write(value.subtitle, into: &buf)
+        FfiConverterString.write(value.mask, into: &buf)
         FfiConverterString.write(value.kind, into: &buf)
         FfiConverterString.write(value.detail, into: &buf)
         FfiConverterString.write(value.amount, into: &buf)
         FfiConverterBool.write(value.owed, into: &buf)
+        FfiConverterBool.write(value.stale, into: &buf)
         FfiConverterOptionString.write(value.utilisation, into: &buf)
     }
 }
@@ -1069,152 +1348,6 @@ public func FfiConverterTypeViewAccountRow_lift(_ buf: RustBuffer) throws -> Vie
 #endif
 public func FfiConverterTypeViewAccountRow_lower(_ value: ViewAccountRow) -> RustBuffer {
     return FfiConverterTypeViewAccountRow.lower(value)
-}
-
-
-public struct ViewBalances: Equatable, Hashable {
-    /**
-     * `"Held"`. What you hold, not net worth: Plaid reports the mortgage but
-     * never the house behind it, so a net figure is structurally too red.
-     */
-    public var headlineLabel: String
-    /**
-     * `"$86,541.74"`, or the same figure covered.
-     */
-    public var headline: String
-    /**
-     * Whether the figures are covered. They are already replaced in the text
-     * above, so nothing is merely hidden in the DOM.
-     */
-    public var masked: Bool
-    /**
-     * `"Cover figures"` or `"Show figures"` — what the eye does when pressed.
-     */
-    public var maskLabel: String
-    /**
-     * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks.
-     */
-    public var owedLabel: String
-    public var owedTotal: String
-    public var connections: [ViewConnection]
-    /**
-     * `"Where it sits"` — the heading over how what is held splits across
-     * the banks holding it.
-     */
-    public var heldSplitLabel: String
-    /**
-     * One slice per bank holding anything, largest first. The label is the
-     * bank's name and the token its connection id.
-     */
-    public var heldSplit: [ViewBreakdownSlice]
-    /**
-     * `"Owed against it"` — the same split, over what is owed.
-     */
-    public var owedSplitLabel: String
-    public var owedSplit: [ViewBreakdownSlice]
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(
-        /**
-         * `"Held"`. What you hold, not net worth: Plaid reports the mortgage but
-         * never the house behind it, so a net figure is structurally too red.
-         */headlineLabel: String, 
-        /**
-         * `"$86,541.74"`, or the same figure covered.
-         */headline: String, 
-        /**
-         * Whether the figures are covered. They are already replaced in the text
-         * above, so nothing is merely hidden in the DOM.
-         */masked: Bool, 
-        /**
-         * `"Cover figures"` or `"Show figures"` — what the eye does when pressed.
-         */maskLabel: String, 
-        /**
-         * `"Owed"` and `"−$3,090.95"` — the heading over the debt blocks.
-         */owedLabel: String, owedTotal: String, connections: [ViewConnection], 
-        /**
-         * `"Where it sits"` — the heading over how what is held splits across
-         * the banks holding it.
-         */heldSplitLabel: String, 
-        /**
-         * One slice per bank holding anything, largest first. The label is the
-         * bank's name and the token its connection id.
-         */heldSplit: [ViewBreakdownSlice], 
-        /**
-         * `"Owed against it"` — the same split, over what is owed.
-         */owedSplitLabel: String, owedSplit: [ViewBreakdownSlice]) {
-        self.headlineLabel = headlineLabel
-        self.headline = headline
-        self.masked = masked
-        self.maskLabel = maskLabel
-        self.owedLabel = owedLabel
-        self.owedTotal = owedTotal
-        self.connections = connections
-        self.heldSplitLabel = heldSplitLabel
-        self.heldSplit = heldSplit
-        self.owedSplitLabel = owedSplitLabel
-        self.owedSplit = owedSplit
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension ViewBalances: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeViewBalances: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewBalances {
-        return
-            try ViewBalances(
-                headlineLabel: FfiConverterString.read(from: &buf), 
-                headline: FfiConverterString.read(from: &buf), 
-                masked: FfiConverterBool.read(from: &buf), 
-                maskLabel: FfiConverterString.read(from: &buf), 
-                owedLabel: FfiConverterString.read(from: &buf), 
-                owedTotal: FfiConverterString.read(from: &buf), 
-                connections: FfiConverterSequenceTypeViewConnection.read(from: &buf), 
-                heldSplitLabel: FfiConverterString.read(from: &buf), 
-                heldSplit: FfiConverterSequenceTypeViewBreakdownSlice.read(from: &buf), 
-                owedSplitLabel: FfiConverterString.read(from: &buf), 
-                owedSplit: FfiConverterSequenceTypeViewBreakdownSlice.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: ViewBalances, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.headlineLabel, into: &buf)
-        FfiConverterString.write(value.headline, into: &buf)
-        FfiConverterBool.write(value.masked, into: &buf)
-        FfiConverterString.write(value.maskLabel, into: &buf)
-        FfiConverterString.write(value.owedLabel, into: &buf)
-        FfiConverterString.write(value.owedTotal, into: &buf)
-        FfiConverterSequenceTypeViewConnection.write(value.connections, into: &buf)
-        FfiConverterString.write(value.heldSplitLabel, into: &buf)
-        FfiConverterSequenceTypeViewBreakdownSlice.write(value.heldSplit, into: &buf)
-        FfiConverterString.write(value.owedSplitLabel, into: &buf)
-        FfiConverterSequenceTypeViewBreakdownSlice.write(value.owedSplit, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeViewBalances_lift(_ buf: RustBuffer) throws -> ViewBalances {
-    return try FfiConverterTypeViewBalances.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeViewBalances_lower(_ value: ViewBalances) -> RustBuffer {
-    return FfiConverterTypeViewBalances.lower(value)
 }
 
 
@@ -1729,15 +1862,13 @@ public func FfiConverterTypeViewCodeCell_lower(_ value: ViewCodeCell) -> RustBuf
 public struct ViewConnection: Equatable, Hashable {
     public var id: String
     /**
-     * Plaid's id for the connection, as a repair names it. Unlike
-     * [`id`](ViewConnection::id) it is never suffixed: the held and owed
-     * halves of one bank are one connection.
+     * Plaid's id for the connection, as a repair names it.
      */
     public var itemId: String
     public var name: String
-    public var initials: String
     /**
-     * `"synced 2m"`, or empty when the connection needs attention.
+     * `"Synced 2m ago"`, or empty when the connection needs attention — the
+     * button that fixes it takes the same place on the line.
      */
     public var synced: String
     /**
@@ -1745,64 +1876,70 @@ public struct ViewConnection: Equatable, Hashable {
      */
     public var needsReconnect: Bool
     /**
+     * `"Sign in"` — what the button on an expired login says.
+     */
+    public var reconnectLabel: String
+    /**
+     * `"Remove bank"` — the name of the trash on this block, which is drawn
+     * as a glyph and so carries its words for a screen reader.
+     */
+    public var removeLabel: String
+    /**
      * Whether a repair for this connection is under way — the tap has
      * happened and Plaid's page has not answered — so the button waits
      * instead of taking another.
      */
     public var reconnecting: Bool
-    /**
-     * Whether these balances are owed rather than held.
-     */
-    public var isDebts: Bool
     public var accounts: [ViewAccountRow]
     /**
-     * `"6 accounts held"` / `"6 accounts owed"`.
+     * The "are you sure" under this block's trash, while this is the bank
+     * being removed. On the block rather than on the page, because it is
+     * asked where it was pressed: the machine holds one removal at a time
+     * and this is how the view knows whose it is.
      */
-    public var totalLabel: String
-    /**
-     * `"$62,589.00"`.
-     */
-    public var total: String
+    public var remove: ViewConnectionRemove?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(id: String, 
         /**
-         * Plaid's id for the connection, as a repair names it. Unlike
-         * [`id`](ViewConnection::id) it is never suffixed: the held and owed
-         * halves of one bank are one connection.
-         */itemId: String, name: String, initials: String, 
+         * Plaid's id for the connection, as a repair names it.
+         */itemId: String, name: String, 
         /**
-         * `"synced 2m"`, or empty when the connection needs attention.
+         * `"Synced 2m ago"`, or empty when the connection needs attention — the
+         * button that fixes it takes the same place on the line.
          */synced: String, 
         /**
          * Whether the user has to sign in again.
          */needsReconnect: Bool, 
         /**
+         * `"Sign in"` — what the button on an expired login says.
+         */reconnectLabel: String, 
+        /**
+         * `"Remove bank"` — the name of the trash on this block, which is drawn
+         * as a glyph and so carries its words for a screen reader.
+         */removeLabel: String, 
+        /**
          * Whether a repair for this connection is under way — the tap has
          * happened and Plaid's page has not answered — so the button waits
          * instead of taking another.
-         */reconnecting: Bool, 
+         */reconnecting: Bool, accounts: [ViewAccountRow], 
         /**
-         * Whether these balances are owed rather than held.
-         */isDebts: Bool, accounts: [ViewAccountRow], 
-        /**
-         * `"6 accounts held"` / `"6 accounts owed"`.
-         */totalLabel: String, 
-        /**
-         * `"$62,589.00"`.
-         */total: String) {
+         * The "are you sure" under this block's trash, while this is the bank
+         * being removed. On the block rather than on the page, because it is
+         * asked where it was pressed: the machine holds one removal at a time
+         * and this is how the view knows whose it is.
+         */remove: ViewConnectionRemove?) {
         self.id = id
         self.itemId = itemId
         self.name = name
-        self.initials = initials
         self.synced = synced
         self.needsReconnect = needsReconnect
+        self.reconnectLabel = reconnectLabel
+        self.removeLabel = removeLabel
         self.reconnecting = reconnecting
-        self.isDebts = isDebts
         self.accounts = accounts
-        self.totalLabel = totalLabel
-        self.total = total
+        self.remove = remove
     }
 
     
@@ -1824,14 +1961,13 @@ public struct FfiConverterTypeViewConnection: FfiConverterRustBuffer {
                 id: FfiConverterString.read(from: &buf), 
                 itemId: FfiConverterString.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf), 
-                initials: FfiConverterString.read(from: &buf), 
                 synced: FfiConverterString.read(from: &buf), 
                 needsReconnect: FfiConverterBool.read(from: &buf), 
+                reconnectLabel: FfiConverterString.read(from: &buf), 
+                removeLabel: FfiConverterString.read(from: &buf), 
                 reconnecting: FfiConverterBool.read(from: &buf), 
-                isDebts: FfiConverterBool.read(from: &buf), 
                 accounts: FfiConverterSequenceTypeViewAccountRow.read(from: &buf), 
-                totalLabel: FfiConverterString.read(from: &buf), 
-                total: FfiConverterString.read(from: &buf)
+                remove: FfiConverterOptionTypeViewConnectionRemove.read(from: &buf)
         )
     }
 
@@ -1839,14 +1975,13 @@ public struct FfiConverterTypeViewConnection: FfiConverterRustBuffer {
         FfiConverterString.write(value.id, into: &buf)
         FfiConverterString.write(value.itemId, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
-        FfiConverterString.write(value.initials, into: &buf)
         FfiConverterString.write(value.synced, into: &buf)
         FfiConverterBool.write(value.needsReconnect, into: &buf)
+        FfiConverterString.write(value.reconnectLabel, into: &buf)
+        FfiConverterString.write(value.removeLabel, into: &buf)
         FfiConverterBool.write(value.reconnecting, into: &buf)
-        FfiConverterBool.write(value.isDebts, into: &buf)
         FfiConverterSequenceTypeViewAccountRow.write(value.accounts, into: &buf)
-        FfiConverterString.write(value.totalLabel, into: &buf)
-        FfiConverterString.write(value.total, into: &buf)
+        FfiConverterOptionTypeViewConnectionRemove.write(value.remove, into: &buf)
     }
 }
 
@@ -1863,6 +1998,238 @@ public func FfiConverterTypeViewConnection_lift(_ buf: RustBuffer) throws -> Vie
 #endif
 public func FfiConverterTypeViewConnection_lower(_ value: ViewConnection) -> RustBuffer {
     return FfiConverterTypeViewConnection.lower(value)
+}
+
+
+/**
+ * Removing one bank, at whichever step it is on: the "are you sure", the
+ * wait, and what a refusal says.
+ *
+ * The same shape as [`ViewAccountDelete`](crate::ViewAccountDelete) with the
+ * code left out — what is lost is one connection's history rather than the
+ * account, so the address is not asked to agree. It is asked in a card under
+ * the button that opened it rather than over the page: one bank of four is
+ * not something the whole window has to stop for.
+ */
+public struct ViewConnectionRemove: Equatable, Hashable {
+    /**
+     * `"Remove Citi?"`.
+     */
+    public var title: String
+    /**
+     * What goes with it.
+     */
+    public var body: String
+    /**
+     * `"That did not work. Nothing was removed."`, after a refusal.
+     */
+    public var error: String?
+    /**
+     * The destructive button, absent while the request is out.
+     */
+    public var confirmLabel: String?
+    /**
+     * The safe way out. Absent only while the request is out, when there is
+     * nothing left to back out of.
+     */
+    public var cancelLabel: String?
+    /**
+     * Whether a request is out, so the popup can read busy.
+     */
+    public var busy: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"Remove Citi?"`.
+         */title: String, 
+        /**
+         * What goes with it.
+         */body: String, 
+        /**
+         * `"That did not work. Nothing was removed."`, after a refusal.
+         */error: String?, 
+        /**
+         * The destructive button, absent while the request is out.
+         */confirmLabel: String?, 
+        /**
+         * The safe way out. Absent only while the request is out, when there is
+         * nothing left to back out of.
+         */cancelLabel: String?, 
+        /**
+         * Whether a request is out, so the popup can read busy.
+         */busy: Bool) {
+        self.title = title
+        self.body = body
+        self.error = error
+        self.confirmLabel = confirmLabel
+        self.cancelLabel = cancelLabel
+        self.busy = busy
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewConnectionRemove: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewConnectionRemove: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewConnectionRemove {
+        return
+            try ViewConnectionRemove(
+                title: FfiConverterString.read(from: &buf), 
+                body: FfiConverterString.read(from: &buf), 
+                error: FfiConverterOptionString.read(from: &buf), 
+                confirmLabel: FfiConverterOptionString.read(from: &buf), 
+                cancelLabel: FfiConverterOptionString.read(from: &buf), 
+                busy: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewConnectionRemove, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.body, into: &buf)
+        FfiConverterOptionString.write(value.error, into: &buf)
+        FfiConverterOptionString.write(value.confirmLabel, into: &buf)
+        FfiConverterOptionString.write(value.cancelLabel, into: &buf)
+        FfiConverterBool.write(value.busy, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewConnectionRemove_lift(_ buf: RustBuffer) throws -> ViewConnectionRemove {
+    return try FfiConverterTypeViewConnectionRemove.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewConnectionRemove_lower(_ value: ViewConnectionRemove) -> RustBuffer {
+    return FfiConverterTypeViewConnectionRemove.lower(value)
+}
+
+
+public struct ViewConnections: Equatable, Hashable {
+    /**
+     * `"Connections"`. The page's name is its heading here rather than a
+     * figure, because there is no one figure this page is about.
+     */
+    public var title: String
+    /**
+     * `"4 banks · 7 accounts"` — what the blocks come to, counted rather
+     * than added.
+     */
+    public var count: String
+    /**
+     * `"Add connection"`.
+     */
+    public var addLabel: String
+    /**
+     * Whether a link is under way — the tap has happened and Plaid's page
+     * has not answered — so the button waits instead of taking another.
+     */
+    public var adding: Bool
+    /**
+     * One block per login, in the order they were connected.
+     */
+    public var connections: [ViewConnection]
+    /**
+     * What stands in place of the blocks when there are none, or when the
+     * snapshot they would be built from has not arrived.
+     */
+    public var empty: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"Connections"`. The page's name is its heading here rather than a
+         * figure, because there is no one figure this page is about.
+         */title: String, 
+        /**
+         * `"4 banks · 7 accounts"` — what the blocks come to, counted rather
+         * than added.
+         */count: String, 
+        /**
+         * `"Add connection"`.
+         */addLabel: String, 
+        /**
+         * Whether a link is under way — the tap has happened and Plaid's page
+         * has not answered — so the button waits instead of taking another.
+         */adding: Bool, 
+        /**
+         * One block per login, in the order they were connected.
+         */connections: [ViewConnection], 
+        /**
+         * What stands in place of the blocks when there are none, or when the
+         * snapshot they would be built from has not arrived.
+         */empty: String?) {
+        self.title = title
+        self.count = count
+        self.addLabel = addLabel
+        self.adding = adding
+        self.connections = connections
+        self.empty = empty
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewConnections: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewConnections: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewConnections {
+        return
+            try ViewConnections(
+                title: FfiConverterString.read(from: &buf), 
+                count: FfiConverterString.read(from: &buf), 
+                addLabel: FfiConverterString.read(from: &buf), 
+                adding: FfiConverterBool.read(from: &buf), 
+                connections: FfiConverterSequenceTypeViewConnection.read(from: &buf), 
+                empty: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewConnections, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.count, into: &buf)
+        FfiConverterString.write(value.addLabel, into: &buf)
+        FfiConverterBool.write(value.adding, into: &buf)
+        FfiConverterSequenceTypeViewConnection.write(value.connections, into: &buf)
+        FfiConverterOptionString.write(value.empty, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewConnections_lift(_ buf: RustBuffer) throws -> ViewConnections {
+    return try FfiConverterTypeViewConnections.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewConnections_lower(_ value: ViewConnections) -> RustBuffer {
+    return FfiConverterTypeViewConnections.lower(value)
 }
 
 
@@ -3088,6 +3455,119 @@ public func FfiConverterTypeViewRun_lower(_ value: ViewRun) -> RustBuffer {
 }
 
 
+/**
+ * The settings window, whether or not anything has opened it. Whether it is
+ * open is the platform's: no event tells the machine, because nothing the
+ * machine decides turns on it.
+ */
+public struct ViewSettings: Equatable, Hashable {
+    /**
+     * `"Settings"`, over the window.
+     */
+    public var title: String
+    /**
+     * The one thing in the rail, and the heading of the page it stands on.
+     */
+    public var accountLabel: String
+    /**
+     * What the close button is called, for a button drawn as a glyph.
+     */
+    public var closeLabel: String
+    /**
+     * The name the app calls them by, and the field it is changed in. The
+     * same value the Account screen carries.
+     */
+    public var name: ViewAccountName?
+    /**
+     * `"Delete my account"`.
+     */
+    public var deleteLabel: String
+    /**
+     * The delete confirmation, while somebody is leaving.
+     */
+    public var delete: ViewAccountDelete?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * `"Settings"`, over the window.
+         */title: String, 
+        /**
+         * The one thing in the rail, and the heading of the page it stands on.
+         */accountLabel: String, 
+        /**
+         * What the close button is called, for a button drawn as a glyph.
+         */closeLabel: String, 
+        /**
+         * The name the app calls them by, and the field it is changed in. The
+         * same value the Account screen carries.
+         */name: ViewAccountName?, 
+        /**
+         * `"Delete my account"`.
+         */deleteLabel: String, 
+        /**
+         * The delete confirmation, while somebody is leaving.
+         */delete: ViewAccountDelete?) {
+        self.title = title
+        self.accountLabel = accountLabel
+        self.closeLabel = closeLabel
+        self.name = name
+        self.deleteLabel = deleteLabel
+        self.delete = delete
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewSettings: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewSettings: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewSettings {
+        return
+            try ViewSettings(
+                title: FfiConverterString.read(from: &buf), 
+                accountLabel: FfiConverterString.read(from: &buf), 
+                closeLabel: FfiConverterString.read(from: &buf), 
+                name: FfiConverterOptionTypeViewAccountName.read(from: &buf), 
+                deleteLabel: FfiConverterString.read(from: &buf), 
+                delete: FfiConverterOptionTypeViewAccountDelete.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewSettings, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.accountLabel, into: &buf)
+        FfiConverterString.write(value.closeLabel, into: &buf)
+        FfiConverterOptionTypeViewAccountName.write(value.name, into: &buf)
+        FfiConverterString.write(value.deleteLabel, into: &buf)
+        FfiConverterOptionTypeViewAccountDelete.write(value.delete, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewSettings_lift(_ buf: RustBuffer) throws -> ViewSettings {
+    return try FfiConverterTypeViewSettings.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewSettings_lower(_ value: ViewSettings) -> RustBuffer {
+    return FfiConverterTypeViewSettings.lower(value)
+}
+
+
 public struct ViewStreamGroup: Equatable, Hashable {
     /**
      * `"Transfer out"`.
@@ -3502,6 +3982,99 @@ public func FfiConverterTypeViewTxRow_lower(_ value: ViewTxRow) -> RustBuffer {
 
 
 /**
+ * The two lines the account chip prints, and the words of the menu behind it.
+ */
+public struct ViewWho: Equatable, Hashable {
+    /**
+     * The line it leads with: the name. Never empty — an account is seeded
+     * with one when it is made, so there is no state where the chip has
+     * nothing to lead with.
+     */
+    public var title: String
+    /**
+     * The line under it: the address.
+     */
+    public var subtitle: String
+    /**
+     * `"Settings"`.
+     */
+    public var settingsLabel: String
+    /**
+     * `"Sign out"`.
+     */
+    public var signOutLabel: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The line it leads with: the name. Never empty — an account is seeded
+         * with one when it is made, so there is no state where the chip has
+         * nothing to lead with.
+         */title: String, 
+        /**
+         * The line under it: the address.
+         */subtitle: String, 
+        /**
+         * `"Settings"`.
+         */settingsLabel: String, 
+        /**
+         * `"Sign out"`.
+         */signOutLabel: String) {
+        self.title = title
+        self.subtitle = subtitle
+        self.settingsLabel = settingsLabel
+        self.signOutLabel = signOutLabel
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ViewWho: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeViewWho: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ViewWho {
+        return
+            try ViewWho(
+                title: FfiConverterString.read(from: &buf), 
+                subtitle: FfiConverterString.read(from: &buf), 
+                settingsLabel: FfiConverterString.read(from: &buf), 
+                signOutLabel: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ViewWho, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.subtitle, into: &buf)
+        FfiConverterString.write(value.settingsLabel, into: &buf)
+        FfiConverterString.write(value.signOutLabel, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewWho_lift(_ buf: RustBuffer) throws -> ViewWho {
+    return try FfiConverterTypeViewWho.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeViewWho_lower(_ value: ViewWho) -> RustBuffer {
+    return FfiConverterTypeViewWho.lower(value)
+}
+
+
+/**
  * What the machine asks for, and of whom.
  *
  * `ToUi` is far larger than `ToSource` because the whole screen crosses in
@@ -3614,6 +4187,13 @@ public enum ActionSource: Equatable, Hashable {
     case verifyCode(email: String, code: String
     )
     /**
+     * Say what to call whoever is signed in. Nothing waits on it: the flow
+     * has already moved on, and a screen that will not move until a write
+     * lands is a screen that stops when the write is slow.
+     */
+    case setName(name: String
+    )
+    /**
      * Ask the server for a `link_token` and open the `hosted_link_url` that
      * comes back. The app never holds a token of either kind: the secret that
      * signs both cannot ship inside an app (`docs/PLAID.md`).
@@ -3625,6 +4205,25 @@ public enum ActionSource: Equatable, Hashable {
      * the bank's consent instead of attaching a new one.
      */
     case startBankRepair(itemId: String
+    )
+    /**
+     * Ask the server to remove one bank: stop the Item at Plaid, and delete
+     * the accounts, transactions and streams that came through it. There is
+     * no undo, and the tap that leads here has been confirmed.
+     */
+    case removeBank(itemId: String
+    )
+    /**
+     * Ask the server to email the signed-in user the code that confirms
+     * deleting their account. No address: the server sends it to the one
+     * the account is written to.
+     */
+    case sendDeleteCode
+    /**
+     * Delete the account, with the code the email carried. There is no undo:
+     * the server answers once the rows are gone.
+     */
+    case deleteAccount(code: String
     )
     /**
      * Ask the server for a Stripe Checkout page and open it in a window of
@@ -3682,16 +4281,27 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
         case 6: return .verifyCode(email: try FfiConverterString.read(from: &buf), code: try FfiConverterString.read(from: &buf)
         )
         
-        case 7: return .startBankLink
-        
-        case 8: return .startBankRepair(itemId: try FfiConverterString.read(from: &buf)
+        case 7: return .setName(name: try FfiConverterString.read(from: &buf)
         )
         
-        case 9: return .startCheckout
+        case 8: return .startBankLink
         
-        case 10: return .watchSync
+        case 9: return .startBankRepair(itemId: try FfiConverterString.read(from: &buf)
+        )
         
-        case 11: return .stopWatchingSync
+        case 10: return .removeBank(itemId: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 11: return .sendDeleteCode
+        
+        case 12: return .deleteAccount(code: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 13: return .startCheckout
+        
+        case 14: return .watchSync
+        
+        case 15: return .stopWatchingSync
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3728,25 +4338,44 @@ public struct FfiConverterTypeActionSource: FfiConverterRustBuffer {
             FfiConverterString.write(code, into: &buf)
             
         
-        case .startBankLink:
+        case let .setName(name):
             writeInt(&buf, Int32(7))
+            FfiConverterString.write(name, into: &buf)
+            
+        
+        case .startBankLink:
+            writeInt(&buf, Int32(8))
         
         
         case let .startBankRepair(itemId):
-            writeInt(&buf, Int32(8))
+            writeInt(&buf, Int32(9))
             FfiConverterString.write(itemId, into: &buf)
             
         
+        case let .removeBank(itemId):
+            writeInt(&buf, Int32(10))
+            FfiConverterString.write(itemId, into: &buf)
+            
+        
+        case .sendDeleteCode:
+            writeInt(&buf, Int32(11))
+        
+        
+        case let .deleteAccount(code):
+            writeInt(&buf, Int32(12))
+            FfiConverterString.write(code, into: &buf)
+            
+        
         case .startCheckout:
-            writeInt(&buf, Int32(9))
+            writeInt(&buf, Int32(13))
         
         
         case .watchSync:
-            writeInt(&buf, Int32(10))
+            writeInt(&buf, Int32(14))
         
         
         case .stopWatchingSync:
-            writeInt(&buf, Int32(11))
+            writeInt(&buf, Int32(15))
         
         }
     }
@@ -3784,7 +4413,17 @@ public enum ActionUi: Equatable, Hashable {
      * a screen that is not one of its tabs, rather than an empty dock, which
      * would still be a strip of ground at the bottom of the phone.
      */
-    case render(screen: ViewScreen, dock: ViewDock?
+    case render(screen: ViewScreen, dock: ViewDock?, 
+        /**
+         * Who the device is signed in as, for the account chip. Present
+         * exactly when the dock is: both belong to the app rather than to
+         * the road in, and neither is drawn over first run or the paywall.
+         */who: ViewWho?, 
+        /**
+         * What the settings window draws, present exactly when the chip that
+         * opens it is. Sent whether or not the window is open: whether it is
+         * is the platform's, since nothing the machine decides turns on it.
+         */settings: ViewSettings?
     )
     /**
      * Tell the user something went wrong, in these words.
@@ -3812,7 +4451,7 @@ public struct FfiConverterTypeActionUi: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
         
-        case 1: return .render(screen: try FfiConverterTypeViewScreen.read(from: &buf), dock: try FfiConverterOptionTypeViewDock.read(from: &buf)
+        case 1: return .render(screen: try FfiConverterTypeViewScreen.read(from: &buf), dock: try FfiConverterOptionTypeViewDock.read(from: &buf), who: try FfiConverterOptionTypeViewWho.read(from: &buf), settings: try FfiConverterOptionTypeViewSettings.read(from: &buf)
         )
         
         case 2: return .showError(message: try FfiConverterString.read(from: &buf)
@@ -3826,10 +4465,12 @@ public struct FfiConverterTypeActionUi: FfiConverterRustBuffer {
         switch value {
         
         
-        case let .render(screen,dock):
+        case let .render(screen,dock,who,settings):
             writeInt(&buf, Int32(1))
             FfiConverterTypeViewScreen.write(screen, into: &buf)
             FfiConverterOptionTypeViewDock.write(dock, into: &buf)
+            FfiConverterOptionTypeViewWho.write(who, into: &buf)
+            FfiConverterOptionTypeViewSettings.write(settings, into: &buf)
             
         
         case let .showError(message):
@@ -4060,6 +4701,20 @@ public enum EventSource: Equatable, Hashable {
      */
     case codeRejected
     /**
+     * A deletion code went out.
+     */
+    case deleteCodeSent
+    /**
+     * The deletion code was refused — wrong, too late and guessed at too
+     * often answer alike, the way sign-in codes do.
+     */
+    case deleteCodeRejected
+    /**
+     * The account is gone, rows and all. What is left on this device is a
+     * session naming nobody, and the machine puts itself back to first run.
+     */
+    case accountDeleted
+    /**
      * Plaid's page is up, in a window of its own.
      */
     case bankLinkOpened
@@ -4087,6 +4742,16 @@ public enum EventSource: Equatable, Hashable {
      * yet be attached.
      */
     case bankPending
+    /**
+     * One bank is gone: stopped at Plaid, and its rows deleted. No id,
+     * because only one removal is ever out.
+     */
+    case bankRemoved
+    /**
+     * The server would not remove it. Nothing was deleted, so the bank is
+     * still on the page and the button comes back.
+     */
+    case bankRemoveFailed
     /**
      * How far the first sync has got, as `server_wire::WireSyncStatus` in
      * JSON, for the reason [`SnapshotLoaded`](EventSource::SnapshotLoaded) is.
@@ -4155,26 +4820,36 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
         
         case 6: return .codeRejected
         
-        case 7: return .bankLinkOpened
+        case 7: return .deleteCodeSent
         
-        case 8: return .bankLinked
+        case 8: return .deleteCodeRejected
         
-        case 9: return .bankAbandoned
+        case 9: return .accountDeleted
         
-        case 10: return .bankBlocked
+        case 10: return .bankLinkOpened
         
-        case 11: return .bankPending
+        case 11: return .bankLinked
         
-        case 12: return .syncStatusLoaded(json: try FfiConverterString.read(from: &buf)
+        case 12: return .bankAbandoned
+        
+        case 13: return .bankBlocked
+        
+        case 14: return .bankPending
+        
+        case 15: return .bankRemoved
+        
+        case 16: return .bankRemoveFailed
+        
+        case 17: return .syncStatusLoaded(json: try FfiConverterString.read(from: &buf)
         )
         
-        case 13: return .syncWatchEnded
+        case 18: return .syncWatchEnded
         
-        case 14: return .checkoutOpened
+        case 19: return .checkoutOpened
         
-        case 15: return .paymentTaken
+        case 20: return .paymentTaken
         
-        case 16: return .checkoutClosed
+        case 21: return .checkoutClosed
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4211,45 +4886,65 @@ public struct FfiConverterTypeEventSource: FfiConverterRustBuffer {
             writeInt(&buf, Int32(6))
         
         
-        case .bankLinkOpened:
+        case .deleteCodeSent:
             writeInt(&buf, Int32(7))
         
         
-        case .bankLinked:
+        case .deleteCodeRejected:
             writeInt(&buf, Int32(8))
         
         
-        case .bankAbandoned:
+        case .accountDeleted:
             writeInt(&buf, Int32(9))
         
         
-        case .bankBlocked:
+        case .bankLinkOpened:
             writeInt(&buf, Int32(10))
         
         
-        case .bankPending:
+        case .bankLinked:
             writeInt(&buf, Int32(11))
         
         
-        case let .syncStatusLoaded(json):
+        case .bankAbandoned:
             writeInt(&buf, Int32(12))
+        
+        
+        case .bankBlocked:
+            writeInt(&buf, Int32(13))
+        
+        
+        case .bankPending:
+            writeInt(&buf, Int32(14))
+        
+        
+        case .bankRemoved:
+            writeInt(&buf, Int32(15))
+        
+        
+        case .bankRemoveFailed:
+            writeInt(&buf, Int32(16))
+        
+        
+        case let .syncStatusLoaded(json):
+            writeInt(&buf, Int32(17))
             FfiConverterString.write(json, into: &buf)
             
         
         case .syncWatchEnded:
-            writeInt(&buf, Int32(13))
+            writeInt(&buf, Int32(18))
         
         
         case .checkoutOpened:
-            writeInt(&buf, Int32(14))
+            writeInt(&buf, Int32(19))
         
         
         case .paymentTaken:
-            writeInt(&buf, Int32(15))
+            writeInt(&buf, Int32(20))
         
         
         case .checkoutClosed:
-            writeInt(&buf, Int32(16))
+            writeInt(&buf, Int32(21))
         
         }
     }
@@ -4358,6 +5053,16 @@ public enum EventUi: Equatable, Hashable {
      */
     case resendRequested
     /**
+     * The name field, as a whole value, for the same reason the address
+     * field is.
+     */
+    case nameTyped(text: String
+    )
+    /**
+     * Continue, under the name. Only drawn once there is something in it.
+     */
+    case nameSubmitted
+    /**
      * The chevron, and the code screen's way back to a mistyped address.
      */
     case backPressed
@@ -4374,6 +5079,22 @@ public enum EventUi: Equatable, Hashable {
     case bankReconnectRequested(itemId: String
     )
     /**
+     * The trash on a bank, on the Connections screen. Opens the "are you
+     * sure"; nothing is asked of the server by the press.
+     */
+    case bankRemoveRequested(itemId: String
+    )
+    /**
+     * Remove it, on that confirmation. This is what asks the server to stop
+     * the bank at Plaid and delete what came through it.
+     */
+    case bankRemoveConfirmed
+    /**
+     * The way out of it. Nothing has been removed, so there is nothing to
+     * take back.
+     */
+    case bankRemoveCancelled
+    /**
      * Open Meridian, on the last screen of first run.
      */
     case onboardingFinished
@@ -4387,6 +5108,31 @@ public enum EventUi: Equatable, Hashable {
      * account, so this puts the machine back to where a fresh install starts.
      */
     case signOutRequested
+    /**
+     * Delete my account, on the Account tab. Opens the confirmation; nothing
+     * is asked of the server by the press.
+     */
+    case deleteAccountRequested
+    /**
+     * Yes, on the confirmation. This is what asks the server to email the
+     * code.
+     */
+    case deleteConfirmed
+    /**
+     * The way out of the delete flow at any step. Nothing already asked for
+     * is taken back — a code that was sent simply goes unused.
+     */
+    case deleteCancelled
+    /**
+     * The delete code field, as it reads — a whole value for the reason
+     * [`CodeTyped`](EventUi::CodeTyped) is.
+     */
+    case deleteCodeTyped(digits: String
+    )
+    /**
+     * Delete everything, under the code. Only offered once all six are in.
+     */
+    case deleteCodeSubmitted
 
 
 
@@ -4451,18 +5197,41 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
         
         case 17: return .resendRequested
         
-        case 18: return .backPressed
-        
-        case 19: return .bankConnectRequested
-        
-        case 20: return .bankReconnectRequested(itemId: try FfiConverterString.read(from: &buf)
+        case 18: return .nameTyped(text: try FfiConverterString.read(from: &buf)
         )
         
-        case 21: return .onboardingFinished
+        case 19: return .nameSubmitted
         
-        case 22: return .subscribeRequested
+        case 20: return .backPressed
         
-        case 23: return .signOutRequested
+        case 21: return .bankConnectRequested
+        
+        case 22: return .bankReconnectRequested(itemId: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 23: return .bankRemoveRequested(itemId: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 24: return .bankRemoveConfirmed
+        
+        case 25: return .bankRemoveCancelled
+        
+        case 26: return .onboardingFinished
+        
+        case 27: return .subscribeRequested
+        
+        case 28: return .signOutRequested
+        
+        case 29: return .deleteAccountRequested
+        
+        case 30: return .deleteConfirmed
+        
+        case 31: return .deleteCancelled
+        
+        case 32: return .deleteCodeTyped(digits: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 33: return .deleteCodeSubmitted
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4549,29 +5318,72 @@ public struct FfiConverterTypeEventUi: FfiConverterRustBuffer {
             writeInt(&buf, Int32(17))
         
         
-        case .backPressed:
+        case let .nameTyped(text):
             writeInt(&buf, Int32(18))
+            FfiConverterString.write(text, into: &buf)
+            
         
-        
-        case .bankConnectRequested:
+        case .nameSubmitted:
             writeInt(&buf, Int32(19))
         
         
-        case let .bankReconnectRequested(itemId):
+        case .backPressed:
             writeInt(&buf, Int32(20))
-            FfiConverterString.write(itemId, into: &buf)
-            
         
-        case .onboardingFinished:
+        
+        case .bankConnectRequested:
             writeInt(&buf, Int32(21))
         
         
-        case .subscribeRequested:
+        case let .bankReconnectRequested(itemId):
             writeInt(&buf, Int32(22))
+            FfiConverterString.write(itemId, into: &buf)
+            
+        
+        case let .bankRemoveRequested(itemId):
+            writeInt(&buf, Int32(23))
+            FfiConverterString.write(itemId, into: &buf)
+            
+        
+        case .bankRemoveConfirmed:
+            writeInt(&buf, Int32(24))
+        
+        
+        case .bankRemoveCancelled:
+            writeInt(&buf, Int32(25))
+        
+        
+        case .onboardingFinished:
+            writeInt(&buf, Int32(26))
+        
+        
+        case .subscribeRequested:
+            writeInt(&buf, Int32(27))
         
         
         case .signOutRequested:
-            writeInt(&buf, Int32(23))
+            writeInt(&buf, Int32(28))
+        
+        
+        case .deleteAccountRequested:
+            writeInt(&buf, Int32(29))
+        
+        
+        case .deleteConfirmed:
+            writeInt(&buf, Int32(30))
+        
+        
+        case .deleteCancelled:
+            writeInt(&buf, Int32(31))
+        
+        
+        case let .deleteCodeTyped(digits):
+            writeInt(&buf, Int32(32))
+            FfiConverterString.write(digits, into: &buf)
+            
+        
+        case .deleteCodeSubmitted:
+            writeInt(&buf, Int32(33))
         
         }
     }
@@ -5002,7 +5814,7 @@ public enum Screen: Equatable, Hashable {
     
     case ledger
     case recurring
-    case balances
+    case connections
     case account
 
 
@@ -5029,7 +5841,7 @@ public struct FfiConverterTypeScreen: FfiConverterRustBuffer {
         
         case 2: return .recurring
         
-        case 3: return .balances
+        case 3: return .connections
         
         case 4: return .account
         
@@ -5049,7 +5861,7 @@ public struct FfiConverterTypeScreen: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
         
         
-        case .balances:
+        case .connections:
             writeInt(&buf, Int32(3))
         
         
@@ -5254,6 +6066,33 @@ public enum ViewOnboarding: Equatable, Hashable {
          */action: String?, resend: ViewResend
     )
     /**
+     * The address already has an account with banks attached, so the road
+     * is not walked again: the banks as proof, a way into the app, and a
+     * way to add one more.
+     */
+    case welcomeBack(title: String, body: [ViewRun], 
+        /**
+         * The same rows the Account tab draws, so the two lists read as the
+         * same banks.
+         */banks: [ViewAccountBank], 
+        /**
+         * `"Add another bank"`.
+         */another: String, 
+        /**
+         * `"Open Meridian"`.
+         */`open`: String
+    )
+    /**
+     * What to call them. One field, asked once, of an account that has no
+     * name yet.
+     */
+    case name(step: String, title: String, body: [ViewRun], field: ViewField, 
+        /**
+         * `Some("Continue")` once there is something in the field — absent
+         * rather than present-and-dim, like the code screen's.
+         */action: String?
+    )
+    /**
      * What connecting a bank means, and the button that does it. No skip:
      * every screen in the app is a view of transactions.
      */
@@ -5265,13 +6104,15 @@ public enum ViewOnboarding: Equatable, Hashable {
          */opening: String?, legal: String
     )
     /**
-     * Plaid's page is up, in a window of its own, and the flow waits behind
-     * it. Nothing to press: the window going away is what moves the flow on.
+     * The flow is waiting on something out of its hands: the snapshot that
+     * decides which screen follows the code, or Plaid's page, up in a window
+     * of its own. Nothing to press either way — what is waited on arriving
+     * is what moves the flow on.
      */
     case waiting(step: String, title: String, body: [ViewRun], 
         /**
-         * `"Waiting on Plaid…"` — the one button, busy for as long as the
-         * screen is up, saying what the wait is for.
+         * `"Signing in…"`, `"Waiting on Plaid…"` — the one button, busy for
+         * as long as the screen is up, saying what the wait is for.
          */action: String
     )
     /**
@@ -5336,19 +6177,25 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
         case 3: return .code(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), cells: try FfiConverterSequenceTypeViewCodeCell.read(from: &buf), fault: try FfiConverterOptionString.read(from: &buf), action: try FfiConverterOptionString.read(from: &buf), resend: try FfiConverterTypeViewResend.read(from: &buf)
         )
         
-        case 4: return .bank(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf), opening: try FfiConverterOptionString.read(from: &buf), legal: try FfiConverterString.read(from: &buf)
+        case 4: return .welcomeBack(title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), banks: try FfiConverterSequenceTypeViewAccountBank.read(from: &buf), another: try FfiConverterString.read(from: &buf), open: try FfiConverterString.read(from: &buf)
         )
         
-        case 5: return .waiting(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), action: try FfiConverterString.read(from: &buf)
+        case 5: return .name(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), field: try FfiConverterTypeViewField.read(from: &buf), action: try FfiConverterOptionString.read(from: &buf)
         )
         
-        case 6: return .sync(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), progress: try FfiConverterDouble.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf)
+        case 6: return .bank(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf), opening: try FfiConverterOptionString.read(from: &buf), legal: try FfiConverterString.read(from: &buf)
         )
         
-        case 7: return .ready(title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), tally: try FfiConverterSequenceTypeViewTally.read(from: &buf), another: try FfiConverterString.read(from: &buf), open: try FfiConverterString.read(from: &buf)
+        case 7: return .waiting(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), action: try FfiConverterString.read(from: &buf)
         )
         
-        case 8: return .failed(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf), opening: try FfiConverterOptionString.read(from: &buf), open: try FfiConverterOptionString.read(from: &buf)
+        case 8: return .sync(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), progress: try FfiConverterDouble.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf)
+        )
+        
+        case 9: return .ready(title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), tally: try FfiConverterSequenceTypeViewTally.read(from: &buf), another: try FfiConverterString.read(from: &buf), open: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 10: return .failed(step: try FfiConverterString.read(from: &buf), title: try FfiConverterString.read(from: &buf), body: try FfiConverterSequenceTypeViewRun.read(from: &buf), rows: try FfiConverterSequenceTypeViewIconRow.read(from: &buf), action: try FfiConverterString.read(from: &buf), opening: try FfiConverterOptionString.read(from: &buf), open: try FfiConverterOptionString.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -5388,8 +6235,26 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
             FfiConverterTypeViewResend.write(resend, into: &buf)
             
         
-        case let .bank(step,title,body,rows,action,opening,legal):
+        case let .welcomeBack(title,body,banks,another,`open`):
             writeInt(&buf, Int32(4))
+            FfiConverterString.write(title, into: &buf)
+            FfiConverterSequenceTypeViewRun.write(body, into: &buf)
+            FfiConverterSequenceTypeViewAccountBank.write(banks, into: &buf)
+            FfiConverterString.write(another, into: &buf)
+            FfiConverterString.write(`open`, into: &buf)
+            
+        
+        case let .name(step,title,body,field,action):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(step, into: &buf)
+            FfiConverterString.write(title, into: &buf)
+            FfiConverterSequenceTypeViewRun.write(body, into: &buf)
+            FfiConverterTypeViewField.write(field, into: &buf)
+            FfiConverterOptionString.write(action, into: &buf)
+            
+        
+        case let .bank(step,title,body,rows,action,opening,legal):
+            writeInt(&buf, Int32(6))
             FfiConverterString.write(step, into: &buf)
             FfiConverterString.write(title, into: &buf)
             FfiConverterSequenceTypeViewRun.write(body, into: &buf)
@@ -5400,7 +6265,7 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
             
         
         case let .waiting(step,title,body,action):
-            writeInt(&buf, Int32(5))
+            writeInt(&buf, Int32(7))
             FfiConverterString.write(step, into: &buf)
             FfiConverterString.write(title, into: &buf)
             FfiConverterSequenceTypeViewRun.write(body, into: &buf)
@@ -5408,7 +6273,7 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
             
         
         case let .sync(step,title,body,progress,rows):
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(8))
             FfiConverterString.write(step, into: &buf)
             FfiConverterString.write(title, into: &buf)
             FfiConverterSequenceTypeViewRun.write(body, into: &buf)
@@ -5417,7 +6282,7 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
             
         
         case let .ready(title,body,tally,another,`open`):
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(9))
             FfiConverterString.write(title, into: &buf)
             FfiConverterSequenceTypeViewRun.write(body, into: &buf)
             FfiConverterSequenceTypeViewTally.write(tally, into: &buf)
@@ -5426,7 +6291,7 @@ public struct FfiConverterTypeViewOnboarding: FfiConverterRustBuffer {
             
         
         case let .failed(step,title,body,rows,action,opening,`open`):
-            writeInt(&buf, Int32(8))
+            writeInt(&buf, Int32(10))
             FfiConverterString.write(step, into: &buf)
             FfiConverterString.write(title, into: &buf)
             FfiConverterSequenceTypeViewRun.write(body, into: &buf)
@@ -5828,7 +6693,7 @@ public enum ViewScreen: Equatable, Hashable {
     )
     case recurring(view: ViewRecurring
     )
-    case balances(view: ViewBalances
+    case connections(view: ViewConnections
     )
     case account(view: ViewAccount
     )
@@ -5863,7 +6728,7 @@ public struct FfiConverterTypeViewScreen: FfiConverterRustBuffer {
         case 2: return .recurring(view: try FfiConverterTypeViewRecurring.read(from: &buf)
         )
         
-        case 3: return .balances(view: try FfiConverterTypeViewBalances.read(from: &buf)
+        case 3: return .connections(view: try FfiConverterTypeViewConnections.read(from: &buf)
         )
         
         case 4: return .account(view: try FfiConverterTypeViewAccount.read(from: &buf)
@@ -5893,9 +6758,9 @@ public struct FfiConverterTypeViewScreen: FfiConverterRustBuffer {
             FfiConverterTypeViewRecurring.write(view, into: &buf)
             
         
-        case let .balances(view):
+        case let .connections(view):
             writeInt(&buf, Int32(3))
-            FfiConverterTypeViewBalances.write(view, into: &buf)
+            FfiConverterTypeViewConnections.write(view, into: &buf)
             
         
         case let .account(view):
@@ -5983,6 +6848,78 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeViewAccountDelete: FfiConverterRustBuffer {
+    typealias SwiftType = ViewAccountDelete?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeViewAccountDelete.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeViewAccountDelete.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeViewAccountName: FfiConverterRustBuffer {
+    typealias SwiftType = ViewAccountName?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeViewAccountName.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeViewAccountName.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeViewConnectionRemove: FfiConverterRustBuffer {
+    typealias SwiftType = ViewConnectionRemove?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeViewConnectionRemove.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeViewConnectionRemove.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeViewDayCard: FfiConverterRustBuffer {
     typealias SwiftType = ViewDayCard?
 
@@ -6023,6 +6960,54 @@ fileprivate struct FfiConverterOptionTypeViewDock: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeViewDock.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeViewSettings: FfiConverterRustBuffer {
+    typealias SwiftType = ViewSettings?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeViewSettings.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeViewSettings.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeViewWho: FfiConverterRustBuffer {
+    typealias SwiftType = ViewWho?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeViewWho.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeViewWho.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }

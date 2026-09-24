@@ -24,6 +24,7 @@ use crate::Screen;
 use crate::StateDelete;
 use crate::StateLedger;
 use crate::StateOnboarding;
+use crate::StateRemove;
 use crate::Unpaid;
 use crate::screens;
 use crate::state_onboarding::Progress;
@@ -117,10 +118,20 @@ pub struct StateApp {
     /// whenever that is cleared.
     payment: StatePayment,
 
-    /// The bank being repaired, from the Reconnect tap until the sign-in
+    /// A bank being attached from the Connections page, from the tap until the
+    /// sign-in reports. True is the button waiting instead of taking another
+    /// tap. Not used during first run, which has a screen of its own to wait
+    /// on.
+    connecting: bool,
+
+    /// The bank being repaired, from the Sign in tap until the sign-in
     /// reports. `Some` is that bank's button waiting instead of taking
     /// another tap.
     reconnecting: Option<String>,
+
+    /// Removing one bank, from the trash on its block until it is cancelled
+    /// or its rows are gone. `None` means nobody is removing anything.
+    removing: Option<StateRemove>,
 
     /// Deleting the account, from the button on the Account tab until it is
     /// cancelled or the rows are gone. `None` means nobody is leaving.
@@ -171,7 +182,9 @@ impl Default for StateApp {
             watch_asked: None,
             onboarding: Some(StateOnboarding::new()),
             payment: StatePayment::default(),
+            connecting: false,
             reconnecting: None,
+            removing: None,
             deleting: None,
             user: None,
             renaming: None,
@@ -341,10 +354,16 @@ impl StateApp {
             // opinion to answer with, and a screen held open until a write
             // lands is a screen that stops when the write is slow.
             EventUi::NameSubmitted => {
-                let name = self
-                    .onboarding
-                    .as_mut()
-                    .and_then(StateOnboarding::submit_name);
+                let name = match self.onboarding.is_some() {
+                    true => self
+                        .onboarding
+                        .as_mut()
+                        .and_then(StateOnboarding::submit_name),
+
+                    // The later answer, from the settings window. Same write,
+                    // and the draft goes with it.
+                    false => self.submit_rename(),
+                };
 
                 if let Some(name) = name {
                     self.user = self.user.take().map(|user| User {
@@ -415,12 +434,21 @@ impl StateApp {
                     actions.push(Action::ToSource {
                         action: ActionSource::StartBankLink,
                     });
+                } else if !self.connecting {
+                    // Add connection, on the Connections page. A second tap
+                    // while one sign-in is under way would open a second
+                    // sheet, as a repair's would.
+                    self.connecting = true;
+
+                    actions.push(Action::ToSource {
+                        action: ActionSource::StartBankLink,
+                    });
                 }
             }
 
             EventUi::BankReconnectRequested { item_id } => {
-                // First run has no Reconnect to tap, and a second tap while
-                // one repair is under way would open a second sheet.
+                // First run has no Sign in to tap, and a second tap while one
+                // repair is under way would open a second sheet.
                 if self.onboarding.is_none() && self.reconnecting.is_none() {
                     self.reconnecting = Some(item_id.clone());
 
@@ -429,6 +457,47 @@ impl StateApp {
                             item_id: item_id.clone(),
                         },
                     });
+                }
+            }
+
+            EventUi::BankRemoveRequested { item_id } => {
+                // First run has no bank to remove yet. A second trash while
+                // one card is open moves the question to that bank rather
+                // than being ignored — the card stands under the button that
+                // was pressed, so an unanswered one somewhere else is a
+                // question nobody is looking at. Not while a removal is out:
+                // that one is already happening.
+                if self.onboarding.is_none()
+                    && !matches!(self.removing, Some(StateRemove::Sending { .. }))
+                {
+                    self.removing = Some(StateRemove::Asking {
+                        item_id: item_id.clone(),
+                    });
+                }
+            }
+
+            EventUi::BankRemoveConfirmed => {
+                if let Some(StateRemove::Asking { item_id } | StateRemove::Refused { item_id }) =
+                    &self.removing
+                {
+                    let item_id = item_id.clone();
+
+                    self.removing = Some(StateRemove::Sending {
+                        item_id: item_id.clone(),
+                    });
+
+                    actions.push(Action::ToSource {
+                        action: ActionSource::RemoveBank { item_id },
+                    });
+                }
+            }
+
+            EventUi::BankRemoveCancelled => {
+                // Never while the request is out: the bank may already be
+                // gone at Plaid, and a popup taken down mid-removal is a page
+                // that goes on listing it.
+                if !matches!(self.removing, Some(StateRemove::Sending { .. })) {
+                    self.removing = None;
                 }
             }
 
@@ -683,9 +752,10 @@ impl StateApp {
                     flow.bank_linked();
                 }
 
-                // A repair that worked: the server has cleared the error, and
-                // a fresh snapshot is what takes the amber off the screen.
-                if self.reconnecting.take().is_some() {
+                // A bank attached, or a repair that worked: the server has
+                // the Item, and a fresh snapshot is what puts it on the page
+                // and takes the amber off it.
+                if self.link_reported() {
                     actions.push(Action::ToSource {
                         action: ActionSource::LoadSnapshot,
                     });
@@ -704,7 +774,7 @@ impl StateApp {
                 // The server has not said yet. The next snapshot decides, so
                 // one is asked for rather than leaving the button waiting on
                 // news that arrives by no other route.
-                if self.reconnecting.take().is_some() {
+                if self.link_reported() {
                     actions.push(Action::ToSource {
                         action: ActionSource::LoadSnapshot,
                     });
@@ -720,7 +790,7 @@ impl StateApp {
 
                 // They closed the sheet without signing in. Nothing changed
                 // and the button goes back to being tappable.
-                self.reconnecting = None;
+                self.link_reported();
 
                 self.render(actions);
             }
@@ -730,7 +800,29 @@ impl StateApp {
                     flow.bank_blocked();
                 }
 
-                self.reconnecting = None;
+                self.link_reported();
+
+                self.render(actions);
+            }
+
+            EventSource::BankRemoved => {
+                self.removing = None;
+
+                // The rows are gone on the server, and a fresh snapshot is
+                // what takes the bank off the page.
+                actions.push(Action::ToSource {
+                    action: ActionSource::LoadSnapshot,
+                });
+
+                self.render(actions);
+            }
+
+            EventSource::BankRemoveFailed => {
+                if let Some(StateRemove::Sending { item_id }) = &self.removing {
+                    self.removing = Some(StateRemove::Refused {
+                        item_id: item_id.clone(),
+                    });
+                }
 
                 self.render(actions);
             }
@@ -930,6 +1022,12 @@ impl StateApp {
                 who: (self.onboarding.is_none() && self.unpaid.is_none())
                     .then(|| screens::who(self.user.as_ref()))
                     .flatten(),
+
+                // And the window the chip opens, which is the same corner of
+                // the app under another press.
+                settings: (self.onboarding.is_none() && self.unpaid.is_none())
+                    .then(|| screens::settings(self))
+                    .flatten(),
             },
         });
     }
@@ -1017,9 +1115,31 @@ impl StateApp {
         self.device_now
     }
 
-    /// The bank being repaired, if a Reconnect tap is still being answered.
+    /// Whether an Add connection tap is still being answered.
+    pub(crate) fn connecting(&self) -> bool {
+        self.connecting
+    }
+
+    /// A link session outside first run has reported: whichever button was
+    /// waiting on it stops waiting, and the answer says whether there is
+    /// anything new to ask the server for.
+    fn link_reported(&mut self) -> bool {
+        let repaired = self.reconnecting.take().is_some();
+        let attached = self.connecting;
+
+        self.connecting = false;
+
+        repaired || attached
+    }
+
+    /// The bank being repaired, if a Sign in tap is still being answered.
     pub(crate) fn reconnecting(&self) -> Option<&str> {
         self.reconnecting.as_deref()
+    }
+
+    /// Where removing a bank has got, while one is being removed.
+    pub(crate) fn removing(&self) -> Option<&StateRemove> {
+        self.removing.as_ref()
     }
 
     /// Where deleting the account has got, while somebody is leaving.

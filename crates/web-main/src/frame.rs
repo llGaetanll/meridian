@@ -26,7 +26,7 @@ impl Frame {
             ViewScreen::Paywall { .. } => Self::Paywall,
             ViewScreen::Ledger { .. }
             | ViewScreen::Recurring { .. }
-            | ViewScreen::Balances { .. }
+            | ViewScreen::Connections { .. }
             | ViewScreen::Account { .. } => Self::Shell,
         }
     }

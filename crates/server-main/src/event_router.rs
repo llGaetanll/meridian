@@ -123,6 +123,14 @@ pub enum EventRouter {
     /// delete everything, if the code is the one that was emailed.
     DeleteRequested { token_sha256: Vec<u8>, code: String },
 
+    /// `POST /bank/remove` — stop one bank at Plaid and forget what came
+    /// through it. No code: what is lost is one connection's history rather
+    /// than the account, and the app asks before it sends.
+    BankRemoveRequested {
+        token_sha256: Vec<u8>,
+        item_id: String,
+    },
+
     /// `GET /bars` — one symbol's bars over one window, at one interval.
     ///
     /// The window is half-open, `start..end`. Answered from the store where
@@ -158,6 +166,7 @@ impl EventRouter {
             | EventRouter::AppleTransactionReceived { token_sha256, .. }
             | EventRouter::DeleteCodeRequested { token_sha256 }
             | EventRouter::DeleteRequested { token_sha256, .. }
+            | EventRouter::BankRemoveRequested { token_sha256, .. }
             | EventRouter::BarsRequested { token_sha256, .. } => Some(token_sha256),
 
             EventRouter::CodeRequested { .. }
@@ -192,6 +201,7 @@ impl EventRouter {
             EventRouter::AppleTransactionReceived { .. } => Some(Route::BillingApple),
             EventRouter::DeleteCodeRequested { .. } => Some(Route::AccountDeleteRequest),
             EventRouter::DeleteRequested { .. } => Some(Route::AccountDelete),
+            EventRouter::BankRemoveRequested { .. } => Some(Route::BankRemove),
             EventRouter::BarsRequested { .. } => Some(Route::Bars),
 
             EventRouter::WebhookReceived { .. }
@@ -225,6 +235,7 @@ impl EventRouter {
             | EventRouter::BillingStatusRequested { .. }
             | EventRouter::NameSubmitted { .. }
             | EventRouter::DeleteRequested { .. }
+            | EventRouter::BankRemoveRequested { .. }
             | EventRouter::AppleTransactionReceived { .. }
             | EventRouter::AppleNotificationReceived { .. }
             | EventRouter::StripeWebhookReceived { .. }

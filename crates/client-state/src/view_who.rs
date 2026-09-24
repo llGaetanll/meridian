@@ -20,7 +20,4 @@ pub struct ViewWho {
 
     /// `"Sign out"`.
     pub sign_out_label: String,
-
-    /// `"Delete my account"`.
-    pub delete_label: String,
 }

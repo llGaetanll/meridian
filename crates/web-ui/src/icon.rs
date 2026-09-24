@@ -18,6 +18,13 @@ pub enum IconKind {
     SignOut,
     Trash,
 
+    /// A head and shoulders, for the settings rail's one page. The same
+    /// drawing as the `"user"` glyph the machine names.
+    User,
+
+    /// The cross that shuts a window.
+    Close,
+
     /// A disc half filled, for the row that turns the theme over. One glyph
     /// for both themes rather than a sun and a moon: the row says what the
     /// theme is in words beside it, and a glyph that changes with the value
@@ -64,6 +71,12 @@ impl IconKind {
             }
             Self::Trash => {
                 r#"<path d="M4.5 6.5h15"/><path d="M9 6.5V4.8h6v1.7"/><path d="M6.5 6.5 7.4 20h9.2l.9-13.5"/>"#
+            }
+            Self::User => {
+                r#"<circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/>"#
+            }
+            Self::Close => {
+                r#"<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>"#
             }
             Self::Theme => {
                 r#"<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none"/>"#

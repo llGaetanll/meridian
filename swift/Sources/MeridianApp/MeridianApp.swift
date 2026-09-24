@@ -80,7 +80,7 @@ enum HitProbe {
                 ("home", CGPoint(x: 57, y: 787)),
                 ("ledger", CGPoint(x: 129, y: 787)),
                 ("recurring", CGPoint(x: 201, y: 787)),
-                ("balances", CGPoint(x: 273, y: 787)),
+                ("connections", CGPoint(x: 273, y: 787)),
                 ("row-control", CGPoint(x: 280, y: 726)),
             ]
 

@@ -79,6 +79,13 @@ pub enum Authenticated {
         code: String,
     },
 
+    /// Removing one bank: stopping it at Plaid and forgetting what came
+    /// through it. The Item is checked against the caller's own once their
+    /// tokens are loaded, the way a repair checks it against their banks.
+    BankRemoveRequested {
+        item_id: String,
+    },
+
     /// Asking for one symbol's bars over one window.
     BarsRequested {
         symbol: String,
@@ -128,6 +135,11 @@ impl Authenticated {
             EventRouter::DeleteRequested { code, .. } => {
                 Some(Authenticated::DeleteRequested { code: code.clone() })
             }
+            EventRouter::BankRemoveRequested { item_id, .. } => {
+                Some(Authenticated::BankRemoveRequested {
+                    item_id: item_id.clone(),
+                })
+            }
             EventRouter::BarsRequested {
                 symbol,
                 interval,
@@ -159,6 +171,7 @@ impl Authenticated {
             Authenticated::AppleTransactionReceived { .. } => Route::BillingApple,
             Authenticated::DeleteCodeRequested => Route::AccountDeleteRequest,
             Authenticated::DeleteRequested { .. } => Route::AccountDelete,
+            Authenticated::BankRemoveRequested { .. } => Route::BankRemove,
             Authenticated::BarsRequested { .. } => Route::Bars,
         }
     }
@@ -186,7 +199,12 @@ impl Authenticated {
             | Authenticated::BillingStatusRequested
             | Authenticated::AppleTransactionReceived { .. }
             | Authenticated::DeleteCodeRequested
-            | Authenticated::DeleteRequested { .. } => false,
+            | Authenticated::DeleteRequested { .. }
+            // Removing a bank is here for the reason deleting is, and for
+            // one of our own: an Item is billed for as long as it exists, so
+            // a lapsed session refused this route is a Plaid subscription
+            // nobody can stop.
+            | Authenticated::BankRemoveRequested { .. } => false,
 
             // The name is asked for on the far side of the paywall — first
             // run only reaches that screen once a snapshot has been served —

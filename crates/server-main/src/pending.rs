@@ -110,6 +110,13 @@ pub enum Pending {
     /// — the alternative is an account nobody can delete.
     DeletingBanks { user_id: Uuid, left: u32 },
 
+    /// One bank being removed on its own, waiting on Plaid to stop it.
+    ///
+    /// The Item is named rather than counted, unlike
+    /// [`DeletingBanks`](Pending::DeletingBanks): what happens next is
+    /// forgetting this bank's rows, so which one answered is the whole of it.
+    RemovingBank { item_id: String },
+
     /// A bars request waiting on the coverage that says which of its window
     /// is already held. The ask is carried whole, because the plan is decided
     /// by the answer.

@@ -111,7 +111,7 @@ fn a_device_the_app_has_never_run_on_opens_on_welcome() {
     eval!(&mut state,
         < Event::FromUi { event: EventUi::Started },
         > @r#"ToSource { action: LoadSession }"#,
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Welcome { title: "Every account,\none ledger.", body: [ViewRun { text: "Meridian reads your banks and puts what you spend, hold and owe on one page.", strong: false }], action: "Continue with email", fault: None, legal: "By continuing you agree to our Terms and Privacy Policy." } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Welcome { title: "Every account,\none ledger.", body: [ViewRun { text: "Meridian reads your banks and puts what you spend, hold and owe on one page.", strong: false }], action: "Continue with email", fault: None, legal: "By continuing you agree to our Terms and Privacy Policy." } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -123,7 +123,7 @@ fn no_session_leaves_the_flow_where_it_is() {
 
     eval!(&mut state,
         < Event::FromSource { event: EventSource::SessionLoaded { signed_in: false } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Welcome { title: "Every account,\none ledger.", body: [ViewRun { text: "Meridian reads your banks and puts what you spend, hold and owe on one page.", strong: false }], action: "Continue with email", fault: None, legal: "By continuing you agree to our Terms and Privacy Policy." } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Welcome { title: "Every account,\none ledger.", body: [ViewRun { text: "Meridian reads your banks and puts what you spend, hold and owe on one page.", strong: false }], action: "Continue with email", fault: None, legal: "By continuing you agree to our Terms and Privacy Policy." } }, dock: None, who: None, settings: None } }"#,
 
         // And a second passing moves nothing either: Welcome says nothing
         // about the clock, so there is nothing to redraw.
@@ -144,7 +144,7 @@ fn an_address_that_is_not_one_is_never_sent() {
         < Event::FromUi { event: EventUi::EmailTyped { text: "al@example".to_string() } },
         < Event::FromUi { event: EventUi::EmailSubmitted },
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Email { step: "Step 1 of 4 · Account", title: "What's your email?", body: [ViewRun { text: "We'll send a six-digit code. Nothing to make up and nothing to forget.", strong: false }], field: ViewField { icon: "mail", value: "al@example", placeholder: "you@example.com", fault: Some("That doesn't look like an email address.") }, action: "Continue" } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Email { step: "Step 1 of 4 · Account", title: "What's your email?", body: [ViewRun { text: "We'll send a six-digit code. Nothing to make up and nothing to forget.", strong: false }], field: ViewField { icon: "mail", value: "al@example", placeholder: "you@example.com", fault: Some("That doesn't look like an email address.") }, action: "Continue" } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -163,7 +163,7 @@ fn typing_clears_the_rejection() {
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi { event: EventUi::EmailTyped { text: "al@example.c".to_string() } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Email { step: "Step 1 of 4 · Account", title: "What's your email?", body: [ViewRun { text: "We'll send a six-digit code. Nothing to make up and nothing to forget.", strong: false }], field: ViewField { icon: "mail", value: "al@example.c", placeholder: "you@example.com", fault: None }, action: "Continue" } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Email { step: "Step 1 of 4 · Account", title: "What's your email?", body: [ViewRun { text: "We'll send a six-digit code. Nothing to make up and nothing to forget.", strong: false }], field: ViewField { icon: "mail", value: "al@example.c", placeholder: "you@example.com", fault: None }, action: "Continue" } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -193,7 +193,7 @@ fn the_code_screen_says_where_the_code_went() {
 
     eval!(&mut state,
         < Event::FromRuntime { event: EventRuntime::Tick { now: NOW } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 4 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, action: None, resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 4 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, action: None, resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -268,7 +268,7 @@ fn a_wrong_code_reddens_every_box() {
         > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 4 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code is not right."), action: Some("Continue"), resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 4 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code is not right."), action: Some("Continue"), resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -296,7 +296,7 @@ fn an_expired_code_reads_as_a_wrong_one() {
         > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 4 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code is not right."), action: Some("Continue"), resend: Ready { label: "Send a new code" } } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 4 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "4", live: false, bad: true }, ViewCodeCell { digit: "0", live: false, bad: true }, ViewCodeCell { digit: "7", live: false, bad: true }, ViewCodeCell { digit: "1", live: false, bad: true }, ViewCodeCell { digit: "9", live: false, bad: true }, ViewCodeCell { digit: "3", live: false, bad: true }], fault: Some("That code is not right."), action: Some("Continue"), resend: Ready { label: "Send a new code" } } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -306,18 +306,18 @@ fn the_resend_counts_down_before_it_offers() {
 
     eval!(&mut state,
         < Event::FromRuntime { event: EventRuntime::Tick { now: NOW } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 4 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, action: None, resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 4 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, action: None, resend: Waiting { text: "Resend in 1:00", wrong_address: "Wrong address?" } } }, dock: None, who: None, settings: None } }"#,
     );
 
     eval!(&mut state,
         < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 42 } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 4 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, action: None, resend: Waiting { text: "Resend in 0:18", wrong_address: "Wrong address?" } } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 4 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, action: None, resend: Waiting { text: "Resend in 0:18", wrong_address: "Wrong address?" } } }, dock: None, who: None, settings: None } }"#,
     );
 
     // Once there is nothing left to wait for it is a button.
     eval!(&mut state,
         < Event::FromRuntime { event: EventRuntime::Tick { now: NOW + 60 } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 4 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, action: None, resend: Ready { label: "Send a new code" } } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Code { step: "Step 1 of 4 · Account", title: "Check your email", body: [ViewRun { text: "We sent a code to ", strong: false }, ViewRun { text: "al@example.com", strong: true }, ViewRun { text: ".", strong: false }], cells: [ViewCodeCell { digit: "", live: true, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }, ViewCodeCell { digit: "", live: false, bad: false }], fault: None, action: None, resend: Ready { label: "Send a new code" } } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -350,7 +350,7 @@ fn wrong_address_goes_back_to_the_field_with_it_still_in() {
         < Event::FromUi { event: EventUi::CodeTyped { digits: "407".to_string() } },
         < Event::FromUi { event: EventUi::BackPressed },
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Email { step: "Step 1 of 4 · Account", title: "What's your email?", body: [ViewRun { text: "We'll send a six-digit code. Nothing to make up and nothing to forget.", strong: false }], field: ViewField { icon: "mail", value: "al@example.com", placeholder: "you@example.com", fault: None }, action: "Continue" } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Email { step: "Step 1 of 4 · Account", title: "What's your email?", body: [ViewRun { text: "We'll send a six-digit code. Nothing to make up and nothing to forget.", strong: false }], field: ViewField { icon: "mail", value: "al@example.com", placeholder: "you@example.com", fault: None }, action: "Continue" } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -375,7 +375,7 @@ fn a_verified_code_waits_for_the_snapshot_before_drawing_either_screen() {
         > @r#"ToSource { action: VerifyCode { email: "al@example.com", code: "407193" } }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > @r#"ToSource { action: LoadSnapshot }"#,
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Waiting { step: "Step 1 of 4 · Account", title: "Signing you in", body: [ViewRun { text: "One moment while we look up your account.", strong: false }], action: "Signing in…" } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Waiting { step: "Step 1 of 4 · Account", title: "Signing you in", body: [ViewRun { text: "One moment while we look up your account.", strong: false }], action: "Signing in…" } }, dock: None, who: None, settings: None } }"#,
 
         // No banks on it, so the road is the one that gets walked, and its
         // first screen past the payment is the name.
@@ -505,7 +505,7 @@ fn an_account_with_banks_lands_on_welcome_back() {
                     .to_string(),
             },
         },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: WelcomeBack { title: "You already have an account", body: [ViewRun { text: "al@example.com", strong: true }, ViewRun { text: " is already set up. Your banks are still connected.", strong: false }], banks: [ViewAccountBank { id: "c1", name: "First Platypus Bank", initials: "FP", detail: "1 account", needs_reconnect: false }, ViewAccountBank { id: "c2", name: "Tattersall Federal", initials: "TF", detail: "2 accounts", needs_reconnect: false }], another: "Add another bank", open: "Open Meridian" } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: WelcomeBack { title: "You already have an account", body: [ViewRun { text: "al@example.com", strong: true }, ViewRun { text: " is already set up. Your banks are still connected.", strong: false }], banks: [ViewAccountBank { id: "c1", name: "First Platypus Bank", initials: "FP", detail: "1 account", needs_reconnect: false }, ViewAccountBank { id: "c2", name: "Tattersall Federal", initials: "TF", detail: "2 accounts", needs_reconnect: false }], another: "Add another bank", open: "Open Meridian" } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -535,7 +535,7 @@ fn a_sign_in_abandoned_from_welcome_back_keeps_the_way_out() {
         < Event::FromSource { event: EventSource::BankAbandoned },
         > Action::ToSource { action: ActionSource::StartBankLink },
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 3 of 4 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so nothing was added.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your bank is still connected", sub: Some("Nothing about it changed. This attempt is the only thing that did not finish."), value: None }], action: "Try again", opening: None, open: Some("Open Meridian") } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 3 of 4 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so nothing was added.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your bank is still connected", sub: Some("Nothing about it changed. This attempt is the only thing that did not finish."), value: None }], action: "Try again", opening: None, open: Some("Open Meridian") } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -598,11 +598,11 @@ fn the_name_screen_offers_nothing_to_press_until_a_name_is_typed() {
         > Action::ToUi { action: ActionUi::Render { .. } },
         > Action::ToSource { action: ActionSource::LoadSnapshot },
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Name { step: "Step 2 of 4 · Your name", title: "What should we call you?", body: [ViewRun { text: "This name is used to personalize the app, think of it as your account name. You can change it later.", strong: false }], field: ViewField { icon: "user", value: "", placeholder: "Your name", fault: None }, action: None } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Name { step: "Step 2 of 4 · Your name", title: "What should we call you?", body: [ViewRun { text: "This name is used to personalize the app, think of it as your account name. You can change it later.", strong: false }], field: ViewField { icon: "user", value: "", placeholder: "Your name", fault: None }, action: None } }, dock: None, who: None, settings: None } }"#,
 
         // Spaces are not a name, so the button stays away.
         < Event::FromUi { event: EventUi::NameTyped { text: "  ".to_string() } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Name { step: "Step 2 of 4 · Your name", title: "What should we call you?", body: [ViewRun { text: "This name is used to personalize the app, think of it as your account name. You can change it later.", strong: false }], field: ViewField { icon: "user", value: "  ", placeholder: "Your name", fault: None }, action: None } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Name { step: "Step 2 of 4 · Your name", title: "What should we call you?", body: [ViewRun { text: "This name is used to personalize the app, think of it as your account name. You can change it later.", strong: false }], field: ViewField { icon: "user", value: "  ", placeholder: "Your name", fault: None }, action: None } }, dock: None, who: None, settings: None } }"#,
 
         < Event::FromUi { event: EventUi::NameTyped { text: "Gaetan".to_string() } },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding {
@@ -654,7 +654,7 @@ fn plaids_window_up_is_a_screen_of_its_own() {
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromSource { event: EventSource::BankLinkOpened },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Waiting { step: "Step 3 of 4 · Bank", title: "Finish in your bank's window", body: [ViewRun { text: "Plaid opened your bank's sign-in in a window of its own. This screen moves on by itself when that window closes.", strong: false }], action: "Waiting on Plaid…" } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Waiting { step: "Step 3 of 4 · Bank", title: "Finish in your bank's window", body: [ViewRun { text: "Plaid opened your bank's sign-in in a window of its own. This screen moves on by itself when that window closes.", strong: false }], action: "Waiting on Plaid…" } }, dock: None, who: None, settings: None } }"#,
 
         < Event::FromSource { event: EventSource::BankAbandoned },
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { view: ViewOnboarding::Failed { .. } }, .. } },
@@ -689,7 +689,7 @@ fn an_abandoned_sign_in_says_nothing_was_connected() {
         < Event::FromSource { event: EventSource::BankAbandoned },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 3 of 4 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so no bank was connected.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: None, open: None } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 3 of 4 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so no bank was connected.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: None, open: None } }, dock: None, who: None, settings: None } }"#,
 
         < Event::FromUi { event: EventUi::BankConnectRequested },
         > @r#"ToSource { action: StartBankLink }"#,
@@ -710,7 +710,7 @@ fn a_blocked_window_says_the_browser_stopped_it() {
         < Event::FromSource { event: EventSource::BankBlocked },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 3 of 4 · Bank", title: "That didn't finish", body: [ViewRun { text: "Your browser blocked the window the bank sign-in opens in, so no bank was connected. Allow pop-ups for Meridian and try again.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: None, open: None } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 3 of 4 · Bank", title: "That didn't finish", body: [ViewRun { text: "Your browser blocked the window the bank sign-in opens in, so no bank was connected. Allow pop-ups for Meridian and try again.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: None, open: None } }, dock: None, who: None, settings: None } }"#,
 
         < Event::FromUi { event: EventUi::BankConnectRequested },
         < Event::FromSource { event: EventSource::BankAbandoned },
@@ -744,7 +744,7 @@ fn paying_in_the_middle_of_first_run_comes_back_to_the_bank() {
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { .. }, dock: None, .. } },
 
         < Event::FromSource { event: EventSource::SnapshotLoaded { json: "{}".to_string() } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Bank { step: "Step 3 of 4 · Bank", title: "Just so you know", body: [ViewRun { text: "Meridian uses ", strong: false }, ViewRun { text: "Plaid", strong: true }, ViewRun { text: " to connect. You sign in on your bank's own page.", strong: false }], rows: [ViewIconRow { icon: "lock", tone: Plain, title: "Your bank password goes to Plaid", sub: Some("Never to Meridian. We are handed a key to read with, not your sign-in."), value: None }, ViewIconRow { icon: "tick-circle", tone: Plain, title: "Read-only", sub: Some("Balances, transactions and recurring bills. Nothing can move money."), value: None }, ViewIconRow { icon: "ledger", tone: Plain, title: "Meridian keeps your transactions", sub: Some("They are stored on our server. That is what the ledger is made of."), value: None }, ViewIconRow { icon: "trash", tone: Plain, title: "Removing a bank deletes them", sub: Some("One tap in Account, and its history goes with it."), value: None }], action: "Connect a bank", opening: None, legal: "Plaid handles the connection under its end-user privacy policy." } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Bank { step: "Step 3 of 4 · Bank", title: "Just so you know", body: [ViewRun { text: "Meridian uses ", strong: false }, ViewRun { text: "Plaid", strong: true }, ViewRun { text: " to connect. You sign in on your bank's own page.", strong: false }], rows: [ViewIconRow { icon: "lock", tone: Plain, title: "Your bank password goes to Plaid", sub: Some("Never to Meridian. We are handed a key to read with, not your sign-in."), value: None }, ViewIconRow { icon: "tick-circle", tone: Plain, title: "Read-only", sub: Some("Balances, transactions and recurring bills. Nothing can move money."), value: None }, ViewIconRow { icon: "ledger", tone: Plain, title: "Meridian keeps your transactions", sub: Some("They are stored on our server. That is what the ledger is made of."), value: None }, ViewIconRow { icon: "trash", tone: Plain, title: "Removing a bank deletes them", sub: Some("One tap in Account, and its history goes with it."), value: None }], action: "Connect a bank", opening: None, legal: "Plaid handles the connection under its end-user privacy policy." } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -772,7 +772,7 @@ fn a_second_sign_in_that_did_not_finish_leaves_a_way_out() {
         < Event::FromSource { event: EventSource::BankAbandoned },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 3 of 4 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so nothing was added.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "First Platypus Bank is still connected", sub: Some("Nothing about it changed. This attempt is the only thing that did not finish."), value: None }], action: "Try again", opening: None, open: Some("Open Meridian") } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 3 of 4 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so nothing was added.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "First Platypus Bank is still connected", sub: Some("Nothing about it changed. This attempt is the only thing that did not finish."), value: None }], action: "Try again", opening: None, open: Some("Open Meridian") } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -848,7 +848,7 @@ fn a_pending_sign_in_that_never_lands_says_nothing_was_connected() {
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 3 of 4 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so no bank was connected.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: None, open: None } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Failed { step: "Step 3 of 4 · Bank", title: "That didn't finish", body: [ViewRun { text: "The bank sign-in closed before it was done, so no bank was connected.", strong: false }], rows: [ViewIconRow { icon: "tick-circle", tone: Plain, title: "Your account is made", sub: Some("Close the app if you need to. Signing in again comes back to here."), value: None }], action: "Try again", opening: None, open: None } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -865,7 +865,7 @@ fn the_sync_says_what_has_landed_so_far() {
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Sync { step: "Step 4 of 4 · Sync", title: "Reading your history", body: [ViewRun { text: "First time only. Every refresh after this one takes a moment.", strong: false }], progress: 0.625, rows: [ViewIconRow { icon: "tick-circle", tone: Done, title: "First Platypus Bank", sub: None, value: Some("connected") }, ViewIconRow { icon: "tick-circle", tone: Done, title: "Accounts", sub: None, value: Some("8") }, ViewIconRow { icon: "spin", tone: Running, title: "Transactions", sub: None, value: Some("48 so far") }, ViewIconRow { icon: "dot", tone: Waiting, title: "Recurring bills", sub: None, value: Some("waiting") }] } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Sync { step: "Step 4 of 4 · Sync", title: "Reading your history", body: [ViewRun { text: "First time only. Every refresh after this one takes a moment.", strong: false }], progress: 0.625, rows: [ViewIconRow { icon: "tick-circle", tone: Done, title: "First Platypus Bank", sub: None, value: Some("connected") }, ViewIconRow { icon: "tick-circle", tone: Done, title: "Accounts", sub: None, value: Some("8") }, ViewIconRow { icon: "spin", tone: Running, title: "Transactions", sub: None, value: Some("48 so far") }, ViewIconRow { icon: "dot", tone: Waiting, title: "Recurring bills", sub: None, value: Some("waiting") }] } }, dock: None, who: None, settings: None } }"#,
         > @r#"ToSource { action: WatchSync }"#,
     );
 }
@@ -919,12 +919,12 @@ fn the_sync_screen_names_the_bank_once_the_sync_says() {
         < Event::FromSource { event: EventSource::BankLinked },
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Sync { step: "Step 4 of 4 · Sync", title: "Reading your history", body: [ViewRun { text: "First time only. Every refresh after this one takes a moment.", strong: false }], progress: 0.375, rows: [ViewIconRow { icon: "tick-circle", tone: Done, title: "Your bank", sub: None, value: Some("connected") }, ViewIconRow { icon: "spin", tone: Running, title: "Accounts", sub: None, value: Some("reading") }, ViewIconRow { icon: "dot", tone: Waiting, title: "Transactions", sub: None, value: Some("waiting") }, ViewIconRow { icon: "dot", tone: Waiting, title: "Recurring bills", sub: None, value: Some("waiting") }] } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Sync { step: "Step 4 of 4 · Sync", title: "Reading your history", body: [ViewRun { text: "First time only. Every refresh after this one takes a moment.", strong: false }], progress: 0.375, rows: [ViewIconRow { icon: "tick-circle", tone: Done, title: "Your bank", sub: None, value: Some("connected") }, ViewIconRow { icon: "spin", tone: Running, title: "Accounts", sub: None, value: Some("reading") }, ViewIconRow { icon: "dot", tone: Waiting, title: "Transactions", sub: None, value: Some("waiting") }, ViewIconRow { icon: "dot", tone: Waiting, title: "Recurring bills", sub: None, value: Some("waiting") }] } }, dock: None, who: None, settings: None } }"#,
         > @r#"ToSource { action: WatchSync }"#,
 
         // The first message back from a sync that has got past balances.
         < Event::FromSource { event: EventSource::SyncStatusLoaded { json: r#"{"stage":"transactions","institution":"First Platypus Bank","accounts":14,"transactions":0,"streams":0,"finished":false}"#.to_string() } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Sync { step: "Step 4 of 4 · Sync", title: "Reading your history", body: [ViewRun { text: "First time only. Every refresh after this one takes a moment.", strong: false }], progress: 0.625, rows: [ViewIconRow { icon: "tick-circle", tone: Done, title: "First Platypus Bank", sub: None, value: Some("connected") }, ViewIconRow { icon: "tick-circle", tone: Done, title: "Accounts", sub: None, value: Some("14") }, ViewIconRow { icon: "spin", tone: Running, title: "Transactions", sub: None, value: Some("reading") }, ViewIconRow { icon: "dot", tone: Waiting, title: "Recurring bills", sub: None, value: Some("waiting") }] } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Sync { step: "Step 4 of 4 · Sync", title: "Reading your history", body: [ViewRun { text: "First time only. Every refresh after this one takes a moment.", strong: false }], progress: 0.625, rows: [ViewIconRow { icon: "tick-circle", tone: Done, title: "First Platypus Bank", sub: None, value: Some("connected") }, ViewIconRow { icon: "tick-circle", tone: Done, title: "Accounts", sub: None, value: Some("14") }, ViewIconRow { icon: "spin", tone: Running, title: "Transactions", sub: None, value: Some("reading") }, ViewIconRow { icon: "dot", tone: Waiting, title: "Recurring bills", sub: None, value: Some("waiting") }] } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -1015,7 +1015,7 @@ fn a_finished_sync_counts_what_arrived() {
         > Action::ToUi { action: ActionUi::Render { .. } },
         > Action::ToUi { action: ActionUi::Render { .. } },
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Ready { title: "You're set.", body: [ViewRun { text: "First Platypus Bank", strong: true }, ViewRun { text: " is connected and syncing.", strong: false }], tally: [ViewTally { value: "8", label: "accounts" }, ViewTally { value: "48", label: "transactions" }, ViewTally { value: "8", label: "recurring bills found" }], another: "Add another bank", open: "Open Meridian" } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Ready { title: "You're set.", body: [ViewRun { text: "First Platypus Bank", strong: true }, ViewRun { text: " is connected and syncing.", strong: false }], tally: [ViewTally { value: "8", label: "accounts" }, ViewTally { value: "48", label: "transactions" }, ViewTally { value: "8", label: "recurring bills found" }], another: "Add another bank", open: "Open Meridian" } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -1038,7 +1038,7 @@ fn a_sync_already_over_on_its_first_reply_still_counts() {
         > @r#"ToSource { action: StartBankLink }"#,
         > Action::ToUi { action: ActionUi::Render { .. } },
         > Action::ToUi { action: ActionUi::Render { .. } },
-        > @r#"ToUi { action: Render { screen: Onboarding { view: Ready { title: "You're set.", body: [ViewRun { text: "Citibank Online", strong: true }, ViewRun { text: " is connected and syncing.", strong: false }], tally: [ViewTally { value: "14", label: "accounts" }, ViewTally { value: "48", label: "transactions" }, ViewTally { value: "8", label: "recurring bills found" }], another: "Add another bank", open: "Open Meridian" } }, dock: None, who: None } }"#,
+        > @r#"ToUi { action: Render { screen: Onboarding { view: Ready { title: "You're set.", body: [ViewRun { text: "Citibank Online", strong: true }, ViewRun { text: " is connected and syncing.", strong: false }], tally: [ViewTally { value: "14", label: "accounts" }, ViewTally { value: "48", label: "transactions" }, ViewTally { value: "8", label: "recurring bills found" }], another: "Add another bank", open: "Open Meridian" } }, dock: None, who: None, settings: None } }"#,
     );
 }
 
@@ -1058,10 +1058,14 @@ fn opening_meridian_ends_the_flow() {
     );
 }
 
-/// A tap that arrives after the flow has gone is a stale tap, not a broken
-/// invariant. It draws the app it is now in and nothing else happens.
+/// A tap from the flow that arrives after the flow has gone is a stale tap,
+/// not a broken invariant. It draws the app it is now in and nothing else
+/// happens.
+///
+/// Connecting a bank is not one of those: outside first run it is the
+/// Connections page's Add connection, and it still opens Plaid.
 #[test]
-fn the_flow_ignores_events_once_it_is_over() {
+fn the_flow_ignores_its_own_events_once_it_is_over() {
     let mut state = at_the_code_screen();
 
     state.handle_events(
@@ -1072,7 +1076,7 @@ fn the_flow_ignores_events_once_it_is_over() {
     );
 
     eval!(&mut state,
-        < Event::FromUi { event: EventUi::BankConnectRequested },
+        < Event::FromUi { event: EventUi::CodeSubmitted },
         > Action::ToUi { action: ActionUi::Render { .. } },
 
         < Event::FromUi { event: EventUi::OnboardingFinished },
