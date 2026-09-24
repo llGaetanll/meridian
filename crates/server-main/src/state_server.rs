@@ -30,6 +30,7 @@ use src_plaid::PlaidRateLimiter;
 use src_plaid::PlaidWebhook;
 use src_plaid::PlaidWebhookJwt;
 use src_plaid::PlaidWebhookKind;
+use src_postgres::BarSource;
 use src_stripe::StripeStatus;
 use uuid::Uuid;
 
@@ -55,6 +56,7 @@ use crate::EventRouter;
 use crate::EventSocket;
 use crate::EventSourcePlaid;
 use crate::EventSourceStripe;
+use crate::EventSourceYahoo;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::ItemFacts;
@@ -63,6 +65,7 @@ use crate::Owed;
 use crate::Pending;
 use crate::RequestId;
 use crate::StateBilling;
+use crate::StateMarkets;
 use crate::StateSignup;
 use crate::StripePayer;
 use crate::Syncing;
@@ -71,6 +74,8 @@ use crate::entitlement;
 use crate::login_code;
 use crate::rate_limit::ServerRateCtx;
 use crate::rate_limit::ServerRateLimiter;
+use crate::state_markets::BARS_ASKED_AT_MOST;
+use crate::state_markets::bars_asked;
 
 /// How long a sync is good for before Plaid is asked again.
 ///
@@ -129,6 +134,10 @@ pub struct StateServer {
     /// Starting subscriptions, and hearing what came of them. Its own
     /// process, the way signing up is.
     billing: StateBilling,
+
+    /// Fetching market data: what to ask the sources, in what order, and how
+    /// fast. Its own process too; the bars themselves live in the store.
+    markets: StateMarkets,
 
     /// Who has paid, and until when. Held here rather than inside
     /// [`StateBilling`] because it is not billing's process: a link request
@@ -194,6 +203,9 @@ impl StateServer {
             }
             Event::FromSourceStripe { call_id, event } => {
                 self.handle_event_stripe(*call_id, event, actions)
+            }
+            Event::FromSourceYahoo { call_id, event } => {
+                self.handle_event_yahoo(*call_id, event, actions)
             }
             Event::FromSocket { event } => self.handle_event_socket(event),
             Event::FromStore { call_id, event } => {
@@ -325,7 +337,8 @@ impl StateServer {
             | EventRouter::BillingStatusRequested { .. }
             | EventRouter::AppleTransactionReceived { .. }
             | EventRouter::DeleteCodeRequested { .. }
-            | EventRouter::DeleteRequested { .. } => {
+            | EventRouter::DeleteRequested { .. }
+            | EventRouter::BarsRequested { .. } => {
                 unreachable!("a request carrying a token is resolved before it is decided")
             }
         }
@@ -589,6 +602,44 @@ impl StateServer {
             // it is the only thing that knows.
             Authenticated::SyncWatchRequested { conn_id } => {
                 self.handle_sync_watch(request_id, *conn_id, user_id, actions)
+            }
+
+            // The plan for a bars request is decided by what is covered, so
+            // the coverage is read first.
+            Authenticated::BarsRequested {
+                symbol,
+                interval,
+                start,
+                end,
+            } => {
+                // Refused before anything is read: a backwards window has no
+                // answer, and a window naming more bars than anything draws
+                // is a read nobody should pay for.
+                if *start >= *end || bars_asked(*interval, &(*start..*end)) > BARS_ASKED_AT_MOST {
+                    self.signup
+                        .answer(request_id, ActionRouter::BadAsk, self.now, actions);
+
+                    return;
+                }
+
+                self.signup.waits_on(
+                    request_id,
+                    Pending::PlanningBars {
+                        symbol: symbol.clone(),
+                        interval: *interval,
+                        start: *start,
+                        end: *end,
+                    },
+                );
+
+                actions.push(Action::ToStore {
+                    call_id: self.signup.calling(request_id, self.now),
+                    action: ActionStore::LoadBarCoverage {
+                        source: BarSource::Yahoo,
+                        symbol: symbol.clone(),
+                        interval: *interval,
+                    },
+                });
             }
 
             // The rows this route decides from, scoped to the caller: two
@@ -2308,6 +2359,129 @@ impl StateServer {
         }
     }
 
+    fn handle_event_yahoo(
+        &mut self,
+        call_id: CallId,
+        event: &EventSourceYahoo,
+        actions: &mut Vec<Action>,
+    ) {
+        match event {
+            EventSourceYahoo::ChartFetched { bars, .. } => {
+                // Minted whether or not the write goes out, so a replay hands
+                // out the same numbers either way.
+                let save_call = self.signup.call();
+
+                let settled = self
+                    .markets
+                    .chart_fetched(call_id, save_call, bars, self.now, actions);
+
+                self.bars_settled(settled, actions);
+            }
+
+            EventSourceYahoo::ChartFailed { fault, .. } => {
+                let settled = self.markets.chart_failed(call_id, fault);
+
+                self.bars_settled(settled, actions);
+            }
+        }
+
+        self.pump_markets(actions);
+    }
+
+    /// One fetch settled — landed, failed for good, or timed out — for each
+    /// of these routes. A route is answered once its last one has.
+    fn bars_settled(&mut self, settled: Vec<RequestId>, actions: &mut Vec<Action>) {
+        for request_id in settled {
+            let Some(step) = self.signup.resumed(request_id) else {
+                tracing::warn!(request_id, "a fetch settled for a route already answered");
+
+                continue;
+            };
+
+            let Pending::AwaitingBars {
+                symbol,
+                interval,
+                start,
+                end,
+                left,
+            } = step
+            else {
+                tracing::error!(
+                    request_id,
+                    "a fetch settled for a route not waiting on bars"
+                );
+
+                self.signup.waits_on(request_id, step);
+
+                continue;
+            };
+
+            if left <= 1 {
+                self.read_bars(request_id, symbol, interval, start, end, actions);
+            } else {
+                self.signup.waits_on(
+                    request_id,
+                    Pending::AwaitingBars {
+                        symbol,
+                        interval,
+                        start,
+                        end,
+                        left: left - 1,
+                    },
+                );
+            }
+        }
+    }
+
+    /// The read a bars request is answered from, asked for only once
+    /// everything the request set going has landed.
+    fn read_bars(
+        &mut self,
+        request_id: RequestId,
+        symbol: String,
+        interval: src_postgres::BarInterval,
+        start: Timestamp,
+        end: Timestamp,
+        actions: &mut Vec<Action>,
+    ) {
+        self.signup.waits_on(
+            request_id,
+            Pending::ServingBars {
+                symbol: symbol.clone(),
+                interval,
+            },
+        );
+
+        actions.push(Action::ToStore {
+            call_id: self.signup.calling(request_id, self.now),
+            action: ActionStore::LoadBars {
+                source: BarSource::Yahoo,
+                symbol,
+                interval,
+                start,
+                end,
+            },
+        });
+    }
+
+    /// Send fetches for as long as the pace allows. Nothing new starts once
+    /// the process is on its way out.
+    fn pump_markets(&mut self, actions: &mut Vec<Action>) {
+        if self.shutting_down() {
+            return;
+        }
+
+        while self.markets.may_send(self.now) {
+            let Some(fetch_id) = self.markets.next_queued() else {
+                return;
+            };
+
+            let call_id = self.signup.call();
+
+            self.markets.dispatch(fetch_id, call_id, self.now, actions);
+        }
+    }
+
     fn handle_event_process(&mut self, event: &EventProcess, actions: &mut Vec<Action>) {
         match event {
             EventProcess::Started {
@@ -2379,6 +2553,14 @@ impl StateServer {
                     self.signup.sweep_sessions(self.now, actions);
                     self.retry_not_ready(actions);
                 }
+
+                // Whatever the fetch housekeeping settled is answered even on
+                // the way out — a route held is a process that cannot drain —
+                // and the pump guards new work itself.
+                let settled = self.markets.on_tick(self.now, self.shutting_down());
+
+                self.bars_settled(settled, actions);
+                self.pump_markets(actions);
             }
         }
     }
@@ -2775,7 +2957,97 @@ impl StateServer {
                     .answer(request_id, ActionRouter::Unavailable, self.now, actions);
             }
 
-            EventStore::WriteSuccess => self.signup.landed(call_id, self.now, actions),
+            // The coverage a bars request planned from. Whatever the plan
+            // says is missing becomes fetches; nothing missing is a window
+            // the store serves outright.
+            EventStore::BarCoverageLoaded { spans } => {
+                let Some(request_id) = self.signup.answered(call_id) else {
+                    return;
+                };
+
+                let Some(Pending::PlanningBars {
+                    symbol,
+                    interval,
+                    start,
+                    end,
+                }) = self.signup.resumed(request_id)
+                else {
+                    tracing::error!(call_id, "the store answered coverage nobody asked about");
+
+                    return;
+                };
+
+                let waits =
+                    self.markets
+                        .asked(request_id, &symbol, interval, start..end, spans, self.now);
+
+                if waits == 0 {
+                    self.read_bars(request_id, symbol, interval, start, end, actions);
+                } else {
+                    self.signup.waits_on(
+                        request_id,
+                        Pending::AwaitingBars {
+                            symbol,
+                            interval,
+                            start,
+                            end,
+                            left: waits,
+                        },
+                    );
+                }
+
+                self.pump_markets(actions);
+            }
+
+            EventStore::BarsLoaded { bars } => {
+                let Some(request_id) = self.signup.answered(call_id) else {
+                    return;
+                };
+
+                let Some(Pending::ServingBars { symbol, interval }) =
+                    self.signup.resumed(request_id)
+                else {
+                    tracing::error!(call_id, "the store answered bars nobody asked about");
+
+                    return;
+                };
+
+                let bars = server_wire::WireBars {
+                    symbol,
+                    interval: interval.as_str().to_string(),
+                    bars: bars
+                        .iter()
+                        .map(|bar| server_wire::WireBar {
+                            ts: bar.ts.as_secs(),
+                            open: bar.open,
+                            high: bar.high,
+                            low: bar.low,
+                            close: bar.close,
+                            volume: bar.volume,
+                        })
+                        .collect(),
+                };
+
+                self.signup.answer(
+                    request_id,
+                    ActionRouter::ServeBars { bars },
+                    self.now,
+                    actions,
+                );
+            }
+
+            EventStore::WriteSuccess => {
+                // A fetch's write, holding its waiters: theirs to settle,
+                // and no route's call.
+                if let Some(settled) = self.markets.store_answered(call_id, true) {
+                    self.bars_settled(settled, actions);
+                    self.pump_markets(actions);
+
+                    return;
+                }
+
+                self.signup.landed(call_id, self.now, actions)
+            }
 
             // Ends the wait: a route held for a failed write is held for
             // ever. The one exception is the write that attaches a newly
@@ -2783,6 +3055,15 @@ impl StateServer {
             // is an Item slot already spent.
             EventStore::WriteError { message } => {
                 tracing::error!(message, "could not write the store");
+
+                // The window stays unknown and the waiters are answered with
+                // what the store does hold; the next ask replans the gap.
+                if let Some(settled) = self.markets.store_answered(call_id, false) {
+                    self.bars_settled(settled, actions);
+                    self.pump_markets(actions);
+
+                    return;
+                }
 
                 if self.signup.attach_refused(call_id, self.now, actions) {
                     return;
@@ -2983,6 +3264,8 @@ impl StateServer {
             keys: self.keys.len(),
             request_windows: self.requests.kept(),
             plaid_windows: self.limiter.kept(),
+            market_fetches: self.markets.fetches(),
+            market_recent: self.markets.recent(),
         }
     }
 

@@ -68,4 +68,13 @@ pub enum EventStore {
     /// What deletion code stands against the user a deletion named. `None` is
     /// an account with no code, which is a rejection like any other.
     DeleteCodeLoaded { stored: Option<StoredCode> },
+
+    /// The stretches of time a series is known over, sorted and disjoint.
+    /// Empty is a series nobody has fetched.
+    BarCoverageLoaded {
+        spans: Vec<std::ops::Range<api_common::Timestamp>>,
+    },
+
+    /// The bars a series holds over the window that was asked, in time order.
+    BarsLoaded { bars: Vec<api_common::Bar> },
 }

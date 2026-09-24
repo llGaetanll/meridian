@@ -72,4 +72,15 @@ pub struct CensusServer {
 
     /// Rate-limit windows kept against Plaid, one per endpoint per bank.
     pub plaid_windows: usize,
+
+    /// Market fetches in flight, queued through written down. Emptied as each
+    /// lands or is given up on; the routes seated on one are counted in
+    /// [`requests`](Self::requests) like any other.
+    pub market_fetches: usize,
+
+    /// Series remembered as recently asked about, for the idle refresh.
+    /// Swept as interest expires, and capped by
+    /// [`RECENT_AT_MOST`](crate::RECENT_AT_MOST) because the keys are
+    /// whatever callers type.
+    pub market_recent: usize,
 }

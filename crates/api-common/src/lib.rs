@@ -1,4 +1,5 @@
 mod asset;
+mod bar;
 mod chart_data;
 pub mod format;
 mod price;
@@ -7,6 +8,7 @@ pub mod ratelimit;
 mod timestamp;
 
 pub use asset::Asset;
+pub use bar::Bar;
 pub use chart_data::ChartData;
 pub use price::Price;
 pub use quantity::Quantity;

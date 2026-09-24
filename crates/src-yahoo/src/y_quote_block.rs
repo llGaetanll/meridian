@@ -1,3 +1,4 @@
+use api_common::Bar;
 use api_common::ChartData;
 use api_common::Price;
 use api_common::Timestamp;
@@ -42,6 +43,34 @@ impl YQuoteBlock {
             .zip(quote.volume.iter())
             .filter(|((_, close), _)| close.is_some())
             .map(|((&ts, _), volume)| (ts, volume.unwrap_or(0) as Price))
+            .collect()
+    }
+
+    /// The series as bars, keeping exactly the points that have a close.
+    ///
+    /// A point with no close is a minute nothing traded and nothing to hold;
+    /// the rest of a candle stays optional because Yahoo leaves holes in each
+    /// field independently.
+    pub fn bars(&self) -> Vec<Bar> {
+        let Some(quote) = self.indicators.quote.first() else {
+            return Vec::new();
+        };
+
+        self.timestamp
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &ts)| {
+                let close = *quote.close.get(i)?;
+
+                close.map(|close| Bar {
+                    ts,
+                    open: quote.open.get(i).copied().flatten(),
+                    high: quote.high.get(i).copied().flatten(),
+                    low: quote.low.get(i).copied().flatten(),
+                    close,
+                    volume: quote.volume.get(i).copied().flatten().unwrap_or(0),
+                })
+            })
             .collect()
     }
 

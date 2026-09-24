@@ -6,6 +6,7 @@ use crate::ActionRouter;
 use crate::ActionSocket;
 use crate::ActionSourcePlaid;
 use crate::ActionSourceStripe;
+use crate::ActionSourceYahoo;
 use crate::ActionStore;
 use crate::CallId;
 use crate::RequestId;
@@ -31,6 +32,10 @@ pub enum Action {
     ToSourceStripe {
         call_id: CallId,
         action: ActionSourceStripe,
+    },
+    ToSourceYahoo {
+        call_id: CallId,
+        action: ActionSourceYahoo,
     },
     ToSocket {
         action: ActionSocket,

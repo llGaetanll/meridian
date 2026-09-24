@@ -18,6 +18,7 @@ use crate::ActionProcess;
 use crate::ActionSocket;
 use crate::ActionSourcePlaid;
 use crate::ActionSourceStripe;
+use crate::ActionSourceYahoo;
 use crate::ActionStore;
 use crate::CallId;
 use crate::EmailSend;
@@ -25,6 +26,7 @@ use crate::Event;
 use crate::EventProcess;
 use crate::EventSourcePlaid;
 use crate::EventSourceStripe;
+use crate::EventSourceYahoo;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::LinkOpener;
@@ -43,6 +45,7 @@ use crate::runtime_router::EventRx;
 use crate::runtime_router::EventTx;
 use crate::runtime_router::RuntimeRouter;
 use crate::runtime_stripe;
+use crate::runtime_yahoo;
 use crate::source_pool::SourcePool;
 use server_wire::SyncStage;
 use server_wire::WireSnapshot;
@@ -57,6 +60,7 @@ use src_resend::ResendClient;
 use src_resend::ResendCredentials;
 use src_stripe::StripeClient;
 use src_stripe::StripeCredentials;
+use src_yahoo::YahooClient;
 use uuid::Uuid;
 
 /// How often the machine is handed fresh entropy. Not about running out — it
@@ -75,6 +79,12 @@ const EMAIL_AT_ONCE: usize = 2;
 /// Small, because they only ever come from somebody at a card form: two calls
 /// per subscription, at whatever rate people sign up.
 const STRIPE_AT_ONCE: usize = 2;
+
+/// Calls to Yahoo at once.
+///
+/// One, and the machine relies on it: its pacing sends the next fetch only
+/// when the last has answered, so room for more would never be used.
+const YAHOO_AT_ONCE: usize = 1;
 
 /// How often the machine is told what time it is. A second, far finer than the
 /// shortest window the machine measures.
@@ -107,6 +117,10 @@ pub struct RuntimeServer {
     /// subscription, and the route says so rather than the process refusing to
     /// come up.
     stripe_client: Option<StripeClient>,
+
+    /// Yahoo, asked for nothing but public market data. Always built: it
+    /// needs no credential, only a pace, and the pace is the machine's.
+    yahoo_client: YahooClient,
 
     /// How a sign-in code reaches the person asking for it.
     email_send: EmailSend,
@@ -145,6 +159,10 @@ pub struct RuntimeServer {
     /// a sign-in needs.
     email: SourcePool,
 
+    /// Every call to Yahoo. Its own pool so a slow quote cannot use up the
+    /// room a bank or a payment needs, and one wide on purpose.
+    yahoo: SourcePool,
+
     /// Every write. The machine holds a route's answer until the store reports.
     store: SourcePool,
 }
@@ -154,6 +172,11 @@ impl RuntimeServer {
     pub async fn run() -> anyhow::Result<()> {
         // Read before anything is served, not on the first request.
         let plaid_client = runtime_plaid::client(PlaidCredentials::from_env()?)?;
+
+        // No credential to read: what can fail is only the building, and a
+        // client that would not build is a server that says so now.
+        let yahoo_client = runtime_yahoo::client()
+            .map_err(|e| anyhow::anyhow!("the yahoo client would not build: {e}"))?;
 
         // Read at startup like everything else, and not fatal: a key that is
         // not one is a server that cannot sell, which is worth saying out loud
@@ -298,10 +321,12 @@ impl RuntimeServer {
             plaid: SourcePool::new("plaid", PLAID_AT_ONCE, event_tx.clone()),
             stripe: SourcePool::new("stripe", STRIPE_AT_ONCE, event_tx.clone()),
             email: SourcePool::new("email", EMAIL_AT_ONCE, event_tx.clone()),
+            yahoo: SourcePool::new("yahoo", YAHOO_AT_ONCE, event_tx.clone()),
             store: SourcePool::new("store", STORE_AT_ONCE, event_tx.clone()),
             action_tx,
             plaid_client,
             stripe_client,
+            yahoo_client,
             email_send,
             resend,
             tokens: RwLock::new(HashMap::new()),
@@ -424,6 +449,8 @@ impl RuntimeServer {
 
             Action::ToSourceStripe { .. } => self.calling(&self.stripe, action),
 
+            Action::ToSourceYahoo { .. } => self.calling(&self.yahoo, action),
+
             Action::ToEmail { .. } => self.calling(&self.email, action),
 
             Action::ToStore { .. } => self.calling(&self.store, action),
@@ -468,6 +495,9 @@ impl RuntimeServer {
             }
             Action::ToSourceStripe { call_id, action } => {
                 return self.perform_action_stripe(*call_id, action).await;
+            }
+            Action::ToSourceYahoo { call_id, action } => {
+                return self.perform_action_yahoo(*call_id, action).await;
             }
             Action::ToStore { call_id, action } => {
                 return self.perform_action_store(*call_id, action).await;
@@ -600,6 +630,44 @@ impl RuntimeServer {
     }
 
     /// Get a code to a person, or say where it went instead.
+    /// Carry out one call to Yahoo, and report what came of it.
+    async fn perform_action_yahoo(
+        &self,
+        call_id: CallId,
+        action: &ActionSourceYahoo,
+    ) -> Vec<Event> {
+        let event = match action {
+            ActionSourceYahoo::FetchChart {
+                symbol,
+                interval,
+                start,
+                end,
+            } => {
+                match runtime_yahoo::fetch_chart(
+                    &self.yahoo_client,
+                    symbol,
+                    *interval,
+                    *start,
+                    *end,
+                )
+                .await
+                {
+                    Ok(bars) => EventSourceYahoo::ChartFetched {
+                        symbol: symbol.clone(),
+                        interval: *interval,
+                        bars,
+                    },
+                    Err(fault) => EventSourceYahoo::ChartFailed {
+                        symbol: symbol.clone(),
+                        fault,
+                    },
+                }
+            }
+        };
+
+        vec![Event::FromSourceYahoo { call_id, event }]
+    }
+
     async fn perform_action_email(&self, action: &ActionEmail) {
         let (email, code, subject, text) = match action {
             ActionEmail::SendCode { email, code } => (
@@ -929,6 +997,36 @@ impl RuntimeServer {
 
             ActionStore::LoadSubscriptions => self.load_subscriptions().await,
 
+            ActionStore::LoadBarCoverage {
+                source,
+                symbol,
+                interval,
+            } => match src_postgres::load_coverage(&self.db, *source, symbol, *interval).await {
+                Ok(spans) => EventStore::BarCoverageLoaded { spans },
+
+                Err(e) => EventStore::ReadError {
+                    message: e.to_string(),
+                },
+            },
+
+            ActionStore::LoadBars {
+                source,
+                symbol,
+                interval,
+                start,
+                end,
+            } => {
+                match src_postgres::load_bars(&self.db, *source, symbol, *interval, *start..*end)
+                    .await
+                {
+                    Ok(bars) => EventStore::BarsLoaded { bars },
+
+                    Err(e) => EventStore::ReadError {
+                        message: e.to_string(),
+                    },
+                }
+            }
+
             ActionStore::LoadUser { user_id, .. } => self.load_user(*user_id).await,
 
             ActionStore::LoadAccessTokens { user_id, .. } => {
@@ -1094,6 +1192,25 @@ impl RuntimeServer {
                 expires_at,
             } => {
                 src_postgres::save_code(db, email, code_sha256, *expires_at).await?;
+            }
+
+            ActionStore::SaveBars {
+                source,
+                symbol,
+                interval,
+                bars,
+                covered_start,
+                covered_end,
+            } => {
+                src_postgres::save_bars(
+                    db,
+                    *source,
+                    symbol,
+                    *interval,
+                    bars,
+                    *covered_start..*covered_end,
+                )
+                .await?;
             }
 
             ActionStore::SaveCustomer {
@@ -1270,6 +1387,8 @@ impl RuntimeServer {
             | ActionStore::LoadSubscriptions
             | ActionStore::LoadUser { .. }
             | ActionStore::LoadAccessTokens { .. }
+            | ActionStore::LoadBarCoverage { .. }
+            | ActionStore::LoadBars { .. }
             | ActionStore::SaveItem { .. } => {
                 unreachable!("answered by `perform_action_store`, which says what it wrote")
             }
@@ -1506,6 +1625,9 @@ impl RuntimeServer {
             | ActionStore::LoadSubscriptions
             | ActionStore::LoadUser { .. }
             | ActionStore::LoadAccessTokens { .. }
+            | ActionStore::LoadBarCoverage { .. }
+            | ActionStore::LoadBars { .. }
+            | ActionStore::SaveBars { .. }
             | ActionStore::DeleteUser { .. }
             | ActionStore::RecordAccess { .. } => {}
         }

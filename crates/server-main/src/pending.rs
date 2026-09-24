@@ -110,6 +110,35 @@ pub enum Pending {
     /// — the alternative is an account nobody can delete.
     DeletingBanks { user_id: Uuid, left: u32 },
 
+    /// A bars request waiting on the coverage that says which of its window
+    /// is already held. The ask is carried whole, because the plan is decided
+    /// by the answer.
+    PlanningBars {
+        symbol: String,
+        interval: src_postgres::BarInterval,
+        start: api_common::Timestamp,
+        end: api_common::Timestamp,
+    },
+
+    /// A bars request parked on the fetches that fill its window, `left` of
+    /// them still out. Counted rather than listed, the way
+    /// [`DeletingBanks`](Pending::DeletingBanks) counts: the bars are read
+    /// once none is outstanding, whichever order they land in.
+    AwaitingBars {
+        symbol: String,
+        interval: src_postgres::BarInterval,
+        start: api_common::Timestamp,
+        end: api_common::Timestamp,
+        left: u32,
+    },
+
+    /// A bars request waiting on the read it is about to be answered with.
+    /// The interval rides along because the answer names what was served.
+    ServingBars {
+        symbol: String,
+        interval: src_postgres::BarInterval,
+    },
+
     /// Decided. Held until nothing the request started is still out, because
     /// a route reads the store the moment it is answered.
     Owed(Owed),

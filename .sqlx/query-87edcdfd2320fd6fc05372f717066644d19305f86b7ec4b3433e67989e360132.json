@@ -1,0 +1,48 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO bars (source, symbol, interval, ts, open, high, low, close, volume)\n               SELECT $1, $2, $3, ts, open, high, low, close, volume\n               FROM UNNEST($4::timestamptz[], $5::float8[], $6::float8[], $7::float8[],\n                           $8::float8[], $9::int8[])\n                    AS t(ts, open, high, low, close, volume)\n               ON CONFLICT (source, symbol, interval, ts) DO UPDATE SET\n                   open   = EXCLUDED.open,\n                   high   = EXCLUDED.high,\n                   low    = EXCLUDED.low,\n                   close  = EXCLUDED.close,\n                   volume = EXCLUDED.volume",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "bar_source",
+            "kind": {
+              "Enum": [
+                "yahoo",
+                "coingecko"
+              ]
+            }
+          }
+        },
+        "Text",
+        {
+          "Custom": {
+            "name": "bar_interval",
+            "kind": {
+              "Enum": [
+                "1m",
+                "2m",
+                "5m",
+                "15m",
+                "30m",
+                "1h",
+                "1d",
+                "1wk"
+              ]
+            }
+          }
+        },
+        "TimestamptzArray",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Float8Array",
+        "Int8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "87edcdfd2320fd6fc05372f717066644d19305f86b7ec4b3433e67989e360132"
+}

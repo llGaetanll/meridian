@@ -343,6 +343,44 @@ impl SyncStage {
     ];
 }
 
+/// One series of bars, as `GET /bars` answers it.
+///
+/// The interval is the one actually served, which is not always the one asked
+/// for — the sources substitute, and the client draws what it was given.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WireBars {
+    pub symbol: String,
+
+    /// `1m` through `1wk`, the words `src_postgres::BarInterval` spells.
+    pub interval: String,
+
+    /// In time order. What the gaps mean — market shut, or never fetched — is
+    /// not on the wire; a client draws the points it is given.
+    #[serde(default)]
+    pub bars: Vec<WireBar>,
+}
+
+/// One bar. The close is always there; the rest of the candle is whatever the
+/// source reported.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WireBar {
+    /// The start of the interval the bar stands for, in seconds.
+    pub ts: u64,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open: Option<f64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub high: Option<f64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub low: Option<f64>,
+
+    pub close: f64,
+
+    pub volume: u64,
+}
+
 /// Why a refusal was a 402, so a client can draw the right paywall.
 ///
 /// The only refusal that carries a body. A 401 and a 429 are wholly said by

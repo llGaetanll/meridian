@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT span_start, span_end FROM bar_coverage\n               WHERE source = $1 AND symbol = $2 AND interval = $3\n                 AND span_start <= $5 AND span_end >= $4\n               FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "span_start",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bar_coverage",
+            "name": "span_start"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "span_end",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bar_coverage",
+            "name": "span_end"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "bar_source",
+            "kind": {
+              "Enum": [
+                "yahoo",
+                "coingecko"
+              ]
+            }
+          }
+        },
+        "Text",
+        {
+          "Custom": {
+            "name": "bar_interval",
+            "kind": {
+              "Enum": [
+                "1m",
+                "2m",
+                "5m",
+                "15m",
+                "30m",
+                "1h",
+                "1d",
+                "1wk"
+              ]
+            }
+          }
+        },
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "827d603a3b26cfe7aba252220e65e14d41524803a6debcc7f44f00681acee938"
+}

@@ -227,6 +227,42 @@ pub enum ActionStore {
     /// Delete the account and everything that hangs off it.
     DeleteUser { user_id: uuid::Uuid },
 
+    /// The stretches of time this series is known over, for the planner.
+    LoadBarCoverage {
+        source: src_postgres::BarSource,
+        symbol: String,
+        interval: src_postgres::BarInterval,
+    },
+
+    /// The bars a series holds over a half-open window, in time order.
+    ///
+    /// Asked for only once everything the request set going has landed, so
+    /// the rows read are the ones those fetches just wrote.
+    LoadBars {
+        source: src_postgres::BarSource,
+        symbol: String,
+        interval: src_postgres::BarInterval,
+        start: api_common::Timestamp,
+        end: api_common::Timestamp,
+    },
+
+    /// Write what one fetch served: its bars, and the stretch it settles.
+    ///
+    /// One fetch, one write, in one transaction — a claim of coverage must
+    /// not land without the bars it vouches for, or the other way round.
+    SaveBars {
+        source: src_postgres::BarSource,
+        symbol: String,
+        interval: src_postgres::BarInterval,
+        bars: Vec<api_common::Bar>,
+
+        /// Half-open, and decided by the machine rather than the fetch: the
+        /// bar still forming at the live edge is not a fact yet, and only the
+        /// machine holds the clock that says where that edge is.
+        covered_start: api_common::Timestamp,
+        covered_end: api_common::Timestamp,
+    },
+
     /// Write down that this user's data was served, in the audit log.
     ///
     /// Sent beside the answer that serves it, and waited on by nobody: the

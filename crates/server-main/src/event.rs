@@ -7,6 +7,7 @@ use crate::EventRouter;
 use crate::EventSocket;
 use crate::EventSourcePlaid;
 use crate::EventSourceStripe;
+use crate::EventSourceYahoo;
 use crate::EventStore;
 use crate::EventTerminal;
 use crate::RequestId;
@@ -42,6 +43,15 @@ pub enum Event {
     FromSourceStripe {
         call_id: CallId,
         event: EventSourceStripe,
+    },
+
+    /// Yahoo answered, or failed to.
+    ///
+    /// The call rides here for the reason it does on
+    /// [`FromSourcePlaid`](Event::FromSourcePlaid).
+    FromSourceYahoo {
+        call_id: CallId,
+        event: EventSourceYahoo,
     },
 
     /// A stream the server writes to changed, without being asked anything.

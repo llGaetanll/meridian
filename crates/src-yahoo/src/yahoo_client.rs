@@ -44,10 +44,14 @@ impl YahooClient {
         })
     }
 
-    pub async fn send_request<Response: serde::de::DeserializeOwned>(
-        &self,
-        req: &dyn YRequest,
-    ) -> Result<Response, YError> {
+    /// Generic over the request rather than taking `&dyn YRequest`, so the
+    /// future is `Send` when the request is — the server runs these on a
+    /// pool, where a future that cannot cross threads cannot run.
+    pub async fn send_request<Response, Request>(&self, req: &Request) -> Result<Response, YError>
+    where
+        Response: serde::de::DeserializeOwned,
+        Request: YRequest + ?Sized,
+    {
         let url = self
             .base_url
             .join(&req.path())

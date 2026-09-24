@@ -14,6 +14,7 @@
 //! happen once at startup. `docs/ARCHITECTURE.md` has the reasoning.
 
 mod postgres_audit;
+mod postgres_bars;
 mod postgres_delete_code;
 mod postgres_item;
 mod postgres_ledger;
@@ -31,6 +32,11 @@ pub use postgres_audit::AuditScope;
 pub use postgres_audit::StoredAccess;
 pub use postgres_audit::load_accesses;
 pub use postgres_audit::record_access;
+pub use postgres_bars::BarInterval;
+pub use postgres_bars::BarSource;
+pub use postgres_bars::load_bars;
+pub use postgres_bars::load_coverage;
+pub use postgres_bars::save_bars;
 pub use postgres_delete_code::load_delete_code;
 pub use postgres_delete_code::record_delete_attempt;
 pub use postgres_delete_code::save_delete_code;

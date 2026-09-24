@@ -46,6 +46,14 @@ const EMAILS_PER_QUARTER_HOUR: u32 = 5;
 /// the twentieth is a dashboard full of abandoned objects.
 const SUBSCRIBES_PER_MINUTE: u32 = 3;
 
+/// Bar queries a minute.
+///
+/// Looser than everything else because one screen asks several times — a
+/// markets page is a handful of series, and flipping ranges asks again. The
+/// budget it protects is ours, not Yahoo's: a covered window costs a read,
+/// and an uncovered one queues behind the machine's own pacing either way.
+const BARS_PER_MINUTE: u32 = 60;
+
 const MINUTE: u64 = 60;
 
 const QUARTER_HOUR: u64 = 15 * 60;
@@ -92,6 +100,9 @@ pub enum Route {
 
     /// `POST /account/delete`
     AccountDelete,
+
+    /// `GET /bars` — one series over one window.
+    Bars,
 }
 
 impl Route {
@@ -112,6 +123,7 @@ impl Route {
             Route::BillingApple => "/billing/apple",
             Route::AccountDeleteRequest => "/account/delete/request",
             Route::AccountDelete => "/account/delete",
+            Route::Bars => "/bars",
         }
     }
 
@@ -144,6 +156,8 @@ impl Route {
             // As tight as subscribing, and for the mirror-image reason: each
             // one makes calls to Plaid that cannot be undone.
             Route::AccountDelete => (SUBSCRIBES_PER_MINUTE, MINUTE),
+
+            Route::Bars => (BARS_PER_MINUTE, MINUTE),
 
             Route::Snapshot
             | Route::AuthVerify

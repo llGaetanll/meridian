@@ -135,6 +135,15 @@ pub enum ActionRouter {
     /// The account is gone. Answered once the rows are actually deleted, so a
     /// client that hears this can forget its session without wondering.
     Deleted,
+
+    /// Answer with one series of bars, whatever the store holds over the
+    /// window once everything the request set going has landed.
+    ServeBars { bars: server_wire::WireBars },
+
+    /// The request asks for something no answer exists for — a window running
+    /// backwards, or one that names more bars than anything draws. A client
+    /// bug rather than a failure, so it is refused rather than served empty.
+    BadAsk,
 }
 
 impl ActionRouter {
@@ -167,7 +176,11 @@ impl ActionRouter {
             | ActionRouter::Subscribed
             | ActionRouter::Subscribing { .. }
             | ActionRouter::CheckoutOpened { .. }
-            | ActionRouter::Deleted => None,
+            | ActionRouter::Deleted
+            // Market data is the same for everybody; nothing about a person
+            // is served.
+            | ActionRouter::ServeBars { .. }
+            | ActionRouter::BadAsk => None,
         }
     }
 }

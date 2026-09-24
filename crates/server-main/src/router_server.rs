@@ -14,6 +14,7 @@ use axum::Json;
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::Extension;
+use axum::extract::Query;
 use axum::extract::State;
 use axum::http::Method;
 use axum::http::StatusCode;
@@ -44,6 +45,7 @@ use crate::runtime_router::Closing;
 use crate::runtime_router::ToLoop;
 use crate::runtime_router::Watched;
 use crate::session_token;
+use server_wire::WireBars;
 use server_wire::WireSnapshot;
 use server_wire::WireSyncStatus;
 use server_wire::WireUnpaid;
@@ -70,6 +72,7 @@ pub const APPLE_WEBHOOK_PATH: &str = "/apple/webhook";
 pub(crate) fn router(to_loop: ToLoop, origins: &WebOrigins) -> Router {
     Router::new()
         .route("/snapshot", get(snapshot))
+        .route("/bars", get(bars))
         .route("/auth/request", post(auth_request))
         .route("/auth/verify", post(auth_verify))
         .route("/link/start", post(link_start))
@@ -137,6 +140,59 @@ async fn snapshot(
     match answer {
         Some(ActionRouter::Serve { snapshot }) => Ok(Json(snapshot)),
         Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),
+    }
+}
+
+/// What `GET /bars` takes, off the query string.
+///
+/// The interval is a word (`5m`, `1d`) and the window is half-open seconds;
+/// a word that is not an interval is a 400 at the edge — a parse, not a
+/// decision.
+#[derive(Debug, Deserialize)]
+struct BarsAsk {
+    symbol: String,
+    interval: String,
+    start: u64,
+    end: u64,
+}
+
+/// `GET /bars?symbol=SPY&interval=1d&start=…&end=…`
+///
+/// One symbol's bars over one window. Answered from the store where the
+/// window is covered, and held until the fetches that fill it land where it
+/// is not — so two callers asking the same window cost the sources one trip.
+async fn bars(
+    State(to_loop): State<ToLoop>,
+    Extension(ip): Extension<ClientIp>,
+    Query(ask): Query<BarsAsk>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<WireBars>, Refusal> {
+    let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let Some(interval) = src_postgres::BarInterval::parse(&ask.interval) else {
+        return Err(StatusCode::BAD_REQUEST.into());
+    };
+
+    let answer = runtime_router::dispatch(
+        &to_loop,
+        Client::anonymous(ip),
+        EventRouter::BarsRequested {
+            token_sha256,
+            symbol: ask.symbol,
+            interval,
+            start: api_common::Timestamp::from_secs(ask.start),
+            end: api_common::Timestamp::from_secs(ask.end),
+        },
+    )
+    .await;
+
+    refused(&answer)?;
+
+    match answer {
+        Some(ActionRouter::ServeBars { bars }) => Ok(Json(bars)),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
+        Some(ActionRouter::BadAsk) => Err(StatusCode::BAD_REQUEST.into()),
         _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),
     }
 }

@@ -116,6 +116,19 @@ pub enum EventRouter {
     /// `POST /account/delete` — cancel the subscription, stop the banks, and
     /// delete everything, if the code is the one that was emailed.
     DeleteRequested { token_sha256: Vec<u8>, code: String },
+
+    /// `GET /bars` — one symbol's bars over one window, at one interval.
+    ///
+    /// The window is half-open, `start..end`. Answered from the store where
+    /// it is covered, and held until the fetches that fill it land where it
+    /// is not.
+    BarsRequested {
+        token_sha256: Vec<u8>,
+        symbol: String,
+        interval: src_postgres::BarInterval,
+        start: api_common::Timestamp,
+        end: api_common::Timestamp,
+    },
 }
 
 impl EventRouter {
@@ -137,7 +150,8 @@ impl EventRouter {
             | EventRouter::BillingStatusRequested { token_sha256 }
             | EventRouter::AppleTransactionReceived { token_sha256, .. }
             | EventRouter::DeleteCodeRequested { token_sha256 }
-            | EventRouter::DeleteRequested { token_sha256, .. } => Some(token_sha256),
+            | EventRouter::DeleteRequested { token_sha256, .. }
+            | EventRouter::BarsRequested { token_sha256, .. } => Some(token_sha256),
 
             EventRouter::CodeRequested { .. }
             | EventRouter::CodeSubmitted { .. }
@@ -170,6 +184,7 @@ impl EventRouter {
             EventRouter::AppleTransactionReceived { .. } => Some(Route::BillingApple),
             EventRouter::DeleteCodeRequested { .. } => Some(Route::AccountDeleteRequest),
             EventRouter::DeleteRequested { .. } => Some(Route::AccountDelete),
+            EventRouter::BarsRequested { .. } => Some(Route::Bars),
 
             EventRouter::WebhookReceived { .. }
             | EventRouter::AppleNotificationReceived { .. }
@@ -203,7 +218,8 @@ impl EventRouter {
             | EventRouter::DeleteRequested { .. }
             | EventRouter::AppleTransactionReceived { .. }
             | EventRouter::AppleNotificationReceived { .. }
-            | EventRouter::StripeWebhookReceived { .. } => None,
+            | EventRouter::StripeWebhookReceived { .. }
+            | EventRouter::BarsRequested { .. } => None,
         }
     }
 }

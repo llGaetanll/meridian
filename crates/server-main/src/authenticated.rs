@@ -72,6 +72,14 @@ pub enum Authenticated {
     DeleteRequested {
         code: String,
     },
+
+    /// Asking for one symbol's bars over one window.
+    BarsRequested {
+        symbol: String,
+        interval: src_postgres::BarInterval,
+        start: api_common::Timestamp,
+        end: api_common::Timestamp,
+    },
 }
 
 impl Authenticated {
@@ -111,6 +119,18 @@ impl Authenticated {
             EventRouter::DeleteRequested { code, .. } => {
                 Some(Authenticated::DeleteRequested { code: code.clone() })
             }
+            EventRouter::BarsRequested {
+                symbol,
+                interval,
+                start,
+                end,
+                ..
+            } => Some(Authenticated::BarsRequested {
+                symbol: symbol.clone(),
+                interval: *interval,
+                start: *start,
+                end: *end,
+            }),
             _ => None,
         }
     }
@@ -129,6 +149,7 @@ impl Authenticated {
             Authenticated::AppleTransactionReceived { .. } => Route::BillingApple,
             Authenticated::DeleteCodeRequested => Route::AccountDeleteRequest,
             Authenticated::DeleteRequested { .. } => Route::AccountDelete,
+            Authenticated::BarsRequested { .. } => Route::Bars,
         }
     }
 
@@ -161,7 +182,8 @@ impl Authenticated {
             | Authenticated::RepairRequested { .. }
             | Authenticated::LinkClosed
             | Authenticated::SyncWatchRequested { .. }
-            | Authenticated::SnapshotRequested => true,
+            | Authenticated::SnapshotRequested
+            | Authenticated::BarsRequested { .. } => true,
         }
     }
 }
