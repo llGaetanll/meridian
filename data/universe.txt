@@ -1,11 +1,11 @@
 # The market universe: symbols the server may fetch on its own initiative,
-# one `SYMBOL WEIGHT` per line.
+# one `SYMBOL WEIGHT` per line — the hundred biggest names by dollar volume.
 #
 # A weight is a prior, not a reading — coarse relative dollar volume, good
 # enough to say SPY before a small-cap. Only ratios matter, and stale
-# rankings cost only a suboptimal fetch order. The machine picks the largest
-# `weight x time since planned`, so everything here is fetched eventually,
-# heavier symbols proportionally more often.
+# rankings cost only a suboptimal fetch order. The weight also decides the
+# interval ladder a symbol earns, relative to the heaviest line: the top
+# tier gets minute bars, the middle quarter-hours, the tail daily only.
 #
 # The whole file is refused if any line does not parse, so a typo is a
 # startup warning rather than a silently thinner universe.
@@ -59,3 +59,54 @@ JNJ 5
 MRK 5
 PFE 6
 ABBV 5
+TSM 15
+IBIT 15
+SQQQ 12
+HOOD 12
+SMCI 12
+BABA 12
+UBER 10
+QCOM 10
+MRVL 10
+ADBE 8
+CRWD 8
+PANW 8
+SHOP 8
+PYPL 8
+SOFI 8
+AMAT 8
+LRCX 8
+ASML 8
+BRK-B 8
+CVX 8
+GDX 8
+SLV 8
+XLE 6
+XLK 6
+KWEB 6
+FXI 6
+ARKK 6
+NOW 6
+SNOW 6
+ABNB 6
+RIVN 6
+GE 6
+IBM 6
+CSCO 6
+KO 6
+NKE 6
+MA 6
+WFC 6
+C 6
+TXN 6
+KLAC 6
+DDOG 5
+MS 5
+MCD 5
+SBUX 5
+T 5
+VZ 5
+PEP 5
+GILD 5
+ISRG 5
+XLV 5

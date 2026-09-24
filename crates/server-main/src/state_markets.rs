@@ -73,11 +73,17 @@ pub const PLAN_SPANS_AT_MOST: usize = 3;
 /// not a chart, and serving it would be a read nobody draws.
 pub const BARS_ASKED_AT_MOST: u64 = 100_000;
 
-/// How long a symbol rests after the machine plans it, before its coverage
-/// is asked about again. The rest is what stops a fully fetched universe
-/// being re-read from the store in a tight loop, and it costs nothing: a
-/// person's request is never subject to it.
-pub const PLANNED_REST_SECS: u64 = 600;
+/// A symbol weighing at least this share of the heaviest earns the full
+/// interval ladder, minute bars included.
+pub const PLAN_TIER_TOP: f64 = 0.5;
+
+/// At least this share earns quarter-hour bars beside its daily ones.
+pub const PLAN_TIER_MIDDLE: f64 = 0.15;
+
+/// Planning pauses while at least this much of the machine's own work is
+/// queued. Below it another plan is made, so the pace is never left unspent;
+/// a person's fetch outranks the queue's contents regardless.
+pub const PLAN_QUEUE_LOW_WATER: usize = 2;
 
 /// Market data fetching, from a window wanted to bars written down.
 #[derive(Debug)]
@@ -103,12 +109,12 @@ pub struct StateMarkets {
     /// machine that fetches only what users ask.
     universe: Vec<MarketWeight>,
 
-    /// When each universe symbol was last planned, for the proportional
-    /// share: the machine picks the largest `weight × time since planned`,
-    /// so each symbol is chosen at a rate proportional to its weight and
-    /// none starves. Bounded by the universe, whose keys nobody outside
-    /// chooses.
-    planned: BTreeMap<String, Timestamp>,
+    /// When each (symbol, interval) pair was last planned, for the
+    /// proportional share: the machine picks the most overdue by
+    /// `weight × staleness / cadence`, so each pair is chosen at a rate
+    /// proportional to its weight and none starves. Bounded by the universe
+    /// and its ladders, whose keys nobody outside chooses.
+    planned: BTreeMap<String, BTreeMap<BarInterval, Timestamp>>,
 
     /// The coverage read the machine has out for a plan of its own, if any:
     /// the call, the symbol and interval it is about, and when it went out.
@@ -470,60 +476,84 @@ impl StateMarkets {
         Some(waiters_of(fetch))
     }
 
-    /// The series the machine should plan next on its own initiative, if it
-    /// is time to plan one at all.
+    /// The (symbol, interval) pair the machine should plan next on its own
+    /// initiative, if any is due.
     ///
-    /// Proportional share, deterministically: the candidate with the largest
-    /// `weight × time since last planned` wins, so each symbol is picked at
-    /// a rate proportional to its weight and even the lightest never
-    /// starves. Nothing is picked while a person's work is queued, while a
-    /// plan of the machine's own is already out, or for a symbol still
-    /// resting.
+    /// Proportional share, deterministically: each symbol's weight earns it
+    /// a ladder of intervals, each pair has a cadence, and the most overdue
+    /// by `weight × staleness / cadence` wins — so the heaviest symbols are
+    /// kept freshest at the finest intervals, and even the lightest pair
+    /// never starves. Nothing is picked while a plan of the machine's own is
+    /// already out, while a pair is inside its cadence, or while enough of
+    /// the machine's own work is queued already.
     pub fn wants_plan(&self, now: Timestamp) -> Option<(String, BarInterval)> {
         if self.universe.is_empty() || self.generating.is_some() {
             return None;
         }
 
-        // Only an idle turn is spent on the machine's own curiosity; a fetch
-        // already out does not count, since planning does not send.
-        if self
+        // A low-water mark rather than an empty queue, so the pace is never
+        // left unspent; a person's fetch goes out first at every send, so
+        // the queue's depth costs them nothing.
+        let queued_own = self
             .fetches
             .values()
-            .any(|fetch| matches!(fetch.step, MarketFetchStep::Queued))
-        {
+            .filter(|fetch| {
+                fetch.waiters.is_empty() && matches!(fetch.step, MarketFetchStep::Queued)
+            })
+            .count();
+
+        if queued_own >= PLAN_QUEUE_LOW_WATER {
             return None;
         }
+
+        let heaviest = self
+            .universe
+            .iter()
+            .map(|entry| entry.weight)
+            .fold(0.0, f64::max);
 
         let candidate = self
             .universe
             .iter()
-            .filter_map(|entry| {
-                let planned = self.planned.get(&entry.symbol).copied();
-                let rested = planned
+            .flat_map(|entry| {
+                intervals_earned(entry.weight, heaviest)
+                    .iter()
+                    .map(move |interval| (entry, *interval))
+            })
+            .filter_map(|(entry, interval)| {
+                let planned = self
+                    .planned
+                    .get(&entry.symbol)
+                    .and_then(|pairs| pairs.get(&interval))
+                    .copied();
+
+                let staleness = planned
                     .map(|at| now.since(at).as_secs())
                     .unwrap_or(u64::MAX);
 
-                if rested < PLANNED_REST_SECS {
+                let cadence = plan_cadence_secs(interval);
+
+                if staleness < cadence {
                     return None;
                 }
 
-                Some((entry.weight * rested as f64, &entry.symbol))
+                let score = entry.weight * (staleness as f64 / cadence as f64);
+
+                Some((score, &entry.symbol, interval))
             })
-            .max_by(|(a, a_symbol), (b, b_symbol)| {
-                // Ties go to the lexicographically earlier symbol, so a
-                // replay picks the same one.
-                a.total_cmp(b).then_with(|| b_symbol.cmp(a_symbol))
+            .max_by(|(a, a_symbol, a_interval), (b, b_symbol, b_interval)| {
+                // Ties go to the lexicographically earlier symbol, then the
+                // finer interval, so a replay picks the same one.
+                a.total_cmp(b)
+                    .then_with(|| b_symbol.cmp(a_symbol))
+                    .then_with(|| b_interval.cmp(a_interval))
             });
 
-        // Daily bars only: they have no history floor, never expire from the
-        // source, and cover the chart ranges that make a page feel instant.
-        // Speculative intraday is poor value — it ages out of Yahoo in days —
-        // so it stays demand-driven.
-        candidate.map(|(_, symbol)| (symbol.clone(), BarInterval::Day1))
+        candidate.map(|(_, symbol, interval)| (symbol.clone(), interval))
     }
 
-    /// The machine is planning `symbol`, on the coverage read out on
-    /// `call_id`. The symbol starts its rest now, failure included —
+    /// The machine is planning `symbol` at `interval`, on the coverage read
+    /// out on `call_id`. The pair starts its cadence now, failure included —
     /// otherwise a store that keeps refusing is a store asked every turn.
     pub fn planning(
         &mut self,
@@ -534,7 +564,10 @@ impl StateMarkets {
     ) {
         debug_assert!(self.generating.is_none(), "one plan of our own at a time");
 
-        self.planned.insert(symbol.clone(), now);
+        self.planned
+            .entry(symbol.clone())
+            .or_default()
+            .insert(interval, now);
         self.generating = Some((call_id, symbol, interval, now));
     }
 
@@ -689,6 +722,43 @@ fn clamp(want: &Range<Timestamp>, interval: BarInterval, now: Timestamp) -> Rang
     };
 
     start..end
+}
+
+/// The intervals a symbol's weight earns, finest first.
+///
+/// Tiers are relative to the heaviest symbol, so only ratios matter — the
+/// promise the universe file makes. The top names get minute bars, which age
+/// out of Yahoo in days and exist later only if fetched now; the middle gets
+/// quarter-hours; the tail is daily only, where nothing is lost by waiting.
+pub fn intervals_earned(weight: f64, heaviest: f64) -> &'static [BarInterval] {
+    if weight >= heaviest * PLAN_TIER_TOP {
+        &[
+            BarInterval::Min1,
+            BarInterval::Min5,
+            BarInterval::Hour1,
+            BarInterval::Day1,
+        ]
+    } else if weight >= heaviest * PLAN_TIER_MIDDLE {
+        &[BarInterval::Min15, BarInterval::Day1]
+    } else {
+        &[BarInterval::Day1]
+    }
+}
+
+/// How long a (symbol, interval) pair rests after being planned.
+///
+/// Each cadence is a small fraction of how long the source keeps the
+/// interval, so a window is re-covered many times over before it can expire —
+/// which is what makes the store an archive of data Yahoo forgets. Together
+/// they put the whole universe well inside the pace budget.
+pub fn plan_cadence_secs(interval: BarInterval) -> u64 {
+    match interval {
+        BarInterval::Min1 => 900,
+        BarInterval::Min2 | BarInterval::Min5 => 1_800,
+        BarInterval::Min15 | BarInterval::Min30 | BarInterval::Hour1 => 7_200,
+        BarInterval::Day1 => 86_400,
+        BarInterval::Week1 => 7 * 86_400,
+    }
 }
 
 /// How far back Yahoo will serve an interval, in seconds, as its documents

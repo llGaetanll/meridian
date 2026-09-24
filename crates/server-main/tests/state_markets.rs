@@ -497,9 +497,9 @@ fn an_idle_tick_asks_for_nothing() {
     );
 }
 
-/// Given a universe, an idle tick plans the heaviest symbol first — reading
-/// its coverage, and fetching whatever of its daily history is missing, with
-/// nobody waiting on it.
+/// Given a universe, an idle tick plans the heaviest symbol at its finest
+/// interval first — reading its coverage, and fetching whatever of its
+/// minute-bar week is missing, with nobody waiting on it.
 #[test]
 fn an_idle_tick_plans_the_heaviest_symbol() {
     let mut state = started_watching(
@@ -540,15 +540,15 @@ fn an_idle_tick_plans_the_heaviest_symbol() {
             action: ActionSourceYahoo::FetchChart { symbol, interval, .. },
         } => {
             assert_eq!(symbol.as_str(), "SPY");
-            assert_eq!(interval.as_str(), "1d");
+            assert_eq!(interval.as_str(), "1m");
         },
         < Event::FromSourceYahoo {
             call_id: 2,
             event: EventSourceYahoo::ChartFetched {
                 symbol: "SPY".to_string(),
-                interval: BarInterval::Day1,
+                interval: BarInterval::Min1,
                 bars: vec![Bar {
-                    ts: START,
+                    ts: Timestamp::from_secs(T0.as_secs() - DAY),
                     open: None,
                     high: None,
                     low: None,
@@ -564,10 +564,11 @@ fn an_idle_tick_plans_the_heaviest_symbol() {
     );
 }
 
-/// A planned symbol rests, so the next turn goes to the next heaviest — the
-/// proportional share, one pick at a time.
+/// A planned pair rests, so the next turn goes to the best pair left — the
+/// proportional share, one pick at a time. After SPY's minute bars, AAPL's
+/// minute bars outrank SPY's five-minute ones.
 #[test]
-fn a_planned_symbol_rests_while_the_next_takes_the_turn() {
+fn a_planned_pair_rests_while_the_next_takes_the_turn() {
     let mut state = started_watching(
         PlaidCollect::Poll,
         vec![],
@@ -578,7 +579,7 @@ fn a_planned_symbol_rests_while_the_next_takes_the_turn() {
             },
             MarketWeight {
                 symbol: "AAPL".to_string(),
-                weight: 50.0,
+                weight: 60.0,
             },
         ],
     );
@@ -612,9 +613,10 @@ fn a_planned_symbol_rests_while_the_next_takes_the_turn() {
 
         > Action::ToStore {
             call_id: 3,
-            action: ActionStore::LoadBarCoverage { symbol, .. },
+            action: ActionStore::LoadBarCoverage { symbol, interval, .. },
         } => {
             assert_eq!(symbol.as_str(), "AAPL");
+            assert_eq!(interval.as_str(), "1m");
         },
     );
 }
@@ -748,7 +750,8 @@ fn a_person_outranks_the_machines_own_work() {
         },
 
         // The pace opens, and the person's MSFT goes out before the
-        // machine's AAPL, though AAPL queued first.
+        // machine's AAPL, though AAPL queued first. The same tick tops the
+        // machine's shallow queue back up, planning AAPL's next interval.
         < Event::FromProcess {
             event: EventProcess::Tick {
                 now: Timestamp::from_secs(T0.as_secs() + 14),
@@ -760,6 +763,13 @@ fn a_person_outranks_the_machines_own_work() {
             action: ActionSourceYahoo::FetchChart { symbol, .. },
         } => {
             assert_eq!(symbol.as_str(), "MSFT");
+        },
+        > Action::ToStore {
+            call_id: 10,
+            action: ActionStore::LoadBarCoverage { symbol, interval, .. },
+        } => {
+            assert_eq!(symbol.as_str(), "AAPL");
+            assert_eq!(interval.as_str(), "5m");
         },
     );
 }
