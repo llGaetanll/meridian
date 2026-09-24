@@ -24,10 +24,9 @@
 
 .chart-wrap { position: relative; padding-right: 66px; margin-top: 26px; cursor: crosshair; }
 .chart { width: 100%; height: 48vh; min-height: 300px; display: block; position: relative; }
-/* The gridlines go with the ticks that name them: under the crosshair only
-   the one price is being read, and unlabelled lines say nothing. */
-.chart-grid { position: absolute; inset: 0 66px 0 0; transition: opacity 0.14s ease; }
-.chart-grid.cursor { opacity: 0; }
+/* Sized explicitly: an absolutely placed svg takes its viewBox's aspect
+   ratio, not the box its insets describe, and the lines land off the axis. */
+.chart-grid { position: absolute; top: 0; left: 0; width: calc(100% - 66px); height: 100%; }
 
 /* A CSS dot grid clipped to the price curve, so the dots stay round however
    the chart is stretched. --chart-tone follows the series color. */
@@ -80,10 +79,10 @@
     transparent 3px 7px);
 }
 .cursor-dot {
-  position: absolute; width: 8px; height: 8px; border-radius: 50%;
+  position: absolute; width: 14px; height: 14px; border-radius: 50%;
   transform: translate(-50%, -50%);
   background: var(--chart-tone, var(--up));
-  box-shadow: 0 0 0 3px var(--bg), 0 0 9px 1px var(--chart-tone, var(--up));
+  border: 3px solid var(--bg);
 }
 
 .y-axis { position: absolute; inset: 0 0 0 auto; width: 66px; pointer-events: none; }
@@ -93,13 +92,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* While the crosshair is up, both axes say where it is and nothing else. It
-   reads as the same axis moved, so it is lettered like the rest of it, and the
-   two cross-fade rather than cutting.
+/* While the crosshair is up, the time axis says where it is and nothing else.
+   It reads as the same axis moved, so it is lettered like the rest of it, and
+   the two cross-fade rather than cutting.
 
    The cursor value stays mounted, holding the last point it read, so that it
    has something to fade out. */
-.y-axis span, .chart-foot span { transition: opacity 0.14s ease; }
+.chart-foot span { transition: opacity 0.14s ease; }
 .chart-foot .cursor-val {
   opacity: 0;
   color: var(--text-faint); font-weight: inherit;

@@ -137,7 +137,6 @@ pub fn PriceChart(
         >
             <svg
                 class="chart-grid"
-                class:cursor=move || hover.get().is_some()
                 viewBox=format!("0 0 {} {}", math::VIEW_W, math::VIEW_H)
                 preserveAspectRatio="none"
                 aria-hidden="true"
