@@ -28,9 +28,16 @@ use crate::state_onboarding::RESEND_AFTER;
 use crate::state_onboarding::Step;
 use server_wire::SyncStage;
 
-const STEP_ACCOUNT: &str = "Step 1 of 3 · Account";
-const STEP_BANK: &str = "Step 2 of 3 · Bank";
-const STEP_SYNC: &str = "Step 3 of 3 · Sync";
+const STEP_ACCOUNT: &str = "Step 1 of 4 · Account";
+
+/// Its own step rather than the tail of the account's, because it is on the
+/// far side of the paywall: the two screens before it were walked, something
+/// was paid for in between, and a step line that had gone back to 1 would read
+/// as the road starting again.
+const STEP_NAME: &str = "Step 2 of 4 · Your name";
+
+const STEP_BANK: &str = "Step 3 of 4 · Bank";
+const STEP_SYNC: &str = "Step 4 of 4 · Sync";
 
 /// How many stages the progress bar is a fraction of: the bank, then the three
 /// of [`SyncStage`].
@@ -53,6 +60,7 @@ pub(crate) fn onboarding(
         Step::Code => code(flow, now),
         Step::Checking => checking(),
         Step::WelcomeBack => welcome_back(flow, connections),
+        Step::Name => name(flow),
         Step::Bank => bank(flow),
         Step::Sync => sync(flow),
         Step::Ready => ready(flow),
@@ -102,6 +110,31 @@ fn email(flow: &StateOnboarding) -> ViewOnboarding {
         },
 
         action: "Continue".to_string(),
+    }
+}
+
+fn name(flow: &StateOnboarding) -> ViewOnboarding {
+    ViewOnboarding::Name {
+        step: STEP_NAME.to_string(),
+        title: "What should we call you?".to_string(),
+
+        // Said plainly, because the honest answer to "why do you want this?"
+        // is that the app has one corner with a name in it.
+        body: plain(
+            "It goes at the foot of the sidebar, beside your account. Nothing else uses it.",
+        ),
+
+        field: ViewField {
+            icon: "user".to_string(),
+            value: flow.name().to_string(),
+            placeholder: "Your name".to_string(),
+
+            // Nothing to be wrong about: a name is whatever somebody says it
+            // is, and the only value this screen refuses is none at all.
+            fault: None,
+        },
+
+        action: (!flow.name().trim().is_empty()).then(|| "Continue".to_string()),
     }
 }
 

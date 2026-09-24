@@ -22,6 +22,7 @@ use client_state::EventUi;
 use client_state::StateApp;
 use client_state::ViewDock;
 use client_state::ViewScreen;
+use client_state::ViewWho;
 use futures::future::AbortHandle;
 use futures::future::Abortable;
 use leptos::prelude::*;
@@ -45,6 +46,9 @@ pub struct RuntimeApp {
     /// The last screen the machine rendered, and the dock that came with it.
     screen: RwSignal<Option<ViewScreen>>,
     dock: RwSignal<Option<ViewDock>>,
+
+    /// Who the device is signed in as, for the account chip.
+    who: RwSignal<Option<ViewWho>>,
 
     /// The last failure, for the banner. Cleared by the next successful load.
     error: RwSignal<Option<String>>,
@@ -79,6 +83,7 @@ impl RuntimeApp {
             state: StoredValue::new_local(StateApp::new()),
             screen: RwSignal::new(None),
             dock: RwSignal::new(None),
+            who: RwSignal::new(None),
             error: RwSignal::new(None),
             loading: RwSignal::new(false),
             token: StoredValue::new(None),
@@ -121,6 +126,10 @@ impl RuntimeApp {
     /// The dock that came with it. `None` on a screen that is not a tab.
     pub fn dock(&self) -> ReadSignal<Option<ViewDock>> {
         self.dock.read_only()
+    }
+
+    pub fn who(&self) -> ReadSignal<Option<ViewWho>> {
+        self.who.read_only()
     }
 
     /// What the banner says, if anything.
@@ -182,9 +191,10 @@ impl RuntimeApp {
 
     fn perform_action_ui(&self, action: ActionUi) {
         match action {
-            ActionUi::Render { screen, dock } => {
+            ActionUi::Render { screen, dock, who } => {
                 self.screen.set(Some(screen));
                 self.dock.set(dock);
+                self.who.set(who);
             }
 
             ActionUi::ShowError { message } => {
@@ -210,6 +220,7 @@ impl RuntimeApp {
             ActionSource::WatchSync => self.watch_sync(),
             ActionSource::StopWatchingSync => self.stop_watching_sync(),
             ActionSource::StartCheckout => self.start_checkout(),
+            ActionSource::SetName { name } => self.set_name(name),
             ActionSource::SendDeleteCode => self.send_delete_code(),
             ActionSource::DeleteAccount { code } => self.delete_account(code),
         }
@@ -306,6 +317,28 @@ impl RuntimeApp {
 
     /// Ask the server to email the deletion code. The address is the
     /// server's to know, so nothing but the session goes with it.
+    /// Say what to call whoever is signed in.
+    ///
+    /// Nothing waits on it and nothing is told when it lands: the flow moved
+    /// on the tap that sent it, and a name the server refused to write is not
+    /// news the screen after can act on. A failure is logged and that is all —
+    /// the next snapshot is where a name that did not stick would show.
+    fn set_name(&self, name: String) {
+        let Some(token) = self.token.get_value() else {
+            tracing::error!("set a name with no session");
+
+            return;
+        };
+
+        let server = self.server.get_value();
+
+        spawn_local(async move {
+            if let Err(failure) = server.set_name(&token, &name).await {
+                tracing::error!(?failure, "the name could not be saved");
+            }
+        });
+    }
+
     fn send_delete_code(&self) {
         let Some(token) = self.token.get_value() else {
             tracing::error!("asked for a deletion code with no session");

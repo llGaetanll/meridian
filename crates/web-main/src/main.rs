@@ -19,5 +19,9 @@ fn main() {
 
     tracing::info!(version = env!("CARGO_PKG_VERSION"), "meridian starting");
 
+    // Before the first paint: a page that draws dark and then turns light is
+    // a page that flashes.
+    web_components::restore_theme();
+
     mount_to_body(App)
 }

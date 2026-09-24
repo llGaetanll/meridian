@@ -15,6 +15,14 @@ pub enum IconKind {
     ChevronUpDown,
     ArrowRight,
     Swap,
+    SignOut,
+    Trash,
+
+    /// A disc half filled, for the row that turns the theme over. One glyph
+    /// for both themes rather than a sun and a moon: the row says what the
+    /// theme is in words beside it, and a glyph that changes with the value
+    /// is a second answer to the same question.
+    Theme,
 }
 
 impl IconKind {
@@ -50,6 +58,15 @@ impl IconKind {
             }
             Self::Swap => {
                 r#"<polyline points="8 5 12 1 16 5"/><line x1="12" y1="1" x2="12" y2="10"/><polyline points="16 19 12 23 8 19"/><line x1="12" y1="23" x2="12" y2="14"/>"#
+            }
+            Self::SignOut => {
+                r#"<path d="M9.5 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20h4"/><polyline points="15.5 8 19.5 12 15.5 16"/><line x1="19.5" y1="12" x2="9.5" y2="12"/>"#
+            }
+            Self::Trash => {
+                r#"<path d="M4.5 6.5h15"/><path d="M9 6.5V4.8h6v1.7"/><path d="M6.5 6.5 7.4 20h9.2l.9-13.5"/>"#
+            }
+            Self::Theme => {
+                r#"<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none"/>"#
             }
         }
     }

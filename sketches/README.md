@@ -56,8 +56,15 @@ order they are drawn:
 | --- | --- |
 | Account | `welcome` `welcome-out` `apple` `google` `email` `email-bad` `code` `code-filled` `code-refused` `code-resend` `welcome-back` |
 | Payment | `paywall` `pay-chrome` `pay-declined` `pay-ended` `pay-unknown` `pay-waiting` `stripe` `confirming` `conf-again` |
+| Your name | `name` |
 | Bank | `bank` `bank-waiting` `plaid` `failed` `failed-block` `failed-linked` |
 | Finishing | `sync` `ready` `app` |
+
+`name` sits after the payment rather than beside the address, and that is
+forced rather than chosen: the machine only learns whether an account has a
+name when a snapshot says so, and a snapshot is the request the paywall stands
+in front of. So the road asks for it on the far side, which is why it is a
+part of its own rather than the tail of Account.
 
 The phone board uses the same ids for the screens it has. It has `storekit`
 where the desktop has `stripe`, and it has no `pay-chrome`, `confirming`,
@@ -120,9 +127,15 @@ ever names a role.** `--violet-300` is a word in violet on black and a
 watermark on paper, so a shade is only ever right in one of the two themes, and
 a theme is nothing but the roles set a second time.
 
-`crates/web-main/css/theme.css` is a copy of that file and must stay one. The
-web app and the site have the light theme's colours but nothing yet that asks
-for them: neither draws a switch, and neither reads the system's preference.
+`crates/web-main/css/theme.css` carries every one of these roles, and they have
+to stay in step — it is the sketch's file plus the app's own motion and metric
+tokens, which are about how the web app moves rather than what colour anything
+is, and which no sketch needs. A colour added on one side and not the other is
+the drift this file exists to prevent.
+
+The web app draws the switch, in the menu behind the account chip; the site has
+the light theme's colours and nothing yet that asks for them. Neither reads the
+system's preference.
 
 ## The rest
 

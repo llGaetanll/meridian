@@ -3,9 +3,9 @@ use client_state::ViewOnboarding;
 use leptos::prelude::*;
 
 use super::Back;
-use super::EmailField;
 use super::Fault;
 use super::Runs;
+use super::TextField;
 use super::read;
 use super::read::part;
 
@@ -35,7 +35,12 @@ pub(super) fn Email(view: Signal<ViewOnboarding>, ui: Callback<EventUi>) -> impl
                 ui.run(EventUi::EmailSubmitted);
             }
         >
-            <EmailField view=view on_typed=Callback::new(move |text| ui.run(EventUi::EmailTyped { text })) />
+            <TextField
+                view=view
+                on_typed=Callback::new(move |text| ui.run(EventUi::EmailTyped { text }))
+                inputmode="email"
+                autocomplete="email"
+            />
             <Fault text=fault />
 
             <div class="acts">

@@ -106,7 +106,7 @@ fn paying_on_stripes_page_opens_the_app() {
         },
 
         < Event::FromSource { event: EventSource::SnapshotLoaded { json: "{}".to_string() } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { .. }, dock: Some(_) } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { .. }, dock: Some(_), .. } },
     );
 }
 

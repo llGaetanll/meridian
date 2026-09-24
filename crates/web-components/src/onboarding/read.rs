@@ -32,6 +32,7 @@ where
 pub(super) fn step(view: &ViewOnboarding) -> &str {
     match view {
         ViewOnboarding::Email { step, .. }
+        | ViewOnboarding::Name { step, .. }
         | ViewOnboarding::Code { step, .. }
         | ViewOnboarding::Bank { step, .. }
         | ViewOnboarding::Waiting { step, .. }
@@ -47,6 +48,7 @@ pub(super) fn title(view: &ViewOnboarding) -> &str {
     match view {
         ViewOnboarding::Welcome { title, .. }
         | ViewOnboarding::Email { title, .. }
+        | ViewOnboarding::Name { title, .. }
         | ViewOnboarding::Code { title, .. }
         | ViewOnboarding::WelcomeBack { title, .. }
         | ViewOnboarding::Bank { title, .. }
@@ -61,6 +63,7 @@ pub(super) fn body(view: &ViewOnboarding) -> &[ViewRun] {
     match view {
         ViewOnboarding::Welcome { body, .. }
         | ViewOnboarding::Email { body, .. }
+        | ViewOnboarding::Name { body, .. }
         | ViewOnboarding::Code { body, .. }
         | ViewOnboarding::WelcomeBack { body, .. }
         | ViewOnboarding::Bank { body, .. }
@@ -78,7 +81,9 @@ pub(super) fn fault(view: &ViewOnboarding) -> Option<&str> {
         ViewOnboarding::Welcome { fault, .. } | ViewOnboarding::Code { fault, .. } => {
             fault.as_deref()
         }
-        ViewOnboarding::Email { field, .. } => field.fault.as_deref(),
+        ViewOnboarding::Email { field, .. } | ViewOnboarding::Name { field, .. } => {
+            field.fault.as_deref()
+        }
         ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Bank { .. }
         | ViewOnboarding::Waiting { .. }
@@ -96,7 +101,9 @@ pub(super) fn action(view: &ViewOnboarding) -> Option<&str> {
         | ViewOnboarding::Bank { action, .. }
         | ViewOnboarding::Waiting { action, .. }
         | ViewOnboarding::Failed { action, .. } => Some(action),
-        ViewOnboarding::Code { action, .. } => action.as_deref(),
+        ViewOnboarding::Code { action, .. } | ViewOnboarding::Name { action, .. } => {
+            action.as_deref()
+        }
         ViewOnboarding::Ready { open, .. } | ViewOnboarding::WelcomeBack { open, .. } => Some(open),
         ViewOnboarding::Sync { .. } => None,
     }
@@ -112,6 +119,7 @@ pub(super) fn aside(view: &ViewOnboarding) -> Option<&str> {
         ViewOnboarding::Failed { open, .. } => open.as_deref(),
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
+        | ViewOnboarding::Name { .. }
         | ViewOnboarding::Code { .. }
         | ViewOnboarding::Bank { .. }
         | ViewOnboarding::Waiting { .. }
@@ -124,6 +132,7 @@ pub(super) fn legal(view: &ViewOnboarding) -> &str {
         ViewOnboarding::Welcome { legal, .. } | ViewOnboarding::Bank { legal, .. } => legal,
         ViewOnboarding::Email { .. }
         | ViewOnboarding::Code { .. }
+        | ViewOnboarding::Name { .. }
         | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Waiting { .. }
         | ViewOnboarding::Sync { .. }
@@ -134,7 +143,7 @@ pub(super) fn legal(view: &ViewOnboarding) -> &str {
 
 pub(super) fn field(view: &ViewOnboarding) -> Option<&ViewField> {
     match view {
-        ViewOnboarding::Email { field, .. } => Some(field),
+        ViewOnboarding::Email { field, .. } | ViewOnboarding::Name { field, .. } => Some(field),
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Code { .. }
         | ViewOnboarding::WelcomeBack { .. }
@@ -151,6 +160,7 @@ pub(super) fn cells(view: &ViewOnboarding) -> &[ViewCodeCell] {
         ViewOnboarding::Code { cells, .. } => cells,
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
+        | ViewOnboarding::Name { .. }
         | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Bank { .. }
         | ViewOnboarding::Waiting { .. }
@@ -165,6 +175,7 @@ pub(super) fn resend(view: &ViewOnboarding) -> Option<&ViewResend> {
         ViewOnboarding::Code { resend, .. } => Some(resend),
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
+        | ViewOnboarding::Name { .. }
         | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Bank { .. }
         | ViewOnboarding::Waiting { .. }
@@ -183,6 +194,7 @@ pub(super) fn opening(view: &ViewOnboarding) -> Option<&str> {
         }
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
+        | ViewOnboarding::Name { .. }
         | ViewOnboarding::Code { .. }
         | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Waiting { .. }
@@ -196,6 +208,7 @@ pub(super) fn progress(view: &ViewOnboarding) -> f64 {
         ViewOnboarding::Sync { progress, .. } => *progress,
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
+        | ViewOnboarding::Name { .. }
         | ViewOnboarding::Code { .. }
         | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Bank { .. }
@@ -212,6 +225,7 @@ pub(super) fn rows(view: &ViewOnboarding) -> &[ViewIconRow] {
         | ViewOnboarding::Failed { rows, .. } => rows,
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
+        | ViewOnboarding::Name { .. }
         | ViewOnboarding::Code { .. }
         | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Waiting { .. }
@@ -224,6 +238,7 @@ pub(super) fn tally(view: &ViewOnboarding) -> &[ViewTally] {
         ViewOnboarding::Ready { tally, .. } => tally,
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
+        | ViewOnboarding::Name { .. }
         | ViewOnboarding::Code { .. }
         | ViewOnboarding::WelcomeBack { .. }
         | ViewOnboarding::Bank { .. }
@@ -239,6 +254,7 @@ pub(super) fn banks(view: &ViewOnboarding) -> &[ViewAccountBank] {
         ViewOnboarding::WelcomeBack { banks, .. } => banks,
         ViewOnboarding::Welcome { .. }
         | ViewOnboarding::Email { .. }
+        | ViewOnboarding::Name { .. }
         | ViewOnboarding::Code { .. }
         | ViewOnboarding::Bank { .. }
         | ViewOnboarding::Waiting { .. }

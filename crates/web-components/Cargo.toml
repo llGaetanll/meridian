@@ -8,11 +8,13 @@ api-common = { path = "../api-common" }
 api-ledger = { path = "../api-ledger" }
 client-state = { path = "../client-state" }
 leptos = { workspace = true }
+tracing = { workspace = true }
 web-ui = { path = "../web-ui" }
 
 [dependencies.web-sys]
 version = "0.3"
 features = [
+    "Document",
     "DomRect",
     "Element",
     "HtmlDivElement",
@@ -20,8 +22,10 @@ features = [
     "PointerEvent",
     "ResizeObserver",
     "ScrollBehavior",
+    "Storage",
     "ScrollToOptions",
     "Touch",
     "TouchEvent",
     "TouchList",
+    "Window",
 ]

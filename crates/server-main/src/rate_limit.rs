@@ -95,6 +95,9 @@ pub enum Route {
     /// `POST /billing/apple` — a purchase the App Store has just taken.
     BillingApple,
 
+    /// `POST /account/name` — what to call somebody.
+    AccountName,
+
     /// `POST /account/delete/request` — the other one that sends an email.
     AccountDeleteRequest,
 
@@ -121,6 +124,7 @@ impl Route {
             Route::BillingCheckout => "/billing/checkout",
             Route::BillingStatus => "/billing/status",
             Route::BillingApple => "/billing/apple",
+            Route::AccountName => "/account/name",
             Route::AccountDeleteRequest => "/account/delete/request",
             Route::AccountDelete => "/account/delete",
             Route::Bars => "/bars",
@@ -164,6 +168,7 @@ impl Route {
             | Route::LinkStart
             | Route::LinkRepair
             | Route::LinkFinish
+            | Route::AccountName
             | Route::BillingStatus => (CALLS_PER_MINUTE, MINUTE),
         }
     }

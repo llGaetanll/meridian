@@ -80,6 +80,12 @@ pub enum EventRouter {
     /// `GET /billing/status` — what this user's subscription is.
     BillingStatusRequested { token_sha256: Vec<u8> },
 
+    /// `POST /account/name` — what to call whoever this token signs in.
+    ///
+    /// First run asks once and this is that answer; nothing else writes it
+    /// yet, and a Google sign-in will hand one over without asking.
+    NameSubmitted { token_sha256: Vec<u8>, name: String },
+
     /// `POST /stripe/webhook`.
     ///
     /// The body is raw bytes because that is what the signature is over: a
@@ -148,6 +154,7 @@ impl EventRouter {
             | EventRouter::SubscribeRequested { token_sha256 }
             | EventRouter::CheckoutRequested { token_sha256, .. }
             | EventRouter::BillingStatusRequested { token_sha256 }
+            | EventRouter::NameSubmitted { token_sha256, .. }
             | EventRouter::AppleTransactionReceived { token_sha256, .. }
             | EventRouter::DeleteCodeRequested { token_sha256 }
             | EventRouter::DeleteRequested { token_sha256, .. }
@@ -181,6 +188,7 @@ impl EventRouter {
             EventRouter::SubscribeRequested { .. } => Some(Route::BillingSubscribe),
             EventRouter::CheckoutRequested { .. } => Some(Route::BillingCheckout),
             EventRouter::BillingStatusRequested { .. } => Some(Route::BillingStatus),
+            EventRouter::NameSubmitted { .. } => Some(Route::AccountName),
             EventRouter::AppleTransactionReceived { .. } => Some(Route::BillingApple),
             EventRouter::DeleteCodeRequested { .. } => Some(Route::AccountDeleteRequest),
             EventRouter::DeleteRequested { .. } => Some(Route::AccountDelete),
@@ -215,6 +223,7 @@ impl EventRouter {
             | EventRouter::SubscribeRequested { .. }
             | EventRouter::CheckoutRequested { .. }
             | EventRouter::BillingStatusRequested { .. }
+            | EventRouter::NameSubmitted { .. }
             | EventRouter::DeleteRequested { .. }
             | EventRouter::AppleTransactionReceived { .. }
             | EventRouter::AppleNotificationReceived { .. }

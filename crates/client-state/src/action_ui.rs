@@ -2,6 +2,7 @@
 
 use crate::ViewDock;
 use crate::ViewScreen;
+use crate::ViewWho;
 
 /// Something for the view to do. These carry finished values, not
 /// instructions to go and compute one.
@@ -20,6 +21,11 @@ pub enum ActionUi {
     Render {
         screen: ViewScreen,
         dock: Option<ViewDock>,
+
+        /// Who the device is signed in as, for the account chip. Present
+        /// exactly when the dock is: both belong to the app rather than to
+        /// the road in, and neither is drawn over first run or the paywall.
+        who: Option<ViewWho>,
     },
 
     /// Tell the user something went wrong, in these words.

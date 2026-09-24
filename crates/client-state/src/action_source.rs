@@ -25,6 +25,11 @@ pub enum ActionSource {
     /// Check a six-digit code against the address it was sent to.
     VerifyCode { email: String, code: String },
 
+    /// Say what to call whoever is signed in. Nothing waits on it: the flow
+    /// has already moved on, and a screen that will not move until a write
+    /// lands is a screen that stops when the write is slow.
+    SetName { name: String },
+
     /// Ask the server for a `link_token` and open the `hosted_link_url` that
     /// comes back. The app never holds a token of either kind: the secret that
     /// signs both cannot ship inside an app (`docs/PLAID.md`).

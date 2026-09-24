@@ -222,7 +222,7 @@ fn a_session_the_server_forgot_puts_first_run_back() {
 
         < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::SignedOut } },
         > @r#"ToSource { action: ForgetSession }"#,
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { .. }, dock: None } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { .. }, dock: None, .. } },
     );
 
     assert_eq!(
@@ -302,7 +302,7 @@ fn a_session_that_has_not_paid_gets_the_paywall() {
 
     eval!(&mut state,
         < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Unpaid { reason: Unpaid::Never } } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { view: paywall }, dock: None } } => {
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { view: paywall }, dock: None, .. } } => {
             assert_eq!(paywall.title, "Meridian is a subscription");
             assert_eq!(paywall.rows.len(), 1, "a price, and no date to have run out");
             assert_eq!(paywall.rows[0].title, "Price");
@@ -356,7 +356,7 @@ fn the_paywall_stands_in_front_of_first_run() {
     eval!(&mut state,
         < Event::FromRuntime { event: EventRuntime::Tick { now: NOW } },
         < Event::FromSource { event: EventSource::LoadFailed { failure: LoadFailure::Unpaid { reason: Unpaid::Never } } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { .. }, dock: None } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { .. }, dock: None, .. } },
     );
 }
 
@@ -371,7 +371,7 @@ fn a_snapshot_takes_the_paywall_away() {
         > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Paywall { .. }, .. } },
 
         < Event::FromSource { event: EventSource::SnapshotLoaded { json: "{}".to_string() } },
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { .. }, dock: Some(_) } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Ledger { .. }, dock: Some(_), .. } },
     );
 }
 
@@ -406,7 +406,7 @@ fn signing_out_starts_over() {
 
         < Event::FromUi { event: EventUi::SignOutRequested },
         > @r#"ToSource { action: ForgetSession }"#,
-        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { .. }, dock: None } },
+        > Action::ToUi { action: ActionUi::Render { screen: ViewScreen::Onboarding { .. }, dock: None, .. } },
     );
 
     assert_eq!(

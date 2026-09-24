@@ -33,6 +33,13 @@ pub(crate) enum Step {
     /// The address already has an account with banks attached, so the road
     /// to Plaid is offered rather than walked.
     WelcomeBack,
+    /// What to call them, asked once, of an account that has no name yet.
+    ///
+    /// After the code rather than beside the address, because it is the one
+    /// screen of the flow that is not needed to sign in: an account exists by
+    /// the time it is asked, so an answer can be written the moment it is
+    /// given.
+    Name,
     Bank,
     Sync,
     Ready,
@@ -101,6 +108,9 @@ pub struct StateOnboarding {
     /// The digits entered so far, at most [`CODE_LENGTH`] of them.
     code: String,
 
+    /// What is in the name field.
+    name: String,
+
     fault: Option<Fault>,
 
     /// When the last code went out. A timestamp rather than a remaining count,
@@ -144,6 +154,10 @@ impl StateOnboarding {
 
     pub(crate) fn code(&self) -> &str {
         &self.code
+    }
+
+    pub(crate) fn name(&self) -> &str {
+        &self.name
     }
 
     pub(crate) fn fault(&self) -> Option<Fault> {
@@ -241,6 +255,27 @@ impl StateOnboarding {
         Some((self.email.clone(), self.code.clone()))
     }
 
+    /// The name field, as it reads.
+    pub(crate) fn type_name(&mut self, text: &str) {
+        self.name = text.to_string();
+    }
+
+    /// Continue, under the name. `None` on a blank one, which the absent
+    /// button should have prevented — a stale tap, not a fault to print: there
+    /// is nothing wrong with the field, there is simply nothing in it.
+    pub(crate) fn submit_name(&mut self) -> Option<String> {
+        let name = self.name.trim();
+
+        if name.is_empty() {
+            return None;
+        }
+
+        let name = name.to_string();
+        self.step = Step::Bank;
+
+        Some(name)
+    }
+
     /// Ask for another code. `None` while the last one is still young.
     pub(crate) fn resend(&mut self, now: Timestamp) -> Option<String> {
         if self.waiting_to_resend(now) {
@@ -321,9 +356,10 @@ impl StateOnboarding {
     /// Later snapshots only ever stand the flow aside, and only from the bank
     /// step with nothing under way. Once a sign-in is opening, or a bank has
     /// connected in this flow, the screen stays where the user put it.
-    pub(crate) fn snapshot(&mut self, has_banks: bool) {
+    pub(crate) fn snapshot(&mut self, has_banks: bool, has_name: bool) {
         match self.step {
             Step::Checking if has_banks => self.welcome_back(),
+            Step::Checking if !has_name => self.step = Step::Name,
             Step::Checking => self.step = Step::Bank,
 
             Step::Bank if has_banks && self.window == Window::None && !self.linked => {

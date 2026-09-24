@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use client_state::EventUi;
 use client_state::Screen;
 use client_state::ViewAccount;
@@ -12,6 +14,7 @@ use web_components::SearchRow;
 use web_components::Shell;
 
 use crate::frame::Frame;
+use crate::io::calm::calm;
 use crate::pages::AccountPage;
 use crate::pages::BalancesPage;
 use crate::pages::LedgerPage;
@@ -67,14 +70,32 @@ pub fn App() -> impl IntoView {
     }
 }
 
+/// How long the page on the way out has. `css/app.css` fades it over the same
+/// span, and the machine is not told to change screen until it is spent.
+const PAGE_OUT: Duration = Duration::from_millis(90);
+
 /// The sidebar, and whichever tab is showing beside it.
 #[component]
 fn AppShell() -> impl IntoView {
     let runtime = expect_context::<RuntimeApp>();
     let screen = runtime.screen();
+    let dock = runtime.dock();
 
     // Per visit to the shell, so the paywall or signing out puts it back.
     let markets = RwSignal::new(false);
+
+    // The page is going. Set while it fades, and off again as the next one is
+    // put up in its place.
+    let leaving = RwSignal::new(false);
+
+    let here = Memo::new(move |_| {
+        dock.with(|dock| {
+            dock.iter()
+                .flat_map(|dock| &dock.items)
+                .find(|item| item.selected)
+                .map(|item| item.screen)
+        })
+    });
 
     let tab = Memo::new(move |_| {
         screen.with(|screen| {
@@ -84,21 +105,49 @@ fn AppShell() -> impl IntoView {
         })
     });
 
-    let open = Callback::new(move |screen: Screen| {
-        markets.set(false);
+    // The tab already showing, which has nowhere to go and would only blink.
+    let standing =
+        move |screen: Screen| !markets.get_untracked() && here.get_untracked() == Some(screen);
 
-        runtime.ui(EventUi::ScreenOpened { screen });
+    let open = Callback::new(move |screen: Screen| {
+        let put_up = move || {
+            markets.set(false);
+
+            runtime.ui(EventUi::ScreenOpened { screen });
+
+            leaving.set(false);
+        };
+
+        match standing(screen) {
+            true => (),
+            false => match calm() {
+                true => put_up(),
+                false => {
+                    leaving.set(true);
+
+                    set_timeout(put_up, PAGE_OUT);
+                }
+            },
+        }
     });
 
     let retry = Callback::new(move |()| runtime.ui(EventUi::RefreshRequested));
 
+    // The account chip's own events — signing out, starting a deletion — go
+    // straight through, unlike a screen change, which has a fade to spend
+    // first.
+    let ui = Callback::new(move |event: EventUi| runtime.ui(event));
+
     view! {
         <Shell
-            dock=runtime.dock()
+            dock=dock
+            who=runtime.who()
             markets=markets
+            leaving=leaving
             error=runtime.error()
             on_screen=open
             on_retry=retry
+            ui=ui
         >
             {move || match tab.get() {
                 None => ().into_any(),

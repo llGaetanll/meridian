@@ -49,6 +49,7 @@ use crate::runtime_yahoo;
 use crate::source_pool::SourcePool;
 use server_wire::SyncStage;
 use server_wire::WireSnapshot;
+use server_wire::WireUser;
 use src_apple::AppleEnvironment;
 use src_plaid::PlaidClient;
 use src_plaid::PlaidCredentials;
@@ -1323,6 +1324,10 @@ impl RuntimeServer {
                 src_postgres::record_delete_attempt(db, *user_id).await?;
             }
 
+            ActionStore::SaveName { user_id, name } => {
+                src_postgres::save_name(db, *user_id, name).await?;
+            }
+
             ActionStore::DeleteCode { email } => {
                 src_postgres::delete_code(db, email).await?;
             }
@@ -1614,6 +1619,7 @@ impl RuntimeServer {
             | ActionStore::LoadDeleteCode { .. }
             | ActionStore::SaveDeleteCode { .. }
             | ActionStore::RecordDeleteAttempt { .. }
+            | ActionStore::SaveName { .. }
             | ActionStore::CreateSession { .. }
             | ActionStore::SweepSessions { .. }
             | ActionStore::SaveLink { .. }
@@ -1749,6 +1755,7 @@ impl RuntimeServer {
         let entries = src_postgres::load_entries(&self.db, user_id).await;
         let streams = src_postgres::load_streams(&self.db, user_id).await;
         let connections = self.connections_for(user_id).await;
+        let user = src_postgres::load_user(&self.db, user_id).await;
 
         // A store that will not answer is served around: an empty ledger is
         // what a first run has, and a better answer than one needing a screen.
@@ -1756,7 +1763,19 @@ impl RuntimeServer {
             tracing::error!(error = %e, "could not read the ledger");
         }
 
+        // The same, one line further down: a chip with nothing on it is worse
+        // than an empty ledger and still better than no ledger at all.
+        if let Err(e) = user.as_ref().err().map_or(Ok(()), Err) {
+            tracing::error!(error = %e, "could not read who this is");
+        }
+
+        let user = user.ok().flatten().map(|user| WireUser {
+            email: user.email,
+            name: user.name,
+        });
+
         WireSnapshot::new(
+            user,
             &entries.unwrap_or_default(),
             &connections.unwrap_or_default(),
             &streams.unwrap_or_default(),

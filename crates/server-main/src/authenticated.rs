@@ -54,6 +54,12 @@ pub enum Authenticated {
     /// Asking what the subscription is. Another.
     BillingStatusRequested,
 
+    /// Saying what to call them. Carries the name, because by the time the
+    /// session has resolved the event it came in on is gone.
+    NameSubmitted {
+        name: String,
+    },
+
     /// Recording a purchase the App Store has already taken. The third route
     /// an unpaid session may reach, and the one that stops it being unpaid.
     ///
@@ -110,6 +116,9 @@ impl Authenticated {
             EventRouter::BillingStatusRequested { .. } => {
                 Some(Authenticated::BillingStatusRequested)
             }
+            EventRouter::NameSubmitted { name, .. } => {
+                Some(Authenticated::NameSubmitted { name: name.clone() })
+            }
             EventRouter::AppleTransactionReceived { signed, .. } => {
                 Some(Authenticated::AppleTransactionReceived {
                     signed: signed.clone(),
@@ -146,6 +155,7 @@ impl Authenticated {
             Authenticated::SubscribeRequested => Route::BillingSubscribe,
             Authenticated::CheckoutRequested { .. } => Route::BillingCheckout,
             Authenticated::BillingStatusRequested => Route::BillingStatus,
+            Authenticated::NameSubmitted { .. } => Route::AccountName,
             Authenticated::AppleTransactionReceived { .. } => Route::BillingApple,
             Authenticated::DeleteCodeRequested => Route::AccountDeleteRequest,
             Authenticated::DeleteRequested { .. } => Route::AccountDelete,
@@ -178,11 +188,15 @@ impl Authenticated {
             | Authenticated::DeleteCodeRequested
             | Authenticated::DeleteRequested { .. } => false,
 
+            // The name is asked for on the far side of the paywall — first
+            // run only reaches that screen once a snapshot has been served —
+            // so it is entitled like everything else the app does.
             Authenticated::LinkRequested { .. }
             | Authenticated::RepairRequested { .. }
             | Authenticated::LinkClosed
             | Authenticated::SyncWatchRequested { .. }
             | Authenticated::SnapshotRequested
+            | Authenticated::NameSubmitted { .. }
             | Authenticated::BarsRequested { .. } => true,
         }
     }

@@ -47,9 +47,11 @@ use crate::ViewScreen;
 use crate::ViewStreamGroup;
 use crate::ViewStreamRow;
 use crate::ViewTxRow;
+use crate::ViewWho;
 use crate::fmt;
 use crate::screens_onboarding;
 use crate::screens_paywall;
+use crate::state_app::User;
 
 /// Seconds in a day, for stepping the calendar a cell at a time.
 const DAY: u64 = 86_400;
@@ -116,6 +118,30 @@ pub fn dock(current: Screen) -> ViewDock {
             item(Screen::Account, "Account", "user"),
         ],
     }
+}
+
+/// Who the device is signed in as, for the account chip beside every screen.
+///
+/// `None` until a snapshot has said. The chip is the only thing that draws it
+/// and an account chip with a guess on it is worse than one that waits.
+pub fn who(user: Option<&User>) -> Option<ViewWho> {
+    let user = user?;
+
+    // The name leads when there is one and the address goes under it;
+    // otherwise the address leads and there is no second line, because a chip
+    // that prints the same string twice reads as a bug.
+    let (title, subtitle) = match user.name.as_deref() {
+        Some(name) => (name.to_string(), Some(user.email.clone())),
+        None => (user.email.clone(), None),
+    };
+
+    Some(ViewWho {
+        title,
+        subtitle,
+        settings_label: "Settings".to_string(),
+        sign_out_label: "Sign out".to_string(),
+        delete_label: "Delete my account".to_string(),
+    })
 }
 
 /// What a failure reads as.

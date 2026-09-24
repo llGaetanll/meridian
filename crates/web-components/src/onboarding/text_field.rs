@@ -6,16 +6,23 @@ use web_ui::Glyph;
 use super::read;
 use super::read::part;
 
-/// The address, typed into the design language's field.
+/// The one line a screen of the flow asks for, in the design language's field.
 ///
 /// The value is the machine's: every keystroke goes out as the whole field,
 /// and what comes back is written into the input as a property, which leaves
 /// the caret where it was. Focused as it opens, since it is the only thing on
 /// the screen to type into.
+///
+/// One component for the address and the name, because they are the same
+/// control: what differs is the two hints the browser reads, which are the
+/// screen's to hand over — `inputmode` puts the right keyboard under a thumb,
+/// and `autocomplete` decides which of somebody's saved values is offered.
 #[component]
-pub(super) fn EmailField(
+pub(super) fn TextField(
     view: Signal<ViewOnboarding>,
     on_typed: Callback<String>,
+    #[prop(into)] inputmode: String,
+    #[prop(into)] autocomplete: String,
 ) -> impl IntoView {
     let icon = part(view, |view| {
         read::field(view)
@@ -59,8 +66,8 @@ pub(super) fn EmailField(
                 <input
                     node_ref=input
                     type="text"
-                    inputmode="email"
-                    autocomplete="email"
+                    inputmode=inputmode
+                    autocomplete=autocomplete
                     autocapitalize="off"
                     spellcheck="false"
                     placeholder=move || placeholder.get()

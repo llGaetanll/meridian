@@ -61,6 +61,13 @@ pub enum EventUi {
     /// Send a new code.
     ResendRequested,
 
+    /// The name field, as a whole value, for the same reason the address
+    /// field is.
+    NameTyped { text: String },
+
+    /// Continue, under the name. Only drawn once there is something in it.
+    NameSubmitted,
+
     /// The chevron, and the code screen's way back to a mistyped address.
     BackPressed,
 

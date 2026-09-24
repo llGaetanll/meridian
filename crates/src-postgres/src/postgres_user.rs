@@ -74,6 +74,51 @@ pub async fn load_email(db: &Db, user_id: Uuid) -> Result<Option<String>, Postgr
     Ok(row.map(|row| row.email))
 }
 
+/// Who a user is, as far as anything here knows: the address, and the name if
+/// they have given one.
+///
+/// Both in one read because both are printed in the same place — the account
+/// chip — and two queries for two columns of one row is two ways for the app
+/// to be holding half an answer.
+pub struct StoredUser {
+    pub email: String,
+
+    /// Absent for every account made before the name was asked for, and for
+    /// anyone who has not been asked yet.
+    pub name: Option<String>,
+}
+
+pub async fn load_user(db: &Db, user_id: Uuid) -> Result<Option<StoredUser>, PostgresError> {
+    let row = sqlx::query!("SELECT email, name FROM users WHERE user_id = $1", user_id)
+        .fetch_optional(db)
+        .await?;
+
+    Ok(row.map(|row| StoredUser {
+        email: row.email,
+        name: row.name,
+    }))
+}
+
+/// Set the name, or clear it.
+///
+/// Trimmed, and blank means absent: a field somebody tabbed through leaves the
+/// column NULL rather than a name made of spaces, so "has a name" stays one
+/// question with one answer.
+pub async fn save_name(db: &Db, user_id: Uuid, name: &str) -> Result<(), PostgresError> {
+    let name = name.trim();
+    let name = (!name.is_empty()).then_some(name);
+
+    sqlx::query!(
+        "UPDATE users SET name = $2 WHERE user_id = $1",
+        user_id,
+        name,
+    )
+    .execute(db)
+    .await?;
+
+    Ok(())
+}
+
 /// Every access token this user's banks were reached with, for the calls that
 /// stop Plaid billing for them.
 ///

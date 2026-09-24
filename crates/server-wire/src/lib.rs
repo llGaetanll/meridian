@@ -24,6 +24,18 @@ use serde::Serialize;
 /// device's to know.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct WireSnapshot {
+    /// Who the device is signed in as.
+    ///
+    /// Here rather than on a call of its own because the app asks for a
+    /// snapshot already and this changes about as often as the ledger does —
+    /// a second request to print two lines in a corner is a second thing that
+    /// can be in flight, fail, or arrive late.
+    ///
+    /// Optional on the wire so an older server and a newer app do not have to
+    /// be deployed in one move; `None` is a chip with nothing on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<WireUser>,
+
     /// Newest first.
     #[serde(default)]
     pub entries: Vec<WireEntry>,
@@ -36,8 +48,14 @@ pub struct WireSnapshot {
 }
 
 impl WireSnapshot {
-    pub fn new(entries: &[Entry], connections: &[Connection], streams: &[Stream]) -> Self {
+    pub fn new(
+        user: Option<WireUser>,
+        entries: &[Entry],
+        connections: &[Connection],
+        streams: &[Stream],
+    ) -> Self {
         Self {
+            user,
             entries: entries.iter().map(WireEntry::from_entry).collect(),
             connections: connections
                 .iter()
@@ -46,6 +64,20 @@ impl WireSnapshot {
             streams: streams.iter().map(WireStream::from_stream).collect(),
         }
     }
+}
+
+/// Who the device is signed in as, for the one corner of the app that says so.
+///
+/// Nothing here is a credential: the address is printed, never sent back to
+/// prove anything, and the session token remains the only thing that does.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WireUser {
+    pub email: String,
+
+    /// Absent until they have been asked. Every account made before first run
+    /// asked has none, and there is nowhere to get one from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

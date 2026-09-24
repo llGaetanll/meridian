@@ -1,0 +1,12 @@
+-- What to call somebody.
+--
+-- 0003 gave a user an address and nothing else, because the address was the
+-- whole credential and the app never printed who it was signed in as. The
+-- account chip prints it now, and "Account" is not a name.
+--
+-- Nullable, and it stays nullable. Every account made before this has no name
+-- and there is nowhere to get one from; first run asks the ones made after,
+-- and a Google sign-in will hand one over later. A column the app can find
+-- empty is honest about that, and a default of '' would only be the same
+-- absence spelled in a way a query cannot ask about.
+ALTER TABLE users ADD COLUMN name TEXT;

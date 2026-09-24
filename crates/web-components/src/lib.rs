@@ -9,6 +9,7 @@ mod page;
 mod phone;
 mod recurring;
 mod shell;
+mod theme;
 mod transaction;
 
 pub use account::*;
@@ -25,4 +26,5 @@ pub use recurring::*;
 pub use shell::Brand;
 pub use shell::SearchRow;
 pub use shell::Shell;
+pub use theme::restore as restore_theme;
 pub use transaction::*;

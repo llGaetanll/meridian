@@ -82,6 +82,7 @@ pub(crate) fn router(to_loop: ToLoop, origins: &WebOrigins) -> Router {
         .route("/billing/subscribe", post(billing_subscribe))
         .route("/billing/checkout", post(billing_checkout))
         .route("/billing/status", get(billing_status))
+        .route("/account/name", post(account_name))
         .route("/account/delete/request", post(account_delete_request))
         .route("/account/delete", post(account_delete))
         .route("/billing/apple", post(billing_apple))
@@ -378,6 +379,47 @@ async fn account_delete_request(
         &to_loop,
         Client::anonymous(ip),
         EventRouter::DeleteCodeRequested { token_sha256 },
+    )
+    .await;
+
+    refused(&answer)?;
+
+    match answer {
+        Some(ActionRouter::Accepted) => Ok(StatusCode::NO_CONTENT),
+        Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
+        _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),
+    }
+}
+
+/// What `POST /account/name` takes.
+#[derive(Debug, Deserialize)]
+struct NameBody {
+    name: String,
+}
+
+/// `POST /account/name` — what to call whoever this session signs in.
+///
+/// Answered as taken rather than as stored, like every other route whose work
+/// is a store call: the name is written on the way past and the caller sees it
+/// on their next snapshot.
+///
+/// Blank is not a refusal. Clearing a name is a thing somebody may do, and the
+/// store is where "blank means none" is decided so that every caller agrees.
+async fn account_name(
+    State(to_loop): State<ToLoop>,
+    Extension(ip): Extension<ClientIp>,
+    headers: axum::http::HeaderMap,
+    Json(body): Json<NameBody>,
+) -> Result<StatusCode, Refusal> {
+    let token_sha256 = bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let answer = runtime_router::dispatch(
+        &to_loop,
+        Client::anonymous(ip),
+        EventRouter::NameSubmitted {
+            token_sha256,
+            name: body.name.trim().to_string(),
+        },
     )
     .await;
 

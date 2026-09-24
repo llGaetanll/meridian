@@ -202,6 +202,14 @@ body {
 .content {
   padding: 0 20px 44px 28px;
   display: flex; flex-direction: column;
+  transition: opacity var(--page-in) ease;
+}
+/* A tab crosses into the next. The page goes first and the shell changes
+   screen underneath while nothing is showing, so the two are never both up. */
+.content.leaving { opacity: 0; transition: opacity var(--page-out) ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .content, .content.leaving { transition: none; }
 }
 
 /* Cards */

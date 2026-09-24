@@ -990,7 +990,7 @@ fn a_period_ends_because_a_tick_says_so() {
         < Event::FromStore {
             call_id: 3,
             event: EventStore::SnapshotLoaded {
-                snapshot: server_wire::WireSnapshot::new(&[], &[], &[]),
+                snapshot: server_wire::WireSnapshot::new(None, &[], &[], &[]),
             },
         },
 
@@ -1243,7 +1243,7 @@ fn a_deleted_subscription_closes_the_app_at_once() {
         < Event::FromStore {
             call_id: 3,
             event: EventStore::SnapshotLoaded {
-                snapshot: server_wire::WireSnapshot::new(&[], &[], &[]),
+                snapshot: server_wire::WireSnapshot::new(None, &[], &[], &[]),
             },
         },
 

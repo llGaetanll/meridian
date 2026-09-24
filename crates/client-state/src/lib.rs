@@ -35,6 +35,7 @@ mod view_paywall;
 mod view_paywall_step;
 mod view_recurring;
 mod view_tx_row;
+mod view_who;
 
 pub use action::Action;
 pub use action_source::ActionSource;
@@ -48,6 +49,7 @@ pub use load_failure::LoadFailure;
 pub use range::RangeSelection;
 pub use range::RangeUnit;
 pub use state_app::StateApp;
+pub use state_app::User;
 pub use state_delete::StateDelete;
 pub use state_ledger::StateLedger;
 pub use state_onboarding::AWAIT_GOOD_FOR_SECS;
@@ -90,6 +92,7 @@ pub use view_recurring::ViewRecurring;
 pub use view_recurring::ViewStreamGroup;
 pub use view_recurring::ViewStreamRow;
 pub use view_tx_row::ViewTxRow;
+pub use view_who::ViewWho;
 
 use std::sync::Mutex;
 

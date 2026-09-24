@@ -199,8 +199,13 @@ pub enum ActionStore {
     /// Every subscription there is, for the read at startup.
     LoadSubscriptions,
 
-    /// The address a user is written to, for Stripe's receipt.
+    /// The address a user is written to, for Stripe's receipt, and the name
+    /// the account chip prints.
     LoadUser { user_id: uuid::Uuid },
+
+    /// What to call somebody, as first run asked them. Blank clears it, which
+    /// is the store's rule and not this caller's to enforce.
+    SaveName { user_id: uuid::Uuid, name: String },
 
     /// Every access token this user's banks were reached with, opened.
     ///

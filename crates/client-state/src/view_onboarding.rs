@@ -66,6 +66,18 @@ pub enum ViewOnboarding {
         open: String,
     },
 
+    /// What to call them. One field, asked once, of an account that has no
+    /// name yet.
+    Name {
+        step: String,
+        title: String,
+        body: Vec<ViewRun>,
+        field: ViewField,
+        /// `Some("Continue")` once there is something in the field — absent
+        /// rather than present-and-dim, like the code screen's.
+        action: Option<String>,
+    },
+
     /// What connecting a bank means, and the button that does it. No skip:
     /// every screen in the app is a view of transactions.
     Bank {

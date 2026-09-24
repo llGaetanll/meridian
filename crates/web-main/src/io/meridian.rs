@@ -199,6 +199,31 @@ impl Meridian {
         }
     }
 
+    /// Say what to call whoever this token signs in.
+    ///
+    /// Nothing comes back but whether it landed: the name is the caller's own
+    /// value and the server has no opinion to answer with. What it wrote shows
+    /// up on the next snapshot, like everything else the server holds.
+    pub async fn set_name(&self, token: &str, name: &str) -> Result<(), Failure> {
+        let url = self.url("account/name")?;
+        let body = serde_json::json!({ "name": name }).to_string();
+        let call = ApiCall::post(module_path!(), SOURCE, &url, &body);
+
+        let request = self
+            .client
+            .post(url)
+            .bearer_auth(token)
+            .header("Content-Type", "application/json")
+            .body(body);
+
+        let (status, body) = self.send(request, call).await?;
+
+        match Failure::refusal(status, &body) {
+            Some(refusal) => Err(refusal),
+            None => Ok(()),
+        }
+    }
+
     /// Trade the emailed code for the deletion. There is no undo: the server
     /// answers once the rows are gone.
     ///

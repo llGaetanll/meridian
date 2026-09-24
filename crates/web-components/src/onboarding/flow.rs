@@ -8,6 +8,7 @@ use super::Bank;
 use super::Code;
 use super::Email;
 use super::Failed;
+use super::Name;
 use super::Ready;
 use super::Syncing;
 use super::Waiting;
@@ -40,6 +41,7 @@ pub fn Onboarding(view: Signal<ViewOnboarding>, ui: Callback<EventUi>) -> impl I
             ViewOnboarding::WelcomeBack { .. } => {
                 view! { <WelcomeBack view=view ui=ui /> }.into_any()
             }
+            ViewOnboarding::Name { .. } => view! { <Name view=view ui=ui /> }.into_any(),
             ViewOnboarding::Bank { .. } => view! { <Bank view=view ui=ui /> }.into_any(),
             ViewOnboarding::Waiting { .. } => view! { <Waiting view=view /> }.into_any(),
             ViewOnboarding::Sync { .. } => view! { <Syncing view=view /> }.into_any(),

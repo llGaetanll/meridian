@@ -125,6 +125,24 @@ pub struct StateApp {
     /// Deleting the account, from the button on the Account tab until it is
     /// cancelled or the rows are gone. `None` means nobody is leaving.
     deleting: Option<StateDelete>,
+
+    /// Who the device is signed in as, as of the last snapshot. `None` until
+    /// one has arrived: the account chip has nothing to print before that and
+    /// a placeholder would be a guess.
+    user: Option<User>,
+}
+
+/// Who the device is signed in as.
+///
+/// The wire's own shape kept out of the machine, so a field added to the
+/// snapshot is a decision taken here rather than one that arrives.
+#[derive(Debug, Clone)]
+pub struct User {
+    pub email: String,
+
+    /// Absent for every account made before first run asked, and until it is
+    /// answered by anyone made after.
+    pub name: Option<String>,
 }
 
 impl Default for StateApp {
@@ -148,6 +166,7 @@ impl Default for StateApp {
             payment: StatePayment::default(),
             reconnecting: None,
             deleting: None,
+            user: None,
         }
     }
 }
@@ -297,6 +316,34 @@ impl StateApp {
             EventUi::EmailTyped { text } => {
                 if let Some(flow) = &mut self.onboarding {
                     flow.type_email(text);
+                }
+            }
+
+            EventUi::NameTyped { text } => {
+                if let Some(flow) = &mut self.onboarding {
+                    flow.type_name(text);
+                }
+            }
+
+            // The flow moves on the tap and the write follows it. Nothing
+            // waits: the name is the caller's own value, the server has no
+            // opinion to answer with, and a screen held open until a write
+            // lands is a screen that stops when the write is slow.
+            EventUi::NameSubmitted => {
+                let name = self
+                    .onboarding
+                    .as_mut()
+                    .and_then(StateOnboarding::submit_name);
+
+                if let Some(name) = name {
+                    self.user = self.user.take().map(|user| User {
+                        name: Some(name.clone()),
+                        ..user
+                    });
+
+                    actions.push(Action::ToSource {
+                        action: ActionSource::SetName { name },
+                    });
                 }
             }
 
@@ -495,8 +542,18 @@ impl StateApp {
                         // and the flow stands aside and offers the app.
                         let has_banks = !self.connections.is_empty();
 
+                        self.user = snapshot.user.as_ref().map(|user| User {
+                            email: user.email.clone(),
+                            name: user.name.clone(),
+                        });
+
+                        // A snapshot that says nothing about who this is
+                        // cannot be the reason to ask a name: an older server
+                        // would put a screen in front of everyone.
+                        let has_name = self.user.as_ref().is_none_or(|user| user.name.is_some());
+
                         if let Some(flow) = &mut self.onboarding {
-                            flow.snapshot(has_banks);
+                            flow.snapshot(has_banks, has_name);
                         }
 
                         debug_assert!(
@@ -842,6 +899,12 @@ impl StateApp {
                 // three empty ones.
                 dock: (self.onboarding.is_none() && self.unpaid.is_none())
                     .then(|| screens::dock(self.screen)),
+
+                // The account chip keeps the dock's company for the same
+                // reason: it belongs to the app, not to the road in.
+                who: (self.onboarding.is_none() && self.unpaid.is_none())
+                    .then(|| screens::who(self.user.as_ref()))
+                    .flatten(),
             },
         });
     }
