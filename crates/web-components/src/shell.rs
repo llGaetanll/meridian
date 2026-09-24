@@ -195,10 +195,18 @@ fn Sidebar(
 }
 
 /// Where the lit rectangle stands, and what colour it is.
+///
+/// Measured from the card's *bottom* edge rather than its top, because that is
+/// the edge that holds still: the card grows upward out of the sidebar's foot,
+/// so a row's distance from the top changes as it opens and its distance from
+/// the bottom does not. Anchoring the other way would put the rectangle under
+/// the chip at the wrong height for as long as the card was still growing.
 #[derive(Clone, Copy, PartialEq)]
 struct Lit {
-    top: i32,
-    height: i32,
+    /// Pixels from the row's bottom edge to the card's.
+    lift: f64,
+
+    height: f64,
 
     /// The row that cannot be undone, which lights rose rather than grey.
     grave: bool,
@@ -238,11 +246,18 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
     let travel = RwSignal::new(false);
 
     let stand = move |row: &web_sys::HtmlElement, grave: bool| {
+        let Some(card) = row.closest(".account-open").ok().flatten() else {
+            return;
+        };
+
+        let row = row.get_bounding_client_rect();
+        let card = card.get_bounding_client_rect();
+
         let arriving = lit.with_untracked(Option::is_none);
 
         lit.set(Some(Lit {
-            top: row.offset_top(),
-            height: row.offset_height(),
+            lift: card.bottom() - row.bottom(),
+            height: row.height(),
             grave,
         }));
 
@@ -267,12 +282,21 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
         }
     };
 
-    let press = Callback::new(move |()| {
-        open.update(|open| *open = !*open);
+    // Pressing the chip opens the card with the pointer already on the chip,
+    // and a pointer that is already somewhere sends no event saying so. So the
+    // press lights the chip itself, rather than waiting for a `pointerenter`
+    // that will not come until the pointer moves off it and back.
+    let press = Callback::new(move |chip: web_sys::HtmlElement| {
+        let opening = !open.get_untracked();
 
-        // Nothing is under the pointer at the moment the card opens or shuts,
-        // and a rectangle left standing would slide out of a row nobody is on.
-        lit.set(None);
+        open.set(opening);
+
+        match opening {
+            true => stand(&chip, false),
+
+            // Shut, nothing is a row and there is nothing to light.
+            false => lit.set(None),
+        }
     });
 
     // A press anywhere else closes it. A listener rather than a sheet of
@@ -299,7 +323,7 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
                     class:still=move || !travel.get()
                     class:grave=move || lit.get().is_some_and(|lit| lit.grave)
                     style=move || match lit.get() {
-                        Some(lit) => format!("--y:{}px;--h:{}px", lit.top, lit.height),
+                        Some(lit) => format!("--b:{}px;--h:{}px", lit.lift, lit.height),
                         None => String::new(),
                     }
                 />
@@ -375,7 +399,7 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
 #[component]
 fn Chip(
     who: ViewWho,
-    on_press: Callback<()>,
+    on_press: Callback<web_sys::HtmlElement>,
     /// Whether this chip is one of the rows the card's rectangle visits, which
     /// it is only while the card is open.
     #[prop(into, optional)]
@@ -396,7 +420,14 @@ fn Chip(
                 // Kept off the window listener that closes the card, which
                 // would otherwise close it in the press that opened it.
                 event.stop_propagation();
-                on_press.run(());
+
+                let chip = event
+                    .current_target()
+                    .and_then(|target| target.dyn_into::<web_sys::HtmlElement>().ok());
+
+                if let Some(chip) = chip {
+                    on_press.run(chip);
+                }
             }
         >
             <div class="avatar">

@@ -142,6 +142,13 @@
   --page-out: 90ms;
   --page-in: 140ms;
 
+  /* Fastest as it leaves, easing to a stop, and never past where it is going.
+     For something that grows rather than slides: a card that sprang past its
+     own size and came back would be a card that wobbled. Short enough that the
+     whole of it is over before it is worth watching. */
+  --settle: cubic-bezier(0.2, 0.8, 0.3, 1);
+  --settle-time: 260ms;
+
   /* A nav row and the gap under it. The sliding pill is placed by counting
      rows, which only works while every one of them is this tall. */
   --nav-row: 42px;

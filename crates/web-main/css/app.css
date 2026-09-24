@@ -166,9 +166,9 @@ body {
   border-color: var(--border);
   box-shadow: none;
   transition:
-    margin var(--spring-time) var(--spring),
-    padding var(--spring-time) var(--spring),
-    box-shadow 200ms ease;
+    margin var(--settle-time) var(--settle),
+    padding var(--settle-time) var(--settle),
+    box-shadow 180ms ease;
 }
 .ui .menu.account-open.open {
   margin: 0 -5px -5px;
@@ -187,27 +187,27 @@ body {
   visibility: hidden;
   pointer-events: none;
   transition:
-    grid-template-rows var(--spring-time) var(--spring),
-    visibility 0s linear var(--spring-time);
+    grid-template-rows var(--settle-time) var(--settle),
+    visibility 0s linear var(--settle-time);
 }
 .ui .menu.account-open.open .options {
   grid-template-rows: 1fr;
   visibility: visible;
   pointer-events: auto;
-  transition: grid-template-rows var(--spring-time) var(--spring), visibility 0s;
+  transition: grid-template-rows var(--settle-time) var(--settle), visibility 0s;
 }
 .ui .menu.account-open .options > .in {
   min-height: 0;
   overflow: hidden;
   opacity: 0;
-  transition: opacity 110ms ease;
+  transition: opacity 90ms ease;
 }
 /* They arrive a beat after the room does. Lettering that fades up inside a box
    still opening reads as one thing happening; lettering that is already there
    reads as a card that was behind the chip all along. */
 .ui .menu.account-open.open .options > .in {
   opacity: 1;
-  transition: opacity 190ms ease 110ms;
+  transition: opacity 160ms ease 80ms;
 }
 /* Inside the card the chip is a row among rows: no frame of its own, and the
    rows' corner, so what lights under the pointer is one shape throughout. */
@@ -237,17 +237,19 @@ body {
 .ui .menu.account-open .item.grave:hover,
 .ui .menu.account-open .account:hover { background: none; }
 
+/* Placed off the card's bottom edge, which is the one that holds still while
+   the card grows — see the note on `Lit` in `shell.rs`. */
 .ui .menu.account-open .menu-pill {
-  position: absolute; left: 5px; right: 5px; top: 0;
+  position: absolute; left: 5px; right: 5px; bottom: 0;
   height: var(--h, 0);
   border-radius: 7px;
   background: var(--bg-raised);
-  transform: translateY(var(--y, 0));
+  transform: translateY(calc(-1 * var(--b, 0px)));
   transition:
-    transform var(--spring-time) var(--spring),
-    height var(--spring-time) var(--spring),
-    background 140ms ease,
-    opacity 140ms ease;
+    transform var(--settle-time) var(--settle),
+    height var(--settle-time) var(--settle),
+    background 120ms ease,
+    opacity 120ms ease;
   pointer-events: none;
 }
 /* The rectangle carries the row's colour rather than the row carrying its
@@ -258,7 +260,7 @@ body {
 /* The frame it appears in. Nowhere to have come from, so it does not travel —
    it is simply already where the pointer is, and only fades up. */
 .ui .menu.account-open .menu-pill.still {
-  transition: background 140ms ease, opacity 140ms ease;
+  transition: background 120ms ease, opacity 120ms ease;
 }
 
 @media (prefers-reduced-motion: reduce) {
