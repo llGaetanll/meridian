@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT symbol, avg(volume * close)::float8 AS \"turnover!\" FROM (\n               SELECT symbol, volume, close,\n                      row_number() OVER (PARTITION BY symbol ORDER BY ts DESC) AS rn\n               FROM bars\n               WHERE source = $1 AND interval = '1d'\n           ) newest\n           WHERE rn <= $2\n           GROUP BY symbol",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "symbol",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bars",
+            "name": "symbol"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "turnover!",
+        "type_info": "Float8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "bar_source",
+            "kind": {
+              "Enum": [
+                "yahoo",
+                "coingecko"
+              ]
+            }
+          }
+        },
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "10251d4998083d2970c14292dbdef568e742833bd6bfd86499e4b8511229fd3c"
+}

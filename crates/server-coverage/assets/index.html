@@ -81,10 +81,11 @@
   .req-scroll td.bad { color: var(--bad); font-weight: 500; }
   .req-scroll td.faint { color: var(--text-faint); }
 
-  .cov-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px 26px; }
+  .cov-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px 26px; }
   .ahead { display: flex; align-items: baseline; gap: 10px; }
   .ahead .sym { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
   .ahead .nm {
+    min-width: 0; flex: 1;
     font-size: 12px; color: var(--text-faint);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
@@ -377,7 +378,7 @@ function renderCoverage(cov) {
   const shaped = cov.symbols
     .map((sym) => ({ sym, s: shape(sym, cov) }))
     .sort((a, b) =>
-      (b.sym.volume ?? -1) - (a.sym.volume ?? -1) ||
+      (b.sym.turnover ?? -1) - (a.sym.turnover ?? -1) ||
       a.sym.symbol.localeCompare(b.sym.symbol));
 
   let sumGot = 0;
@@ -396,7 +397,7 @@ function renderCoverage(cov) {
     head.appendChild(el("span", "sym", sym.symbol));
     const detail = [
       sym.name,
-      sym.volume != null && `${fmtVolume(sym.volume)} vol`,
+      sym.turnover != null && `$${fmtVolume(sym.turnover)}/day`,
       `${fmtN(sym.bars)} bars`,
     ].filter(Boolean).join(" · ");
     head.appendChild(el("span", "nm", detail));
@@ -464,8 +465,9 @@ function renderCoverage(cov) {
     note.textContent = `The database holds no ${cov.interval} series.`;
   } else {
     note.textContent =
-      "Most traded first, and every symbol the database has heard of gets " +
-      "a card, each drawn from where its series begins. Intraday intervals " +
+      "Most traded first — dollars a day, averaged over the newest month " +
+      "of daily bars — and every symbol the database has heard of gets a " +
+      "card, each drawn from where its series begins. Intraday intervals " +
       "reach back only as far as Yahoo serves them: 6 days for 1m, 59 for " +
       "the rest.";
   }

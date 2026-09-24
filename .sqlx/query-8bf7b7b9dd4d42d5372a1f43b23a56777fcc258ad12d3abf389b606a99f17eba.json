@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT symbol, name, day_volume FROM assets WHERE source = $1 ORDER BY symbol",
+  "query": "SELECT symbol, name FROM assets WHERE source = $1 ORDER BY symbol",
   "describe": {
     "columns": [
       {
@@ -24,17 +24,6 @@
             "name": "name"
           }
         }
-      },
-      {
-        "ordinal": 2,
-        "name": "day_volume",
-        "type_info": "Int8",
-        "origin": {
-          "Table": {
-            "table": "assets",
-            "name": "day_volume"
-          }
-        }
       }
     ],
     "parameters": {
@@ -54,9 +43,8 @@
     },
     "nullable": [
       false,
-      true,
       true
     ]
   },
-  "hash": "8e37a781191c9c14823d655a91bb6a4520a503459fe823b63cc4cac8597d0449"
+  "hash": "8bf7b7b9dd4d42d5372a1f43b23a56777fcc258ad12d3abf389b606a99f17eba"
 }

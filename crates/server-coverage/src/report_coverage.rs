@@ -20,6 +20,10 @@ use crate::unix_now;
 /// How many points a curve is thinned to before it travels.
 const CURVE_POINTS: u32 = 240;
 
+/// How many daily bars the turnover average reads — about a month of
+/// sessions, enough to shrug off one heavy morning.
+const TURNOVER_DAYS: u32 = 30;
+
 /// One interval's coverage, whole.
 #[derive(Serialize)]
 pub struct CoverageReport {
@@ -39,7 +43,8 @@ pub struct CoverageReport {
 struct SymbolReport {
     symbol: String,
     name: Option<String>,
-    volume: Option<u64>,
+    /// Dollars a day, averaged over the newest month of daily bars.
+    turnover: Option<f64>,
     bars: u64,
     first: Option<u64>,
     last: Option<u64>,
@@ -79,6 +84,7 @@ pub async fn serve(
     let spans = src_postgres::load_coverage_spans(&app.db, source, interval).await?;
     let stats = src_postgres::load_series_stats(&app.db, source, interval, app.since).await?;
     let heads = src_postgres::load_asset_heads(&app.db, source).await?;
+    let turnovers = src_postgres::load_turnovers(&app.db, source, TURNOVER_DAYS).await?;
 
     let mut symbols: BTreeMap<String, SymbolReport> = BTreeMap::new();
 
@@ -103,11 +109,16 @@ pub async fn serve(
         .map(|head| (head.symbol.clone(), head))
         .collect();
 
+    let turnovers: BTreeMap<String, f64> = turnovers
+        .into_iter()
+        .map(|row| (row.symbol, row.turnover))
+        .collect();
+
     for (symbol, entry) in &mut symbols {
         if let Some(head) = heads.get(symbol) {
             entry.name = head.name.clone();
-            entry.volume = head.day_volume;
         }
+        entry.turnover = turnovers.get(symbol).copied();
 
         if entry.bars > 0 {
             entry.curve = src_postgres::load_closes_thinned(

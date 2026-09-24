@@ -99,19 +99,18 @@ pub async fn load_series_stats(
         .collect())
 }
 
-/// What a source last said an asset is called, and how much of it trades.
+/// What a source last said an asset is called.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssetHead {
     pub symbol: String,
     pub name: Option<String>,
-    pub day_volume: Option<u64>,
 }
 
 /// Every asset a source has spoken about, by symbol. A symbol with bars but
 /// no asset row is simply absent.
 pub async fn load_asset_heads(db: &Db, source: BarSource) -> Result<Vec<AssetHead>, PostgresError> {
     let rows = sqlx::query!(
-        r#"SELECT symbol, name, day_volume FROM assets WHERE source = $1 ORDER BY symbol"#,
+        r#"SELECT symbol, name FROM assets WHERE source = $1 ORDER BY symbol"#,
         source as BarSource,
     )
     .fetch_all(db)
@@ -122,7 +121,46 @@ pub async fn load_asset_heads(db: &Db, source: BarSource) -> Result<Vec<AssetHea
         .map(|row| AssetHead {
             symbol: row.symbol,
             name: row.name,
-            day_volume: row.day_volume.map(|volume| volume.max(0) as u64),
+        })
+        .collect())
+}
+
+/// How much money changes hands in one series on an ordinary day: volume
+/// times close, averaged over the newest `days` daily bars. Dollars rather
+/// than shares, because a $35 stock trades many more shares than an ETF at
+/// $700 while mattering less.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SeriesTurnover {
+    pub symbol: String,
+    pub turnover: f64,
+}
+
+/// The turnover of every series a source holds daily bars for.
+pub async fn load_turnovers(
+    db: &Db,
+    source: BarSource,
+    days: u32,
+) -> Result<Vec<SeriesTurnover>, PostgresError> {
+    let rows = sqlx::query!(
+        r#"SELECT symbol, avg(volume * close)::float8 AS "turnover!" FROM (
+               SELECT symbol, volume, close,
+                      row_number() OVER (PARTITION BY symbol ORDER BY ts DESC) AS rn
+               FROM bars
+               WHERE source = $1 AND interval = '1d'
+           ) newest
+           WHERE rn <= $2
+           GROUP BY symbol"#,
+        source as BarSource,
+        i64::from(days.max(1)),
+    )
+    .fetch_all(db)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| SeriesTurnover {
+            symbol: row.symbol,
+            turnover: row.turnover,
         })
         .collect())
 }
