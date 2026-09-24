@@ -78,6 +78,30 @@ fn Sidebar(
         })
     };
 
+    // Which row the pill stands on. The tabs draw in dock order, so the lit
+    // one's place among them is where it sits. On Markets none of the
+    // machine's tabs is lit and the pill goes.
+    let pill = Memo::new(move |_| match markets.get() {
+        true => None,
+        false => dock.with(|dock| {
+            dock.iter()
+                .flat_map(|dock| &dock.items)
+                .filter(|item| item.screen != Screen::Account)
+                .position(|item| item.selected)
+        }),
+    });
+
+    // Which screen is lit, read where a row is drawn rather than frozen into
+    // it, so a row lives across the change and its lettering can cross.
+    let here = Memo::new(move |_| {
+        dock.with(|dock| {
+            dock.iter()
+                .flat_map(|dock| &dock.items)
+                .find(|item| item.selected)
+                .map(|item| item.screen)
+        })
+    });
+
     let account = Memo::new(move |_| {
         dock.with(|dock| {
             dock.iter()
@@ -91,17 +115,18 @@ fn Sidebar(
         <aside class="sidebar">
             <Brand />
 
-            <nav class="nav">
+            <nav class="nav" style=move || pill.get().map(|row| format!("--lit:{row}"))>
+                <span class="nav-pill" class:off=move || pill.get().is_none() />
+
                 <For
                     each=tabs
-                    key=|item| (item.label.clone(), item.icon.clone(), item.selected)
+                    key=|item| item.label.clone()
                     children=move |item: ViewDockItem| {
                         let screen = item.screen;
-                        let lit = item.selected;
 
                         view! {
                             <a
-                                class=move || if lit && !markets.get() { "on" } else { "" }
+                                class:on=move || here.get() == Some(screen) && !markets.get()
                                 href="#"
                                 on:click=move |ev| {
                                     ev.prevent_default();

@@ -129,6 +129,12 @@
   --r-lg: 16px;
   --r-pill: 999px;
 
+  /* A spring, sampled. Enough stops of `linear()` draw a real one: it leaves
+     fast, arrives soft, and passes its mark by two percent on the way back.
+     Damping 0.78 at 19 rad/s, which is spent after `--spring-time`. */
+  --spring: linear(0, 0.0505, 0.1679, 0.3131, 0.4611, 0.597, 0.7133, 0.8074, 0.8799, 0.9331, 0.9702, 0.9946, 1.0092, 1.0168, 1.0197, 1.0195, 1.0176, 1.0149, 1.0119, 1.0091, 1.0066, 1.0046, 1.0029, 1.0017, 1.0009);
+  --spring-time: 440ms;
+
   /* A nav row and the gap under it. The sliding pill is placed by counting
      rows, which only works while every one of them is this tall. */
   --nav-row: 42px;
