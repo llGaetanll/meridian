@@ -244,3 +244,17 @@
 .account-page .banks .row + .row { border-top: 1px solid var(--divider); }
 .account-page .banks-empty { font-size: 13px; color: var(--text-faint); }
 .account-page .build { margin-top: 36px; font-size: 11.5px; color: var(--text-faint); }
+
+/* Connections */
+
+/* The page's one action sits on the title's line rather than above it. */
+.ui .conn-page .hero-row { align-items: center; }
+
+/* When a connection last synced, on the bank's own line — the same place the
+   expired one puts the button that fixes it, because they answer the same
+   question. */
+.ui .conn-when { margin-left: auto; font-size: 12.5px; color: var(--text-faint); }
+/* The page's name is the heading here rather than a figure, so the count under
+   it is set off from it rather than tucked under a label. */
+.ui .conn-page .hero .k { margin-top: 10px; }
+

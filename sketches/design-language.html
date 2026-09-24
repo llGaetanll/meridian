@@ -520,12 +520,14 @@ body {
         <button class="btn primary">Reconnect</button>
         <button class="btn">Clear</button>
         <button class="btn">Retry</button>
+        <button class="btn plain warn"><svg><use href="#i-ext"/></svg>Sign in</button>
         <button class="btn dead">Add a bank</button>
       </div>
         <div data-theme="light" class="demo inline">
         <button class="btn primary">Reconnect</button>
         <button class="btn">Clear</button>
         <button class="btn">Retry</button>
+        <button class="btn plain warn"><svg><use href="#i-ext"/></svg>Sign in</button>
         <button class="btn dead">Add a bank</button>
       </div>
       </div>
@@ -537,6 +539,10 @@ body {
           thing you are there to do. Everything else is the quiet one, and
           <code>.dead</code> is the chip's own drawn-but-not-built state — the
           app has two of those already, Reconnect and the dock's search.
+          <code>.warn</code> letters a button amber: an action the app is
+          asking for rather than offering, which so far is only a login that
+          has expired, and which is plain — a login is a trip out to the bank's
+          own page, not a thing that happens here.
         </p>
         <div class="why">
           The edge has to be darker than the button <em>and</em> lighter than
@@ -551,7 +557,9 @@ body {
           one carries it openly because it is the action, the quiet one about
           half as far. There is one button size: a smaller one for a lesser
           place made the same action look like a lesser action, which is not
-          what a banner's Retry is.
+          what a banner's Retry is. The amber one is lettered rather than
+          filled: <code>--warn</code> is a light amber on black and a dark one
+          on paper, so a filled one would need its text colour set twice.
         </div>
       </div>
     </div>
@@ -1149,6 +1157,14 @@ body {
           <div class="rt">Available</div>
           <span class="rv hard money">$4,182.03</span>
         </div>
+        <div class="row flat">
+          <div class="rt">Citi Checking<div class="rs"><span class="mask">4021</span>Checking</div></div>
+          <span class="rv hard money">$4,180.22</span>
+        </div>
+        <div class="row flat stale">
+          <div class="rt">Houndstooth Checking<div class="rs"><span class="mask">6120</span>Checking</div></div>
+          <span class="rv hard money">$1,940.11</span>
+        </div>
       </div>
         <div data-theme="light" class="demo">
         <div class="row top">
@@ -1163,6 +1179,14 @@ body {
         <div class="row flat">
           <div class="rt">Available</div>
           <span class="rv hard money">$4,182.03</span>
+        </div>
+        <div class="row flat">
+          <div class="rt">Citi Checking<div class="rs"><span class="mask">4021</span>Checking</div></div>
+          <span class="rv hard money">$4,180.22</span>
+        </div>
+        <div class="row flat stale">
+          <div class="rt">Houndstooth Checking<div class="rs"><span class="mask">6120</span>Checking</div></div>
+          <span class="rv hard money">$1,940.11</span>
         </div>
       </div>
       </div>
@@ -1183,9 +1207,13 @@ body {
           middle. <code>.flat</code> drops the icon and the weight for a name
           and a figure read down a column. <code>.needs</code> turns the second
           line amber, for the one row in a list that wants doing something
-          about.
+          about. <code>.mask</code> boxes an account's last four digits at the
+          head of its second line, monospaced: it is a number off a card rather
+          than a word, and it is what tells two checking accounts apart.
+          <code>.stale</code> greys a row whole: still true as far as anyone
+          knows, and no longer arriving.
         </div>
-        <div class="use">.row &gt; (svg, .rt &gt; .rs, .rv | .rv.hard, .go) · .top · .flat · .needs</div>
+        <div class="use">.row &gt; (svg, .rt &gt; .rs &gt; .mask, .rv | .rv.hard, .go) · .top · .flat · .needs · .stale</div>
       </div>
     </div>
 
@@ -1437,24 +1465,32 @@ body {
     <div class="entry">
       <div class="pair">
         <div data-theme="dark" class="demo inline">
-        <span class="mark">CI</span>
-        <span class="mark">FI</span>
-        <span class="mark">AX</span>
-        <span class="mark sm">HS</span>
+        <span class="mark bare"><img src="shared/logos/fidelity.png" alt=""></span>
+        <span class="mark bare"><img src="shared/logos/amex.png" alt=""></span>
+        <span class="mark bare"><svg><use href="#i-bank"/></svg></span>
+        <span class="mark">U</span>
+        <span class="mark sm">MB</span>
       </div>
         <div data-theme="light" class="demo inline">
-        <span class="mark">CI</span>
-        <span class="mark">FI</span>
-        <span class="mark">AX</span>
-        <span class="mark sm">HS</span>
+        <span class="mark bare"><img src="shared/logos/fidelity.png" alt=""></span>
+        <span class="mark bare"><img src="shared/logos/amex.png" alt=""></span>
+        <span class="mark bare"><svg><use href="#i-bank"/></svg></span>
+        <span class="mark">U</span>
+        <span class="mark sm">MB</span>
       </div>
       </div>
       <div class="body">
         <h3>Mark</h3>
         <p>
-          Who a row is: a merchant's logo in the ledger, a bank's initials on
-          Balances. One square, whether the logo arrived or not, so the text of
-          every row starts on the same line either way.
+          Who a row is: a bank's logo on Balances and Connections, a merchant's
+          in the ledger. One square, whether the logo arrived or not, so the
+          text of every row starts on the same line either way. A bank's logo is
+          optional at Plaid, and a bank without one takes the bank glyph rather
+          than its initials: two letters in a square read as a monogram nobody
+          chose, and four of them down a page read as four. A merchant keeps its
+          initials, having no glyph that would say anything. A bank's mark drops
+          the square's line either way — a logo arrives with an edge of its own,
+          and the glyph has to read as the same kind of thing.
         </p>
         <div class="why">
           A hairline square rather than a filled tile. Filled, a column of them

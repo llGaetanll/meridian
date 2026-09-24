@@ -124,6 +124,7 @@
   --shadow-lift: 0 30px 80px rgba(0, 0, 0, 0.6);
 
   /* Shape */
+  --r-xs: 5px;
   --r-sm: 8px;
   --r-md: 10px;
   --r-lg: 16px;

@@ -215,6 +215,12 @@
    and still answer the pointer. */
 .ui .btn.plain:hover { background: color-mix(in srgb, var(--accent) 11%, transparent); }
 .ui .btn.plain:active { transform: translateY(1px); opacity: 0.75; }
+/* Amber letters, for an action the app is asking for rather than offering: a
+   login that has expired and has to be done again at the bank. Lettered rather
+   than filled, because --warn is a light amber on black and a dark one on
+   paper, so a filled one would need its text colour set twice. */
+.ui .btn.warn { color: var(--warn); }
+.ui .btn.plain.warn:hover { background: color-mix(in srgb, var(--warn) 13%, transparent); }
 /* Back, on a screen with no title bar to hold it: a plain button that is only
    the chevron, and grey rather than violet, because going back is never what
    the screen is for. */
@@ -315,6 +321,29 @@
   font-size: 12.5px; font-weight: 400; color: var(--text-faint);
   margin-top: 3px;
 }
+/* An account's last four digits, at the head of its second line: they are
+   what tells two checking accounts apart, so they come before the kind rather
+   than after it, in a box of their own rather than run into the words. Boxed
+   and monospaced because it is a number off a card and not a word — the same
+   reason money has its own face. Knocked out of a solid chip rather than
+   outlined: a rule around four digits on every row of a list draws more of
+   itself than of the number. The digits are cut out of the chip in the page's
+   own colour, and the chip is the tone the digits would otherwise have been
+   set in, so it carries the same weight on the line either way round and needs
+   no second colour to be legible in the other theme. The corner is the small
+   one — eight pixels on something this size is a lozenge. A source does not
+   always send it, and the line reads the same when it does not. */
+.ui .row .rs .mask {
+  display: inline-block;
+  margin-right: 9px;
+  padding: 1px 6px;
+  background: var(--text-muted);
+  border-radius: var(--r-xs);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px; font-weight: 700;
+  color: var(--bg);
+}
 /* what a row has to say about itself, on the right */
 .ui .row .rv { flex: none; font-size: 12.5px; color: var(--text-faint); }
 /* a value being read rather than a note about the row */
@@ -322,6 +351,10 @@
 .ui .row .go { width: 15px; height: 15px; color: var(--text-faint); }
 /* the one row in a list that needs doing something about */
 .ui .row.needs .rs { color: var(--warn); }
+/* a row that is still true as far as anyone knows, and no longer arriving:
+   the accounts behind a login that has expired. Greyed whole rather than by
+   the line, because it is the row that is stale and not one fact in it. */
+.ui .row.stale { opacity: 0.45; }
 /* a row that is only a name and a value, read down a column */
 .ui .row.flat { padding: 9px 0; }
 .ui .row.flat .rt { font-size: 13.5px; font-weight: 400; color: var(--text-muted); }
@@ -424,6 +457,18 @@
   color: var(--text-faint);
 }
 .ui .mark img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* A bank Plaid has no logo for gets the bank glyph rather than its initials:
+   two letters in a square read as a monogram nobody chose, and four of them
+   down a page read as four. A merchant's initials stay — a ledger row has a
+   name and no glyph that would say anything. */
+.ui .mark > svg { width: 15px; height: 15px; color: var(--text-faint); }
+
+/* A bank's mark drops the line: a logo arrives with an edge of its own, and
+   the glyph standing in for a missing one has to read as the same kind of
+   thing rather than as the one bank in a boxed row. The slot keeps its width,
+   so the names still start on one line. */
+.ui .mark.bare { border: 0; }
+.ui .mark.bare > svg { width: 21px; height: 21px; }
 .ui .mark.sm { width: 24px; height: 24px; }
 
 /* The button, at thumb size and across the measure.
