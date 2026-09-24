@@ -335,6 +335,7 @@ impl StateServer {
             | EventRouter::SubscribeRequested { .. }
             | EventRouter::CheckoutRequested { .. }
             | EventRouter::BillingStatusRequested { .. }
+            | EventRouter::NameSubmitted { .. }
             | EventRouter::AppleTransactionReceived { .. }
             | EventRouter::DeleteCodeRequested { .. }
             | EventRouter::DeleteRequested { .. }
@@ -845,6 +846,23 @@ impl StateServer {
                         });
                     }
                 }
+            }
+
+            // One write and nothing to read back: the name the caller sent is
+            // the name, and the snapshot they ask for next is where they see
+            // it. Answered as taken rather than as written, like every other
+            // route whose work is a store call.
+            Authenticated::NameSubmitted { name } => {
+                actions.push(Action::ToStore {
+                    call_id: self.signup.calling(request_id, self.now),
+                    action: ActionStore::SaveName {
+                        user_id,
+                        name: name.clone(),
+                    },
+                });
+
+                self.signup
+                    .answer(request_id, ActionRouter::Accepted, self.now, actions);
             }
 
             // The code goes to the address the account is written to, and the
@@ -2557,7 +2575,7 @@ impl StateServer {
                 // Whatever the fetch housekeeping settled is answered even on
                 // the way out — a route held is a process that cannot drain —
                 // and the pump guards new work itself.
-                let settled = self.markets.on_tick(self.now, self.shutting_down());
+                let settled = self.markets.on_tick(self.now);
 
                 self.bars_settled(settled, actions);
                 self.pump_markets(actions);
@@ -3265,7 +3283,6 @@ impl StateServer {
             request_windows: self.requests.kept(),
             plaid_windows: self.limiter.kept(),
             market_fetches: self.markets.fetches(),
-            market_recent: self.markets.recent(),
         }
     }
 

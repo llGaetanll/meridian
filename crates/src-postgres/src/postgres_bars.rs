@@ -54,6 +54,17 @@ pub enum BarInterval {
 }
 
 impl BarInterval {
+    pub const ALL: [Self; 8] = [
+        Self::Min1,
+        Self::Min2,
+        Self::Min5,
+        Self::Min15,
+        Self::Min30,
+        Self::Hour1,
+        Self::Day1,
+        Self::Week1,
+    ];
+
     /// How many seconds one bar stands for.
     pub fn seconds(self) -> u64 {
         match self {
@@ -285,4 +296,27 @@ pub async fn load_bars(
             volume: row.volume.max(0) as u64,
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The wire carries these as text (`WireBars::interval`), so the set is
+    /// pinned here the way the category names are: a word changed on one
+    /// side and not the other is a client that cannot read its chart.
+    #[test]
+    fn interval_words_are_stable() {
+        let words: Vec<&str> = BarInterval::ALL.iter().map(|i| i.as_str()).collect();
+
+        assert_eq!(words, ["1m", "2m", "5m", "15m", "30m", "1h", "1d", "1wk"]);
+
+        for interval in BarInterval::ALL {
+            assert_eq!(BarInterval::parse(interval.as_str()), Some(interval));
+        }
+
+        // A word that is not an interval parses to nothing rather than to
+        // something plausible.
+        assert_eq!(BarInterval::parse("90m"), None);
+    }
 }

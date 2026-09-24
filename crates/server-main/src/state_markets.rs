@@ -71,23 +71,6 @@ pub const PLAN_SPANS_AT_MOST: usize = 3;
 /// not a chart, and serving it would be a read nobody draws.
 pub const BARS_ASKED_AT_MOST: u64 = 100_000;
 
-/// How many bars back a live-edge refresh reaches. Enough that a series
-/// somebody is watching stays whole across the market day, small enough that
-/// a refresh is one cheap ask.
-pub const REFRESH_BARS: u64 = 50;
-
-/// How long a refreshed series is left alone before the machine refreshes it
-/// again, when there is nothing better to spend the budget on.
-pub const REFRESH_EVERY_SECS: u64 = 300;
-
-/// How long after its last request a series is still worth refreshing.
-/// Past this, nobody is looking, and the next request pays one fetch.
-pub const RECENT_FOR_SECS: u64 = 6 * 60 * 60;
-
-/// How many series are remembered as recently asked for. The keys arrive
-/// from whoever calls us, so the table is capped rather than swept alone.
-pub const RECENT_AT_MOST: usize = 64;
-
 /// Market data fetching, from a window wanted to bars written down.
 #[derive(Debug)]
 pub struct StateMarkets {
@@ -106,11 +89,6 @@ pub struct StateMarkets {
     /// When the last fetch went out. `None` has never sent, and may
     /// immediately.
     last_sent: Option<Timestamp>,
-
-    /// Which series people ask about, for spending idle budget where it is
-    /// felt: `asked` is the last request from a person, `refreshed` the last
-    /// time the machine topped the series up on its own.
-    recent: BTreeMap<(String, BarInterval), Recency>,
 }
 
 impl Default for StateMarkets {
@@ -120,16 +98,8 @@ impl Default for StateMarkets {
             next_fetch: 0,
             pace_secs: PACE_START_SECS,
             last_sent: None,
-            recent: BTreeMap::new(),
         }
     }
-}
-
-/// When a series was last wanted, and last topped up.
-#[derive(Debug, Clone, Copy)]
-struct Recency {
-    asked: Timestamp,
-    refreshed: Timestamp,
 }
 
 impl StateMarkets {
@@ -146,8 +116,6 @@ impl StateMarkets {
         covered: &[Range<Timestamp>],
         now: Timestamp,
     ) -> u32 {
-        self.remember_asked(symbol, interval, now);
-
         // Only what a fetch could settle is worth planning over: the bar
         // still forming is not a fact yet, and history past the source's
         // floor is a question with no answer.
@@ -449,11 +417,11 @@ impl StateMarkets {
     }
 
     /// The tick's housekeeping: give up on fetches that have been out too
-    /// long, answer waiters that have waited long enough with what is stored,
-    /// and spend an idle turn topping up a series somebody watches.
+    /// long, and answer waiters that have waited long enough with what is
+    /// stored.
     ///
     /// The routes handed back are to be answered from the store now.
-    pub fn on_tick(&mut self, now: Timestamp, shutting_down: bool) -> Vec<RequestId> {
+    pub fn on_tick(&mut self, now: Timestamp) -> Vec<RequestId> {
         let mut released = Vec::new();
 
         // A fetch that has been out past all patience is treated as failed:
@@ -503,70 +471,9 @@ impl StateMarkets {
             released.extend(over.into_iter().map(|waiter| waiter.request_id));
         }
 
-        // Interest expires: a series nobody has asked about all afternoon is
-        // not worth the budget, and the keys arrive from callers.
-        self.recent
-            .retain(|_, recency| now.since(recency.asked).as_secs() < RECENT_FOR_SECS);
-
-        if !shutting_down {
-            self.refresh(now);
-        }
-
-        released.sort_unstable();
-        released.dedup();
-
+        // One entry per seat, not per route: a route seated on two fetches
+        // is released twice, and the count is what its answer waits on.
         released
-    }
-
-    /// Spend an idle turn keeping a watched series fresh.
-    ///
-    /// Only when nothing else is queued: a person's request, or a backfill
-    /// one started, always outranks work the machine invented for itself.
-    fn refresh(&mut self, now: Timestamp) {
-        let idle = !self
-            .fetches
-            .values()
-            .any(|fetch| matches!(fetch.step, MarketFetchStep::Queued));
-
-        if !idle || !self.may_send(now) {
-            return;
-        }
-
-        // The series that has gone longest without a top-up, if it is due.
-        let due = self
-            .recent
-            .iter()
-            .filter(|(_, recency)| now.since(recency.refreshed).as_secs() >= REFRESH_EVERY_SECS)
-            .min_by_key(|(key, recency)| (recency.refreshed, (*key).clone()));
-
-        let Some(((symbol, interval), _)) = due.map(|(key, recency)| (key.clone(), *recency))
-        else {
-            return;
-        };
-
-        let edge = interval_floor(interval, now);
-        let start = edge.saturating_sub_secs(REFRESH_BARS * interval.seconds());
-
-        self.fetches.insert(
-            self.next_fetch,
-            MarketFetch {
-                symbol: symbol.clone(),
-                interval,
-                start,
-                // Up to now rather than the settled edge, so the forming bar
-                // comes along; coverage is cut back to the edge on the way in.
-                end: now,
-                waiters: Vec::new(),
-                attempts: 0,
-                step: MarketFetchStep::Queued,
-            },
-        );
-
-        self.next_fetch += 1;
-
-        if let Some(recency) = self.recent.get_mut(&(symbol, interval)) {
-            recency.refreshed = now;
-        }
     }
 
     /// The fetch out on a call, if any.
@@ -577,48 +484,9 @@ impl StateMarkets {
         })
     }
 
-    /// Note that a person asked about a series, evicting the longest-idle
-    /// entry when the table is full — the keys are whatever callers type.
-    fn remember_asked(&mut self, symbol: &str, interval: BarInterval, now: Timestamp) {
-        let key = (symbol.to_string(), interval);
-
-        if let Some(recency) = self.recent.get_mut(&key) {
-            recency.asked = now;
-
-            return;
-        }
-
-        if self.recent.len() >= RECENT_AT_MOST {
-            let stalest = self
-                .recent
-                .iter()
-                .min_by_key(|(key, recency)| (recency.asked, (*key).clone()))
-                .map(|(key, _)| key.clone());
-
-            if let Some(stalest) = stalest {
-                self.recent.remove(&stalest);
-            }
-        }
-
-        self.recent.insert(
-            key,
-            Recency {
-                asked: now,
-                // As though just refreshed: the request that put it here is
-                // itself about to fill the series in.
-                refreshed: now,
-            },
-        );
-    }
-
     /// Fetches in flight, for the census.
     pub fn fetches(&self) -> usize {
         self.fetches.len()
-    }
-
-    /// Series remembered as recently asked for, for the census.
-    pub fn recent(&self) -> usize {
-        self.recent.len()
     }
 }
 

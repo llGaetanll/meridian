@@ -433,11 +433,12 @@ fn a_backwards_window_is_refused() {
     );
 }
 
-/// A series somebody asked about is topped up on the machine's own budget
-/// once it has sat long enough — an idle tick spends itself on the live
-/// edge, unasked.
+/// A served request leaves nothing behind: no fetch, and no work the
+/// machine invents for itself on a later tick. Fetching on the server's own
+/// initiative is a decision that has not been designed yet, and until it is,
+/// an idle server sends nothing.
 #[test]
-fn an_idle_tick_refreshes_a_watched_series() {
+fn an_idle_tick_asks_for_nothing() {
     let mut state = state_subscribed();
 
     eval!(&mut state,
@@ -482,15 +483,8 @@ fn an_idle_tick_refreshes_a_watched_series() {
 
         < Event::FromProcess {
             event: EventProcess::Tick {
-                now: Timestamp::from_secs(T0.as_secs() + REFRESH_EVERY_SECS),
+                now: Timestamp::from_secs(T0.as_secs() + 60),
             },
-        },
-
-        > Action::ToSourceYahoo {
-            call_id: 4,
-            action: ActionSourceYahoo::FetchChart { symbol, .. },
-        } => {
-            assert_eq!(symbol, "SPY");
         },
     );
 }
