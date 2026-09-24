@@ -11,8 +11,12 @@ mod fixtures;
 use api_common::Bar;
 use api_common::Timestamp;
 use api_eval::eval;
+use fixtures::PAID_UNTIL;
+use fixtures::SUBSCRIBER;
 use fixtures::T0;
+use fixtures::started_watching;
 use fixtures::state_subscribed;
+use fixtures::subscription;
 use src_postgres::BarInterval;
 
 use server_main::*;
@@ -485,6 +489,271 @@ fn an_idle_tick_asks_for_nothing() {
             event: EventProcess::Tick {
                 now: Timestamp::from_secs(T0.as_secs() + 60),
             },
+        },
+    );
+}
+
+/// Given a universe, an idle tick plans the heaviest symbol first — reading
+/// its coverage, and fetching whatever of its daily history is missing, with
+/// nobody waiting on it.
+#[test]
+fn an_idle_tick_plans_the_heaviest_symbol() {
+    let mut state = started_watching(
+        PlaidCollect::Poll,
+        vec![],
+        vec![
+            MarketWeight {
+                symbol: "SPY".to_string(),
+                weight: 100.0,
+            },
+            MarketWeight {
+                symbol: "AAPL".to_string(),
+                weight: 50.0,
+            },
+        ],
+    );
+
+    eval!(&mut state,
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 1),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadBarCoverage { symbol, .. },
+        } => {
+            assert_eq!(symbol.as_str(), "SPY");
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::BarCoverageLoaded { spans: vec![] },
+        },
+
+        > Action::ToSourceYahoo {
+            call_id: 2,
+            action: ActionSourceYahoo::FetchChart { symbol, interval, .. },
+        } => {
+            assert_eq!(symbol.as_str(), "SPY");
+            assert_eq!(interval.as_str(), "1d");
+        },
+        < Event::FromSourceYahoo {
+            call_id: 2,
+            event: EventSourceYahoo::ChartFetched {
+                symbol: "SPY".to_string(),
+                interval: BarInterval::Day1,
+                bars: vec![Bar {
+                    ts: START,
+                    open: None,
+                    high: None,
+                    low: None,
+                    close: 1.0,
+                    volume: 0,
+                }],
+            },
+        },
+
+        > Action::ToStore { call_id: 3, action: ActionStore::SaveBars { .. } },
+        < Event::FromStore { call_id: 3, event: EventStore::WriteSuccess },
+    );
+}
+
+/// A planned symbol rests, so the next turn goes to the next heaviest — the
+/// proportional share, one pick at a time.
+#[test]
+fn a_planned_symbol_rests_while_the_next_takes_the_turn() {
+    let mut state = started_watching(
+        PlaidCollect::Poll,
+        vec![],
+        vec![
+            MarketWeight {
+                symbol: "SPY".to_string(),
+                weight: 100.0,
+            },
+            MarketWeight {
+                symbol: "AAPL".to_string(),
+                weight: 50.0,
+            },
+        ],
+    );
+
+    eval!(&mut state,
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 1),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 1,
+            action: ActionStore::LoadBarCoverage { .. },
+        },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::BarCoverageLoaded { spans: vec![] },
+        },
+
+        > Action::ToSourceYahoo {
+            call_id: 2,
+            action: ActionSourceYahoo::FetchChart { .. },
+        },
+
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 2),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 3,
+            action: ActionStore::LoadBarCoverage { symbol, .. },
+        } => {
+            assert_eq!(symbol.as_str(), "AAPL");
+        },
+    );
+}
+
+/// A person's request always outranks the machine's own work: with one fetch
+/// of each waiting for the pace, the person's goes out first.
+#[test]
+fn a_person_outranks_the_machines_own_work() {
+    let mut state = started_watching(
+        PlaidCollect::Poll,
+        vec![subscription(SUBSCRIBER, "active", Some(PAID_UNTIL))],
+        vec![MarketWeight {
+            symbol: "AAPL".to_string(),
+            weight: 50.0,
+        }],
+    );
+
+    eval!(&mut state,
+        < Event::FromRouter {
+            request_id: 1,
+            client: Client { ip: ClientIp::new("203.0.113.7"), user: None },
+            event: EventRouter::BarsRequested {
+                token_sha256: hash_token("session-1"),
+                symbol: "SPY".to_string(),
+                interval: BarInterval::Day1,
+                start: START,
+                end: T0,
+            },
+        },
+
+        > Action::ToStore { call_id: 1, action: ActionStore::LoadSession { .. } },
+        < Event::FromStore {
+            call_id: 1,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 2,
+            action: ActionStore::LoadBarCoverage { .. },
+        },
+        < Event::FromStore {
+            call_id: 2,
+            event: EventStore::BarCoverageLoaded { spans: vec![] },
+        },
+
+        > Action::ToSourceYahoo {
+            call_id: 3,
+            action: ActionSourceYahoo::FetchChart { .. },
+        },
+
+        // The idle tick plans the machine's own AAPL while SPY is out.
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 1),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 4,
+            action: ActionStore::LoadBarCoverage { symbol, .. },
+        } => {
+            assert_eq!(symbol.as_str(), "AAPL");
+        },
+        < Event::FromStore {
+            call_id: 4,
+            event: EventStore::BarCoverageLoaded { spans: vec![] },
+        },
+
+        // A second person asks for MSFT; their fetch queues behind the pace
+        // beside the machine's AAPL.
+        < Event::FromRouter {
+            request_id: 2,
+            client: Client { ip: ClientIp::new("203.0.113.8"), user: None },
+            event: EventRouter::BarsRequested {
+                token_sha256: hash_token("session-1"),
+                symbol: "MSFT".to_string(),
+                interval: BarInterval::Day1,
+                start: START,
+                end: T0,
+            },
+        },
+
+        > Action::ToStore { call_id: 5, action: ActionStore::LoadSession { .. } },
+        < Event::FromStore {
+            call_id: 5,
+            event: EventStore::SessionResolved {
+                user_id: Some(uuid::Uuid::nil()),
+            },
+        },
+
+        > Action::ToStore {
+            call_id: 6,
+            action: ActionStore::LoadBarCoverage { .. },
+        },
+        < Event::FromStore {
+            call_id: 6,
+            event: EventStore::BarCoverageLoaded { spans: vec![] },
+        },
+
+        < Event::FromSourceYahoo {
+            call_id: 3,
+            event: EventSourceYahoo::ChartFetched {
+                symbol: "SPY".to_string(),
+                interval: BarInterval::Day1,
+                bars: vec![Bar {
+                    ts: START,
+                    open: None,
+                    high: None,
+                    low: None,
+                    close: 1.0,
+                    volume: 0,
+                }],
+            },
+        },
+
+        > Action::ToStore { call_id: 7, action: ActionStore::SaveBars { .. } },
+        < Event::FromStore { call_id: 7, event: EventStore::WriteSuccess },
+
+        > Action::ToStore { call_id: 8, action: ActionStore::LoadBars { .. } },
+        < Event::FromStore {
+            call_id: 8,
+            event: EventStore::BarsLoaded { bars: vec![] },
+        },
+
+        > Action::ToRouter {
+            request_id: 1,
+            action: ActionRouter::ServeBars { .. },
+        },
+
+        // The pace opens, and the person's MSFT goes out before the
+        // machine's AAPL, though AAPL queued first.
+        < Event::FromProcess {
+            event: EventProcess::Tick {
+                now: Timestamp::from_secs(T0.as_secs() + 14),
+            },
+        },
+
+        > Action::ToSourceYahoo {
+            call_id: 9,
+            action: ActionSourceYahoo::FetchChart { symbol, .. },
+        } => {
+            assert_eq!(symbol.as_str(), "MSFT");
         },
     );
 }

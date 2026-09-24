@@ -44,6 +44,12 @@ pub enum EventProcess {
         /// store it means must not be talked into taking one for a real
         /// subscription.
         apple_environment: Option<AppleEnvironment>,
+
+        /// The symbols the machine may fetch on its own initiative, from the
+        /// file `MARKET_UNIVERSE` names. Empty — no file, or one that would
+        /// not parse, both warned about at the edge — is a machine that
+        /// fetches only what users ask.
+        universe: Vec<crate::MarketWeight>,
     },
 
     /// Fresh entropy for the machine's own generator.

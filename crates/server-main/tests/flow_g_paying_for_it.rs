@@ -215,6 +215,7 @@ fn a_machine_with_no_publishable_key_starts_no_subscription() {
                     stripe_webhook_secret: None,
                     stripe_publishable_key: None,
                     apple_environment: None,
+                    universe: vec![],
                 },
             },
             Event::FromStore {
@@ -722,6 +723,7 @@ fn a_machine_with_no_secret_believes_nothing() {
                     stripe_webhook_secret: None,
                     stripe_publishable_key: None,
                     apple_environment: None,
+                    universe: vec![],
                 },
             },
             Event::FromStore {

@@ -27,6 +27,7 @@ use crate::CallId;
 use crate::MarketFetch;
 use crate::MarketFetchStep;
 use crate::MarketWaiter;
+use crate::MarketWeight;
 use crate::RequestId;
 use crate::YahooFault;
 
@@ -71,6 +72,12 @@ pub const PLAN_SPANS_AT_MOST: usize = 3;
 /// not a chart, and serving it would be a read nobody draws.
 pub const BARS_ASKED_AT_MOST: u64 = 100_000;
 
+/// How long a symbol rests after the machine plans it, before its coverage
+/// is asked about again. The rest is what stops a fully fetched universe
+/// being re-read from the store in a tight loop, and it costs nothing: a
+/// person's request is never subject to it.
+pub const PLANNED_REST_SECS: u64 = 600;
+
 /// Market data fetching, from a window wanted to bars written down.
 #[derive(Debug)]
 pub struct StateMarkets {
@@ -89,6 +96,23 @@ pub struct StateMarkets {
     /// When the last fetch went out. `None` has never sent, and may
     /// immediately.
     last_sent: Option<Timestamp>,
+
+    /// The symbols the machine may fetch on its own initiative, each with
+    /// its share of the idle budget. Read off a file at startup; empty is a
+    /// machine that fetches only what users ask.
+    universe: Vec<MarketWeight>,
+
+    /// When each universe symbol was last planned, for the proportional
+    /// share: the machine picks the largest `weight × time since planned`,
+    /// so each symbol is chosen at a rate proportional to its weight and
+    /// none starves. Bounded by the universe, whose keys nobody outside
+    /// chooses.
+    planned: BTreeMap<String, Timestamp>,
+
+    /// The coverage read the machine has out for a plan of its own, if any:
+    /// the call, the symbol and interval it is about, and when it went out.
+    /// One at a time — the next candidate is picked once this one answers.
+    generating: Option<(CallId, String, BarInterval, Timestamp)>,
 }
 
 impl Default for StateMarkets {
@@ -98,11 +122,19 @@ impl Default for StateMarkets {
             next_fetch: 0,
             pace_secs: PACE_START_SECS,
             last_sent: None,
+            universe: Vec::new(),
+            planned: BTreeMap::new(),
+            generating: None,
         }
     }
 }
 
 impl StateMarkets {
+    /// What the process came up with: the universe file, parsed, or nothing.
+    pub fn started(&mut self, universe: Vec<MarketWeight>) {
+        self.universe = universe;
+    }
+
     /// A request wants `want` of a series, and `covered` is what the store
     /// already knows. Whatever is missing becomes fetches — new ones, or a
     /// seat on ones already going — and the answer is how many the request
@@ -116,6 +148,22 @@ impl StateMarkets {
         covered: &[Range<Timestamp>],
         now: Timestamp,
     ) -> u32 {
+        self.plan(Some(request_id), symbol, interval, want, covered, now);
+
+        self.seated(request_id)
+    }
+
+    /// Turn a want into fetches: new ones for what nobody is getting, and —
+    /// when there is a waiter — a seat on every one already going.
+    fn plan(
+        &mut self,
+        waiter: Option<RequestId>,
+        symbol: &str,
+        interval: BarInterval,
+        want: Range<Timestamp>,
+        covered: &[Range<Timestamp>],
+        now: Timestamp,
+    ) {
         // Only what a fetch could settle is worth planning over: the bar
         // still forming is not a fact yet, and history past the source's
         // floor is a question with no answer.
@@ -125,7 +173,7 @@ impl StateMarkets {
         let missing = coalesce(missing, interval);
 
         for span in missing {
-            for span in self.join_or_queue(request_id, symbol, interval, span, now) {
+            for span in self.join_or_queue(waiter, symbol, interval, span, now) {
                 self.fetches.insert(
                     self.next_fetch,
                     MarketFetch {
@@ -133,10 +181,13 @@ impl StateMarkets {
                         interval,
                         start: span.start,
                         end: span.end,
-                        waiters: vec![MarketWaiter {
-                            request_id,
-                            since: now,
-                        }],
+                        waiters: waiter
+                            .map(|request_id| MarketWaiter {
+                                request_id,
+                                since: now,
+                            })
+                            .into_iter()
+                            .collect(),
                         attempts: 0,
                         step: MarketFetchStep::Queued,
                     },
@@ -145,15 +196,13 @@ impl StateMarkets {
                 self.next_fetch += 1;
             }
         }
-
-        self.seated(request_id)
     }
 
-    /// Park `request_id` on every existing fetch of this series its span
+    /// Park the waiter on every existing fetch of this series its span
     /// overlaps, and hand back what no fetch is already getting.
     fn join_or_queue(
         &mut self,
-        request_id: RequestId,
+        waiter: Option<RequestId>,
         symbol: &str,
         interval: BarInterval,
         span: Range<Timestamp>,
@@ -172,7 +221,9 @@ impl StateMarkets {
 
             going.push(fetch.start..fetch.end);
 
-            if !fetch.waiters.iter().any(|w| w.request_id == request_id) {
+            if let Some(request_id) = waiter
+                && !fetch.waiters.iter().any(|w| w.request_id == request_id)
+            {
                 fetch.waiters.push(MarketWaiter {
                     request_id,
                     since: now,
@@ -416,6 +467,118 @@ impl StateMarkets {
         Some(waiters_of(fetch))
     }
 
+    /// The series the machine should plan next on its own initiative, if it
+    /// is time to plan one at all.
+    ///
+    /// Proportional share, deterministically: the candidate with the largest
+    /// `weight × time since last planned` wins, so each symbol is picked at
+    /// a rate proportional to its weight and even the lightest never
+    /// starves. Nothing is picked while a person's work is queued, while a
+    /// plan of the machine's own is already out, or for a symbol still
+    /// resting.
+    pub fn wants_plan(&self, now: Timestamp) -> Option<(String, BarInterval)> {
+        if self.universe.is_empty() || self.generating.is_some() {
+            return None;
+        }
+
+        // Only an idle turn is spent on the machine's own curiosity; a fetch
+        // already out does not count, since planning does not send.
+        if self
+            .fetches
+            .values()
+            .any(|fetch| matches!(fetch.step, MarketFetchStep::Queued))
+        {
+            return None;
+        }
+
+        let candidate = self
+            .universe
+            .iter()
+            .filter_map(|entry| {
+                let planned = self.planned.get(&entry.symbol).copied();
+                let rested = planned
+                    .map(|at| now.since(at).as_secs())
+                    .unwrap_or(u64::MAX);
+
+                if rested < PLANNED_REST_SECS {
+                    return None;
+                }
+
+                Some((entry.weight * rested as f64, &entry.symbol))
+            })
+            .max_by(|(a, a_symbol), (b, b_symbol)| {
+                // Ties go to the lexicographically earlier symbol, so a
+                // replay picks the same one.
+                a.total_cmp(b).then_with(|| b_symbol.cmp(a_symbol))
+            });
+
+        // Daily bars only: they have no history floor, never expire from the
+        // source, and cover the chart ranges that make a page feel instant.
+        // Speculative intraday is poor value — it ages out of Yahoo in days —
+        // so it stays demand-driven.
+        candidate.map(|(_, symbol)| (symbol.clone(), BarInterval::Day1))
+    }
+
+    /// The machine is planning `symbol`, on the coverage read out on
+    /// `call_id`. The symbol starts its rest now, failure included —
+    /// otherwise a store that keeps refusing is a store asked every turn.
+    pub fn planning(
+        &mut self,
+        symbol: String,
+        interval: BarInterval,
+        call_id: CallId,
+        now: Timestamp,
+    ) {
+        debug_assert!(self.generating.is_none(), "one plan of our own at a time");
+
+        self.planned.insert(symbol.clone(), now);
+        self.generating = Some((call_id, symbol, interval, now));
+    }
+
+    /// The coverage a plan of the machine's own waited on. `None` is a call
+    /// that is not ours. Whatever the symbol's history is missing becomes
+    /// fetches with nobody seated on them, from the epoch to now — the
+    /// planner clamps that to what is real.
+    pub fn generation_planned(
+        &mut self,
+        call_id: CallId,
+        covered: &[Range<Timestamp>],
+        now: Timestamp,
+    ) -> bool {
+        let Some((generating, ..)) = self.generating else {
+            return false;
+        };
+
+        if generating != call_id {
+            return false;
+        }
+
+        let Some((_, symbol, interval, _)) = self.generating.take() else {
+            unreachable!("the entry was just read")
+        };
+
+        self.plan(None, &symbol, interval, Timestamp::EPOCH..now, covered, now);
+
+        true
+    }
+
+    /// A plan's coverage read failed. `None` is a call that is not ours; the
+    /// symbol stays rested, and the machine moves on to the next candidate.
+    pub fn generation_failed(&mut self, call_id: CallId) -> bool {
+        match self.generating {
+            Some((generating, ..)) if generating == call_id => {
+                let Some((_, symbol, ..)) = self.generating.take() else {
+                    unreachable!("the entry was just read")
+                };
+
+                tracing::warn!(symbol, "a plan's coverage read failed; moving on");
+
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// The tick's housekeeping: give up on fetches that have been out too
     /// long, and answer waiters that have waited long enough with what is
     /// stored.
@@ -469,6 +632,19 @@ impl StateMarkets {
 
             fetch.waiters = kept;
             released.extend(over.into_iter().map(|waiter| waiter.request_id));
+        }
+
+        // A coverage read of the machine's own that never answers would
+        // block every later plan, so it is given up on like a lost fetch.
+        // The symbol stays rested; nothing is owed to anybody.
+        if let Some((_, _, _, since)) = self.generating
+            && now.since(since).as_secs() >= FETCH_GOOD_FOR_SECS
+        {
+            let Some((_, symbol, ..)) = self.generating.take() else {
+                unreachable!("the entry was just read")
+            };
+
+            tracing::warn!(symbol, "a plan's coverage read went quiet; moving on");
         }
 
         // One entry per seat, not per route: a route seated on two fetches

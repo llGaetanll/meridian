@@ -123,9 +123,20 @@ fn started(
     collect: PlaidCollect,
     subscriptions: Vec<src_postgres::StoredSubscription>,
 ) -> StateServer {
+    started_watching(collect, subscriptions, Vec::new())
+}
+
+/// The same, with a market universe the machine may fetch on its own. Most
+/// tests pass none: a machine with a universe spends idle ticks planning it,
+/// which is noise in every test that is not about that.
+pub fn started_watching(
+    collect: PlaidCollect,
+    subscriptions: Vec<src_postgres::StoredSubscription>,
+    universe: Vec<MarketWeight>,
+) -> StateServer {
     let mut state = StateServer::new();
 
-    state.handle_events(&process_up(collect), &mut Vec::new());
+    state.handle_events(&process_up_watching(collect, universe), &mut Vec::new());
 
     state.handle_events(
         &[Event::FromStore {
@@ -141,6 +152,10 @@ fn started(
 /// The first two events the runtime sends: the time, and what the process
 /// came up with.
 fn process_up(collect: PlaidCollect) -> [Event; 2] {
+    process_up_watching(collect, Vec::new())
+}
+
+fn process_up_watching(collect: PlaidCollect, universe: Vec<MarketWeight>) -> [Event; 2] {
     [
         Event::FromProcess {
             event: EventProcess::Tick { now: T0 },
@@ -152,6 +167,7 @@ fn process_up(collect: PlaidCollect) -> [Event; 2] {
                 stripe_webhook_secret: Some(STRIPE_WEBHOOK_SECRET.to_string()),
                 stripe_publishable_key: Some(STRIPE_PUBLISHABLE_KEY.to_string()),
                 apple_environment: Some(AppleEnvironment::Sandbox),
+                universe,
             },
         },
     ]

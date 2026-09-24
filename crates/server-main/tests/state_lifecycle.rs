@@ -38,6 +38,7 @@ fn a_server_asks_who_has_paid_as_it_starts() {
                 stripe_webhook_secret: None,
                 stripe_publishable_key: None,
                 apple_environment: None,
+                universe: vec![],
             },
         },
 

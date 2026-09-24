@@ -67,6 +67,12 @@ USER meridian
 
 COPY --from=builder /app/target/release/server-main /usr/local/bin/server-main
 
+# The symbols the server fetches on its own initiative, baked in so a
+# deployment warms its market cache without being asked. The variable can be
+# pointed elsewhere to override, or set empty to turn the behaviour off.
+COPY data/universe.txt /etc/meridian/universe.txt
+ENV MARKET_UNIVERSE=/etc/meridian/universe.txt
+
 # Matches `PORT` in crates/server-main/src/runtime_server.rs. Documentation
 # rather than a rule — compose is what actually publishes it.
 EXPOSE 8082

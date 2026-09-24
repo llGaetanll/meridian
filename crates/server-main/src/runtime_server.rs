@@ -179,6 +179,11 @@ impl RuntimeServer {
         let yahoo_client = runtime_yahoo::client()
             .map_err(|e| anyhow::anyhow!("the yahoo client would not build: {e}"))?;
 
+        // Optional, and warned about rather than fatal either way: a server
+        // with no universe still answers everything it is asked — what it
+        // gives up is fetching on its own initiative.
+        let universe = read_universe();
+
         // Read at startup like everything else, and not fatal: a key that is
         // not one is a server that cannot sell, which is worth saying out loud
         // rather than dying over.
@@ -358,6 +363,7 @@ impl RuntimeServer {
                 stripe_webhook_secret: stripe_webhook_secret.clone(),
                 stripe_publishable_key: stripe_publishable_key.clone(),
                 apple_environment,
+                universe,
             },
             EventProcess::Seeded { seed: fresh_seed() },
         ] {
@@ -1819,6 +1825,43 @@ impl RuntimeServer {
 
 /// 32 bytes from the operating system: the one place entropy enters, and it is
 /// at the edge — the machine has no source of its own, as it has no clock.
+/// The market universe, from the file `MARKET_UNIVERSE` names.
+///
+/// A fact from the edge, reported rather than acted on: what an empty
+/// universe means is the machine's decision. Empty on a missing variable, an
+/// unreadable file, or one that would not parse — each said out loud,
+/// because the symptom of all three is only a server that never fetches on
+/// its own.
+fn read_universe() -> Vec<crate::MarketWeight> {
+    let Ok(path) = std::env::var("MARKET_UNIVERSE") else {
+        tracing::warn!("MARKET_UNIVERSE is not set: fetching only what users ask");
+
+        return Vec::new();
+    };
+
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) => {
+            tracing::warn!(path, error = %e, "the universe file would not read");
+
+            return Vec::new();
+        }
+    };
+
+    match crate::market_weight::parse_universe(&text) {
+        Ok(universe) => {
+            tracing::info!(path, symbols = universe.len(), "market universe loaded");
+
+            universe
+        }
+        Err(e) => {
+            tracing::warn!(path, error = e, "the universe file would not parse");
+
+            Vec::new()
+        }
+    }
+}
+
 fn fresh_seed() -> [u8; 32] {
     rand::random()
 }

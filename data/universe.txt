@@ -1,0 +1,61 @@
+# The market universe: symbols the server may fetch on its own initiative,
+# one `SYMBOL WEIGHT` per line.
+#
+# A weight is a prior, not a reading — coarse relative dollar volume, good
+# enough to say SPY before a small-cap. Only ratios matter, and stale
+# rankings cost only a suboptimal fetch order. The machine picks the largest
+# `weight x time since planned`, so everything here is fetched eventually,
+# heavier symbols proportionally more often.
+#
+# The whole file is refused if any line does not parse, so a typo is a
+# startup warning rather than a silently thinner universe.
+
+SPY 100
+QQQ 80
+NVDA 90
+TSLA 70
+AAPL 50
+MSFT 45
+AMZN 40
+META 35
+AMD 30
+GOOGL 28
+GOOG 22
+AVGO 25
+NFLX 20
+PLTR 20
+IWM 25
+DIA 8
+SMH 15
+TQQQ 15
+SOXL 12
+TLT 15
+GLD 15
+HYG 8
+XLF 8
+EEM 8
+COIN 15
+MSTR 15
+MU 12
+INTC 10
+ORCL 10
+LLY 12
+JPM 12
+XOM 10
+BA 8
+V 8
+UNH 8
+BAC 8
+WMT 8
+CRM 8
+COST 8
+ARM 8
+DIS 6
+HD 6
+GS 5
+CAT 5
+PG 5
+JNJ 5
+MRK 5
+PFE 6
+ABBV 5

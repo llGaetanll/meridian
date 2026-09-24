@@ -2508,6 +2508,7 @@ impl StateServer {
                 stripe_webhook_secret,
                 stripe_publishable_key,
                 apple_environment,
+                universe,
             } => {
                 self.signup.started(*collect, web_origins.clone());
                 self.billing.started(
@@ -2515,6 +2516,7 @@ impl StateServer {
                     stripe_publishable_key.clone(),
                     *apple_environment,
                 );
+                self.markets.started(universe.clone());
 
                 actions.push(Action::ToStore {
                     call_id: STARTUP_READ,
@@ -2579,6 +2581,26 @@ impl StateServer {
 
                 self.bars_settled(settled, actions);
                 self.pump_markets(actions);
+
+                // Only once nothing else wants the turn: an idle machine
+                // spends it planning the universe symbol whose turn it is.
+                if !self.shutting_down()
+                    && let Some((symbol, interval)) = self.markets.wants_plan(self.now)
+                {
+                    let call_id = self.signup.call();
+
+                    self.markets
+                        .planning(symbol.clone(), interval, call_id, self.now);
+
+                    actions.push(Action::ToStore {
+                        call_id,
+                        action: ActionStore::LoadBarCoverage {
+                            source: BarSource::Yahoo,
+                            symbol,
+                            interval,
+                        },
+                    });
+                }
             }
         }
     }
@@ -2963,6 +2985,12 @@ impl StateServer {
                     return;
                 }
 
+                // A plan of the machine's own owes nothing to anybody; the
+                // symbol stays rested and the next candidate gets the turn.
+                if self.markets.generation_failed(call_id) {
+                    return;
+                }
+
                 let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
@@ -2979,6 +3007,14 @@ impl StateServer {
             // says is missing becomes fetches; nothing missing is a window
             // the store serves outright.
             EventStore::BarCoverageLoaded { spans } => {
+                // A plan of the machine's own: fetches with nobody seated on
+                // them, and no route to resume.
+                if self.markets.generation_planned(call_id, spans, self.now) {
+                    self.pump_markets(actions);
+
+                    return;
+                }
+
                 let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
