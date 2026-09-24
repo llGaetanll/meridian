@@ -237,10 +237,16 @@ body {
 .ui .menu.account-open .item.grave:hover,
 .ui .menu.account-open .account:hover { background: none; }
 
-/* Placed off the card's bottom edge, which is the one that holds still while
+/* The rows, and the rectangle that lights one of them, in a box of their own.
+   It carries no padding, so its bottom edge is the chip's bottom edge whether
+   the card is open or shut — and the card's padding, which is one of the
+   things that animates, cannot drag the rectangle around with it. */
+.ui .menu.account-open .menu-rows { position: relative; }
+
+/* Placed off the foot of those rows, which is the edge that holds still while
    the card grows — see the note on `Lit` in `shell.rs`. */
 .ui .menu.account-open .menu-pill {
-  position: absolute; left: 5px; right: 5px; bottom: 0;
+  position: absolute; left: 0; right: 0; bottom: 0;
   height: var(--h, 0);
   border-radius: 7px;
   background: var(--bg-raised);

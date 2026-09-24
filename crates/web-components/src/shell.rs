@@ -196,11 +196,16 @@ fn Sidebar(
 
 /// Where the lit rectangle stands, and what colour it is.
 ///
-/// Measured from the card's *bottom* edge rather than its top, because that is
-/// the edge that holds still: the card grows upward out of the sidebar's foot,
-/// so a row's distance from the top changes as it opens and its distance from
-/// the bottom does not. Anchoring the other way would put the rectangle under
-/// the chip at the wrong height for as long as the card was still growing.
+/// Measured upward from the foot of the rows rather than down from the top of
+/// the card, because that is the edge that holds still. The card grows upward
+/// out of the sidebar's foot, so a row's distance from the top changes for as
+/// long as it is opening and its distance from the bottom does not.
+///
+/// From the foot of the *rows*, though, and not of the card: the card's own
+/// padding is one of the things that grows, and an offset measured across it
+/// is an offset that is five pixels wrong until the growing stops. That is
+/// what `.menu-rows` is for — a box with no padding of its own, whose bottom
+/// edge is the chip's bottom edge in either state.
 #[derive(Clone, Copy, PartialEq)]
 struct Lit {
     /// Pixels from the row's bottom edge to the card's.
@@ -246,17 +251,17 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
     let travel = RwSignal::new(false);
 
     let stand = move |row: &web_sys::HtmlElement, grave: bool| {
-        let Some(card) = row.closest(".account-open").ok().flatten() else {
+        let Some(rows) = row.closest(".menu-rows").ok().flatten() else {
             return;
         };
 
         let row = row.get_bounding_client_rect();
-        let card = card.get_bounding_client_rect();
+        let rows = rows.get_bounding_client_rect();
 
         let arriving = lit.with_untracked(Option::is_none);
 
         lit.set(Some(Lit {
-            lift: card.bottom() - row.bottom(),
+            lift: rows.bottom() - row.bottom(),
             height: row.height(),
             grave,
         }));
@@ -317,6 +322,7 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
                 on:click=|event| event.stop_propagation()
                 on:pointerleave=move |_| lit.set(None)
             >
+                <div class="menu-rows">
                 <span
                     class="menu-pill"
                     class:off=move || lit.get().is_none()
@@ -386,6 +392,7 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
                 // card and nothing more — a rectangle appearing under it would
                 // be the card answering a pointer it has not been given.
                 <Chip who=who on_press=press lit=Signal::derive(move || open.get()) on_over=Box::new(on_row(false)) />
+                </div>
             </div>
         </div>
     }
