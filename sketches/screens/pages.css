@@ -247,14 +247,20 @@
 
 /* Connections */
 
+/* No rail: the page is a list of banks with the accounts under them, and a
+   column of shares beside it was the same page said twice. */
+.ui .page.solo { grid-template-columns: minmax(0, 1fr); }
+.ui .page.solo > .page-col { max-width: 880px; }
+
 /* The page's one action sits on the title's line rather than above it. */
 .ui .conn-page .hero-row { align-items: center; }
+
+/* The page's name is the heading here rather than a figure, so what the banks
+   come to is set under it rather than tucked over it as a label. */
+.ui .conn-page .hero .k { margin-top: 10px; }
 
 /* When a connection last synced, on the bank's own line — the same place the
    expired one puts the button that fixes it, because they answer the same
    question. */
 .ui .conn-when { margin-left: auto; font-size: 12.5px; color: var(--text-faint); }
-/* The page's name is the heading here rather than a figure, so the count under
-   it is set off from it rather than tucked under a label. */
-.ui .conn-page .hero .k { margin-top: 10px; }
 
