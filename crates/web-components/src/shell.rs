@@ -4,6 +4,7 @@ use client_state::ViewDock;
 use client_state::ViewDockItem;
 use client_state::ViewWho;
 use leptos::prelude::*;
+use leptos::wasm_bindgen::JsCast;
 
 use crate::theme;
 use web_ui::Glyph;
@@ -198,7 +199,19 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
     // changes it.
     let theme = RwSignal::new(theme_label(theme::is_light()));
 
-    let press = Callback::new(move |()| open.update(|open| *open = !*open));
+    // Where the lit rectangle stands, as a top and a height inside the card.
+    // Measured rather than counted, unlike the nav's, because these rows are
+    // not one height: four of them are a line of text and the last is a face.
+    let lit = RwSignal::new(None::<(i32, i32)>);
+
+    let press = Callback::new(move |()| {
+        open.update(|open| *open = !*open);
+
+        // Nothing is under the pointer at the moment the card opens, and a
+        // rectangle left standing where the last one was would slide out of a
+        // row nobody is on.
+        lit.set(None);
+    });
 
     // A press anywhere else closes it. A listener rather than a sheet of
     // nothing over the page: a page you cannot scroll because a menu is open
@@ -206,30 +219,43 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
     let close = window_event_listener(leptos::ev::click, move |_| open.set(false));
     on_cleanup(move || close.remove());
 
-    let shut = who.clone();
+    let settings = who.settings_label.clone();
+    let sign_out = who.sign_out_label.clone();
+    let delete = who.delete_label.clone();
 
-    move || match open.get() {
-        false => view! { <Chip who=shut.clone() on_press=press /> }.into_any(),
+    view! {
+        <div class="ui">
+            <div
+                class="menu account-open"
+                class:open=move || open.get()
+                on:click=|event| event.stop_propagation()
+                on:pointerleave=move |_| lit.set(None)
+            >
+                <span
+                    class="menu-pill"
+                    class:off=move || lit.get().is_none()
+                    style=move || match lit.get() {
+                        Some((top, height)) => format!("--y:{top}px;--h:{height}px"),
+                        None => String::new(),
+                    }
+                />
 
-        true => {
-            let who = who.clone();
-
-            view! {
-                <div class="ui">
-                    <div class="menu account-open" on:click=|event| event.stop_propagation()>
-                        <button
-                            class="item"
+                // The rows, in a grid that goes from no rows to one: the only
+                // way a height that is whatever the content is can be a height
+                // that animates.
+                <div class="options">
+                    <div class="in">
+                        <button class="item" on:pointerenter=stand(lit)
                             on:click=move |_| {
                                 open.set(false);
                                 on_screen.run(Screen::Account);
                             }
                         >
                             <Icon kind=IconKind::Settings />
-                            {who.settings_label.clone()}
+                            {settings}
                         </button>
 
-                        <button
-                            class="item"
+                        <button class="item" on:pointerenter=stand(lit)
                             on:click=move |_| theme.set(theme_label(theme::toggle() == "light"))
                         >
                             <Icon kind=IconKind::Theme />
@@ -239,22 +265,20 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
 
                         <div class="cut" />
 
-                        <button
-                            class="item"
+                        <button class="item" on:pointerenter=stand(lit)
                             on:click=move |_| {
                                 open.set(false);
                                 ui.run(EventUi::SignOutRequested);
                             }
                         >
                             <Icon kind=IconKind::SignOut />
-                            {who.sign_out_label.clone()}
+                            {sign_out}
                         </button>
 
                         // Opens the confirmation, which lives on the Account
                         // screen: there is no undo, and a popup over the
                         // ledger is not where that is asked.
-                        <button
-                            class="item grave"
+                        <button class="item grave" on:pointerenter=stand(lit)
                             on:click=move |_| {
                                 open.set(false);
                                 on_screen.run(Screen::Account);
@@ -262,16 +286,34 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
                             }
                         >
                             <Icon kind=IconKind::Trash />
-                            {who.delete_label.clone()}
+                            {delete}
                         </button>
 
                         <div class="cut" />
-
-                        <Chip who=who.clone() on_press=press />
                     </div>
                 </div>
-            }
-            .into_any()
+
+                <Chip who=who on_press=press lit=lit />
+            </div>
+        </div>
+    }
+}
+
+/// What a row does when the pointer arrives on it: says where it is, so the
+/// lit rectangle can go there.
+///
+/// Read off the element rather than counted from an index, and read at the
+/// moment the pointer lands rather than kept — the card is still growing when
+/// the first of these fires, and a measurement taken earlier would be of a
+/// row that has since moved.
+fn stand(lit: RwSignal<Option<(i32, i32)>>) -> impl Fn(leptos::ev::PointerEvent) + 'static {
+    move |event| {
+        let row = event
+            .current_target()
+            .and_then(|target| target.dyn_into::<web_sys::HtmlElement>().ok());
+
+        if let Some(row) = row {
+            lit.set(Some((row.offset_top(), row.offset_height())));
         }
     }
 }
@@ -282,10 +324,19 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
 /// sidebar, and again inside the card it opens, where the only difference is
 /// the padding `.account-open .account` takes off it.
 #[component]
-fn Chip(who: ViewWho, on_press: Callback<()>) -> impl IntoView {
+fn Chip(
+    who: ViewWho,
+    on_press: Callback<()>,
+    #[prop(optional)] lit: Option<RwSignal<Option<(i32, i32)>>>,
+) -> impl IntoView {
     view! {
         <div
             class="account"
+            on:pointerenter=move |event| {
+                if let Some(lit) = lit {
+                    stand(lit)(event);
+                }
+            }
             on:click=move |event| {
                 // Kept off the window listener that closes the card, which
                 // would otherwise close it in the press that opened it.
