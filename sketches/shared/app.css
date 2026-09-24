@@ -87,7 +87,6 @@ body {
   border-radius: var(--r-md);
   cursor: pointer;
 }
-.account:hover { background: var(--bg-raised); }
 .account-id { min-width: 0; }
 .account-name {
   font-size: 13.5px; font-weight: 600; line-height: 1.25;
@@ -100,14 +99,38 @@ body {
 .account .more { margin-left: auto; color: var(--text-faint); flex: none; }
 .account .more svg { width: 16px; height: 16px; }
 
-/* Open: the card takes the chip in rather than standing above it. See the
-   note in screens/shell.css. */
-.account-open .account {
+/* Open.
+
+   The chip does not move. Every pixel it printed on it prints on still — the
+   face, the name and the address are exactly where they were — and what
+   changed is that a card has grown around them.
+
+   Which is what the negative margin is for. The card keeps the five pixels of
+   ground every menu has, so its rows can take their wash inside of it, and it
+   takes that ground *outwards*: left, right and bottom come off the margin by
+   exactly what the border and the padding add back. A card that took the room
+   inwards would be a card the chip moved inwards by, and a thing you pressed
+   should not jump out from under your finger.
+
+   In the flow rather than over it, so it grows upward off the `margin-top:
+   auto` that already pins the foot down.
+
+   Written against `.ui .menu` rather than the class alone, because that is
+   what the sheet styles it as and the sheet is read after this file. */
+.ui .menu.account-open {
+  margin: 0 -5px -5px;
+  border-color: var(--border);
+}
+/* Inside the card the chip is a row among rows: no frame of its own, and the
+   rows' corner, so what lights under the pointer is one shape throughout. */
+.ui .menu.account-open .account {
   border: 0;
   border-radius: 7px;
-  padding: 7px 9px;
-  background: var(--bg-raised);
+  background: none;
 }
+/* One pixel wider than a menu row's usual padding, which is what lines the
+   glyphs up with the face below them. */
+.ui .menu.account-open .item { padding: 9px 11px; }
 
 .avatar {
   position: relative;
