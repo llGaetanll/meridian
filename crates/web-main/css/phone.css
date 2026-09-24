@@ -69,6 +69,12 @@
 .phone-shell .page-title span { animation: phone-in 200ms ease-out; }
 @keyframes phone-in { from { opacity: 0; } }
 
+@media (prefers-reduced-motion: reduce) {
+  .phone-page,
+  .phone-shell .page-title span { animation: none; }
+  .band-slot, .phone-scroll { transition: none; }
+}
+
 /* What every page shares: the figure it opens on, and the sections under
    it. */
 

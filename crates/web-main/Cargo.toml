@@ -27,4 +27,4 @@ web-components = { path = "../web-components" }
 
 [dependencies.web-sys]
 version = "0.3"
-features = ["DomRect", "HtmlElement", "Window", "Location", "Storage"]
+features = ["DomRect", "HtmlElement", "MediaQueryList", "Window", "Location", "Storage"]

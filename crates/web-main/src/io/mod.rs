@@ -1,5 +1,6 @@
 //! Talking to the outside world. No reactive state lives here.
 
+pub mod calm;
 pub mod clock;
 mod failure;
 mod link_outcome;
