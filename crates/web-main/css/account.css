@@ -6,10 +6,12 @@
    decides what the page says, and no violet, because there is no
    thing-you-are-here-to-do on it. */
 
-.account-page { max-width: 640px; padding-top: 30px; }
+/* No rail, but its column stays empty rather than being given back, so the
+   text starts and ends where it does on every other page. */
+.ui .account-page > .page-col { padding-top: 30px; }
 
 /* The first part of the page has nothing above it to be ruled off from. */
-.account-page > .sec:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.account-page .sec:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 
 .account-page .banks .row + .row { border-top: 1px solid var(--divider); }
 .account-page .banks-empty { font-size: 13px; color: var(--text-faint); }
@@ -25,28 +27,3 @@
    a name is a few words and a box the width of a page invites a sentence. */
 .account-page .account-name { display: flex; align-items: center; gap: 10px; }
 .account-page .account-name .field { flex: 1; max-width: 340px; }
-
-/* The delete confirmation. A placeholder over the page until the designed
-   screen replaces it — the board draws this as a pushed screen. */
-.dialog-overlay {
-  position: fixed; inset: 0; z-index: 40;
-  display: flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--sheet) 68%, transparent);
-}
-.dialog {
-  width: min(420px, calc(100vw - 48px));
-  padding: 22px 24px;
-  background: var(--bg-panel);
-  border: 1px solid var(--divider);
-  border-radius: 12px;
-}
-.dialog h2 { margin: 0 0 8px; font-size: 16px; }
-.dialog p { margin: 0 0 14px; font-size: 13px; color: var(--text-muted); }
-.dialog .dialog-error { color: var(--down); }
-.dialog-code {
-  width: 100%; margin: 0 0 14px; padding: 10px 12px;
-  font-size: 18px; letter-spacing: 6px; text-align: center;
-  color: var(--text); background: var(--bg-input);
-  border: 1px solid var(--divider); border-radius: 8px;
-}
-.dialog-actions { display: flex; gap: 10px; justify-content: flex-end; }

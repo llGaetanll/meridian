@@ -10,6 +10,7 @@ use client_state::ViewAccountDelete;
 use client_state::ViewAccountName;
 use leptos::prelude::*;
 use web_components::BankList;
+use web_components::Confirm;
 use web_components::Sec;
 use web_ui::Glyph;
 
@@ -29,33 +30,35 @@ pub fn AccountPage(view: Signal<ViewAccount>) -> impl IntoView {
     let name = Signal::derive(move || view.with(|v| v.name.clone()));
 
     view! {
-        <div class="account-page">
-            {move || name.get().map(|name| view! { <NameSection name=name /> })}
+        <div class="page account-page">
+            <div class="page-col">
+                {move || name.get().map(|name| view! { <NameSection name=name /> })}
 
-            <Sec title=text(|v| &v.banks_label)>
-                <Show
-                    when=move || view.with(|v| v.banks_empty.is_none())
-                    fallback=move || view! { <div class="banks-empty">{empty}</div> }
-                >
-                    <BankList banks=banks />
-                </Show>
-            </Sec>
-
-            <Sec title=text(|v| &v.session_label)>
-                <div class="session-actions">
-                    <button class="btn" on:click=move |_| runtime.ui(EventUi::SignOutRequested)>
-                        {text(|v| &v.sign_out_label)}
-                    </button>
-                    <button
-                        class="btn"
-                        on:click=move |_| runtime.ui(EventUi::DeleteAccountRequested)
+                <Sec title=text(|v| &v.banks_label)>
+                    <Show
+                        when=move || view.with(|v| v.banks_empty.is_none())
+                        fallback=move || view! { <div class="banks-empty">{empty}</div> }
                     >
-                        {text(|v| &v.delete_label)}
-                    </button>
-                </div>
-            </Sec>
+                        <BankList banks=banks />
+                    </Show>
+                </Sec>
 
-            <div class="build">{text(|v| &v.build)}</div>
+                <Sec title=text(|v| &v.session_label)>
+                    <div class="session-actions">
+                        <button class="btn" on:click=move |_| runtime.ui(EventUi::SignOutRequested)>
+                            {text(|v| &v.sign_out_label)}
+                        </button>
+                        <button
+                            class="btn"
+                            on:click=move |_| runtime.ui(EventUi::DeleteAccountRequested)
+                        >
+                            {text(|v| &v.delete_label)}
+                        </button>
+                    </div>
+                </Sec>
+
+                <div class="build">{text(|v| &v.build)}</div>
+            </div>
 
             {move || delete.get().map(|confirm| view! { <DeleteDialog confirm=confirm /> })}
         </div>
@@ -96,9 +99,9 @@ fn NameSection(name: ViewAccountName) -> impl IntoView {
                     </span>
                 </span>
 
-                {name
-                    .action
-                    .map(|label| view! { <button type="submit" class="btn">{label}</button> })}
+                <button type="submit" class="btn" class:dead=!name.can_save disabled=!name.can_save>
+                    {name.save_label}
+                </button>
             </form>
         </Sec>
     }
@@ -106,63 +109,14 @@ fn NameSection(name: ViewAccountName) -> impl IntoView {
 
 /// The delete confirmation, over the page.
 ///
-/// A placeholder rather than a design: the board rules out an alert for this
-/// and draws a pushed screen (`sketches/mobile/account.html`), and the
-/// design-language sheet has no dialog. This overlay stands in until that
-/// pass; every word on it comes from the machine.
+/// The shared dialog, given the runtime the phone's pages take from the
+/// context: the settings window draws the same one for the same step of the
+/// same flow.
 #[component]
 pub fn DeleteDialog(confirm: ViewAccountDelete) -> impl IntoView {
     let runtime = expect_context::<RuntimeApp>();
 
-    let has_code = confirm.code.is_some();
+    let ui = Callback::new(move |event: EventUi| runtime.ui(event));
 
-    view! {
-        <div class="dialog-overlay">
-            <div class="dialog">
-                <h2>{confirm.title}</h2>
-                <p>{confirm.body}</p>
-
-                {confirm.code.map(|digits| view! {
-                    <input
-                        class="dialog-code"
-                        type="text"
-                        inputmode="numeric"
-                        autocomplete="one-time-code"
-                        prop:value=digits
-                        on:input=move |event| runtime.ui(EventUi::DeleteCodeTyped {
-                            digits: event_target_value(&event),
-                        })
-                    />
-                })}
-
-                {confirm.error.map(|error| view! { <p class="dialog-error">{error}</p> })}
-
-                <div class="dialog-actions">
-                    // The loud button is the safe one.
-                    {confirm.cancel_label.map(|label| view! {
-                        <button
-                            class="btn primary"
-                            on:click=move |_| runtime.ui(EventUi::DeleteCancelled)
-                        >
-                            {label}
-                        </button>
-                    })}
-                    {confirm.confirm_label.map(|label| view! {
-                        <button
-                            class="btn"
-                            on:click=move |_| runtime.ui(match has_code {
-                                true => EventUi::DeleteCodeSubmitted,
-                                false => EventUi::DeleteConfirmed,
-                            })
-                        >
-                            {label}
-                        </button>
-                    })}
-                    {confirm.busy.then(|| view! {
-                        <button class="btn busy" disabled>"One moment…"</button>
-                    })}
-                </div>
-            </div>
-        </div>
-    }
+    view! { <Confirm confirm=confirm ui=ui /> }
 }

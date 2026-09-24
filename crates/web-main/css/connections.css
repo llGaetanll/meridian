@@ -1,0 +1,43 @@
+/* Connections.
+
+   One column and one block per bank login, with the accounts it brings in
+   under it. The rows are the design language's own row, at its flat weight:
+   a name, the last four digits and the kind under it, and what the account
+   comes to on the right. Everything else on the page — the heading, the
+   actions, the empty line — is a piece the app already has, and nothing here
+   restyles one. */
+
+/* The eye and Add connection, at the right of the heading. */
+.ui .hero-acts { display: flex; align-items: center; gap: 12px; }
+
+/* No rail: a column of shares beside a list of the banks they name was the
+   same page said twice. The rail's column is still there and still empty, so
+   the text sits where it does on every other page rather than reflowing into
+   the room the rail would have taken. */
+
+/* The page's one pair of actions sits on the heading's line rather than above
+   it, and the heading is a name rather than a figure, so the line it is set
+   on is centred rather than hung from the top. */
+.ui .conn-page .hero-row { align-items: center; }
+
+/* The page's name is the heading here, so what the banks come to is set under
+   it rather than tucked over it as a label. */
+.ui .conn-page .hero .k { margin-top: 10px; }
+
+.ui .conn { margin-top: 30px; }
+.ui .accounts > .conn:first-child { margin-top: 0; }
+.ui .conn-head { display: flex; align-items: center; gap: 11px; padding-bottom: 4px; }
+.ui .conn-name { font-size: 13.5px; font-weight: 600; color: var(--text-muted); }
+/* The end of a bank's line: when it last synced, or the sign-in it wants,
+   and the way to remove it. One box rather than two auto margins, which
+   would share the free space between them and stand the two apart. */
+.ui .conn-acts { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+
+/* When a connection last synced, on the bank's own line — the same place the
+   expired one puts the button that fixes it, because they answer the same
+   question. */
+.ui .conn-when { font-size: 12.5px; color: var(--text-faint); }
+
+/* Floor under the last block, so it does not end flush against the foot of
+   the scroller. */
+.ui .accounts { padding-bottom: 6px; }

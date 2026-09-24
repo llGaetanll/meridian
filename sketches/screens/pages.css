@@ -208,7 +208,10 @@
 .ui .accounts > .conn:first-child { margin-top: 0; }
 .ui .conn-head { display: flex; align-items: center; gap: 11px; padding-bottom: 4px; }
 .ui .conn-name { font-size: 13.5px; font-weight: 600; color: var(--text-muted); }
-.ui .conn-head .btn { margin-left: auto; }
+/* The end of a bank's line: when it last synced, or the sign-in it wants,
+   and the way to remove it. One box rather than two auto margins, which
+   would share the free space between them and stand the two apart. */
+.ui .conn-acts { display: flex; align-items: center; gap: 4px; margin-left: auto; }
 
 .ui .acct {
   display: grid;
@@ -239,8 +242,10 @@
 
 /* Account */
 
-.account-page { max-width: 640px; padding-top: 30px; }
-.account-page > .sec:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+/* No rail, but its column stays empty rather than being given back, so the
+   text starts and ends where it does on every other page. */
+.ui .account-page > .page-col { padding-top: 30px; }
+.account-page .sec:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 .account-page .banks .row + .row { border-top: 1px solid var(--divider); }
 .account-page .banks-empty { font-size: 13px; color: var(--text-faint); }
 .account-page .build { margin-top: 36px; font-size: 11.5px; color: var(--text-faint); }
@@ -248,9 +253,9 @@
 /* Connections */
 
 /* No rail: the page is a list of banks with the accounts under them, and a
-   column of shares beside it was the same page said twice. */
-.ui .page.solo { grid-template-columns: minmax(0, 1fr); }
-.ui .page.solo > .page-col { max-width: 880px; }
+   column of shares beside it was the same page said twice. The rail's column
+   is still there and still empty, so the text sits where it does on every
+   other page. */
 
 /* The page's one action sits on the title's line rather than above it. */
 .ui .conn-page .hero-row { align-items: center; }
@@ -262,5 +267,5 @@
 /* When a connection last synced, on the bank's own line — the same place the
    expired one puts the button that fixes it, because they answer the same
    question. */
-.ui .conn-when { margin-left: auto; font-size: 12.5px; color: var(--text-faint); }
+.ui .conn-when { font-size: 12.5px; color: var(--text-faint); }
 
