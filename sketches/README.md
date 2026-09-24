@@ -100,6 +100,30 @@ boards share. To move a screen, change the one `left`/`top` on its node — no
 path needs redrawing. To add an arrow, add an entry to the `drawFlow` call at
 the foot of the page.
 
+## The two themes
+
+The dark theme is the app's and is what anything gets if it says nothing; the
+light one arrives on `data-theme="light"` — on `<html>`, or on any one thing in
+the page.
+
+The boards carry a switch at the bottom-right corner that turns one into the
+other and remembers which you chose: `shared/theme-switch.js`, a thing for
+looking at sketches with rather than a control of the app's.
+`design-language.html` has no switch and needs none — it draws every control
+twice, dark and light side by side, with the words about it on the page's own
+black. Two controls one glance apart is the test; a theme you have to switch
+into is a theme you compare from memory.
+
+Both live in `shared/theme.css`, in three parts: the Tailwind ramps, the roles
+(`--bg`, `--text`, `--accent-text`, `--up`, …), and the shape. **A screen only
+ever names a role.** `--violet-300` is a word in violet on black and a
+watermark on paper, so a shade is only ever right in one of the two themes, and
+a theme is nothing but the roles set a second time.
+
+`crates/web-main/css/theme.css` is a copy of that file and must stay one. The
+web app and the site have the light theme's colours but nothing yet that asks
+for them: neither draws a switch, and neither reads the system's preference.
+
 ## The rest
 
 - `design-language.html` — every control the app draws, once, with a note on

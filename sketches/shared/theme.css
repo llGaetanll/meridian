@@ -1,6 +1,35 @@
-/* All colors live here. Swap these to re-theme every sketch. */
+/* All colors live here. Swap these to re-theme every sketch.
 
-:root {
+   Two themes. The dark one is the app's, and it is what `:root` carries, so a
+   page that says nothing about a theme gets it. The light one is the same
+   design in a lit room, and it arrives on `<html data-theme="light">`.
+
+   A theme can be asked for by name anywhere, not only on the page: any element
+   carrying `data-theme` re-sets the roles for everything inside it, which is
+   how the design language draws each control twice, side by side.
+
+   The file is in three parts:
+
+     The ramps     Tailwind's shades, written down once so a colour further on
+                   can be named rather than spelled. Never used directly by a
+                   screen: a screen that reaches for `--violet-300` has picked
+                   a shade, and a shade is only right in one of the two themes.
+
+     The roles     What a colour is for — ground, text, accent, up, down. This
+                   is the whole vocabulary a screen is allowed. Every one of
+                   them is set twice, once per theme, and the second setting is
+                   the only thing a theme is.
+
+     The shape     Radii and widths, which the light has no opinion about.
+
+   The grounds are not the ramp. In the dark they are a stack of near-blacks
+   warmed a little towards blue; in the light they are a stack of near-whites
+   cooled the same way, and the order flips: the page is the grey one and a
+   panel is the white one, because a card in a lit room is paper on a desk
+   rather than a light in a cellar. */
+
+:root,
+[data-theme="dark"] {
   /* Tailwind slate */
   --slate-950: #020617;
   --slate-900: #0f172a;
@@ -23,15 +52,20 @@
   /* Tailwind lime / rose */
   --lime-400: #a3e635;
   --lime-500: #84cc16;
+  --lime-700: #4d7c0f;
   --rose-400: #fb7185;
   --rose-500: #f43f5e;
+  --rose-600: #e11d48;
 
   /* Tailwind sky / amber / teal — categorical series only */
   --sky-400: #38bdf8;
+  --sky-600: #0284c7;
   --amber-300: #fcd34d;
+  --amber-600: #d97706;
   --teal-300: #5eead4;
+  --teal-600: #0d9488;
 
-  /* Semantic roles */
+  /* Ground */
   --bg: #01030a;                /* page */
   --bg-panel: #050a0f;          /* cards, searchbar, chips, controls */
   --bg-raised: #0b1118;         /* hover — one soft step up */
@@ -40,15 +74,32 @@
   --divider: #161e26;           /* row separators inside panels */
   --border-strong: #1d2731;
   --bars: #27323f;              /* volume bars, range-selector history */
+  --btn-edge: var(--bg-raised);  /* the line a quiet button stands on */
+  --sheet: #0a0d12;             /* the sketch boards' own ground, not the app's */
 
+  /* Text. Four weights of presence, not four greys: what you read, what is
+     said beside it, what labels it, and what is only there to be found. */
   --text: var(--slate-100);
+  --text-soft: var(--slate-300);
   --text-muted: var(--slate-400);
   --text-faint: var(--slate-500);
 
+  /* Accent.
+
+     `--accent-text` is the violet a word is lettered in, which is not the
+     violet a button is filled with: one has to carry on the ground, the other
+     has to carry white. `--accent-mix` is the shade every tint and every lit
+     border is mixed from, and `--accent-lift` is what the primary button is
+     lit from underneath. They move in opposite directions between the themes,
+     which is exactly why none of them is a ramp name at the point of use. */
   --accent: var(--violet-500);
   --accent-soft: var(--violet-400);
   --accent-strong: var(--violet-600);
+  --accent-text: var(--violet-300);
+  --accent-mix: var(--violet-400);
+  --accent-lift: var(--violet-300);
   --accent-tint: rgba(139, 92, 246, 0.14);
+  --on-accent: #fff;
 
   /* Categorical series — one per portfolio. Never carries up/down meaning. */
   --series-1: var(--violet-400);
@@ -62,6 +113,16 @@
   --down: var(--rose-400);
   --down-tint: rgba(251, 113, 133, 0.14);
 
+  /* Something is wrong, and something wants doing. Neither is `--down`: a
+     falling price is not a fault. */
+  --bad: var(--rose-400);
+  --warn: var(--amber-300);
+
+  /* Two shadows: under the thing that sits above the page, and under the one
+     thing that floats clear of it. */
+  --shadow-pop: 0 10px 28px rgba(0, 0, 0, 0.5);
+  --shadow-lift: 0 30px 80px rgba(0, 0, 0, 0.6);
+
   /* Shape */
   --r-sm: 8px;
   --r-md: 10px;
@@ -70,4 +131,70 @@
 
   --sidebar-w: 300px;
   --rail-w: var(--sidebar-w);
+}
+
+/* The light theme.
+
+   Only roles. Nothing here renames a ramp, so `--violet-300` still means what
+   it says and the two themes can be read side by side.
+
+   Three things are not an inversion:
+
+     The greens and reds move a long way down their ramps. Lime-400 is a
+     highlight on black and a smudge on paper, and the same is true of every
+     400 in the palette — on white a colour has to be dark to be a colour at
+     all.
+
+     The accent splits. The fill goes one step darker so white sits on it; the
+     lettering goes darker still, because violet-300 on paper is not a word,
+     it is a watermark.
+
+     The tints stay at roughly the alpha they had. A 14% violet over near-black
+     and a 10% violet over white are the same amount of hint, and raising the
+     light one to match the dark one's number would print a lilac block. */
+
+[data-theme="light"] {
+  --bg: #f6f7f9;
+  --bg-panel: #ffffff;
+  --bg-raised: #f1f3f7;
+  --bg-input: #e9edf3;
+  --border: #e2e7ee;
+  --divider: #edf0f5;
+  --border-strong: #d2d9e3;
+  --bars: #c5cdda;
+  --btn-edge: #ccd4e0;
+  --sheet: #eceef2;
+
+  /* Two steps apart, the same as the dark's, walked the other way. Slate-500
+     is the hinge: faint is the same grey in both themes, because the middle of
+     the ramp is the one shade that carries on black and on paper alike. */
+  --text: #0d1420;
+  --text-soft: var(--slate-800);
+  --text-muted: var(--slate-600);
+  --text-faint: var(--slate-500);
+
+  --accent: var(--violet-600);
+  --accent-soft: var(--violet-500);
+  --accent-strong: var(--violet-700);
+  --accent-text: var(--violet-700);
+  --accent-mix: var(--violet-600);
+  --accent-lift: var(--violet-400);
+  --accent-tint: rgba(124, 58, 237, 0.10);
+
+  --series-1: var(--violet-600);
+  --series-2: var(--sky-600);
+  --series-3: var(--amber-600);
+  --series-4: var(--teal-600);
+  --series-rest: var(--slate-400);
+
+  --up: var(--lime-700);
+  --up-tint: rgba(77, 124, 15, 0.12);
+  --down: var(--rose-600);
+  --down-tint: rgba(225, 29, 72, 0.10);
+
+  --bad: var(--rose-600);
+  --warn: var(--amber-600);
+
+  --shadow-pop: 0 10px 28px rgba(13, 20, 32, 0.13);
+  --shadow-lift: 0 30px 80px rgba(13, 20, 32, 0.18);
 }

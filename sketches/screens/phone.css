@@ -20,7 +20,7 @@
 .p-back { display: flex; align-items: center; flex: none; height: 44px; padding: 4px 18px 0; }
 .p-col { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 6px 24px 30px; }
 .p-fill { flex: 1; min-height: 10px; }
-.p-mark { display: block; flex: none; width: 50px; height: 50px; margin-bottom: 20px; color: var(--violet-300); }
+.p-mark { display: block; flex: none; width: 50px; height: 50px; margin-bottom: 20px; color: var(--accent-text); }
 .p-col .say-icon.needs { width: 36px; height: 36px; }
 
 /* The first sync's bar: `Track`, a share on a row rule. */
@@ -92,7 +92,7 @@
 .p-tx .t { flex: 1; min-width: 0; }
 .p-tx .nm { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .p-tx .cat { display: flex; gap: 7px; margin-top: 5px; font-size: 12.5px; font-weight: 500; color: var(--text-muted); }
-.p-tx .cat .sep { color: var(--slate-700); }
+.p-tx .cat .sep { color: var(--bars); }
 .p-tx .cat .pend { color: var(--text-faint); }
 .p-tx .amt { font-size: 13.5px; font-weight: 600; }
 .p-tx .amt.in { color: var(--up); }
@@ -144,5 +144,5 @@
 .p-bank .t { flex: 1; min-width: 0; }
 .p-bank .nm { font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .p-bank .sub { margin-top: 2px; font-size: 12.5px; color: var(--text-faint); }
-.p-bank.needs .sub { color: var(--amber-300); }
+.p-bank.needs .sub { color: var(--warn); }
 .p-build { padding-top: 26px; text-align: center; font-size: 11.5px; color: var(--text-faint); }

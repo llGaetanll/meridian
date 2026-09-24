@@ -4,7 +4,7 @@
 
 body {
   padding: 36px 24px 80px;
-  background: #0a0d12;
+  background: var(--sheet);
   color: var(--text);
   font-family: Inter, "Inter var", ui-sans-serif, -apple-system, system-ui, sans-serif;
   font-size: 15px; line-height: 1.5; letter-spacing: -0.006em;
@@ -21,7 +21,7 @@ body {
   padding-left: 4px;
   font-size: 12px; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.09em;
-  color: var(--violet-400);
+  color: var(--accent-mix);
 }
 
 .side { display: flex; align-items: flex-start; gap: 28px; }

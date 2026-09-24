@@ -25,7 +25,7 @@ body {
   padding: 56px 32px 120px;
 }
 
-.page { max-width: 940px; margin: 0 auto; display: flex; flex-direction: column; gap: 52px; }
+.page { max-width: 1216px; margin: 0 auto; display: flex; flex-direction: column; gap: 52px; }
 
 .lede h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.03em; }
 .lede p { color: var(--text-muted); margin-top: 12px; max-width: 66ch; }
@@ -45,13 +45,31 @@ body {
   border-bottom: 1px solid var(--border-strong);
 }
 
-.entry { display: flex; align-items: flex-start; gap: 32px; }
+.entry { display: flex; align-items: flex-start; gap: 30px; }
+
+/* Every control twice, dark then light, and the page's own black under the
+   words beside them. A theme you have to switch into is a theme you compare
+   from memory; these two are one glance apart, which is the only way a colour
+   that works in one and not the other is caught. */
+.pair { display: flex; gap: 18px; flex: none; }
+.cols {
+  display: flex; gap: 18px;
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--text-faint);
+}
+.cols span { width: 322px; }
+
 .demo {
-  width: 340px; flex: none;
+  width: 322px; flex: none;
   padding: 20px;
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
   background: var(--bg-panel);
+  /* The colour a control inherits when it sets none of its own — a title, a
+     figure. Inherited colour is the page's computed one, not the theme the
+     card asks for, so each card has to say it again. */
+  color: var(--text);
 }
 .demo.inline { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .entry .body { flex: 1; min-width: 0; padding-top: 2px; }
@@ -110,6 +128,10 @@ body {
     <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.8a4 4 0 0 1 8 0v2.7"/></symbol>
     <symbol id="i-bank" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9.5 9-5.5 9 5.5"/><line x1="4" y1="20" x2="20" y2="20"/><line x1="6.5" y1="12" x2="6.5" y2="17"/><line x1="12" y1="12" x2="12" y2="17"/><line x1="17.5" y1="12" x2="17.5" y2="17"/></symbol>
     <symbol id="i-ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4 12.5 11.5"/><path d="M18.5 14v5.5a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1H10"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
+    <symbol id="i-theme" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-signout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20h4"/><polyline points="15.5 8 19.5 12 15.5 16"/><line x1="19.5" y1="12" x2="9.5" y2="12"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5h15"/><path d="M9 6.5V4.8h6v1.7"/><path d="M6.5 6.5 7.4 20h9.2l.9-13.5"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 5 8 12 15 19"/></symbol>
     <symbol id="i-tick-c" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="16 9.5 10.8 15 8 12.4"/></symbol>
     <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="7.5" x2="12" y2="13"/><circle cx="12" cy="16.5" r="0.6" fill="currentColor"/></symbol>
@@ -150,19 +172,33 @@ body {
     </p>
   </div>
 
+  <div class="cols"><span>Dark</span><span>Light</span></div>
+
   <div class="group" id="colour">
     <h2>Colour</h2>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div class="swatches">
-          <div class="swatch"><i style="background:var(--violet-400)"></i><span class="name">Violet</span><span class="job">— you</span></div>
-          <div class="swatch"><i style="background:var(--lime-400)"></i><span class="name">Lime</span><span class="job">— money in</span></div>
-          <div class="swatch"><i style="background:var(--rose-400)"></i><span class="name">Rose</span><span class="job">— money owed</span></div>
+          <div class="swatch"><i style="background:var(--accent)"></i><span class="name">Violet</span><span class="job">— you</span></div>
+          <div class="swatch"><i style="background:var(--up)"></i><span class="name">Lime</span><span class="job">— money in</span></div>
+          <div class="swatch"><i style="background:var(--down)"></i><span class="name">Rose</span><span class="job">— money owed</span></div>
           <div class="swatch"><i style="background:var(--text)"></i><span class="name">Text</span><span class="job">— what you read</span></div>
           <div class="swatch"><i style="background:var(--text-muted)"></i><span class="name">Muted</span><span class="job">— context</span></div>
           <div class="swatch"><i style="background:var(--text-faint)"></i><span class="name">Faint</span><span class="job">— labels, headings</span></div>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="swatches">
+          <div class="swatch"><i style="background:var(--accent)"></i><span class="name">Violet</span><span class="job">— you</span></div>
+          <div class="swatch"><i style="background:var(--up)"></i><span class="name">Lime</span><span class="job">— money in</span></div>
+          <div class="swatch"><i style="background:var(--down)"></i><span class="name">Rose</span><span class="job">— money owed</span></div>
+          <div class="swatch"><i style="background:var(--text)"></i><span class="name">Text</span><span class="job">— what you read</span></div>
+          <div class="swatch"><i style="background:var(--text-muted)"></i><span class="name">Muted</span><span class="job">— context</span></div>
+          <div class="swatch"><i style="background:var(--text-faint)"></i><span class="name">Faint</span><span class="job">— labels, headings</span></div>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Three jobs, and three greys</h3>
@@ -184,10 +220,70 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo inline">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
+        <div class="swatches">
+          <div class="swatch"><i style="background:var(--bg)"></i><span class="name">Page</span><span class="job">— the ground</span></div>
+          <div class="swatch"><i style="background:var(--bg-panel)"></i><span class="name">Panel</span><span class="job">— a card on it</span></div>
+          <div class="swatch"><i style="background:var(--bg-raised)"></i><span class="name">Raised</span><span class="job">— hover</span></div>
+          <div class="swatch"><i style="background:var(--bg-input)"></i><span class="name">Inset</span><span class="job">— a well you type in</span></div>
+          <div class="swatch"><i style="background:var(--border)"></i><span class="name">Border</span><span class="job">— an outline, a gridline</span></div>
+          <div class="swatch"><i style="background:var(--accent-text)"></i><span class="name">Accent text</span><span class="job">— a word in violet</span></div>
+        </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="swatches">
+          <div class="swatch"><i style="background:var(--bg)"></i><span class="name">Page</span><span class="job">— the ground</span></div>
+          <div class="swatch"><i style="background:var(--bg-panel)"></i><span class="name">Panel</span><span class="job">— a card on it</span></div>
+          <div class="swatch"><i style="background:var(--bg-raised)"></i><span class="name">Raised</span><span class="job">— hover</span></div>
+          <div class="swatch"><i style="background:var(--bg-input)"></i><span class="name">Inset</span><span class="job">— a well you type in</span></div>
+          <div class="swatch"><i style="background:var(--border)"></i><span class="name">Border</span><span class="job">— an outline, a gridline</span></div>
+          <div class="swatch"><i style="background:var(--accent-text)"></i><span class="name">Accent text</span><span class="job">— a word in violet</span></div>
+        </div>
+      </div>
+      </div>
+      <div class="body">
+        <h3>Two themes</h3>
+        <p>
+          The dark theme is the app's, and it is what anything gets if it
+          says nothing. The light one arrives on <code>data-theme="light"</code>
+          — on the page, or on any one thing in it, which is why every control
+          on this page is drawn twice: dark on the left, the same control
+          light beside it, and the words about it on the page's own black.
+        </p>
+        <p>
+          A screen never names a shade. <code>--violet-300</code> is a word in
+          violet on black and a watermark on paper, so the vocabulary a screen
+          may use is roles — <code>--bg</code>, <code>--text</code>,
+          <code>--accent-text</code>, <code>--up</code> — and a theme is
+          nothing but those roles set a second time. Two controls side by side
+          is the test: a colour that holds in one and fails in the other is a
+          shade that got named somewhere it should not have been.
+        </p>
+        <div class="why">
+          Three things in the light theme are not an inversion. The greens and
+          reds move a long way down their ramps, because on paper a colour has
+          to be dark to be a colour at all. The accent splits in two: the fill
+          goes one step darker so white still sits on it, and the lettering
+          goes darker still. And the grounds change order — the page is the
+          grey one and a panel is the white one, because a card in a lit room
+          is paper on a desk rather than a light in a cellar.
+        </div>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="pair">
+        <div data-theme="dark" class="demo inline">
         <button class="btn primary">Reconnect</button>
         <span class="chip on"><span class="in">Travel</span></span>
         <div class="cal-day today"><span class="n">19</span><span class="marks"></span></div>
+      </div>
+        <div data-theme="light" class="demo inline">
+        <button class="btn primary">Reconnect</button>
+        <span class="chip on"><span class="in">Travel</span></span>
+        <div class="cal-day today"><span class="n">19</span><span class="marks"></span></div>
+      </div>
       </div>
       <div class="body">
         <h3>The glow</h3>
@@ -211,13 +307,23 @@ body {
     <h2>Rules</h2>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div class="rules-demo">
           <span>a section of a page</span>
           <span class="rule-sec">the next section of the page</span>
           <span class="rule-row">a row, or a group of them</span>
           <span class="rule-row">the next row, or group</span>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="rules-demo">
+          <span>a section of a page</span>
+          <span class="rule-sec">the next section of the page</span>
+          <span class="rule-row">a row, or a group of them</span>
+          <span class="rule-row">the next row, or group</span>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Two weights, both full width</h3>
@@ -236,12 +342,21 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div style="width:300px">
           <button class="btn theirs lg block"><svg><use href="#i-apple"/></svg>Sign in with Apple</button>
           <div class="rule-word">or</div>
           <button class="btn primary lg block"><svg><use href="#i-mail"/></svg>Continue with email</button>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div style="width:300px">
+          <button class="btn theirs lg block"><svg><use href="#i-apple"/></svg>Sign in with Apple</button>
+          <div class="rule-word">or</div>
+          <button class="btn primary lg block"><svg><use href="#i-mail"/></svg>Continue with email</button>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>A rule with a word in it</h3>
@@ -265,11 +380,19 @@ body {
     <h2>Selecting</h2>
 
     <div class="entry">
-      <div class="demo inline" data-select="many">
+      <div class="pair">
+        <div data-theme="dark" class="demo inline" data-select="many">
         <button class="chip"><span class="in"><span class="n">9</span><span class="lb" data-label="Transportation">Transportation</span></span></button>
         <button class="chip on"><span class="in"><span class="n">9</span><span class="lb" data-label="Food &amp; drink">Food &amp; drink</span></span></button>
         <button class="chip"><span class="in"><span class="n">3</span><span class="lb" data-label="Personal care">Personal care</span></span></button>
         <button class="chip empty"><span class="in"><span class="n">0</span><span class="lb" data-label="Bank fees">Bank fees</span></span></button>
+      </div>
+        <div data-theme="light" class="demo inline" data-select="many">
+        <button class="chip"><span class="in"><span class="n">9</span><span class="lb" data-label="Transportation">Transportation</span></span></button>
+        <button class="chip on"><span class="in"><span class="n">9</span><span class="lb" data-label="Food &amp; drink">Food &amp; drink</span></span></button>
+        <button class="chip"><span class="in"><span class="n">3</span><span class="lb" data-label="Personal care">Personal care</span></span></button>
+        <button class="chip empty"><span class="in"><span class="n">0</span><span class="lb" data-label="Bank fees">Bank fees</span></span></button>
+      </div>
       </div>
       <div class="body">
         <h3>Chip</h3>
@@ -294,7 +417,8 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div class="cat-grid" data-select="many" data-pack>
           <button class="chip"><span class="in"><span class="n">9</span>Transportation</span></button>
           <button class="chip on"><span class="in"><span class="n">9</span>Food &amp; drink</span></button>
@@ -306,6 +430,20 @@ body {
           <button class="chip"><span class="in"><span class="n">3</span>Rent &amp; utilities</span></button>
           <button class="chip"><span class="in"><span class="n">3</span>Personal care</span></button>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="cat-grid" data-select="many" data-pack>
+          <button class="chip"><span class="in"><span class="n">9</span>Transportation</span></button>
+          <button class="chip on"><span class="in"><span class="n">9</span>Food &amp; drink</span></button>
+          <button class="chip on"><span class="in"><span class="n">6</span>Travel</span></button>
+          <button class="chip"><span class="in"><span class="n">6</span>Loan payments</span></button>
+          <button class="chip"><span class="in"><span class="n">6</span>Transfer out</span></button>
+          <button class="chip"><span class="in"><span class="n">3</span>Transfer in</span></button>
+          <button class="chip"><span class="in"><span class="n">3</span>Merchandise</span></button>
+          <button class="chip"><span class="in"><span class="n">3</span>Rent &amp; utilities</span></button>
+          <button class="chip"><span class="in"><span class="n">3</span>Personal care</span></button>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Chip row</h3>
@@ -336,13 +474,23 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div class="range" data-select="one">
           <div class="opt">This <i class="tok">month <svg><use href="#i-caret"/></svg></i></div>
           <div class="opt">Last <i class="tok fix">3 <svg><use href="#i-caret"/></svg></i> <i class="tok">months <svg><use href="#i-caret"/></svg></i></div>
           <div class="opt dead">Between <i class="tok">Jun 1 <svg><use href="#i-caret"/></svg></i> and <i class="tok">Aug 19 <svg><use href="#i-caret"/></svg></i></div>
           <div class="opt on">All time</div>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="range" data-select="one">
+          <div class="opt">This <i class="tok">month <svg><use href="#i-caret"/></svg></i></div>
+          <div class="opt">Last <i class="tok fix">3 <svg><use href="#i-caret"/></svg></i> <i class="tok">months <svg><use href="#i-caret"/></svg></i></div>
+          <div class="opt dead">Between <i class="tok">Jun 1 <svg><use href="#i-caret"/></svg></i> and <i class="tok">Aug 19 <svg><use href="#i-caret"/></svg></i></div>
+          <div class="opt on">All time</div>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Range</h3>
@@ -367,11 +515,19 @@ body {
     <h2>Acting</h2>
 
     <div class="entry">
-      <div class="demo inline">
+      <div class="pair">
+        <div data-theme="dark" class="demo inline">
         <button class="btn primary">Reconnect</button>
         <button class="btn">Clear</button>
         <button class="btn">Retry</button>
         <button class="btn dead">Add a bank</button>
+      </div>
+        <div data-theme="light" class="demo inline">
+        <button class="btn primary">Reconnect</button>
+        <button class="btn">Clear</button>
+        <button class="btn">Retry</button>
+        <button class="btn dead">Add a bank</button>
+      </div>
       </div>
       <div class="body">
         <h3>Button</h3>
@@ -401,8 +557,13 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <button class="btn primary lg block">Connect a bank</button>
+      </div>
+        <div data-theme="light" class="demo">
+        <button class="btn primary lg block">Connect a bank</button>
+      </div>
       </div>
       <div class="body">
         <h3>Large, and across the measure</h3>
@@ -422,7 +583,8 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div style="width:300px; display:flex; flex-direction:column; gap:10px">
           <button class="btn theirs lg block"><svg><use href="#i-apple"/></svg>Sign in with Apple</button>
           <button class="btn theirs lg block"><svg><use href="#i-google"/></svg>Sign in with Google</button>
@@ -430,6 +592,16 @@ body {
           <button class="btn theirs lg block">Subscribe with<svg><use href="#i-google"/></svg>Pay</button>
           <button class="btn theirs link lg block">Pay with Link</button>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div style="width:300px; display:flex; flex-direction:column; gap:10px">
+          <button class="btn theirs lg block"><svg><use href="#i-apple"/></svg>Sign in with Apple</button>
+          <button class="btn theirs lg block"><svg><use href="#i-google"/></svg>Sign in with Google</button>
+          <button class="btn theirs lg block">Subscribe with<svg><use href="#i-apple"/></svg>Pay</button>
+          <button class="btn theirs lg block">Subscribe with<svg><use href="#i-google"/></svg>Pay</button>
+          <button class="btn theirs link lg block">Pay with Link</button>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>A button that is not ours</h3>
@@ -463,8 +635,13 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <button class="btn primary lg block busy"><svg><use href="#i-spin"/></svg>Opening Plaid&hellip;</button>
+      </div>
+        <div data-theme="light" class="demo">
+        <button class="btn primary lg block busy"><svg><use href="#i-spin"/></svg>Opening Plaid&hellip;</button>
+      </div>
       </div>
       <div class="body">
         <h3>Working</h3>
@@ -488,10 +665,17 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo inline">
+      <div class="pair">
+        <div data-theme="dark" class="demo inline">
         <div class="btn-group" data-select="one">
           <button class="btn">Week</button><button class="btn on">Month</button><button class="btn">Year</button>
         </div>
+      </div>
+        <div data-theme="light" class="demo inline">
+        <div class="btn-group" data-select="one">
+          <button class="btn">Week</button><button class="btn on">Month</button><button class="btn">Year</button>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Button group</h3>
@@ -509,8 +693,13 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo inline">
+      <div class="pair">
+        <div data-theme="dark" class="demo inline">
         <button class="btn plain"><svg><use href="#i-ext"/></svg>Reconnect</button>
+      </div>
+        <div data-theme="light" class="demo inline">
+        <button class="btn plain"><svg><use href="#i-ext"/></svg>Reconnect</button>
+      </div>
       </div>
       <div class="body">
         <h3>Plain button</h3>
@@ -532,8 +721,13 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo inline">
+      <div class="pair">
+        <div data-theme="dark" class="demo inline">
         <button class="btn plain back"><svg><use href="#i-back"/></svg></button>
+      </div>
+        <div data-theme="light" class="demo inline">
+        <button class="btn plain back"><svg><use href="#i-back"/></svg></button>
+      </div>
       </div>
       <div class="body">
         <h3>Back</h3>
@@ -552,19 +746,79 @@ body {
         <div class="use">.btn.plain.back &gt; svg</div>
       </div>
     </div>
+
+    <div class="entry">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
+        <div class="menu">
+          <button class="item"><svg><use href="#i-settings"/></svg>Settings</button>
+          <button class="item"><svg><use href="#i-theme"/></svg>Theme<span class="val">Dark</span></button>
+          <div class="cut"></div>
+          <button class="item"><svg><use href="#i-signout"/></svg>Sign out</button>
+          <button class="item grave"><svg><use href="#i-trash"/></svg>Delete my account</button>
+        </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="menu">
+          <button class="item"><svg><use href="#i-settings"/></svg>Settings</button>
+          <button class="item"><svg><use href="#i-theme"/></svg>Theme<span class="val">Light</span></button>
+          <div class="cut"></div>
+          <button class="item"><svg><use href="#i-signout"/></svg>Sign out</button>
+          <button class="item grave"><svg><use href="#i-trash"/></svg>Delete my account</button>
+        </div>
+      </div>
+      </div>
+      <div class="body">
+        <h3>Menu</h3>
+        <p>
+          What you can do to the thing you pressed, as a card of flat rows with
+          a glyph at the left of each. <code>.cut</code> groups them: what you
+          set, then the ways out. A row that is a setting rather than a door
+          carries what it is set to at the right, in <code>.val</code>, and
+          pressing the row moves it — the two halves above say
+          <b>Dark</b> and <b>Light</b> because each is showing the theme it is
+          drawn in.
+        </p>
+        <div class="why">
+          Rows and not buttons. Every line in here does something, so buttons
+          would make the card a stack of raised things with no answer among
+          them; they lie flat and light under the pointer, which is a row's
+          behaviour. Nothing animates, because the card does not arrive from
+          anywhere — it is the frame that the control you pressed is now
+          sitting inside.
+        </div>
+        <div class="why">
+          <code>.grave</code> is the one that cannot be undone, in rose. That is
+          the third thing rose is for — money owed, a fault, and a door with
+          nothing behind it — and the rule above it is there so the hand on its
+          way to Sign out has somewhere to stop.
+        </div>
+        <div class="use">.menu &gt; (.item &gt; .val, .item.grave, .cut)</div>
+      </div>
+    </div>
   </div>
 
   <div class="group" id="saying">
     <h2>Saying</h2>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div class="say-title">Meridian is $5.99 a month</div>
         <div class="say-body">Your account is ready. There is one price and nothing else to choose.</div>
         <div class="acts" style="margin-top:22px">
           <button class="btn lg block">Not now</button>
           <button class="btn primary lg block">Subscribe</button>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="say-title">Meridian is $5.99 a month</div>
+        <div class="say-body">Your account is ready. There is one price and nothing else to choose.</div>
+        <div class="acts" style="margin-top:22px">
+          <button class="btn lg block">Not now</button>
+          <button class="btn primary lg block">Subscribe</button>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>A screen that says one thing</h3>
@@ -591,7 +845,8 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div class="say-step">Step 1 of 3 · Account</div>
         <div class="say-title">Check your email</div>
         <div class="say-body">We sent a code to <b>al@example.com</b>.</div>
@@ -601,6 +856,18 @@ body {
         </div>
         <div class="say-note">Resend in 0:42 · <button class="btn plain">Wrong address?</button></div>
         <div class="say-legal">Plaid handles the connection under its end-user privacy policy.</div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="say-step">Step 1 of 3 · Account</div>
+        <div class="say-title">Check your email</div>
+        <div class="say-body">We sent a code to <b>al@example.com</b>.</div>
+        <div class="say-fault"><svg><use href="#i-warn"/></svg>That code is not right.</div>
+        <div class="acts" style="margin-top:12px">
+          <button class="btn primary lg block">Continue</button>
+        </div>
+        <div class="say-note">Resend in 0:42 · <button class="btn plain">Wrong address?</button></div>
+        <div class="say-legal">Plaid handles the connection under its end-user privacy policy.</div>
+      </div>
       </div>
       <div class="body">
         <h3>A screen in a flow</h3>
@@ -632,7 +899,8 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div class="say-outcome">
           <svg class="say-icon done"><use href="#i-tick-c"/></svg>
           <div class="say-title">You're set.</div>
@@ -642,6 +910,18 @@ body {
           <svg class="say-icon needs"><use href="#i-warn"/></svg>
           <div class="say-title">That didn't finish</div>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="say-outcome">
+          <svg class="say-icon done"><use href="#i-tick-c"/></svg>
+          <div class="say-title">You're set.</div>
+        </div>
+        <div class="say-body"><b>First Platypus Bank</b> is connected and syncing.</div>
+        <div class="say-outcome" style="margin-top:28px">
+          <svg class="say-icon needs"><use href="#i-warn"/></svg>
+          <div class="say-title">That didn't finish</div>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>An outcome</h3>
@@ -662,11 +942,19 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div class="banner">
           <span class="say">Meridian can't reach the server.</span>
           <button class="btn">Retry</button>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="banner">
+          <span class="say">Meridian can't reach the server.</span>
+          <button class="btn">Retry</button>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Banner</h3>
@@ -692,10 +980,17 @@ body {
     <h2>Typing</h2>
 
     <div class="entry">
-      <div class="demo" style="display:flex;flex-direction:column;gap:10px">
+      <div class="pair">
+        <div data-theme="dark" class="demo" style="display:flex;flex-direction:column;gap:10px">
         <span class="field on"><span class="in"><svg><use href="#i-mail"/></svg>al@example.com<i class="caret"></i></span></span>
         <span class="field"><span class="in"><svg><use href="#i-mail"/></svg><span class="ph">you@example.com</span></span></span>
         <span class="field bad"><span class="in"><svg><use href="#i-mail"/></svg>al@example</span></span>
+      </div>
+        <div data-theme="light" class="demo" style="display:flex;flex-direction:column;gap:10px">
+        <span class="field on"><span class="in"><svg><use href="#i-mail"/></svg>al@example.com<i class="caret"></i></span></span>
+        <span class="field"><span class="in"><svg><use href="#i-mail"/></svg><span class="ph">you@example.com</span></span></span>
+        <span class="field bad"><span class="in"><svg><use href="#i-mail"/></svg>al@example</span></span>
+      </div>
       </div>
       <div class="body">
         <h3>Field</h3>
@@ -721,7 +1016,8 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div class="code">
           <span class="field"><span class="in">4</span></span>
           <span class="field"><span class="in">0</span></span>
@@ -730,6 +1026,17 @@ body {
           <span class="field"><span class="in"></span></span>
           <span class="field"><span class="in"></span></span>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="code">
+          <span class="field"><span class="in">4</span></span>
+          <span class="field"><span class="in">0</span></span>
+          <span class="field"><span class="in">7</span></span>
+          <span class="field on"><span class="in"><i class="caret"></i></span></span>
+          <span class="field"><span class="in"></span></span>
+          <span class="field"><span class="in"></span></span>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Code</h3>
@@ -754,7 +1061,8 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo" style="display:flex;flex-direction:column;gap:14px">
+      <div class="pair">
+        <div data-theme="dark" class="demo" style="display:flex;flex-direction:column;gap:14px">
         <div class="card-entry">
           <span class="field on"><span class="in"><svg><use href="#i-card"/></svg>4242 4242 4242<i class="caret"></i></span></span>
           <span class="field"><span class="in"><span class="ph">MM / YY</span></span></span>
@@ -773,6 +1081,27 @@ body {
           <span class="field"><span class="in">12 / 34</span></span>
           <span class="field"><span class="in">123</span></span>
         </div>
+      </div>
+        <div data-theme="light" class="demo" style="display:flex;flex-direction:column;gap:14px">
+        <div class="card-entry">
+          <span class="field on"><span class="in"><svg><use href="#i-card"/></svg>4242 4242 4242<i class="caret"></i></span></span>
+          <span class="field"><span class="in"><span class="ph">MM / YY</span></span></span>
+          <span class="field"><span class="in"><span class="ph">CVC</span></span></span>
+        </div>
+        <div>
+          <div class="card-entry">
+            <span class="field"><span class="in"><svg><use href="#i-card"/></svg>4000 0000 0000 0002</span></span>
+            <span class="field"><span class="in">12 / 34</span></span>
+            <span class="field"><span class="in">123</span></span>
+          </div>
+          <div class="say-fault"><svg><use href="#i-warn"/></svg>Your card was declined. Try another card.</div>
+        </div>
+        <div class="card-entry locked">
+          <span class="field"><span class="in"><svg><use href="#i-card"/></svg>4242 4242 4242 4242</span></span>
+          <span class="field"><span class="in">12 / 34</span></span>
+          <span class="field"><span class="in">123</span></span>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Card</h3>
@@ -805,7 +1134,8 @@ body {
     <h2>Listing</h2>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div class="row top">
           <svg><use href="#i-lock"/></svg>
           <div class="rt">Your bank password goes to Plaid<div class="rs">Never to Meridian. We are handed a key to read with, not your sign-in.</div></div>
@@ -819,6 +1149,22 @@ body {
           <div class="rt">Available</div>
           <span class="rv hard money">$4,182.03</span>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="row top">
+          <svg><use href="#i-lock"/></svg>
+          <div class="rt">Your bank password goes to Plaid<div class="rs">Never to Meridian. We are handed a key to read with, not your sign-in.</div></div>
+        </div>
+        <div class="row needs">
+          <svg><use href="#i-bank"/></svg>
+          <div class="rt">First Platypus Bank<div class="rs">Sign in again to keep it syncing</div></div>
+          <svg class="go"><use href="#i-chev"/></svg>
+        </div>
+        <div class="row flat">
+          <div class="rt">Available</div>
+          <span class="rv hard money">$4,182.03</span>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Row</h3>
@@ -844,10 +1190,17 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div class="row done"><svg><use href="#i-tick-c"/></svg><div class="rt">Accounts</div><span class="rv">8</span></div>
         <div class="row now"><svg><use href="#i-spin"/></svg><div class="rt">Transactions</div><span class="rv">48 so far</span></div>
         <div class="row wait"><svg><use href="#i-dot"/></svg><div class="rt">Recurring bills</div><span class="rv">waiting</span></div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="row done"><svg><use href="#i-tick-c"/></svg><div class="rt">Accounts</div><span class="rv">8</span></div>
+        <div class="row now"><svg><use href="#i-spin"/></svg><div class="rt">Transactions</div><span class="rv">48 so far</span></div>
+        <div class="row wait"><svg><use href="#i-dot"/></svg><div class="rt">Recurring bills</div><span class="rv">waiting</span></div>
+      </div>
       </div>
       <div class="body">
         <h3>Row, as a step</h3>
@@ -872,11 +1225,19 @@ body {
     <h2>Figures</h2>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div class="track-demo">
           <div class="caption"><span>Transfer out</span><span class="money">$2,078.50</span></div>
           <span class="track"><i style="width:55.1%"></i></span>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="track-demo">
+          <div class="caption"><span>Transfer out</span><span class="money">$2,078.50</span></div>
+          <span class="track"><i style="width:55.1%"></i></span>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Share</h3>
@@ -895,7 +1256,8 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div style="display:flex;flex-direction:column;gap:9px;font-size:14px">
           <div style="display:flex;justify-content:space-between"><span>Held</span><span class="money">$238,845.06</span></div>
           <div style="display:flex;justify-content:space-between"><span>Owed</span><span class="money out">−$3,090.95</span></div>
@@ -904,6 +1266,17 @@ body {
             <span><b class="money out">$3,771.40</b> out</span>
           </div>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div style="display:flex;flex-direction:column;gap:9px;font-size:14px">
+          <div style="display:flex;justify-content:space-between"><span>Held</span><span class="money">$238,845.06</span></div>
+          <div style="display:flex;justify-content:space-between"><span>Owed</span><span class="money out">−$3,090.95</span></div>
+          <div style="display:flex;gap:16px;font-size:12.5px;color:var(--text-faint)">
+            <span><b class="money in">$4.22</b> in</span>
+            <span><b class="money out">$3,771.40</b> out</span>
+          </div>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Money</h3>
@@ -924,12 +1297,21 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div class="tally">
           <div class="r"><span class="v">8</span><span class="k">accounts</span></div>
           <div class="r"><span class="v">48</span><span class="k">transactions</span></div>
           <div class="r"><span class="v">8</span><span class="k">recurring bills found</span></div>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="tally">
+          <div class="r"><span class="v">8</span><span class="k">accounts</span></div>
+          <div class="r"><span class="v">48</span><span class="k">transactions</span></div>
+          <div class="r"><span class="v">8</span><span class="k">recurring bills found</span></div>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Tally</h3>
@@ -951,7 +1333,8 @@ body {
     <h2>Calendar</h2>
 
     <div class="entry">
-      <div class="demo">
+      <div class="pair">
+        <div data-theme="dark" class="demo">
         <div class="days" data-select="one">
           <div class="cal-day"><span class="n">4</span><span class="marks"></span></div>
           <div class="cal-day"><span class="n">10</span><span class="marks"><i></i><i></i></span></div>
@@ -959,6 +1342,16 @@ body {
           <div class="cal-day picked"><span class="n">22</span><span class="marks"><i></i></span></div>
           <div class="cal-day outside"><span class="n">3</span><span class="marks"></span></div>
         </div>
+      </div>
+        <div data-theme="light" class="demo">
+        <div class="days" data-select="one">
+          <div class="cal-day"><span class="n">4</span><span class="marks"></span></div>
+          <div class="cal-day"><span class="n">10</span><span class="marks"><i></i><i></i></span></div>
+          <div class="cal-day today"><span class="n">19</span><span class="marks"></span></div>
+          <div class="cal-day picked"><span class="n">22</span><span class="marks"><i></i></span></div>
+          <div class="cal-day outside"><span class="n">3</span><span class="marks"></span></div>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Day</h3>
@@ -982,7 +1375,8 @@ body {
       </div>
     </div>
     <div class="entry">
-      <div class="demo flush">
+      <div class="pair">
+        <div data-theme="dark" class="demo flush">
         <div class="strip" style="--month: 310px; --gap: 14px; --turn: 280ms">
           <div class="strip-names">
             <span style="transform: translateX(calc(-50% - 165px)) scale(0.87); opacity: 0.3">July 2026</span>
@@ -997,6 +1391,23 @@ body {
             </div>
           </div>
         </div>
+      </div>
+        <div data-theme="light" class="demo flush">
+        <div class="strip" style="--month: 310px; --gap: 14px; --turn: 280ms">
+          <div class="strip-names">
+            <span style="transform: translateX(calc(-50% - 165px)) scale(0.87); opacity: 0.3">July 2026</span>
+            <span style="transform: translateX(-50%)">August 2026</span>
+            <span style="transform: translateX(calc(-50% + 165px)) scale(0.87); opacity: 0.3">September 2026</span>
+          </div>
+          <div class="strip-months">
+            <div class="strip-track">
+              <div class="strip-month prev"><div class="strip-wd"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div><div class="strip-days"><div class="cal-day outside"><span class="n">29</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">30</span><span class="marks"></span></div><div class="cal-day"><span class="n">1</span><span class="marks"></span></div><div class="cal-day"><span class="n">2</span><span class="marks"></span></div><div class="cal-day"><span class="n">3</span><span class="marks"><i></i></span></div><div class="cal-day"><span class="n">4</span><span class="marks"></span></div><div class="cal-day"><span class="n">5</span><span class="marks"></span></div><div class="cal-day"><span class="n">6</span><span class="marks"></span></div><div class="cal-day"><span class="n">7</span><span class="marks"></span></div><div class="cal-day"><span class="n">8</span><span class="marks"></span></div><div class="cal-day"><span class="n">9</span><span class="marks"></span></div><div class="cal-day"><span class="n">10</span><span class="marks"><i></i><i></i></span></div><div class="cal-day"><span class="n">11</span><span class="marks"></span></div><div class="cal-day"><span class="n">12</span><span class="marks"></span></div><div class="cal-day"><span class="n">13</span><span class="marks"></span></div><div class="cal-day"><span class="n">14</span><span class="marks"></span></div><div class="cal-day"><span class="n">15</span><span class="marks"></span></div><div class="cal-day"><span class="n">16</span><span class="marks"></span></div><div class="cal-day"><span class="n">17</span><span class="marks"></span></div><div class="cal-day"><span class="n">18</span><span class="marks"></span></div><div class="cal-day"><span class="n">19</span><span class="marks"></span></div><div class="cal-day"><span class="n">20</span><span class="marks"></span></div><div class="cal-day"><span class="n">21</span><span class="marks"></span></div><div class="cal-day"><span class="n">22</span><span class="marks"><i></i></span></div><div class="cal-day"><span class="n">23</span><span class="marks"></span></div><div class="cal-day"><span class="n">24</span><span class="marks"></span></div><div class="cal-day"><span class="n">25</span><span class="marks"></span></div><div class="cal-day"><span class="n">26</span><span class="marks"></span></div><div class="cal-day"><span class="n">27</span><span class="marks"></span></div><div class="cal-day"><span class="n">28</span><span class="marks"></span></div><div class="cal-day"><span class="n">29</span><span class="marks"></span></div><div class="cal-day"><span class="n">30</span><span class="marks"></span></div><div class="cal-day"><span class="n">31</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">1</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">2</span><span class="marks"></span></div></div></div>
+              <div class="strip-month middle"><div class="strip-wd"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div><div class="strip-days"><div class="cal-day outside"><span class="n">27</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">28</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">29</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">30</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">31</span><span class="marks"></span></div><div class="cal-day"><span class="n">1</span><span class="marks"></span></div><div class="cal-day"><span class="n">2</span><span class="marks"></span></div><div class="cal-day"><span class="n">3</span><span class="marks"><i></i></span></div><div class="cal-day"><span class="n">4</span><span class="marks"></span></div><div class="cal-day"><span class="n">5</span><span class="marks"></span></div><div class="cal-day"><span class="n">6</span><span class="marks"></span></div><div class="cal-day"><span class="n">7</span><span class="marks"></span></div><div class="cal-day"><span class="n">8</span><span class="marks"></span></div><div class="cal-day"><span class="n">9</span><span class="marks"></span></div><div class="cal-day"><span class="n">10</span><span class="marks"><i></i><i></i></span></div><div class="cal-day"><span class="n">11</span><span class="marks"></span></div><div class="cal-day"><span class="n">12</span><span class="marks"></span></div><div class="cal-day"><span class="n">13</span><span class="marks"></span></div><div class="cal-day"><span class="n">14</span><span class="marks"><i></i></span></div><div class="cal-day"><span class="n">15</span><span class="marks"></span></div><div class="cal-day"><span class="n">16</span><span class="marks"></span></div><div class="cal-day"><span class="n">17</span><span class="marks"></span></div><div class="cal-day"><span class="n">18</span><span class="marks"></span></div><div class="cal-day today"><span class="n">19</span><span class="marks"></span></div><div class="cal-day"><span class="n">20</span><span class="marks"></span></div><div class="cal-day"><span class="n">21</span><span class="marks"></span></div><div class="cal-day picked"><span class="n">22</span><span class="marks"><i></i></span></div><div class="cal-day"><span class="n">23</span><span class="marks"></span></div><div class="cal-day"><span class="n">24</span><span class="marks"></span></div><div class="cal-day"><span class="n">25</span><span class="marks"></span></div><div class="cal-day"><span class="n">26</span><span class="marks"></span></div><div class="cal-day"><span class="n">27</span><span class="marks"></span></div><div class="cal-day"><span class="n">28</span><span class="marks"><i></i></span></div><div class="cal-day"><span class="n">29</span><span class="marks"></span></div><div class="cal-day"><span class="n">30</span><span class="marks"></span></div><div class="cal-day"><span class="n">31</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">1</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">2</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">3</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">4</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">5</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">6</span><span class="marks"></span></div></div></div>
+              <div class="strip-month next"><div class="strip-wd"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div><div class="strip-days"><div class="cal-day outside"><span class="n">31</span><span class="marks"></span></div><div class="cal-day"><span class="n">1</span><span class="marks"></span></div><div class="cal-day"><span class="n">2</span><span class="marks"></span></div><div class="cal-day"><span class="n">3</span><span class="marks"><i></i></span></div><div class="cal-day"><span class="n">4</span><span class="marks"></span></div><div class="cal-day"><span class="n">5</span><span class="marks"></span></div><div class="cal-day"><span class="n">6</span><span class="marks"></span></div><div class="cal-day"><span class="n">7</span><span class="marks"></span></div><div class="cal-day"><span class="n">8</span><span class="marks"></span></div><div class="cal-day"><span class="n">9</span><span class="marks"></span></div><div class="cal-day"><span class="n">10</span><span class="marks"><i></i><i></i></span></div><div class="cal-day"><span class="n">11</span><span class="marks"></span></div><div class="cal-day"><span class="n">12</span><span class="marks"></span></div><div class="cal-day"><span class="n">13</span><span class="marks"></span></div><div class="cal-day"><span class="n">14</span><span class="marks"></span></div><div class="cal-day"><span class="n">15</span><span class="marks"></span></div><div class="cal-day"><span class="n">16</span><span class="marks"></span></div><div class="cal-day"><span class="n">17</span><span class="marks"></span></div><div class="cal-day"><span class="n">18</span><span class="marks"></span></div><div class="cal-day"><span class="n">19</span><span class="marks"></span></div><div class="cal-day"><span class="n">20</span><span class="marks"></span></div><div class="cal-day"><span class="n">21</span><span class="marks"></span></div><div class="cal-day"><span class="n">22</span><span class="marks"><i></i></span></div><div class="cal-day"><span class="n">23</span><span class="marks"></span></div><div class="cal-day"><span class="n">24</span><span class="marks"></span></div><div class="cal-day"><span class="n">25</span><span class="marks"></span></div><div class="cal-day"><span class="n">26</span><span class="marks"></span></div><div class="cal-day"><span class="n">27</span><span class="marks"></span></div><div class="cal-day"><span class="n">28</span><span class="marks"></span></div><div class="cal-day"><span class="n">29</span><span class="marks"></span></div><div class="cal-day"><span class="n">30</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">1</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">2</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">3</span><span class="marks"></span></div><div class="cal-day outside"><span class="n">4</span><span class="marks"></span></div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Month strip</h3>
@@ -1024,11 +1435,19 @@ body {
     <h2>Identity</h2>
 
     <div class="entry">
-      <div class="demo inline">
+      <div class="pair">
+        <div data-theme="dark" class="demo inline">
         <span class="mark">CI</span>
         <span class="mark">FI</span>
         <span class="mark">AX</span>
         <span class="mark sm">HS</span>
+      </div>
+        <div data-theme="light" class="demo inline">
+        <span class="mark">CI</span>
+        <span class="mark">FI</span>
+        <span class="mark">AX</span>
+        <span class="mark sm">HS</span>
+      </div>
       </div>
       <div class="body">
         <h3>Mark</h3>
@@ -1052,8 +1471,13 @@ body {
     <h2>Frame</h2>
 
     <div class="entry">
-      <div class="demo flush">
+      <div class="pair">
+        <div data-theme="dark" class="demo flush">
         <div class="page-title">Recurring</div>
+      </div>
+        <div data-theme="light" class="demo flush">
+        <div class="page-title">Recurring</div>
+      </div>
       </div>
       <div class="body">
         <h3>Title</h3>
@@ -1073,10 +1497,17 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo flush">
+      <div class="pair">
+        <div data-theme="dark" class="demo flush">
         <div class="band opens"><svg><use href="#i-chev"/></svg><div class="cats"><span class="chip sm on"><span class="in">Food &amp; drink</span></span><span class="chip sm on"><span class="in">Travel</span></span><span class="more">+2</span></div><span class="end chip sm"><span class="in">Last 3 months</span></span></div>
         <div class="band"><span class="fig money">−$3,767.18</span><span class="end flows"><span class="money in">+$4.22</span><span class="money out">−$3,771.40</span></span></div>
         <div class="band"><span class="k">Held</span><span class="end fig money">$86,541.74</span></div>
+      </div>
+        <div data-theme="light" class="demo flush">
+        <div class="band opens"><svg><use href="#i-chev"/></svg><div class="cats"><span class="chip sm on"><span class="in">Food &amp; drink</span></span><span class="chip sm on"><span class="in">Travel</span></span><span class="more">+2</span></div><span class="end chip sm"><span class="in">Last 3 months</span></span></div>
+        <div class="band"><span class="fig money">−$3,767.18</span><span class="end flows"><span class="money in">+$4.22</span><span class="money out">−$3,771.40</span></span></div>
+        <div class="band"><span class="k">Held</span><span class="end fig money">$86,541.74</span></div>
+      </div>
       </div>
       <div class="body">
         <h3>Band</h3>
@@ -1099,7 +1530,8 @@ body {
     </div>
 
     <div class="entry">
-      <div class="demo flush foot">
+      <div class="pair">
+        <div data-theme="dark" class="demo flush foot">
         <div class="behind">
           <div class="row"><div class="rt">Netflix<div class="rs">Monthly · next Aug 22</div></div><span class="rv hard money">−$15.49</span></div>
           <div class="row"><div class="rt">Spotify<div class="rs">Monthly · next Aug 28</div></div><span class="rv hard money">−$11.99</span></div>
@@ -1116,6 +1548,25 @@ body {
           </nav>
           <button class="dock-search" disabled aria-label="Search"><svg><use href="#i-search"/></svg></button>
         </div>
+      </div>
+        <div data-theme="light" class="demo flush foot">
+        <div class="behind">
+          <div class="row"><div class="rt">Netflix<div class="rs">Monthly · next Aug 22</div></div><span class="rv hard money">−$15.49</span></div>
+          <div class="row"><div class="rt">Spotify<div class="rs">Monthly · next Aug 28</div></div><span class="rv hard money">−$11.99</span></div>
+        </div>
+        <div class="dockrow">
+          <nav class="dock">
+            <div class="tabs" style="--tabs: 4">
+              <span class="pill" style="--lit: 1"></span>
+              <button class="tab"><svg><use href="#i-ledger"/></svg><span>Ledger</span></button>
+              <button class="tab on"><svg><use href="#i-recurring"/></svg><span>Recurring</span></button>
+              <button class="tab"><svg><use href="#i-balances"/></svg><span>Balances</span></button>
+              <button class="tab"><svg><use href="#i-user"/></svg><span>Account</span></button>
+            </div>
+          </nav>
+          <button class="dock-search" disabled aria-label="Search"><svg><use href="#i-search"/></svg></button>
+        </div>
+      </div>
       </div>
       <div class="body">
         <h3>Dock</h3>

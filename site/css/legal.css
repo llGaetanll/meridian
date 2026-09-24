@@ -46,7 +46,7 @@
    ours. */
 .legal li::before { content: "—"; position: absolute; left: 0; color: var(--text-faint); }
 .legal strong { color: var(--text); font-weight: 600; }
-.legal a { color: var(--violet-300); }
+.legal a { color: var(--accent-text); }
 .legal a:hover { text-decoration: underline; }
 
 .legal .rule { margin-top: 44px; border-top: 1px solid var(--divider); }

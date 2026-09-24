@@ -28,8 +28,8 @@
      the edges. This falls downward and is barely there. Used sparingly — the
      violet button and the split's bars — never on a row of things, where it
      becomes a row of little lamps. */
-  --glow: 0 3px 9px -6px color-mix(in srgb, var(--violet-400) 80%, transparent);
-  --glow-lg: 0 4px 12px -8px color-mix(in srgb, var(--violet-400) 80%, transparent);
+  --glow: 0 3px 9px -6px color-mix(in srgb, var(--accent-mix) 80%, transparent);
+  --glow-lg: 0 4px 12px -8px color-mix(in srgb, var(--accent-mix) 80%, transparent);
 }
 
 /* The chip.
@@ -55,10 +55,10 @@
   font-size: 12.5px; font-weight: 500;
   white-space: nowrap;
 }
-.ui .chip.on { border-color: color-mix(in srgb, var(--violet-400) 34%, transparent); }
+.ui .chip.on { border-color: color-mix(in srgb, var(--accent-mix) 34%, transparent); }
 .ui .chip.on .in {
   background: var(--accent-tint);
-  color: var(--violet-300);
+  color: var(--accent-text);
   font-weight: 600;
 }
 /* A count belongs at the left of the label and in the money face, so a column
@@ -68,7 +68,7 @@
   font-size: 11px; font-weight: 600;
   color: var(--text-faint);
 }
-.ui .chip.on .n { color: color-mix(in srgb, var(--violet-300) 68%, transparent); }
+.ui .chip.on .n { color: color-mix(in srgb, var(--accent-text) 68%, transparent); }
 /* The label, in a slot the width of its heavier weight. Selecting a chip sets
    its label semibold, a pixel or two wider than medium — enough to re-pack a
    row of chips and move every one of them. A chip you tapped should not move,
@@ -97,14 +97,14 @@
   display: inline-flex; align-items: center; gap: 5px;
   padding: 3px 8px;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
   color: var(--text-muted);
   font-weight: 600; font-style: normal;
 }
 .ui .chip.on .tok,
 .ui .range .opt.on .tok {
-  background: color-mix(in srgb, var(--violet-400) 22%, transparent);
-  color: var(--violet-300);
+  background: color-mix(in srgb, var(--accent-mix) 22%, transparent);
+  color: var(--accent-text);
 }
 .ui .tok svg { width: 10px; height: 10px; opacity: 0.75; }
 /* A number sits in a fixed slot so the sentence does not jump from 3 to 12. */
@@ -155,27 +155,29 @@
 }
 .ui .range .opt.on {
   background: var(--accent-tint);
-  color: var(--violet-300);
+  color: var(--accent-text);
   font-weight: 500;
 }
 .ui .range .opt.dead { opacity: 0.45; cursor: default; }
 
 /* The button.
 
-   The edge has to be darker than the button and lighter than the page, or it
-   is invisible on one of them — which is why the quiet button sits a step up
-   from the ground it stands on rather than flush with it. */
+   The edge has to be darker than the button and tell apart from the page, or
+   it is invisible on one of them — which is why the quiet button sits a step
+   off the ground it stands on rather than flush with it. In the dark that
+   step is upward and in the light it is downward, so the edge is its own
+   role, `--btn-edge`, and not the hover ground reused. */
 
 .ui .btn {
   display: inline-flex; align-items: center; gap: 7px;
-  border: 1px solid var(--slate-800);
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-sm);
   background: radial-gradient(ellipse 100% 125% at 50% 100%,
     color-mix(in srgb, var(--bars) 52%, var(--bg-input)), var(--bg-input) 78%);
   color: var(--text);
   font: inherit; font-size: 13px; font-weight: 600;
   padding: 8px 14px;
-  box-shadow: 0 2px 0 var(--bg-raised);
+  box-shadow: 0 2px 0 var(--btn-edge);
   cursor: pointer;
   transition: transform 70ms ease, box-shadow 70ms ease;
 }
@@ -186,9 +188,9 @@
      falls off before the corners, rather than a lighter violet laid along the
      top edge. */
   background: radial-gradient(ellipse 100% 125% at 50% 100%,
-    color-mix(in srgb, var(--violet-300) 45%, var(--accent-soft)), var(--accent) 78%);
+    color-mix(in srgb, var(--accent-lift) 45%, var(--accent-soft)), var(--accent) 78%);
   border-color: var(--accent-strong);
-  color: #fff;
+  color: var(--on-accent);
   box-shadow:
     0 2px 0 color-mix(in srgb, var(--accent) 48%, #000),
     var(--glow-lg);
@@ -205,7 +207,7 @@
    the measure would be the most visible thing on the screen. */
 .ui .btn.plain {
   border: 0; background: none; box-shadow: none;
-  color: var(--violet-300);
+  color: var(--accent-text);
   padding: 6px 10px; margin: 0 -6px;
   transition: background 90ms ease, transform 70ms ease;
 }
@@ -273,8 +275,8 @@
 }
 .ui .cal-day.outside .n { color: color-mix(in srgb, var(--text-faint) 45%, transparent); }
 .ui .cal-day.today .n {
-  background: color-mix(in srgb, var(--violet-400) 20%, transparent);
-  color: var(--violet-300);
+  background: color-mix(in srgb, var(--accent-mix) 20%, transparent);
+  color: var(--accent-text);
   font-weight: 700;
   box-shadow: var(--glow);
 }
@@ -288,7 +290,7 @@
 .ui .cal-day .marks { display: flex; gap: 3px; height: 5px; margin-top: 1px; }
 .ui .cal-day .marks i {
   width: 5px; height: 5px; border-radius: 50%;
-  background: color-mix(in srgb, var(--violet-400) 55%, transparent);
+  background: color-mix(in srgb, var(--accent-mix) 55%, transparent);
 }
 
 /* A row.
@@ -319,7 +321,7 @@
 .ui .row .rv.hard { font-size: 13.5px; font-weight: 600; color: var(--text); }
 .ui .row .go { width: 15px; height: 15px; color: var(--text-faint); }
 /* the one row in a list that needs doing something about */
-.ui .row.needs .rs { color: var(--amber-300); }
+.ui .row.needs .rs { color: var(--warn); }
 /* a row that is only a name and a value, read down a column */
 .ui .row.flat { padding: 9px 0; }
 .ui .row.flat .rt { font-size: 13.5px; font-weight: 400; color: var(--text-muted); }
@@ -327,7 +329,7 @@
    finished, happening now, or not reached yet. The one happening now turns its
    icon — the same arc, at the same speed, as a busy button. */
 .ui .row.done > svg { color: var(--up); }
-.ui .row.now > svg { color: var(--violet-300); animation: spin 0.9s linear infinite; }
+.ui .row.now > svg { color: var(--accent-text); animation: spin 0.9s linear infinite; }
 .ui .row.wait > svg { color: var(--bars); }
 .ui .row.wait .rt { color: var(--text-faint); font-weight: 500; }
 
@@ -464,6 +466,59 @@
   box-shadow: 0 2px 0 #008544;
 }
 
+/* The menu.
+
+   The card of things you can do to whatever you pressed, standing clear of
+   the page on a shadow. Its bottom edge slides up out from under that control
+   rather than appearing beside it, so the two read as one object opening: the
+   control stays put, stays lit, and keeps its own ground, and the card that
+   comes out of it is as wide as it is.
+
+   It does not animate. A menu with nowhere to travel from is a menu that has
+   to be watched arriving, and this one has already told you where it came
+   from by the edge it is still tucked behind.
+
+   Rows, not buttons. Every line here does something, so if they stood up on
+   edges the card would be a stack of five raised things and none of them
+   would look like the answer. They lie flat and light under the pointer,
+   which is the row's behaviour and not the button's.
+
+   `.grave` is for the one that cannot be undone. It is the third thing rose
+   is for — money owed, a fault, and a door with nothing behind it — and it
+   sits below a rule so that the hand on its way to Sign out has somewhere to
+   stop. */
+
+.ui .menu {
+  display: flex; flex-direction: column;
+  padding: 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-pop);
+}
+.ui .menu .item {
+  display: flex; align-items: center; gap: 11px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0; border-radius: 7px;
+  background: none;
+  font: inherit; font-size: 13.5px; font-weight: 500;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.ui .menu .item svg { width: 17px; height: 17px; flex: none; color: var(--text-faint); }
+/* What the line is set to, for a line that is a setting rather than a door.
+   At the right, quiet, in the weight the row's second line is: the label says
+   what it is and this says where it stands, and pressing the row moves it. */
+.ui .menu .item .val { margin-left: auto; font-size: 12.5px; font-weight: 500; color: var(--text-faint); }
+.ui .menu .item:hover { background: var(--bg-raised); }
+.ui .menu .item.grave, .ui .menu .item.grave svg { color: var(--bad); }
+.ui .menu .item.grave:hover { background: var(--down-tint); }
+/* The rule between what you do every day and what you do once. Inset, because
+   a line to the card's own edge would cut the card in two. */
+.ui .menu .cut { height: 1px; margin: 5px 5px; background: var(--divider); }
+
 /* The field.
 
    The frame again, at the size of a thing you type into: the outer hairline,
@@ -495,13 +550,13 @@
 .ui .field .in > svg { width: 17px; height: 17px; flex: none; color: var(--text-faint); }
 /* What the field says when it is empty. */
 .ui .field .ph { color: var(--text-faint); }
-.ui .field.on { border-color: color-mix(in srgb, var(--violet-400) 34%, transparent); }
-.ui .field.bad { border-color: color-mix(in srgb, var(--rose-400) 40%, transparent); }
+.ui .field.on { border-color: color-mix(in srgb, var(--accent-mix) 34%, transparent); }
+.ui .field.bad { border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
 /* A frame that is not ours — Stripe's, in a card — has no input here to read,
    so it marks what it sits in, and the field lights the same way. */
-.ui .field:has(> .in > .on) { border-color: color-mix(in srgb, var(--violet-400) 34%, transparent); }
-.ui .field:has(> .in > .bad) { border-color: color-mix(in srgb, var(--rose-400) 40%, transparent); }
-.ui .field.bad .in { color: var(--rose-400); }
+.ui .field:has(> .in > .on) { border-color: color-mix(in srgb, var(--accent-mix) 34%, transparent); }
+.ui .field:has(> .in > .bad) { border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.ui .field.bad .in { color: var(--bad); }
 /* A field that really takes typing: the input is the value, wearing none of
    its own chrome, so the frame stays the field's. Its placeholder is `.ph`. */
 .ui .field input {
@@ -509,7 +564,7 @@
   padding: 0; border: 0; outline: 0;
   background: none;
   font: inherit; color: inherit; letter-spacing: inherit;
-  caret-color: var(--violet-300);
+  caret-color: var(--accent-text);
 }
 .ui .field input::placeholder { color: var(--text-faint); opacity: 1; }
 
@@ -519,7 +574,7 @@
   display: inline-block;
   width: 2px; height: 20px;
   border-radius: 1px;
-  background: var(--violet-300);
+  background: var(--accent-text);
   vertical-align: -4px;
 }
 
@@ -574,14 +629,14 @@
   color: var(--text-faint);
 }
 .ui .say-icon.done { color: var(--up); }
-.ui .say-icon.needs { color: var(--amber-300); }
+.ui .say-icon.needs { color: var(--warn); }
 
 /* What went wrong, under the thing it went wrong with. Absent until something
    has — never there to warn in advance. */
 .ui .say-fault {
   display: flex; align-items: flex-start; gap: 8px;
   margin-top: 13px;
-  font-size: 13px; color: var(--rose-400);
+  font-size: 13px; color: var(--bad);
 }
 .ui .say-fault svg { width: 15px; height: 15px; flex: none; margin-top: 2px; }
 
@@ -756,7 +811,7 @@
   background: var(--bg-raised);
   border: 0;
   border-radius: var(--r-md);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-pop);
 }
 .ui .dock {
   /* Stretch, not centre: the tabs take the bar's full inner height, so the
@@ -788,7 +843,7 @@
   clip-path: inset(50%);
 }
 .ui .dock .tab svg { width: 23px; height: 23px; }
-.ui .dock .tab.on { color: var(--violet-300); }
+.ui .dock .tab.on { color: var(--accent-text); }
 .ui .dock .pill {
   position: absolute; top: 0; bottom: 0; left: 0;
   width: calc((100% - (var(--tabs) - 1) * 2px) / var(--tabs));
@@ -801,7 +856,7 @@
   /* Square: the tabs stand 46px tall, the dock's height less its padding. */
   width: 46px; transform: translateX(-50%);
   border-radius: 7px;
-  background: color-mix(in srgb, var(--violet-400) 16%, transparent);
+  background: color-mix(in srgb, var(--accent-mix) 16%, transparent);
 }
 .ui .dock .pill.none { opacity: 0; }
 /* Drawn and dead: nothing has drawn the screen behind it. */

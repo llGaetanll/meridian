@@ -56,7 +56,7 @@
    dimming is there to explain. */
 .ui .tx-cat .t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ui .tx-cat .pending-tag { flex: none; color: var(--text-faint); }
-.ui .tx-cat .pending-tag::before { content: "· "; color: var(--slate-700); }
+.ui .tx-cat .pending-tag::before { content: "· "; color: var(--bars); }
 .ui .tx-amt { text-align: right; font-size: 13.5px; }
 /* Pending: the whole row recedes, so it reads as one provisional thing rather
    than a row with some grey parts in it. */

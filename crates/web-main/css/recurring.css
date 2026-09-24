@@ -31,7 +31,7 @@
 .ui .rec-when { font-size: 12.5px; color: var(--text-faint); }
 /* Due inside the week. Amber rather than rose: a subscription landing on
    Saturday is a heads-up, not a debt. */
-.ui .rec-when.soon { color: var(--amber-300); }
+.ui .rec-when.soon { color: var(--warn); }
 .ui .rec-amt { text-align: right; font-size: 14.5px; }
 
 /* The calendar, in the rail: a whole month centred between two arrows. The

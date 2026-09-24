@@ -46,7 +46,7 @@ body {
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1;
-  color: var(--violet-300);
+  color: var(--accent-text);
 }
 
 .brand-mark {
@@ -63,7 +63,7 @@ body {
   gap: 14px;
   padding: 11px 14px;
   border-radius: var(--r-pill);
-  color: var(--slate-300);
+  color: var(--text-soft);
   text-decoration: none;
   font-size: 15px;
   font-weight: 500;
@@ -71,17 +71,17 @@ body {
 .nav a:hover { background: var(--bg-raised); color: var(--text); }
 .nav a.active {
   background: var(--accent-tint);
-  color: var(--violet-300);
+  color: var(--accent-text);
   font-weight: 600;
 }
 .nav .icon { width: 22px; height: 22px; flex: none; stroke-width: 1.75; }
 
-.sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+/* The foot of the sidebar is the account chip and nothing else. */
+.sidebar-foot { margin-top: auto; }
 
 .account {
   display: flex; align-items: center; gap: 11px;
-  padding: 10px 12px;
-  margin-top: 8px;
+  padding: 9px 11px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
@@ -90,22 +90,31 @@ body {
 .account:hover { background: var(--bg-raised); }
 .account-id { min-width: 0; }
 .account-name {
-  font-size: 13.5px; font-weight: 600;
+  font-size: 13.5px; font-weight: 600; line-height: 1.25;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.account-meta {
-  display: flex; align-items: center; gap: 5px;
-  font-size: 11px; color: var(--text-faint); margin-top: 1px;
+.account-mail {
+  font-size: 11.5px; color: var(--text-faint); line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .account .more { margin-left: auto; color: var(--text-faint); flex: none; }
 .account .more svg { width: 16px; height: 16px; }
 
+/* Open: the card takes the chip in rather than standing above it. See the
+   note in screens/shell.css. */
+.account-open .account {
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 9px;
+  background: var(--bg-raised);
+}
+
 .avatar {
   position: relative;
-  width: 44px; height: 44px; flex: none;
+  width: 36px; height: 36px; flex: none;
   border-radius: var(--r-pill); overflow: hidden;
 }
-.avatar svg { display: block; width: 100%; height: 100%; }
+.avatar img, .avatar svg { display: block; width: 100%; height: 100%; object-fit: cover; }
 .status-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--up); flex: none;
@@ -212,7 +221,7 @@ body {
   color: var(--text-muted); padding: 5px 12px; border-radius: 7px;
 }
 .seg button:hover { color: var(--text); }
-.seg button.active { background: var(--accent-tint); color: var(--violet-300); }
+.seg button.active { background: var(--accent-tint); color: var(--accent-text); }
 
 .btn {
   border: 0; background: var(--bg-input);
@@ -221,7 +230,7 @@ body {
 }
 .btn:hover { background: var(--border-strong); }
 .btn.primary {
-  background: var(--accent); color: white;
+  background: var(--accent); color: var(--on-accent);
 }
 .btn.primary:hover { background: var(--accent-strong); }
 .btn.block { width: 100%; }
@@ -250,7 +259,7 @@ tbody tr:hover { background: var(--bg-raised); }
   width: 28px; height: 28px; border-radius: var(--r-sm);
   display: grid; place-items: center;
   font-size: 11px; font-weight: 700;
-  background: var(--bg-input); color: var(--slate-300);
+  background: var(--bg-input); color: var(--text-soft);
 }
 
 /* Stat rows */
