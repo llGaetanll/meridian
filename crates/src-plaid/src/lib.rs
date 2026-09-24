@@ -29,6 +29,8 @@ mod plaid_rejection;
 mod plaid_request;
 mod plaid_request_accounts;
 mod plaid_request_exchange;
+mod plaid_request_holdings;
+mod plaid_request_investments;
 mod plaid_request_link_session;
 mod plaid_request_link_token;
 mod plaid_request_recurring;
@@ -38,6 +40,8 @@ mod plaid_request_sync;
 mod plaid_request_webhook_key;
 mod plaid_response_accounts;
 mod plaid_response_exchange;
+mod plaid_response_holdings;
+mod plaid_response_investments;
 mod plaid_response_link_session;
 mod plaid_response_link_token;
 mod plaid_response_recurring;
@@ -45,6 +49,7 @@ mod plaid_response_remove;
 mod plaid_response_sandbox_public_token;
 mod plaid_response_sync;
 mod plaid_response_webhook_key;
+mod plaid_security;
 mod plaid_transaction;
 mod plaid_webhook;
 mod plaid_webhook_jwt;
@@ -59,6 +64,8 @@ pub use plaid_rejection::*;
 pub use plaid_request::*;
 pub use plaid_request_accounts::*;
 pub use plaid_request_exchange::*;
+pub use plaid_request_holdings::*;
+pub use plaid_request_investments::*;
 pub use plaid_request_link_session::*;
 pub use plaid_request_link_token::*;
 pub use plaid_request_recurring::*;
@@ -68,6 +75,8 @@ pub use plaid_request_sync::*;
 pub use plaid_request_webhook_key::*;
 pub use plaid_response_accounts::*;
 pub use plaid_response_exchange::*;
+pub use plaid_response_holdings::*;
+pub use plaid_response_investments::*;
 pub use plaid_response_link_session::*;
 pub use plaid_response_link_token::*;
 pub use plaid_response_recurring::*;
@@ -75,6 +84,7 @@ pub use plaid_response_remove::*;
 pub use plaid_response_sandbox_public_token::*;
 pub use plaid_response_sync::*;
 pub use plaid_response_webhook_key::*;
+pub use plaid_security::*;
 pub use plaid_transaction::*;
 pub use plaid_webhook::*;
 pub use plaid_webhook_jwt::*;
@@ -161,6 +171,21 @@ pub async fn create_sandbox_public_token(
     Ok(res)
 }
 
+/// The same shortcut with `investments` alongside: a Sandbox brokerage, for
+/// working on holdings and trades. Sandbox only, like the plain one.
+pub async fn create_sandbox_brokerage(
+    client: &PlaidClient,
+    institution_id: &str,
+) -> Result<SandboxPublicTokenResponse, PlaidError> {
+    let res: SandboxPublicTokenResponse = client
+        .send_request(&SandboxPublicTokenRequest::new(institution_id).with_investments())
+        .await?;
+
+    tracing::info!(institution_id, "sandbox brokerage created");
+
+    Ok(res)
+}
+
 /// Trade a `public_token` for the permanent one.
 ///
 /// **The call that spends a Production Item slot.** The account has ten and
@@ -225,6 +250,62 @@ pub async fn fetch_accounts(
     client
         .send_request(&AccountsRequest::new(access_token))
         .await
+}
+
+/// Every position on the Item, with the securities they point at.
+///
+/// Covered by the Item's investments subscription, like the trades. The one
+/// investments call that *is* billed per request is `/investments/refresh`,
+/// which nothing here sends: new data announces itself on the
+/// `HOLDINGS: DEFAULT_UPDATE` webhook, or is simply fetched again.
+pub async fn fetch_holdings(
+    client: &PlaidClient,
+    access_token: &str,
+) -> Result<HoldingsResponse, PlaidError> {
+    let res: HoldingsResponse = client
+        .send_request(&HoldingsRequest::new(access_token))
+        .await?;
+
+    tracing::info!(
+        accounts = res.accounts.len(),
+        holdings = res.holdings.len(),
+        securities = res.securities.len(),
+        "holdings fetched",
+    );
+
+    Ok(res)
+}
+
+/// One page of `/investments/transactions/get`: the trades between two dates,
+/// `offset` transactions in.
+///
+/// A page, not a history — the same rule as [`sync_transactions`]. The answer
+/// carries `total_investment_transactions`, and every page past the first is
+/// a call the caller asked for. A fresh Item answers `PRODUCT_NOT_READY`
+/// until Plaid's first extraction lands; asking again later is the cure.
+pub async fn fetch_investments(
+    client: &PlaidClient,
+    access_token: &str,
+    range: std::ops::Range<api_common::Timestamp>,
+    offset: u32,
+) -> Result<InvestmentsResponse, PlaidError> {
+    let res: InvestmentsResponse = client
+        .send_request(&InvestmentsRequest::page(
+            access_token,
+            range.start,
+            range.end,
+            offset,
+        ))
+        .await?;
+
+    tracing::info!(
+        transactions = res.investment_transactions.len(),
+        total = res.total_investment_transactions,
+        offset,
+        "investment transactions fetched",
+    );
+
+    Ok(res)
 }
 
 /// Remove the Item, which is the only way its monthly bill stops.

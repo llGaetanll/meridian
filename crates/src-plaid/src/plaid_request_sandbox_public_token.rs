@@ -32,6 +32,13 @@ impl SandboxPublicTokenRequest {
             initial_products: vec![String::from(crate::TRANSACTIONS)],
         }
     }
+
+    /// The same Item with `investments` alongside — a Sandbox brokerage,
+    /// whose holdings and trades the investments endpoints will answer for.
+    pub fn with_investments(mut self) -> Self {
+        self.initial_products.push(String::from(crate::INVESTMENTS));
+        self
+    }
 }
 
 impl PlaidRequest for SandboxPublicTokenRequest {
@@ -57,5 +64,15 @@ mod tests {
 
         assert_eq!(body["institution_id"], "ins_109508");
         assert_eq!(body["initial_products"][0], crate::TRANSACTIONS);
+    }
+
+    #[test]
+    fn a_brokerage_item_names_investments_too() {
+        let body = SandboxPublicTokenRequest::new("ins_109508")
+            .with_investments()
+            .body();
+
+        assert_eq!(body["initial_products"][0], crate::TRANSACTIONS);
+        assert_eq!(body["initial_products"][1], crate::INVESTMENTS);
     }
 }

@@ -80,10 +80,15 @@ pub struct LinkTokenRequest {
 /// characters.
 pub const CLIENT_NAME: &str = "Meridian";
 
-/// The only product the app uses. Balances and recurring both come off the
-/// Item that `transactions` creates, so naming them again would only widen
-/// what the user is asked to consent to.
+/// The one product every link asks for. Balances and recurring both come off
+/// the Item that `transactions` creates, so naming them again would only
+/// widen what the user is asked to consent to.
 pub const TRANSACTIONS: &str = "transactions";
+
+/// The brokerage product: holdings, and the trades behind them. A second
+/// per-Item subscription, so a link only names it when the account being
+/// attached is one it applies to — no link does yet.
+pub const INVESTMENTS: &str = "investments";
 
 impl LinkTokenRequest {
     /// Attach a bank that is not attached yet.

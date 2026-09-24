@@ -163,6 +163,51 @@ because it is the one nothing can undo: each request that lands creates an Item
 and the account may hold ten. That stops a burst and nothing slower — nothing
 here counts how many Items the account already holds.
 
+## Investments
+
+The brokerage product: positions and trades, for the markets page. Two calls,
+both covered by the Item's `investments` subscription rather than billed per
+request — the one investments endpoint that bills per call is
+`/investments/refresh`, and nothing calls it.
+
+```
+server: POST /investments/holdings/get      -> holdings, securities
+server: POST /investments/transactions/get  -> one page of trades, securities
+```
+
+An Item only answers these if it was created with the `investments` product,
+which is a second monthly subscription on that Item — so a link only names it
+when it applies, and no link does yet. In Sandbox,
+`create_sandbox_brokerage` makes an Item that has it, and the whole shape is
+printable in one command:
+
+```sh
+cargo run -p src-plaid --example investments
+```
+
+A fresh Item answers `PRODUCT_NOT_READY` while Plaid runs its first
+extraction — seconds, in Sandbox — and asking again is the cure, same as
+transactions. New data later announces itself as `HOLDINGS: DEFAULT_UPDATE`
+and `INVESTMENTS_TRANSACTIONS: DEFAULT_UPDATE` webhooks, neither acted on
+yet.
+
+Three things about the data worth knowing before reading it into anything:
+
+- **A trade is one security against cash**, never two securities. The other
+  asset a user sees in a trade is always the cash leg, in the account's
+  currency.
+- **A trade has a day, not an instant.** Plaid reports a settlement date, and
+  a time of day only for select institutions, so nothing downstream can
+  assume one.
+- **The prices are stale on purpose.** `institution_price` is usually
+  yesterday's close, so a live portfolio value is Plaid's *quantities* times
+  our own market prices — the ones the markets page already draws.
+
+The signs rhyme with `/transactions/sync`: a positive `amount` is cash
+leaving the account, so a buy is positive and a sell negative, while
+`quantity` points the other way — positive units in on a buy. And `cancel`
+transactions point at a transaction to drop, the way pending duplicates do.
+
 ## Repairing a bank
 
 A bank whose login has expired answers `ITEM_LOGIN_REQUIRED` to everything,

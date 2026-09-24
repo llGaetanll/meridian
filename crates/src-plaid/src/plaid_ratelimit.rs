@@ -28,6 +28,10 @@ pub enum PlaidEndpoint {
     AccountsGet,
     /// `/transactions/recurring/get`.
     RecurringGet,
+    /// `/investments/holdings/get` — 15/min per Item.
+    HoldingsGet,
+    /// `/investments/transactions/get` — 30/min per Item.
+    InvestmentsGet,
     /// `/link/token/create` — the page somebody signs in to their bank on.
     LinkTokenCreate,
     /// `/link/token/get` — what a session came to, where Plaid does not call
@@ -52,6 +56,10 @@ impl PlaidEndpoint {
             // 15/min published; 10 leaves room for a retry without tipping over.
             PlaidEndpoint::AccountsGet => 10,
             PlaidEndpoint::RecurringGet => 10,
+            // 15/min published, the same as accounts, so the same headroom.
+            PlaidEndpoint::HoldingsGet => 10,
+            // 30/min published.
+            PlaidEndpoint::InvestmentsGet => 20,
             // Both are one request per sheet, and a sheet is a person doing
             // something. Far more than that is something in a loop.
             PlaidEndpoint::LinkTokenCreate => 30,

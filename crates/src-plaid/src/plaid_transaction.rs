@@ -98,7 +98,7 @@ fn parse_date(s: &str) -> Option<Timestamp> {
     u64::try_from(secs).ok().map(Timestamp::from_secs)
 }
 
-fn date<'de, D>(deserializer: D) -> Result<Timestamp, D::Error>
+pub(crate) fn date<'de, D>(deserializer: D) -> Result<Timestamp, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
