@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridian — Data coverage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared/theme.css">
+<link rel="stylesheet" href="shared/app.css">
+<link rel="stylesheet" href="screens/sheet.css">
+<style>
+  /* The board scrolls; app.css pinned the body for the shell's sake. */
+  html, body { height: auto; overflow: visible; }
+
+  /* ---- The page ---- */
+
+  .cov {
+    height: 100%; overflow-y: auto;
+    padding: 36px 46px 60px;
+    display: flex; flex-direction: column; gap: 38px;
+  }
+  .cov::-webkit-scrollbar { width: 8px; }
+  .cov::-webkit-scrollbar-thumb { background: var(--bg-input); border-radius: 4px; }
+  .cov::-webkit-scrollbar-track { background: transparent; }
+
+  .cov-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+  .cov-title { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+  .cov-tags { display: flex; gap: 8px; margin-top: 12px; }
+  .cov-pick { text-align: right; }
+  .cov-pick-note { margin-top: 10px; font-size: 11.5px; color: var(--text-faint); }
+
+  /* Headline: numbers only — how much we hold, and how the asking went. */
+  .cov-hero { display: flex; gap: 84px; }
+  .cov-hero .k {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--text-faint);
+  }
+  .cov-hero .v { margin-top: 8px; font-size: 44px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; }
+  .cov-hero .sub { margin-top: 12px; font-size: 13px; color: var(--text-muted); }
+  .cov-hero .sub b { font-weight: 600; color: var(--text-soft); }
+  .cov-hero .sub b.bad { color: var(--bad); }
+
+  .sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+  .sec-note { font-size: 12px; color: var(--text-faint); text-align: right; max-width: 62ch; }
+
+  /* ---- Asking Yahoo: two weeks of hours, one bar ---- */
+
+  .act-track {
+    position: relative; height: 20px;
+    border-radius: var(--r-xs);
+    background: var(--bg-input);
+  }
+  .act-track i {
+    position: absolute; top: 0; bottom: 0;
+    background: var(--accent-soft);
+  }
+  .act-track i:first-of-type { border-radius: var(--r-xs) 0 0 var(--r-xs); }
+  .act-track i:last-of-type { border-radius: 0 var(--r-xs) var(--r-xs) 0; }
+  .act-track b { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--bad); }
+  .act-track s { position: absolute; top: 0; bottom: 0; text-decoration: none; }
+  .act-track b, .act-track s { cursor: help; }
+  .act-foot { position: relative; height: 16px; margin-top: 8px; }
+  .act-foot span {
+    position: absolute; transform: translateX(-50%);
+    font-size: 11px; color: var(--text-faint);
+    white-space: nowrap;
+  }
+  .act-foot span:first-child { transform: none; }
+  .act-foot span:last-child { transform: translateX(-100%); }
+
+  /* ---- One card per symbol ---- */
+
+  .cov-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px 26px; }
+  .ahead { display: flex; align-items: baseline; gap: 10px; }
+  .ahead .sym { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+  .ahead .nm { font-size: 12px; color: var(--text-faint); }
+  .ahead .pct { margin-left: auto; font-size: 14px; font-weight: 600; }
+  .pct.full { color: var(--up); }
+  .pct.thin { color: var(--warn); }
+
+  .aplot { position: relative; height: 96px; margin-top: 12px; }
+  .aplot svg { position: relative; z-index: 1; width: 100%; height: 100%; display: block; }
+  .aplot path { fill: none; stroke: var(--text-muted); stroke-width: 1.5; }
+  .band { position: absolute; top: 0; bottom: 0; cursor: help; }
+  .band.miss {
+    background: color-mix(in srgb, var(--warn) 18%, transparent);
+    box-shadow: inset 0 2px 0 color-mix(in srgb, var(--warn) 55%, transparent);
+  }
+  .band.gone {
+    background-image: repeating-linear-gradient(
+      -45deg, var(--bars) 0 2.5px, transparent 2.5px 9px);
+  }
+  .afoot {
+    display: flex; justify-content: space-between;
+    margin-top: 8px; font-size: 11px; color: var(--text-faint);
+  }
+  .grid-note { margin-top: 16px; font-size: 12px; color: var(--text-faint); }
+
+  /* The floating word on anything hoverable, the asset chart's device.
+     Everything that carries one is already absolutely positioned. */
+  [data-label]::after {
+    content: attr(data-label);
+    position: absolute; left: 50%; top: 24px;
+    transform: translateX(-50%) translateY(-4px);
+    white-space: nowrap; pointer-events: none; z-index: 3;
+    padding: 7px 11px; border-radius: var(--r-sm);
+    background: var(--bg-input);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    font-size: 12px; font-weight: 500; color: var(--text);
+    opacity: 0; transition: opacity 0.12s ease, transform 0.12s ease;
+  }
+  [data-label]:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .act-track [data-label]::after { top: 26px; }
+  .band[data-label]::after { top: 14px; }
+
+  /* Legend swatches beside the grid's title */
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-muted); }
+  .legend .lg { display: inline-flex; align-items: center; gap: 7px; }
+  .legend .sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border); }
+  .legend .sw.ok { background: var(--bg); }
+  .legend .sw.lit { background: var(--accent-soft); border-color: transparent; }
+  .legend .sw.quiet { background: var(--bg-input); border-color: transparent; }
+  .legend .sw.fault {
+    border-color: transparent;
+    background: linear-gradient(to right,
+      var(--bg-input) 0 42%, var(--bad) 42% 58%, var(--bg-input) 58% 100%);
+  }
+  .legend .sw.miss { background: color-mix(in srgb, var(--warn) 18%, transparent); }
+  .legend .sw.gone {
+    background-image: repeating-linear-gradient(
+      -45deg, var(--bars) 0 2px, transparent 2px 6px);
+  }
+</style>
+<script src="shared/theme-switch.js"></script>
+</head>
+<body>
+
+<div class="sheet">
+
+<h1><a href="index.html">Sketches</a> / Data coverage</h1>
+<p class="lead" style="max-width:76ch; margin-top:-36px; color:var(--text-muted);">
+  An internal page, mine alone: how much of the market data we mean to hold is
+  actually in prod's database. Not the web app and not in it — the drawing is a
+  small read-only tool that runs on the laptop, reads prod's Postgres through
+  the tunnel, and binds to localhost, so the page exists only where it is run.
+  Three states, everywhere on the page: <b>collected</b> is plain ground with
+  the curve on it, <b>not collected</b> is the amber wash — bars we could ask
+  for and have not — and <b>unavailable</b> is the hatch, the same hatch the
+  asset chart uses for a shut market: hours Yahoo cannot answer for, because
+  the symbol was not listed yet, the interval's history floor has passed, or
+  the bar is still forming. Coverage is kept per symbol <i>and</i> interval,
+  so the page reads one interval at a time. The activity bar has no table
+  behind it yet — the server does not remember when it asked Yahoo — so that
+  part of the drawing is also a proposal for one.
+</p>
+
+<section class="state">
+<div class="state-label">The page, on the laptop</div>
+<div class="window wide">
+<div class="window-bar"><i></i><i></i><i></i><span class="window-url">localhost:8090/coverage</span></div>
+<div class="viewport">
+<div class="cov">
+
+  <div class="cov-head">
+    <div>
+      <div class="cov-title">Data coverage</div>
+      <div class="cov-tags">
+        <span class="chip"><span class="swatch"></span> Yahoo Finance</span>
+        <span class="chip">prod · read-only</span>
+        <span class="chip">61 symbols · 55 in the universe</span>
+      </div>
+    </div>
+    <div class="cov-pick">
+      <div class="seg">
+        <button>1m</button><button>2m</button><button>5m</button><button>15m</button>
+        <button>30m</button><button>1h</button><button class="active">1d</button><button>1wk</button>
+      </div>
+      <div class="cov-pick-note">One interval at a time; only 1d is fetched unasked.</div>
+    </div>
+  </div>
+
+  <div class="cov-hero">
+    <div>
+      <div class="k">Collected · 1d bars · Jan 2018 – today</div>
+      <div class="v num">87.4%</div>
+      <div class="sub">
+        <b class="num">127,448</b> of <b class="num">145,822</b> fetchable bar-days ·
+        <b class="num">13,270</b> not collected ·
+        <b class="num">5,104</b> unavailable
+      </div>
+    </div>
+    <div>
+      <div class="k">Requests · last 14 days</div>
+      <div class="v num">41,283</div>
+      <div class="sub">
+        <b class="num">40,981</b> succeeded ·
+        <b class="num bad">302</b> failed
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="sec-head">
+      <span class="section-title">Uptime</span>
+      <span class="legend">
+        <span class="lg"><i class="sw lit"></i>Asked in that hour</span>
+        <span class="lg"><i class="sw fault"></i>Refused or rate-limited</span>
+        <span class="lg"><i class="sw quiet"></i>Quiet — down or resting</span>
+      </span>
+    </div>
+    <div class="act-track">
+      <i style="left:0%; width:8.04%"></i>
+      <i style="left:9.38%; width:19.84%"></i>
+      <i style="left:31.45%; width:37.0%"></i>
+      <i style="left:68.80%; width:23.76%"></i>
+      <i style="left:93.30%; width:6.7%"></i>
+      <s style="left:8.04%; width:1.34%" data-label="Quiet · Thu Sep 11, 03:00 – 07:30"></s>
+      <s style="left:29.22%; width:2.23%" data-label="Quiet · Sun Sep 14, 02:10 – 09:40"></s>
+      <s style="left:68.45%; width:0.35%" data-label="Quiet · Fri Sep 19, 14:00 – 15:10"></s>
+      <s style="left:92.56%; width:0.74%" data-label="Quiet · Mon Sep 22, 23:00 – 01:30"></s>
+      <b style="left:22.0%" data-label="429 Too Many Requests · Sat Sep 13, 01:55"></b>
+      <b style="left:55.9%" data-label="429 Too Many Requests · Wed Sep 17, 19:48"></b>
+      <b style="left:56.4%" data-label="429 Too Many Requests · Wed Sep 17, 21:30"></b>
+      <b style="left:90.2%" data-label="Refused · TSLA 1d · Mon Sep 22, 15:02"></b>
+    </div>
+    <div class="act-foot">
+      <span style="left:0">Sep 10</span>
+      <span style="left:14.3%">Sep 12</span>
+      <span style="left:28.6%">Sep 14</span>
+      <span style="left:42.9%">Sep 16</span>
+      <span style="left:57.1%">Sep 18</span>
+      <span style="left:71.4%">Sep 20</span>
+      <span style="left:85.7%">Sep 22</span>
+      <span style="left:100%">Now</span>
+    </div>
+  </div>
+
+  <div>
+    <div class="sec-head" style="justify-content: flex-end;">
+      <span class="legend">
+        <span class="lg"><i class="sw ok"></i>Collected</span>
+        <span class="lg"><i class="sw miss"></i>Not collected</span>
+        <span class="lg"><i class="sw gone"></i>Unavailable</span>
+      </span>
+    </div>
+
+    <div class="cov-grid">
+
+      <div class="acard">
+        <div class="ahead">
+          <span class="sym">KO</span><span class="nm">Coca-Cola · 943 bars</span>
+          <span class="pct num thin">43.1%</span>
+        </div>
+        <div class="aplot">
+          <div class="band miss" style="left:0; width:57%" data-label="Not collected · Jan 1, 2018 – Dec 6, 2022 · 1,239 bar-days"></div>
+          <svg viewBox="0 0 400 120" preserveAspectRatio="none">
+            <path vector-effect="non-scaling-stroke" d="M228,64 L242,58 L256,66 L270,54 L284,60 L298,50 L312,58 L326,46 L340,54 L354,44 L368,52 L382,40 L400,46"/>
+          </svg>
+        </div>
+        <div class="afoot"><span>Jan 2018</span><span>Today</span></div>
+      </div>
+
+      <div class="acard">
+        <div class="ahead">
+          <span class="sym">TSLA</span><span class="nm">Tesla · 1,962 bars</span>
+          <span class="pct num thin">90.0%</span>
+        </div>
+        <div class="aplot">
+          <div class="band miss" style="left:62%; width:8%" data-label="Not collected · May 12, 2023 – Feb 3, 2024 · 184 bar-days"></div>
+          <div class="band miss" style="left:80%; width:2%" data-label="Not collected · Dec 9, 2024 – Feb 10, 2025 · 43 bar-days"></div>
+          <svg viewBox="0 0 400 120" preserveAspectRatio="none">
+            <path vector-effect="non-scaling-stroke" d="M0,112 L20,107 L40,110 L60,98 L80,104 L100,84 L120,94 L140,66 L160,80 L180,54 L200,70 L220,44 L235,58 L248,50"/>
+            <path vector-effect="non-scaling-stroke" d="M280,62 L290,48 L300,66 L310,52 L320,58"/>
+            <path vector-effect="non-scaling-stroke" d="M328,52 L340,68 L352,54 L364,72 L376,58 L388,66 L400,56"/>
+          </svg>
+        </div>
+        <div class="afoot"><span>Jan 2018</span><span>Today</span></div>
+      </div>
+
+      <div class="acard">
+        <div class="ahead">
+          <span class="sym">NVDA</span><span class="nm">NVIDIA · 1,993 bars</span>
+          <span class="pct num thin">91.0%</span>
+        </div>
+        <div class="aplot">
+          <div class="band miss" style="left:38%; width:9%" data-label="Not collected · Apr 19, 2021 – Jan 28, 2022 · 196 bar-days"></div>
+          <svg viewBox="0 0 400 120" preserveAspectRatio="none">
+            <path vector-effect="non-scaling-stroke" d="M0,112 L24,108 L48,110 L72,104 L96,107 L120,100 L136,103 L152,97"/>
+            <path vector-effect="non-scaling-stroke" d="M188,90 L206,82 L224,86 L242,64 L260,72 L278,46 L296,56 L314,32 L332,40 L350,24 L368,30 L386,18 L400,22"/>
+          </svg>
+        </div>
+        <div class="afoot"><span>Jan 2018</span><span>Today</span></div>
+      </div>
+
+      <div class="acard">
+        <div class="ahead">
+          <span class="sym">ARM</span><span class="nm">Arm Holdings · listed Sep 2023 · 758 bars</span>
+          <span class="pct num full">100%</span>
+        </div>
+        <div class="aplot">
+          <div class="band gone" style="left:0; width:66%" data-label="Unavailable · Yahoo's series begins Sep 14, 2023"></div>
+          <svg viewBox="0 0 400 120" preserveAspectRatio="none">
+            <path vector-effect="non-scaling-stroke" d="M264,60 L276,36 L288,52 L300,30 L312,46 L324,40 L336,58 L348,48 L360,64 L372,54 L384,60 L400,52"/>
+          </svg>
+        </div>
+        <div class="afoot"><span>Jan 2018</span><span>Today</span></div>
+      </div>
+
+      <div class="acard">
+        <div class="ahead">
+          <span class="sym">QQQ</span><span class="nm">Invesco QQQ · 2,189 bars</span>
+          <span class="pct num full">100%</span>
+        </div>
+        <div class="aplot">
+          <svg viewBox="0 0 400 120" preserveAspectRatio="none">
+            <path vector-effect="non-scaling-stroke" d="M0,108 L28,100 L56,104 L84,88 L104,94 L118,110 L132,92 L152,82 L172,88 L196,70 L220,78 L244,58 L268,66 L292,50 L316,58 L340,42 L364,50 L388,34 L400,38"/>
+          </svg>
+        </div>
+        <div class="afoot"><span>Jan 2018</span><span>Today</span></div>
+      </div>
+
+      <div class="acard">
+        <div class="ahead">
+          <span class="sym">SPY</span><span class="nm">S&amp;P 500 ETF · 2,189 bars</span>
+          <span class="pct num full">100%</span>
+        </div>
+        <div class="aplot">
+          <svg viewBox="0 0 400 120" preserveAspectRatio="none">
+            <path vector-effect="non-scaling-stroke" d="M0,104 L30,98 L60,102 L90,90 L110,96 L120,108 L134,94 L158,84 L182,90 L206,74 L230,80 L254,64 L278,72 L302,56 L326,62 L350,48 L374,54 L400,42"/>
+          </svg>
+        </div>
+        <div class="afoot"><span>Jan 2018</span><span>Today</span></div>
+      </div>
+
+    </div>
+
+    <div class="grid-note">
+      Thinnest coverage first, and every symbol the database has heard of gets
+      a card — the universe and anything a user has asked for — 55 more below
+      the fold. At an intraday interval most of a card would be hatch: 1m
+      reaches back 6 days, the other intraday intervals 59.
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+</section>
+
+</div>
+
+</body>
+</html>
