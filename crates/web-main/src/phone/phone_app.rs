@@ -17,6 +17,7 @@ use crate::app::ledger;
 use crate::app::recurring;
 use crate::runtime_app::RuntimeApp;
 use crate::tab::Tab;
+use crate::tab::follow_title;
 
 /// The phone's frame, and whichever tab is showing in it: what `AppShell` is
 /// on a wide window.
@@ -32,6 +33,8 @@ pub fn PhoneApp() -> impl IntoView {
     let tab = Memo::new(move |_| {
         screen.with(|screen| screen.as_ref().and_then(|screen| Tab::of(screen, false)))
     });
+
+    follow_title(tab.into());
 
     // The lit tab's name, in the dock's words.
     let title = Signal::derive(move || {

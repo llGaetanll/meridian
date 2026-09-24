@@ -1,6 +1,7 @@
 //! Which page the shell shows.
 
 use client_state::ViewScreen;
+use leptos::prelude::*;
 
 /// The machine's four tabs, and Markets.
 ///
@@ -30,4 +31,39 @@ impl Tab {
 
         Some(tab)
     }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Ledger => "Ledger",
+            Self::Recurring => "Recurring",
+            Self::Balances => "Balances",
+            Self::Account => "Account",
+            Self::Markets => "Markets",
+        }
+    }
+}
+
+/// The app's name, which the title falls back to on a page that is on no tab.
+const NAME: &str = "Meridian";
+
+/// Keep the browser's tab named after the app's tab, and after nothing else.
+///
+/// No suffix and no separator. Someone reading a strip of windows to tell
+/// them apart learns nothing from four copies of "Meridian".
+pub fn follow_title(tab: Signal<Option<Tab>>) {
+    Effect::new(move |_| set_title(tab.get().map_or(NAME, Tab::label)));
+}
+
+/// For onboarding and the paywall, which are on no tab and outside the shell
+/// that follows one.
+pub fn name_title() {
+    set_title(NAME);
+}
+
+fn set_title(title: &str) {
+    let Some(document) = web_sys::window().and_then(|window| window.document()) else {
+        return;
+    };
+
+    document.set_title(title);
 }

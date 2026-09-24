@@ -10,7 +10,6 @@ use client_state::ViewPaywall;
 use client_state::ViewRecurring;
 use client_state::ViewScreen;
 use leptos::prelude::*;
-use web_components::SearchRow;
 use web_components::Shell;
 
 use crate::frame::Frame;
@@ -27,6 +26,8 @@ use crate::phone::narrow;
 use crate::runtime_app::RuntimeApp;
 use crate::state::provide_markets;
 use crate::tab::Tab;
+use crate::tab::follow_title;
+use crate::tab::name_title;
 
 /// The whole app: the last screen the machine rendered, matched on.
 ///
@@ -53,13 +54,23 @@ pub fn App() -> impl IntoView {
         // session being read, which is too soon to be worth drawing for.
         None => ().into_any(),
 
-        Some(Frame::Onboarding) => follow(screen, onboarding)
-            .map(|view| view! { <OnboardingPage view=view /> })
-            .into_any(),
+        // Neither of these is under a shell, so there is no tab to name the
+        // page after and nothing watching the title while they are up.
+        Some(Frame::Onboarding) => {
+            name_title();
 
-        Some(Frame::Paywall) => follow(screen, paywall)
-            .map(|view| view! { <PaywallPage view=view /> })
-            .into_any(),
+            follow(screen, onboarding)
+                .map(|view| view! { <OnboardingPage view=view /> })
+                .into_any()
+        }
+
+        Some(Frame::Paywall) => {
+            name_title();
+
+            follow(screen, paywall)
+                .map(|view| view! { <PaywallPage view=view /> })
+                .into_any()
+        }
 
         // Read here and in no other arm, so first run does not come down and
         // go up again when the window crosses a phone's width.
@@ -104,6 +115,8 @@ fn AppShell() -> impl IntoView {
                 .and_then(|screen| Tab::of(screen, markets.get()))
         })
     });
+
+    follow_title(tab.into());
 
     // The tab already showing, which has nowhere to go and would only blink.
     let standing =
@@ -161,7 +174,6 @@ fn AppShell() -> impl IntoView {
                         .map(|view| {
                             view! {
                                 <div class="ui">
-                                    <SearchRow />
                                     <LedgerPage view=view />
                                 </div>
                             }
@@ -173,7 +185,6 @@ fn AppShell() -> impl IntoView {
                         .map(|view| {
                             view! {
                                 <div class="ui">
-                                    <SearchRow />
                                     <RecurringPage view=view />
                                 </div>
                             }
@@ -185,7 +196,6 @@ fn AppShell() -> impl IntoView {
                         .map(|view| {
                             view! {
                                 <div class="ui">
-                                    <SearchRow />
                                     <BalancesPage view=view />
                                 </div>
                             }
@@ -197,7 +207,6 @@ fn AppShell() -> impl IntoView {
                         .map(|view| {
                             view! {
                                 <div class="ui">
-                                    <SearchRow />
                                     <AccountPage view=view />
                                 </div>
                             }
