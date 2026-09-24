@@ -40,6 +40,7 @@ async fn bars_come_back_in_order_over_a_half_open_window(db: PgPool) {
         BarInterval::Min5,
         &[bar(600, 2.0), bar(300, 1.0), bar(900, 3.0)],
         at(300)..at(1200),
+        None,
     )
     .await
     .expect("the bars are written");
@@ -68,6 +69,7 @@ async fn a_bar_fetched_again_is_one_row_with_the_new_values(db: PgPool) {
         BarInterval::Day1,
         &[bar(0, 1.0)],
         at(0)..at(86_400),
+        None,
     )
     .await
     .expect("the first write lands");
@@ -79,6 +81,7 @@ async fn a_bar_fetched_again_is_one_row_with_the_new_values(db: PgPool) {
         BarInterval::Day1,
         &[bar(0, 2.0)],
         at(0)..at(86_400),
+        None,
     )
     .await
     .expect("the second write lands");
@@ -107,6 +110,7 @@ async fn touching_spans_merge_into_one(db: PgPool) {
         BarInterval::Min5,
         &[],
         at(0)..at(500),
+        None,
     )
     .await
     .expect("the first span is written");
@@ -118,6 +122,7 @@ async fn touching_spans_merge_into_one(db: PgPool) {
         BarInterval::Min5,
         &[],
         at(500)..at(900),
+        None,
     )
     .await
     .expect("the second span is written");
@@ -139,6 +144,7 @@ async fn a_bridging_span_swallows_both_sides(db: PgPool) {
         BarInterval::Min5,
         &[],
         at(0)..at(300),
+        None,
     )
     .await
     .expect("the left span is written");
@@ -150,6 +156,7 @@ async fn a_bridging_span_swallows_both_sides(db: PgPool) {
         BarInterval::Min5,
         &[],
         at(600)..at(900),
+        None,
     )
     .await
     .expect("the right span is written");
@@ -161,6 +168,7 @@ async fn a_bridging_span_swallows_both_sides(db: PgPool) {
         BarInterval::Min5,
         &[],
         at(200)..at(700),
+        None,
     )
     .await
     .expect("the bridge is written");
@@ -183,6 +191,7 @@ async fn disjoint_spans_stay_apart_and_sorted(db: PgPool) {
         BarInterval::Min5,
         &[],
         at(600)..at(900),
+        None,
     )
     .await
     .expect("the later span is written");
@@ -194,6 +203,7 @@ async fn disjoint_spans_stay_apart_and_sorted(db: PgPool) {
         BarInterval::Min5,
         &[],
         at(0)..at(300),
+        None,
     )
     .await
     .expect("the earlier span is written");
@@ -216,6 +226,7 @@ async fn coverage_does_not_leak_across_series(db: PgPool) {
         BarInterval::Min5,
         &[],
         at(0)..at(300),
+        None,
     )
     .await
     .expect("the span is written");
@@ -244,6 +255,7 @@ async fn an_empty_span_is_dropped(db: PgPool) {
         BarInterval::Min5,
         &[],
         at(300)..at(300),
+        None,
     )
     .await
     .expect("the write lands");

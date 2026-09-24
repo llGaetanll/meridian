@@ -2384,14 +2384,19 @@ impl StateServer {
         actions: &mut Vec<Action>,
     ) {
         match event {
-            EventSourceYahoo::ChartFetched { bars, .. } => {
+            EventSourceYahoo::ChartFetched { bars, facts, .. } => {
                 // Minted whether or not the write goes out, so a replay hands
                 // out the same numbers either way.
                 let save_call = self.signup.call();
 
-                let settled = self
-                    .markets
-                    .chart_fetched(call_id, save_call, bars, self.now, actions);
+                let settled = self.markets.chart_fetched(
+                    call_id,
+                    save_call,
+                    bars,
+                    facts.as_ref(),
+                    self.now,
+                    actions,
+                );
 
                 self.bars_settled(settled, actions);
             }
@@ -3053,7 +3058,7 @@ impl StateServer {
                 self.pump_markets(actions);
             }
 
-            EventStore::BarsLoaded { bars } => {
+            EventStore::BarsLoaded { bars, facts } => {
                 let Some(request_id) = self.signup.answered(call_id) else {
                     return;
                 };
@@ -3080,11 +3085,28 @@ impl StateServer {
                             volume: bar.volume,
                         })
                         .collect(),
+                    asset: facts.as_ref().map(|facts| server_wire::WireAsset {
+                        name: facts.name.clone(),
+                        details: facts.details.clone(),
+                        currency: facts.currency.clone(),
+                        utc_offset: facts.utc_offset,
+                        price: facts.price,
+                        previous_close: facts.previous_close,
+                        day_low: facts.day_low,
+                        day_high: facts.day_high,
+                        year_low: facts.year_low,
+                        year_high: facts.year_high,
+                        day_volume: facts.day_volume,
+                        session_start: facts.session.as_ref().map(|s| s.start.as_secs()),
+                        session_end: facts.session.as_ref().map(|s| s.end.as_secs()),
+                    }),
                 };
 
                 self.signup.answer(
                     request_id,
-                    ActionRouter::ServeBars { bars },
+                    ActionRouter::ServeBars {
+                        bars: Box::new(bars),
+                    },
                     self.now,
                     actions,
                 );

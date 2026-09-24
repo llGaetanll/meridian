@@ -390,6 +390,62 @@ pub struct WireBars {
     /// not on the wire; a client draws the points it is given.
     #[serde(default)]
     pub bars: Vec<WireBar>,
+
+    /// The last word the source had on the asset itself, as of the newest
+    /// fetch that touched it — which may be older than the bars beside it.
+    /// Absent for a symbol no fetch has ever answered for; a client draws
+    /// what the bars alone can say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asset: Option<WireAsset>,
+}
+
+/// What the source last said about the asset itself. Every field is what it
+/// stated and nothing is guessed at; the prices here age in seconds, and the
+/// chart's own numbers come from the bars.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct WireAsset {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+
+    /// Classification line for a header, e.g. "ETF · USD · NYSEArca".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub details: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub currency: Option<String>,
+
+    /// Seconds to add to a UTC timestamp to read it in exchange local time.
+    #[serde(default)]
+    pub utc_offset: i64,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub price: Option<f64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_close: Option<f64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub day_low: Option<f64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub day_high: Option<f64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub year_low: Option<f64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub year_high: Option<f64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub day_volume: Option<u64>,
+
+    /// The regular session in progress at the last fetch, or the last one to
+    /// have run, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_start: Option<u64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_end: Option<u64>,
 }
 
 /// One bar. The close is always there; the rest of the candle is whatever the

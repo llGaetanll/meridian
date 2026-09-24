@@ -251,7 +251,8 @@ pub enum ActionStore {
         end: api_common::Timestamp,
     },
 
-    /// Write what one fetch served: its bars, and the stretch it settles.
+    /// Write what one fetch served: its bars, the stretch it settles, and
+    /// the freshest word on the asset itself.
     ///
     /// One fetch, one write, in one transaction — a claim of coverage must
     /// not land without the bars it vouches for, or the other way round.
@@ -260,6 +261,7 @@ pub enum ActionStore {
         symbol: String,
         interval: src_postgres::BarInterval,
         bars: Vec<api_common::Bar>,
+        facts: Option<api_common::AssetFacts>,
 
         /// Half-open, and decided by the machine rather than the fetch: the
         /// bar still forming at the live edge is not a fact yet, and only the

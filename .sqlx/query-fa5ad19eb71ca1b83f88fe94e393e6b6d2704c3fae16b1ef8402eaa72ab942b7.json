@@ -1,0 +1,183 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT name, details, currency, utc_offset, price, previous_close,\n                  day_low, day_high, year_low, year_high, day_volume,\n                  session_start, session_end\n           FROM assets\n           WHERE source = $1 AND symbol = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "name",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "details",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "details"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "currency",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "currency"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "utc_offset",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "utc_offset"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "price",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "price"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "previous_close",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "previous_close"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "day_low",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "day_low"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "day_high",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "day_high"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "year_low",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "year_low"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "year_high",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "year_high"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "day_volume",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "day_volume"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "session_start",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "session_start"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "session_end",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "assets",
+            "name": "session_end"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "bar_source",
+            "kind": {
+              "Enum": [
+                "yahoo",
+                "coingecko"
+              ]
+            }
+          }
+        },
+        "Text"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "fa5ad19eb71ca1b83f88fe94e393e6b6d2704c3fae16b1ef8402eaa72ab942b7"
+}

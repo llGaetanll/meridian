@@ -15,6 +15,7 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
+use api_common::AssetFacts;
 use api_common::Bar;
 use api_common::Timestamp;
 use src_postgres::BarInterval;
@@ -315,6 +316,7 @@ impl StateMarkets {
         call_id: CallId,
         save_call: CallId,
         bars: &[Bar],
+        facts: Option<&AssetFacts>,
         now: Timestamp,
         actions: &mut Vec<Action>,
     ) -> Vec<RequestId> {
@@ -351,6 +353,7 @@ impl StateMarkets {
                 symbol: fetch.symbol.clone(),
                 interval: fetch.interval,
                 bars: bars.to_vec(),
+                facts: facts.cloned(),
                 covered_start,
                 covered_end,
             },

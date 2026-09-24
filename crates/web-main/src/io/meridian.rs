@@ -75,6 +75,41 @@ impl Meridian {
         }
     }
 
+    /// One symbol's bars over a half-open window, at an interval named the
+    /// way the wire spells it (`1m` through `1wk`).
+    ///
+    /// The server answers from its own store where it can, and holds the
+    /// request while it fetches where it cannot — so this can take a moment
+    /// the first time a window is asked about, and is instant after.
+    pub async fn bars(
+        &self,
+        token: &str,
+        symbol: &str,
+        interval: &str,
+        start: u64,
+        end: u64,
+    ) -> Result<server_wire::WireBars, Failure> {
+        let mut url = self.url("bars")?;
+
+        url.query_pairs_mut()
+            .append_pair("symbol", symbol)
+            .append_pair("interval", interval)
+            .append_pair("start", &start.to_string())
+            .append_pair("end", &end.to_string());
+
+        let call = ApiCall::get(module_path!(), SOURCE, &url);
+
+        let (status, body) = self
+            .send(self.client.get(url).bearer_auth(token), call)
+            .await?;
+
+        if let Some(refusal) = Failure::refusal(status, &body) {
+            return Err(refusal);
+        }
+
+        serde_json::from_str(&body).map_err(|_| Failure::Unreadable)
+    }
+
     /// Ask for a sign-in code.
     ///
     /// The server answers 204 whether or not the address is one it knows, so

@@ -75,6 +75,11 @@ pub enum EventStore {
         spans: Vec<std::ops::Range<api_common::Timestamp>>,
     },
 
-    /// The bars a series holds over the window that was asked, in time order.
-    BarsLoaded { bars: Vec<api_common::Bar> },
+    /// The bars a series holds over the window that was asked, in time
+    /// order, and the last word the source had on the asset itself. `None`
+    /// is a symbol no fetch has ever answered for.
+    BarsLoaded {
+        bars: Vec<api_common::Bar>,
+        facts: Option<api_common::AssetFacts>,
+    },
 }

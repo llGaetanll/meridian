@@ -34,6 +34,7 @@ pub use postgres_audit::load_accesses;
 pub use postgres_audit::record_access;
 pub use postgres_bars::BarInterval;
 pub use postgres_bars::BarSource;
+pub use postgres_bars::load_asset;
 pub use postgres_bars::load_bars;
 pub use postgres_bars::load_coverage;
 pub use postgres_bars::save_bars;

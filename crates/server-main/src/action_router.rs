@@ -138,7 +138,10 @@ pub enum ActionRouter {
 
     /// Answer with one series of bars, whatever the store holds over the
     /// window once everything the request set going has landed.
-    ServeBars { bars: server_wire::WireBars },
+    ///
+    /// Boxed because the asset facts riding along would otherwise be the
+    /// size of every action, on an enum most of whose variants carry bytes.
+    ServeBars { bars: Box<server_wire::WireBars> },
 
     /// The request asks for something no answer exists for — a window running
     /// backwards, or one that names more bars than anything draws. A client

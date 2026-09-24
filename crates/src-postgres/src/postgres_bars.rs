@@ -7,6 +7,7 @@
 
 use std::ops::Range;
 
+use api_common::AssetFacts;
 use api_common::Bar;
 use api_common::Timestamp;
 
@@ -120,9 +121,10 @@ impl BarInterval {
     }
 }
 
-/// Write what a fetch served: its bars, and the stretch of time it settles.
+/// Write what a fetch served: its bars, the stretch of time it settles, and
+/// the freshest word on the asset itself.
 ///
-/// The two land in one transaction, because they are one claim. `covered` is
+/// All of it lands in one transaction, because it is one claim. `covered` is
 /// about knowledge rather than points — a source that answers a week with
 /// three bars is saying the other days had no trading, and that is worth
 /// storing. Any span it meets or overlaps is swallowed into one, so what the
@@ -130,7 +132,8 @@ impl BarInterval {
 /// by `t1..t2` reads back as `t0..t2`.
 ///
 /// A bar already held is overwritten, which is what lets an adjusted series
-/// land on top of the old one.
+/// land on top of the old one; the asset row is replaced whole, because its
+/// facts age in seconds and the newest fetch is the freshest word.
 pub async fn save_bars(
     db: &Db,
     source: BarSource,
@@ -138,8 +141,52 @@ pub async fn save_bars(
     interval: BarInterval,
     bars: &[Bar],
     covered: Range<Timestamp>,
+    facts: Option<&AssetFacts>,
 ) -> Result<(), PostgresError> {
     let mut tx = db.begin().await?;
+
+    if let Some(facts) = facts {
+        sqlx::query!(
+            r#"INSERT INTO assets
+                   (source, symbol, name, details, currency, utc_offset,
+                    price, previous_close, day_low, day_high, year_low,
+                    year_high, day_volume, session_start, session_end)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                       $13, $14, $15)
+               ON CONFLICT (source, symbol) DO UPDATE SET
+                   name           = EXCLUDED.name,
+                   details        = EXCLUDED.details,
+                   currency       = EXCLUDED.currency,
+                   utc_offset     = EXCLUDED.utc_offset,
+                   price          = EXCLUDED.price,
+                   previous_close = EXCLUDED.previous_close,
+                   day_low        = EXCLUDED.day_low,
+                   day_high       = EXCLUDED.day_high,
+                   year_low       = EXCLUDED.year_low,
+                   year_high      = EXCLUDED.year_high,
+                   day_volume     = EXCLUDED.day_volume,
+                   session_start  = EXCLUDED.session_start,
+                   session_end    = EXCLUDED.session_end,
+                   updated_at     = now()"#,
+            source as BarSource,
+            symbol,
+            facts.name.as_deref(),
+            facts.details.as_deref(),
+            facts.currency.as_deref(),
+            facts.utc_offset,
+            facts.price,
+            facts.previous_close,
+            facts.day_low,
+            facts.day_high,
+            facts.year_low,
+            facts.year_high,
+            facts.day_volume.map(|volume| volume as i64),
+            facts.session.as_ref().map(|session| stamp(session.start)),
+            facts.session.as_ref().map(|session| stamp(session.end)),
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
 
     if !bars.is_empty() {
         let ts: Vec<_> = bars.iter().map(|bar| stamp(bar.ts)).collect();
@@ -230,6 +277,46 @@ pub async fn save_bars(
     tx.commit().await?;
 
     Ok(())
+}
+
+/// What the source last said about an asset itself, if it has said anything.
+///
+/// `None` is a symbol no fetch has ever answered for — a caller falls back
+/// to what the bars alone can say.
+pub async fn load_asset(
+    db: &Db,
+    source: BarSource,
+    symbol: &str,
+) -> Result<Option<AssetFacts>, PostgresError> {
+    let row = sqlx::query!(
+        r#"SELECT name, details, currency, utc_offset, price, previous_close,
+                  day_low, day_high, year_low, year_high, day_volume,
+                  session_start, session_end
+           FROM assets
+           WHERE source = $1 AND symbol = $2"#,
+        source as BarSource,
+        symbol,
+    )
+    .fetch_optional(db)
+    .await?;
+
+    Ok(row.map(|row| AssetFacts {
+        name: row.name,
+        details: row.details,
+        currency: row.currency,
+        utc_offset: row.utc_offset,
+        price: row.price,
+        previous_close: row.previous_close,
+        day_low: row.day_low,
+        day_high: row.day_high,
+        year_low: row.year_low,
+        year_high: row.year_high,
+        day_volume: row.day_volume.map(|volume| volume.max(0) as u64),
+        session: match (row.session_start, row.session_end) {
+            (Some(start), Some(end)) => Some(seconds(start)..seconds(end)),
+            _ => None,
+        },
+    }))
 }
 
 /// The stretches of time a series is known over, sorted and disjoint.

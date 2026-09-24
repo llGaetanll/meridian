@@ -8,11 +8,12 @@ use api_cache::Store;
 use api_common::ChartData;
 use api_common::Price;
 use api_common::Timestamp;
+use api_common::format::fmt_money;
 use chrono::Utc;
 use tracing::Instrument;
 
 use crate::io::ChartRange;
-use crate::io::yahoo::YahooSource;
+use crate::io::server_source::ServerSource;
 
 /// One asset's price history over some range, and the facts that go with it.
 ///
@@ -41,15 +42,18 @@ pub struct AssetQuote {
 }
 
 /// The market data the app runs on, cached across pages and ranges.
+///
+/// The store's source is our own server, so the browser never talks to a
+/// market data source itself — one fetch there serves everybody.
 #[derive(Clone)]
 pub struct Markets {
-    store: Store<YahooSource>,
+    store: Store<ServerSource>,
 }
 
 impl Markets {
     pub fn new() -> Self {
         Self {
-            store: Store::new(YahooSource::new()),
+            store: Store::new(ServerSource::new()),
         }
     }
 
@@ -90,6 +94,14 @@ impl Markets {
             _ => bars,
         };
 
+        // The open leads the list because it is the one fact the snapshot
+        // cannot state: it belongs to the range on show, not to the asset.
+        let mut key_stats = info.key_stats;
+
+        if let Some(open) = bars.first_open() {
+            key_stats.insert(0, ("Open".to_string(), fmt_money(open)));
+        }
+
         Ok(AssetQuote {
             symbol: info.symbol,
             name: info.name,
@@ -99,7 +111,7 @@ impl Markets {
             previous_close: info.previous_close,
             prices: bars.closes(),
             volume: bars.volumes(),
-            key_stats: info.key_stats,
+            key_stats,
             utc_offset: info.utc_offset,
         })
     }

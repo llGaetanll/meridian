@@ -14,7 +14,6 @@ chrono = { workspace = true }
 reqwest = { workspace = true, features = ["stream"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-src-yahoo = { path = "../src-yahoo" }
 api-ledger = { path = "../api-ledger" }
 client-state = { path = "../client-state" }
 futures = { workspace = true }

@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO assets\n                   (source, symbol, name, details, currency, utc_offset,\n                    price, previous_close, day_low, day_high, year_low,\n                    year_high, day_volume, session_start, session_end)\n               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,\n                       $13, $14, $15)\n               ON CONFLICT (source, symbol) DO UPDATE SET\n                   name           = EXCLUDED.name,\n                   details        = EXCLUDED.details,\n                   currency       = EXCLUDED.currency,\n                   utc_offset     = EXCLUDED.utc_offset,\n                   price          = EXCLUDED.price,\n                   previous_close = EXCLUDED.previous_close,\n                   day_low        = EXCLUDED.day_low,\n                   day_high       = EXCLUDED.day_high,\n                   year_low       = EXCLUDED.year_low,\n                   year_high      = EXCLUDED.year_high,\n                   day_volume     = EXCLUDED.day_volume,\n                   session_start  = EXCLUDED.session_start,\n                   session_end    = EXCLUDED.session_end,\n                   updated_at     = now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "bar_source",
+            "kind": {
+              "Enum": [
+                "yahoo",
+                "coingecko"
+              ]
+            }
+          }
+        },
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int8",
+        "Float8",
+        "Float8",
+        "Float8",
+        "Float8",
+        "Float8",
+        "Float8",
+        "Int8",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c155c1a1f29f3878acf5cd7a7d5c500bb3eebd882ce53056595bafe8fbdde7d3"
+}

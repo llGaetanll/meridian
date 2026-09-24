@@ -191,7 +191,7 @@ async fn bars(
     refused(&answer)?;
 
     match answer {
-        Some(ActionRouter::ServeBars { bars }) => Ok(Json(bars)),
+        Some(ActionRouter::ServeBars { bars }) => Ok(Json(*bars)),
         Some(ActionRouter::Unauthorized) => Err(StatusCode::UNAUTHORIZED.into()),
         Some(ActionRouter::BadAsk) => Err(StatusCode::BAD_REQUEST.into()),
         _ => Err(StatusCode::SERVICE_UNAVAILABLE.into()),

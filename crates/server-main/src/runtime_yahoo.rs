@@ -7,6 +7,7 @@
 //!
 //! One call each, on the one [`client`] the process holds.
 
+use api_common::AssetFacts;
 use api_common::Bar;
 use api_common::Timestamp;
 use chrono::DateTime;
@@ -28,7 +29,8 @@ pub fn client() -> Result<YahooClient, YError> {
     YahooClient::new()
 }
 
-/// Bars for `symbol` over `start..end`, at `interval`.
+/// Bars for `symbol` over `start..end`, at `interval`, and what Yahoo said
+/// about the asset itself.
 ///
 /// What comes back is points, as Yahoo sent them: gaps and all, nothing
 /// dropped but the values Yahoo left null. Empty is a window Yahoo answered
@@ -39,7 +41,7 @@ pub async fn fetch_chart(
     interval: BarInterval,
     start: Timestamp,
     end: Timestamp,
-) -> Result<Vec<Bar>, YahooFault> {
+) -> Result<(Vec<Bar>, Option<AssetFacts>), YahooFault> {
     let (Some(start), Some(end)) = (moment(start), moment(end)) else {
         return Err(YahooFault::Failed {
             message: format!("the window {}..{} is not a time", start, end),
@@ -67,7 +69,10 @@ pub async fn fetch_chart(
 
     let blocks = response.chart.result.unwrap_or_default();
 
-    Ok(blocks.first().map(|block| block.bars()).unwrap_or_default())
+    Ok(blocks
+        .first()
+        .map(|block| (block.bars(), Some(block.facts())))
+        .unwrap_or_default())
 }
 
 /// Yahoo's name for each interval the store knows.

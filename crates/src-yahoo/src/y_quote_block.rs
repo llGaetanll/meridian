@@ -1,3 +1,4 @@
+use api_common::AssetFacts;
 use api_common::Bar;
 use api_common::ChartData;
 use api_common::Price;
@@ -72,6 +73,51 @@ impl YQuoteBlock {
                 })
             })
             .collect()
+    }
+
+    /// What Yahoo says about the asset itself, off the chart's metadata.
+    ///
+    /// Facts Yahoo leaves out are left out rather than guessed at; what it
+    /// states two ways (the previous close, the exchange's name) is taken in
+    /// its preferred order.
+    pub fn facts(&self) -> AssetFacts {
+        let meta = &self.meta;
+
+        let details = [
+            meta.instrument_type.clone(),
+            Some(meta.currency.clone()),
+            meta.full_exchange_name
+                .clone()
+                .or_else(|| meta.exchange_name.clone()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" · ");
+
+        let session = meta
+            .current_trading_period
+            .as_ref()
+            .and_then(|period| period.regular.as_ref())
+            .map(|regular| {
+                Timestamp::from_secs(regular.start.timestamp().max(0) as u64)
+                    ..Timestamp::from_secs(regular.end.timestamp().max(0) as u64)
+            });
+
+        AssetFacts {
+            name: meta.long_name.clone().or_else(|| meta.short_name.clone()),
+            details: (!details.is_empty()).then_some(details),
+            currency: Some(meta.currency.clone()),
+            utc_offset: meta.gmtoffset.unwrap_or_default(),
+            price: meta.regular_market_price,
+            previous_close: meta.previous_close.or(meta.chart_previous_close),
+            day_low: meta.regular_market_day_low,
+            day_high: meta.regular_market_day_high,
+            year_low: meta.fifty_two_week_low,
+            year_high: meta.fifty_two_week_high,
+            day_volume: meta.regular_market_volume.map(|volume| volume as u64),
+            session,
+        }
     }
 
     /// Last traded price: the live quote if Yahoo sent one, else the last close.

@@ -659,10 +659,11 @@ impl RuntimeServer {
                 )
                 .await
                 {
-                    Ok(bars) => EventSourceYahoo::ChartFetched {
+                    Ok((bars, facts)) => EventSourceYahoo::ChartFetched {
                         symbol: symbol.clone(),
                         interval: *interval,
                         bars,
+                        facts,
                     },
                     Err(fault) => EventSourceYahoo::ChartFailed {
                         symbol: symbol.clone(),
@@ -1023,10 +1024,20 @@ impl RuntimeServer {
                 start,
                 end,
             } => {
-                match src_postgres::load_bars(&self.db, *source, symbol, *interval, *start..*end)
-                    .await
-                {
-                    Ok(bars) => EventStore::BarsLoaded { bars },
+                // Two reads, one answer: the facts belong beside the bars
+                // they dress, and a route parked on this is parked once.
+                let loaded = async {
+                    let bars =
+                        src_postgres::load_bars(&self.db, *source, symbol, *interval, *start..*end)
+                            .await?;
+
+                    let facts = src_postgres::load_asset(&self.db, *source, symbol).await?;
+
+                    Ok::<_, src_postgres::PostgresError>((bars, facts))
+                };
+
+                match loaded.await {
+                    Ok((bars, facts)) => EventStore::BarsLoaded { bars, facts },
 
                     Err(e) => EventStore::ReadError {
                         message: e.to_string(),
@@ -1206,6 +1217,7 @@ impl RuntimeServer {
                 symbol,
                 interval,
                 bars,
+                facts,
                 covered_start,
                 covered_end,
             } => {
@@ -1216,6 +1228,7 @@ impl RuntimeServer {
                     *interval,
                     bars,
                     *covered_start..*covered_end,
+                    facts.as_ref(),
                 )
                 .await?;
             }

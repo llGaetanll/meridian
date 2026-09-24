@@ -144,6 +144,30 @@ fn AppShell() -> impl IntoView {
         }
     });
 
+    // Markets is the web's own page, so opening it tells the machine nothing
+    // — the flag is the whole of the navigation. The fade is the same one a
+    // machine screen gets, so the two changes read as one kind of thing.
+    let open_markets = Callback::new(move |()| {
+        if markets.get_untracked() {
+            return;
+        }
+
+        let put_up = move || {
+            markets.set(true);
+
+            leaving.set(false);
+        };
+
+        match calm() {
+            true => put_up(),
+            false => {
+                leaving.set(true);
+
+                set_timeout(put_up, PAGE_OUT);
+            }
+        }
+    });
+
     let retry = Callback::new(move |()| runtime.ui(EventUi::RefreshRequested));
 
     // The account chip's own events — signing out, starting a deletion — go
@@ -159,6 +183,7 @@ fn AppShell() -> impl IntoView {
             leaving=leaving
             error=runtime.error()
             on_screen=open
+            on_markets=open_markets
             on_retry=retry
             ui=ui
         >

@@ -4384,7 +4384,6 @@ dependencies = [
  "serde",
  "serde_json",
  "server-wire",
- "src-yahoo",
  "tracing",
  "wasm-bindgen",
  "wasm-bindgen-futures",

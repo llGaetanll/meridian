@@ -77,6 +77,7 @@ fn a_covered_window_asks_yahoo_nothing() {
                     close: 100.0,
                     volume: 5,
                 }],
+                facts: None,
             },
         },
 
@@ -145,6 +146,7 @@ fn a_missing_window_is_fetched_written_and_then_served() {
                     close: 100.0,
                     volume: 5,
                 }],
+                facts: None,
             },
         },
 
@@ -163,6 +165,7 @@ fn a_missing_window_is_fetched_written_and_then_served() {
                     close: 100.0,
                     volume: 5,
                 }],
+                facts: None,
             },
         },
 
@@ -250,6 +253,7 @@ fn an_overlapping_ask_joins_the_fetch_already_out() {
                 symbol: "SPY".to_string(),
                 interval: BarInterval::Day1,
                 bars: vec![],
+                facts: None,
             },
         },
 
@@ -260,7 +264,7 @@ fn an_overlapping_ask_joins_the_fetch_already_out() {
         > Action::ToStore { call_id: 8, action: ActionStore::LoadBars { .. } },
         < Event::FromStore {
             call_id: 7,
-            event: EventStore::BarsLoaded { bars: vec![] },
+            event: EventStore::BarsLoaded { bars: vec![], facts: None },
         },
 
         > Action::ToRouter {
@@ -269,7 +273,7 @@ fn an_overlapping_ask_joins_the_fetch_already_out() {
         },
         < Event::FromStore {
             call_id: 8,
-            event: EventStore::BarsLoaded { bars: vec![] },
+            event: EventStore::BarsLoaded { bars: vec![], facts: None },
         },
 
         > Action::ToRouter {
@@ -352,7 +356,7 @@ fn a_429_backs_off_and_the_deadline_answers_the_route() {
         },
         < Event::FromStore {
             call_id: 4,
-            event: EventStore::BarsLoaded { bars: vec![] },
+            event: EventStore::BarsLoaded { bars: vec![], facts: None },
         },
 
         > Action::ToRouter { action: ActionRouter::ServeBars { .. }, .. },
@@ -399,7 +403,7 @@ fn a_window_past_the_floor_is_not_asked_for() {
         > Action::ToStore { call_id: 3, action: ActionStore::LoadBars { .. } },
         < Event::FromStore {
             call_id: 3,
-            event: EventStore::BarsLoaded { bars: vec![] },
+            event: EventStore::BarsLoaded { bars: vec![], facts: None },
         },
 
         > Action::ToRouter { action: ActionRouter::ServeBars { .. }, .. },
@@ -480,7 +484,7 @@ fn an_idle_tick_asks_for_nothing() {
         > Action::ToStore { call_id: 3, action: ActionStore::LoadBars { .. } },
         < Event::FromStore {
             call_id: 3,
-            event: EventStore::BarsLoaded { bars: vec![] },
+            event: EventStore::BarsLoaded { bars: vec![], facts: None },
         },
 
         > Action::ToRouter { action: ActionRouter::ServeBars { .. }, .. },
@@ -551,6 +555,7 @@ fn an_idle_tick_plans_the_heaviest_symbol() {
                     close: 1.0,
                     volume: 0,
                 }],
+                facts: None,
             },
         },
 
@@ -724,6 +729,7 @@ fn a_person_outranks_the_machines_own_work() {
                     close: 1.0,
                     volume: 0,
                 }],
+                facts: None,
             },
         },
 
@@ -733,7 +739,7 @@ fn a_person_outranks_the_machines_own_work() {
         > Action::ToStore { call_id: 8, action: ActionStore::LoadBars { .. } },
         < Event::FromStore {
             call_id: 8,
-            event: EventStore::BarsLoaded { bars: vec![] },
+            event: EventStore::BarsLoaded { bars: vec![], facts: None },
         },
 
         > Action::ToRouter {

@@ -17,6 +17,11 @@ pub enum EventSourceYahoo {
         symbol: String,
         interval: BarInterval,
         bars: Vec<Bar>,
+
+        /// What Yahoo said about the asset itself, riding along because it
+        /// arrives on every chart response and ages in seconds — the machine
+        /// files it beside the bars, where the store replaces it whole.
+        facts: Option<api_common::AssetFacts>,
     },
 
     /// The fetch served nothing, and in which of the three ways.
