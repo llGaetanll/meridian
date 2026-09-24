@@ -1,0 +1,77 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT symbol,\n                  count(*) AS \"bars!\",\n                  min(ts) AS \"first!\",\n                  max(ts) AS \"last!\"\n           FROM bars\n           WHERE source = $1 AND interval = $2 AND ts >= $3\n           GROUP BY symbol\n           ORDER BY symbol",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "symbol",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "bars",
+            "name": "symbol"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "bars!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "first!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "last!",
+        "type_info": "Timestamptz",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "bar_source",
+            "kind": {
+              "Enum": [
+                "yahoo",
+                "coingecko"
+              ]
+            }
+          }
+        },
+        {
+          "Custom": {
+            "name": "bar_interval",
+            "kind": {
+              "Enum": [
+                "1m",
+                "2m",
+                "5m",
+                "15m",
+                "30m",
+                "1h",
+                "1d",
+                "1wk"
+              ]
+            }
+          }
+        },
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "f2561e3d6036c42263489525e8ea0f86d70d03b32d23f12f84ea2d94542a4c68"
+}

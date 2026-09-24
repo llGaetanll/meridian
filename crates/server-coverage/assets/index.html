@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Meridian — Data coverage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/app.css">
+<style>
+  /* app.css pins the body for the app shell's sake; this page is a page. */
+  html, body { height: auto; overflow: visible; }
+  body { padding: 36px 46px 60px; }
+
+  .cov { display: flex; flex-direction: column; gap: 38px; max-width: 1500px; margin: 0 auto; }
+
+  .cov-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+  .cov-title { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+  .cov-tags { display: flex; gap: 8px; margin-top: 12px; }
+  .cov-pick { text-align: right; }
+  .cov-pick-note { margin-top: 10px; font-size: 11.5px; color: var(--text-faint); }
+
+  .chip .dot {
+    width: 7px; height: 7px; border-radius: 50%; flex: none;
+    background: var(--text-faint);
+  }
+  .chip.on { color: var(--text); }
+  .chip.on .dot {
+    background: var(--bad);
+    animation: pulse 1.4s ease-out infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--bad) 55%, transparent); }
+    70% { box-shadow: 0 0 0 6px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+
+  .cov-hero { display: flex; gap: 84px; }
+  .cov-hero .k {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--text-faint);
+  }
+  .cov-hero .v { margin-top: 8px; font-size: 44px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; }
+  .cov-hero .sub { margin-top: 12px; font-size: 13px; color: var(--text-muted); }
+  .cov-hero .sub b { font-weight: 600; color: var(--text-soft); }
+  .cov-hero .sub b.bad { color: var(--bad); }
+
+  .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+  .sec-side { display: flex; align-items: center; gap: 22px; }
+  .sec-note { font-size: 12px; color: var(--text-faint); }
+
+  .act-track {
+    position: relative; height: 20px;
+    border-radius: var(--r-xs);
+    background: var(--bg-input);
+  }
+  .act-track i {
+    position: absolute; top: 0; bottom: 0;
+    background: var(--accent-soft);
+  }
+  .act-track b { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--bad); }
+  .act-track s { position: absolute; top: 0; bottom: 0; text-decoration: none; }
+  .act-track b, .act-track s { cursor: help; }
+  .act-empty {
+    padding: 18px 0; font-size: 13px; color: var(--text-faint);
+  }
+  .act-foot { position: relative; height: 16px; margin-top: 8px; }
+  .act-foot span {
+    position: absolute; transform: translateX(-50%);
+    font-size: 11px; color: var(--text-faint);
+    white-space: nowrap;
+  }
+  .act-foot span:last-child { transform: translateX(-100%); }
+
+  .req-scroll { max-height: 340px; overflow-y: auto; }
+  .req-scroll::-webkit-scrollbar { width: 8px; }
+  .req-scroll::-webkit-scrollbar-thumb { background: var(--bg-input); border-radius: 4px; }
+  .req-scroll th { position: sticky; top: 0; background: var(--bg); }
+  .req-scroll td.bad { color: var(--bad); font-weight: 500; }
+  .req-scroll td.faint { color: var(--text-faint); }
+
+  .cov-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px 26px; }
+  .ahead { display: flex; align-items: baseline; gap: 10px; }
+  .ahead .sym { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+  .ahead .nm {
+    font-size: 12px; color: var(--text-faint);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ahead .pct { margin-left: auto; font-size: 14px; font-weight: 600; }
+  .pct.full { color: var(--up); }
+  .pct.thin { color: var(--warn); }
+
+  .aplot { position: relative; height: 96px; margin-top: 12px; }
+  .aplot svg { position: relative; z-index: 1; width: 100%; height: 100%; display: block; }
+  .aplot polyline { fill: none; stroke: var(--text-muted); stroke-width: 1.5; }
+  .band { position: absolute; top: 0; bottom: 0; cursor: help; }
+  .band.miss {
+    background: color-mix(in srgb, var(--warn) 18%, transparent);
+    box-shadow: inset 0 2px 0 color-mix(in srgb, var(--warn) 55%, transparent);
+  }
+  .afoot {
+    display: flex; justify-content: space-between;
+    margin-top: 8px; font-size: 11px; color: var(--text-faint);
+  }
+  .grid-note, .grid-empty { margin-top: 16px; font-size: 12px; color: var(--text-faint); }
+
+  [data-label]::after {
+    content: attr(data-label);
+    position: absolute; left: 50%; top: 24px;
+    transform: translateX(-50%) translateY(-4px);
+    white-space: nowrap; pointer-events: none; z-index: 3;
+    padding: 7px 11px; border-radius: var(--r-sm);
+    background: var(--bg-input);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+    font-size: 12px; font-weight: 500; color: var(--text);
+    opacity: 0; transition: opacity 0.12s ease, transform 0.12s ease;
+  }
+  [data-label]:hover::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .act-track [data-label]::after { top: 26px; }
+  .band[data-label]::after { top: 14px; }
+  [data-label].edge::after { left: auto; right: 0; transform: translateY(-4px); }
+  [data-label].edge:hover::after { transform: translateY(0); }
+
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--text-muted); }
+  .legend .lg { display: inline-flex; align-items: center; gap: 7px; }
+  .legend .sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border); }
+  .legend .sw.ok { background: var(--bg); }
+  .legend .sw.miss { background: color-mix(in srgb, var(--warn) 18%, transparent); }
+  .legend .sw.lit { background: var(--accent-soft); border-color: transparent; }
+  .legend .sw.quiet { background: var(--bg-input); border-color: transparent; }
+  .legend .sw.fault {
+    border-color: transparent;
+    background: linear-gradient(to right,
+      var(--bg-input) 0 42%, var(--bad) 42% 58%, var(--bg-input) 58% 100%);
+  }
+</style>
+</head>
+<body>
+<div class="cov">
+
+  <div class="cov-head">
+    <div>
+      <div class="cov-title">Data coverage</div>
+      <div class="cov-tags">
+        <span class="chip" id="live"><i class="dot"></i><span id="live-word">…</span></span>
+        <span class="chip"><span class="swatch"></span> Yahoo Finance</span>
+        <span class="chip">read-only</span>
+      </div>
+    </div>
+    <div class="cov-pick">
+      <div class="seg" id="pick"></div>
+      <div class="cov-pick-note">One interval at a time; only 1d is fetched unasked.</div>
+    </div>
+  </div>
+
+  <div class="cov-hero">
+    <div>
+      <div class="k" id="hero-cov-k">Collected</div>
+      <div class="v num" id="hero-cov-v">…</div>
+      <div class="sub" id="hero-cov-sub"></div>
+    </div>
+    <div>
+      <div class="k" id="hero-sym-k">Assets</div>
+      <div class="v num" id="hero-sym-v">…</div>
+      <div class="sub" id="hero-sym-sub"></div>
+    </div>
+    <div>
+      <div class="k" id="hero-req-k">Requests</div>
+      <div class="v num" id="hero-req-v">…</div>
+      <div class="sub" id="hero-req-sub"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="sec-head">
+      <span class="section-title">Uptime</span>
+      <span class="sec-side">
+        <span class="legend">
+          <span class="lg"><i class="sw lit"></i>Asked in that hour</span>
+          <span class="lg"><i class="sw fault"></i>Refused or rate-limited</span>
+          <span class="lg"><i class="sw quiet"></i>Quiet — down or resting</span>
+        </span>
+        <span class="seg" id="upwin"></span>
+      </span>
+    </div>
+    <div id="act"></div>
+  </div>
+
+  <div>
+    <div class="sec-head">
+      <span class="section-title">Requests</span>
+      <span class="sec-note" id="req-note"></span>
+    </div>
+    <div class="req-scroll">
+      <table>
+        <thead>
+          <tr><th>Time</th><th>Symbol</th><th>Interval</th><th>Window asked</th><th>Outcome</th></tr>
+        </thead>
+        <tbody id="req-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div>
+    <div class="sec-head" style="justify-content: flex-end;">
+      <span class="legend">
+        <span class="lg"><i class="sw ok"></i>Collected</span>
+        <span class="lg"><i class="sw miss"></i>Not collected</span>
+      </span>
+    </div>
+    <div class="cov-grid" id="grid"></div>
+    <div class="grid-note" id="grid-note"></div>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+
+const INTERVALS = ["1m", "2m", "5m", "15m", "30m", "1h", "1d", "1wk"];
+const WINDOWS = [["24h", 24], ["3d", 72], ["14d", 336]];
+
+/* A server actively asking has a row at most a couple of pace-lengths old;
+   the planner's rest can leave gaps of minutes, so the line is generous. */
+const LIVE_WITHIN_SECS = 120;
+
+const asked = new URLSearchParams(location.search).get("interval");
+let interval = INTERVALS.includes(asked) ? asked : "1d";
+let upHours = 24;
+
+const $ = (id) => document.getElementById(id);
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const pad = (n) => String(n).padStart(2, "0");
+
+/* Coverage moments are UTC facts — bars sit on a UTC grid — so their labels
+   read in UTC. Uptime and request times read local, because "was it down
+   last night" and "what just happened" are local questions. */
+function fmtDate(secs) {
+  const d = new Date(secs * 1000);
+  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+}
+
+function fmtMonthYear(secs) {
+  const d = new Date(secs * 1000);
+  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+function fmtDay(secs) {
+  const d = new Date(secs * 1000);
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+}
+
+function fmtClock(secs) {
+  const d = new Date(secs * 1000);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fmtTime(secs) {
+  return `${fmtDay(secs)}, ${fmtClock(secs)}`;
+}
+
+function fmtStamp(secs) {
+  const d = new Date(secs * 1000);
+  return `${fmtDay(secs)}, ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function fmtAgo(secs) {
+  if (secs < 60) return `${Math.max(0, Math.round(secs))} s`;
+  if (secs < 3600) return `${Math.round(secs / 60)} m`;
+  if (secs < 172800) return `${Math.round(secs / 3600)} h`;
+  return `${Math.round(secs / 86400)} d`;
+}
+
+function fmtN(n) {
+  return Math.round(n).toLocaleString("en-US");
+}
+
+function fmtVolume(n) {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return String(n);
+}
+
+function fmtPct(fraction) {
+  const pct = fraction * 100;
+  return pct >= 99.95 ? "100%" : `${pct.toFixed(1)}%`;
+}
+
+/* [a, b] minus sorted disjoint spans: the stretches nothing vouches for. */
+function subtract(a, b, spans) {
+  const out = [];
+  let cursor = a;
+  for (const [s, e] of spans) {
+    if (e <= cursor || s >= b) continue;
+    if (s > cursor) out.push([cursor, Math.min(s, b)]);
+    cursor = Math.max(cursor, e);
+    if (cursor >= b) break;
+  }
+  if (cursor < b) out.push([cursor, b]);
+  return out;
+}
+
+function coveredSecs(a, b, spans) {
+  let total = 0;
+  for (const [s, e] of spans) total += Math.max(0, Math.min(e, b) - Math.max(s, a));
+  return total;
+}
+
+/* What one series' spans mean. Its domain runs from wherever it begins —
+   its first bar, or its first span when it holds none — cut by the horizon
+   and by the source's history floor; the accounting ends at the last
+   complete bar, because the one holding `now` is deliberately never
+   covered. */
+function shape(sym, cov) {
+  const begins = sym.first ?? (sym.spans.length ? sym.spans[0][0] : cov.since);
+  const start = Math.max(cov.since, cov.floor_start ?? 0, begins);
+  const end = Math.floor(cov.now / cov.step) * cov.step;
+
+  const denom = Math.max(0, end - start);
+  const got = coveredSecs(start, end, sym.spans);
+  const missing = subtract(start, end, sym.spans);
+  const pct = denom > 0 ? Math.min(1, got / denom) : 1;
+
+  return { start, end, denom, got, missing, pct };
+}
+
+function segControl(node, entries, active, choose) {
+  node.replaceChildren();
+  for (const [word, value] of entries) {
+    const button = el("button", value === active ? "active" : "", word);
+    button.addEventListener("click", () => choose(value));
+    node.appendChild(button);
+  }
+}
+
+function renderPick() {
+  segControl($("pick"), INTERVALS.map((w) => [w, w]), interval, (value) => {
+    interval = value;
+    renderPick();
+    loadCoverage();
+  });
+}
+
+function renderUpwin() {
+  segControl($("upwin"), WINDOWS, upHours, (value) => {
+    upHours = value;
+    renderUpwin();
+    loadUptime();
+  });
+}
+
+function band(cls, left, width, label) {
+  const node = el("div", `band ${cls}`);
+  node.style.left = `${left}%`;
+  node.style.width = `${width}%`;
+  node.setAttribute("data-label", label);
+  if (left > 72) node.classList.add("edge");
+  return node;
+}
+
+function renderCoverage(cov) {
+  const grid = $("grid");
+  grid.replaceChildren();
+
+  const shaped = cov.symbols
+    .map((sym) => ({ sym, s: shape(sym, cov) }))
+    .sort((a, b) =>
+      (b.sym.volume ?? -1) - (a.sym.volume ?? -1) ||
+      a.sym.symbol.localeCompare(b.sym.symbol));
+
+  let sumGot = 0;
+  let sumDenom = 0;
+
+  for (const { sym, s } of shaped) {
+    sumGot += s.got;
+    sumDenom += s.denom;
+
+    const domain = Math.max(1, cov.now - s.start);
+    const pos = (t) => (Math.max(0, t - s.start) / domain) * 100;
+
+    const card = el("div");
+
+    const head = el("div", "ahead");
+    head.appendChild(el("span", "sym", sym.symbol));
+    const detail = [
+      sym.name,
+      sym.volume != null && `${fmtVolume(sym.volume)} vol`,
+      `${fmtN(sym.bars)} bars`,
+    ].filter(Boolean).join(" · ");
+    head.appendChild(el("span", "nm", detail));
+    head.appendChild(el(
+      "span",
+      `pct num ${s.pct >= 0.9995 ? "full" : "thin"}`,
+      fmtPct(s.pct),
+    ));
+    card.appendChild(head);
+
+    const plot = el("div", "aplot");
+
+    for (const [a, b] of s.missing) {
+      const bars = Math.max(1, Math.round((b - a) / cov.step));
+      plot.appendChild(band(
+        "miss", pos(a), Math.max(0.15, pos(b) - pos(a)),
+        `Not collected · ${fmtDate(a)} – ${fmtDate(b)} · ~${fmtN(bars)} bars`,
+      ));
+    }
+
+    plot.appendChild(curve(sym, s, cov));
+    card.appendChild(plot);
+
+    const foot = el("div", "afoot");
+    const wide = cov.now - s.start > 90 * 86400;
+    foot.appendChild(el("span", "", wide ? fmtMonthYear(s.start) : fmtDate(s.start)));
+    foot.appendChild(el("span", "", "Today"));
+    card.appendChild(foot);
+
+    grid.appendChild(card);
+  }
+
+  const full = shaped.filter(({ s }) => s.pct >= 0.9995).length;
+  $("hero-sym-k").textContent = `Assets · with a ${cov.interval} series`;
+  $("hero-sym-v").textContent = fmtN(shaped.length);
+  const symSub = $("hero-sym-sub");
+  symSub.replaceChildren();
+  if (shaped.length > 0) {
+    symSub.appendChild(el("b", "num", fmtN(full)));
+    symSub.appendChild(document.createTextNode(" complete · "));
+    symSub.appendChild(el("b", "num", fmtN(shaped.length - full)));
+    symSub.appendChild(document.createTextNode(" with gaps"));
+  }
+
+  $("hero-cov-k").textContent = cov.since > 0
+    ? `Collected · ${cov.interval} bars · since ${fmtMonthYear(cov.since)}`
+    : `Collected · ${cov.interval} bars · each series from its start`;
+  $("hero-cov-v").textContent = sumDenom > 0 ? fmtPct(sumGot / sumDenom) : "—";
+
+  const sub = $("hero-cov-sub");
+  sub.replaceChildren();
+  if (sumDenom > 0) {
+    const gotBars = Math.round(sumGot / cov.step);
+    const denomBars = Math.round(sumDenom / cov.step);
+    sub.appendChild(el("b", "num", fmtN(gotBars)));
+    sub.appendChild(document.createTextNode(` of `));
+    sub.appendChild(el("b", "num", fmtN(denomBars)));
+    sub.appendChild(document.createTextNode(` fetchable bars · `));
+    sub.appendChild(el("b", "num", fmtN(denomBars - gotBars)));
+    sub.appendChild(document.createTextNode(` not collected`));
+  }
+
+  const note = $("grid-note");
+  if (shaped.length === 0) {
+    note.textContent = `The database holds no ${cov.interval} series.`;
+  } else {
+    note.textContent =
+      "Most traded first, and every symbol the database has heard of gets " +
+      "a card, each drawn from where its series begins. Intraday intervals " +
+      "reach back only as far as Yahoo serves them: 6 days for 1m, 59 for " +
+      "the rest.";
+  }
+}
+
+/* The price line, one polyline per covered span so it breaks where the
+   knowledge does. */
+function curve(sym, s, cov) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 1000 220");
+  svg.setAttribute("preserveAspectRatio", "none");
+
+  const inside = sym.curve.filter(([t]) => t >= s.start);
+  if (inside.length === 0) return svg;
+
+  let min = Infinity;
+  let max = -Infinity;
+  for (const [, close] of inside) {
+    min = Math.min(min, close);
+    max = Math.max(max, close);
+  }
+  if (max - min < 1e-9) { min -= 1; max += 1; }
+
+  const domain = Math.max(1, cov.now - s.start);
+  const x = (t) => ((t - s.start) / domain) * 1000;
+  const y = (v) => 205 - ((v - min) / (max - min)) * 190;
+
+  for (const [a, b] of sym.spans) {
+    const points = inside
+      .filter(([t]) => t >= a && t < b)
+      .map(([t, v]) => `${x(t).toFixed(1)},${y(v).toFixed(1)}`);
+    if (points.length < 2) continue;
+
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    line.setAttribute("points", points.join(" "));
+    line.setAttribute("vector-effect", "non-scaling-stroke");
+    svg.appendChild(line);
+  }
+
+  return svg;
+}
+
+/* Tick marks under the uptime bar: 4-hour clocks inside a day, half-days
+   out to a few, then every other midnight. Aligned to the local clock,
+   which is the one the reader is on. */
+function uptimeTicks(since, now, hours) {
+  const midnight = new Date(since * 1000);
+  midnight.setHours(0, 0, 0, 0);
+  let day = midnight.getTime() / 1000;
+
+  const ticks = [];
+  if (hours <= 36) {
+    for (let t = day; t < now; t += 4 * 3600) {
+      if (t >= since) ticks.push([t, fmtClock(t)]);
+    }
+  } else if (hours <= 96) {
+    for (let t = day; t < now; t += 12 * 3600) {
+      if (t >= since) ticks.push([t, new Date(t * 1000).getHours() === 0 ? fmtDay(t) : fmtClock(t)]);
+    }
+  } else {
+    while (day < since) day += 86400;
+    for (let t = day, i = 0; t < now; t += 86400, i += 1) {
+      if (i % 2 === 0) ticks.push([t, fmtDay(t)]);
+    }
+  }
+  return ticks;
+}
+
+function windowWord(hours) {
+  const entry = WINDOWS.find(([, value]) => value === hours);
+  return entry ? { "24h": "24 hours", "3d": "3 days", "14d": "14 days" }[entry[0]] : `${hours} h`;
+}
+
+function renderUptime(up) {
+  const act = $("act");
+  act.replaceChildren();
+
+  $("hero-req-k").textContent = `Requests · last ${windowWord(upHours)}`;
+  $("hero-req-v").textContent = up.present ? fmtN(up.asked) : "—";
+  const sub = $("hero-req-sub");
+  sub.replaceChildren();
+  if (up.present) {
+    sub.appendChild(el("b", "num", fmtN(up.ok)));
+    sub.appendChild(document.createTextNode(" succeeded · "));
+    sub.appendChild(el("b", "num bad", fmtN(up.asked - up.ok)));
+    sub.appendChild(document.createTextNode(" failed"));
+  } else {
+    sub.appendChild(document.createTextNode("no fetch log in this database"));
+  }
+
+  if (!up.present) {
+    act.appendChild(el(
+      "div", "act-empty",
+      "This database has no fetch log — a server new enough to write one has not run against it yet.",
+    ));
+    return;
+  }
+
+  const span = up.now - up.since;
+  const pos = (t) => (Math.max(0, t - up.since) / span) * 100;
+
+  const track = el("div", "act-track");
+
+  const lit = [];
+  for (const [hour] of up.hours) {
+    const a = Math.max(hour, up.since);
+    const b = Math.min(hour + 3600, up.now);
+    if (b <= a) continue;
+    if (lit.length && a <= lit[lit.length - 1][1]) {
+      lit[lit.length - 1][1] = Math.max(lit[lit.length - 1][1], b);
+    } else {
+      lit.push([a, b]);
+    }
+  }
+
+  for (const [a, b] of lit) {
+    const seg = el("i");
+    seg.style.left = `${pos(a)}%`;
+    seg.style.width = `${pos(b) - pos(a)}%`;
+    track.appendChild(seg);
+  }
+
+  for (const [a, b] of subtract(up.since, up.now, lit)) {
+    if (b - a < 3600) continue;
+    const quiet = el("s");
+    quiet.style.left = `${pos(a)}%`;
+    quiet.style.width = `${pos(b) - pos(a)}%`;
+    quiet.setAttribute("data-label", `Quiet · ${fmtTime(a)} – ${fmtTime(b)}`);
+    if (pos(a) > 72) quiet.classList.add("edge");
+    track.appendChild(quiet);
+  }
+
+  for (const fault of up.faults) {
+    const tick = el("b");
+    tick.style.left = `${pos(fault.at)}%`;
+    tick.setAttribute(
+      "data-label",
+      `${outcomeWord(fault.outcome)} · ${fault.symbol} ${fault.interval} · ${fmtTime(fault.at)}`,
+    );
+    if (pos(fault.at) > 72) tick.classList.add("edge");
+    track.appendChild(tick);
+  }
+
+  act.appendChild(track);
+
+  const foot = el("div", "act-foot");
+  for (const [t, word] of uptimeTicks(up.since, up.now, upHours)) {
+    // The right edge belongs to "Now"; a tick that close would print under it.
+    if (pos(t) > 94) continue;
+    const mark = el("span", "", word);
+    mark.style.left = `${pos(t)}%`;
+    foot.appendChild(mark);
+  }
+  const now = el("span", "", "Now");
+  now.style.left = "100%";
+  foot.appendChild(now);
+  act.appendChild(foot);
+}
+
+function outcomeWord(outcome) {
+  return outcome === "rate_limited" ? "Rate limited" :
+         outcome === "refused" ? "Refused" :
+         outcome === "failed" ? "Failed" : "ok";
+}
+
+function renderRequests(report) {
+  const rows = report.requests;
+
+  const live = $("live");
+  const word = $("live-word");
+  const age = rows.length ? report.now - rows[0].at : null;
+  if (age !== null && age <= LIVE_WITHIN_SECS) {
+    live.classList.add("on");
+    word.textContent = "Live";
+  } else {
+    live.classList.remove("on");
+    word.textContent = age === null ? "Never asked" : `Idle · ${fmtAgo(age)}`;
+  }
+
+  const body = $("req-body");
+  body.replaceChildren();
+  for (const row of rows) {
+    const tr = el("tr");
+    tr.appendChild(el("td", "num", fmtStamp(row.at)));
+    tr.appendChild(el("td", "cell-main", row.symbol));
+    tr.appendChild(el("td", "", row.interval));
+    tr.appendChild(el("td", "faint", `${fmtDate(row.start)} – ${fmtDate(row.end)}`));
+    tr.appendChild(el("td", row.outcome === "ok" ? "faint" : "bad", outcomeWord(row.outcome)));
+    body.appendChild(tr);
+  }
+
+  $("req-note").textContent = rows.length
+    ? `The newest ${rows.length} · updates every 10 s`
+    : "Nothing asked yet";
+}
+
+async function loadCoverage() {
+  try {
+    const answer = await fetch(`/api/coverage/${interval}`);
+    if (!answer.ok) throw new Error(await answer.text());
+    renderCoverage(await answer.json());
+  } catch (e) {
+    $("grid").replaceChildren();
+    $("grid-note").textContent = `The coverage read failed: ${e.message}`;
+  }
+}
+
+async function loadUptime() {
+  try {
+    const answer = await fetch(`/api/uptime?hours=${upHours}`);
+    if (!answer.ok) throw new Error(await answer.text());
+    renderUptime(await answer.json());
+  } catch (e) {
+    $("act").replaceChildren(el("div", "act-empty", `The uptime read failed: ${e.message}`));
+  }
+}
+
+async function loadRequests() {
+  try {
+    const answer = await fetch("/api/requests?limit=100");
+    if (!answer.ok) throw new Error(await answer.text());
+    renderRequests(await answer.json());
+  } catch (e) {
+    $("req-note").textContent = `The requests read failed: ${e.message}`;
+  }
+}
+
+renderPick();
+renderUpwin();
+loadCoverage();
+loadUptime();
+loadRequests();
+setInterval(loadRequests, 10_000);
+setInterval(loadUptime, 60_000);
+</script>
+</body>
+</html>

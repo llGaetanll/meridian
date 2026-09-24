@@ -2954,6 +2954,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "server-coverage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "api-common",
+ "api-trace",
+ "axum",
+ "chrono",
+ "dotenvy",
+ "serde",
+ "src-postgres",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "server-main"
 version = "0.1.0"
 dependencies = [

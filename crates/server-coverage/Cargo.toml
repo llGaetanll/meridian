@@ -1,0 +1,17 @@
+[package]
+name = "server-coverage"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+api-common = { path = "../api-common" }
+api-trace = { path = "../api-trace" }
+src-postgres = { path = "../src-postgres" }
+
+anyhow = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+dotenvy = "0.15"
+serde = { workspace = true }
+tokio = { workspace = true, features = ["net"] }
+tracing = { workspace = true }

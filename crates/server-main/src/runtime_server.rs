@@ -36,6 +36,7 @@ use crate::PublicUrl;
 use crate::StateServer;
 use crate::StoredCode;
 use crate::WebOrigins;
+use crate::YahooFault;
 use crate::project;
 use crate::runtime_plaid;
 use crate::runtime_router::ActionRx;
@@ -55,8 +56,10 @@ use src_plaid::PlaidClient;
 use src_plaid::PlaidCredentials;
 use src_plaid::PlaidError;
 use src_plaid::PlaidFault;
+use src_postgres::BarSource;
 use src_postgres::Db;
 use src_postgres::DbKey;
+use src_postgres::FetchOutcome;
 use src_resend::ResendClient;
 use src_resend::ResendCredentials;
 use src_stripe::StripeClient;
@@ -650,15 +653,36 @@ impl RuntimeServer {
                 start,
                 end,
             } => {
-                match runtime_yahoo::fetch_chart(
-                    &self.yahoo_client,
+                let answer =
+                    runtime_yahoo::fetch_chart(&self.yahoo_client, symbol, *interval, *start, *end)
+                        .await;
+
+                // The record that the ask was made, not part of its answer:
+                // the machine decides nothing from it, so it is written here,
+                // where the wire is, and a write that fails costs a log line
+                // rather than the fetch.
+                let outcome = match &answer {
+                    Ok(_) => FetchOutcome::Ok,
+                    Err(YahooFault::RateLimited) => FetchOutcome::RateLimited,
+                    Err(YahooFault::Refused { .. }) => FetchOutcome::Refused,
+                    Err(YahooFault::Failed { .. }) => FetchOutcome::Failed,
+                };
+
+                if let Err(e) = src_postgres::record_fetch(
+                    &self.db,
+                    unix_now(),
+                    BarSource::Yahoo,
                     symbol,
                     *interval,
-                    *start,
-                    *end,
+                    *start..*end,
+                    outcome,
                 )
                 .await
                 {
+                    tracing::warn!(error = %e, symbol, "a fetch went unrecorded");
+                }
+
+                match answer {
                     Ok((bars, facts)) => EventSourceYahoo::ChartFetched {
                         symbol: symbol.clone(),
                         interval: *interval,
@@ -1318,6 +1342,10 @@ impl RuntimeServer {
                 src_postgres::delete_user(db, *user_id).await?;
             }
 
+            ActionStore::ForgetItem { item_id } => {
+                src_postgres::remove_item(db, item_id).await?;
+            }
+
             ActionStore::RecordAttempt { email } => {
                 src_postgres::record_attempt(db, email).await?;
             }
@@ -1659,6 +1687,7 @@ impl RuntimeServer {
             | ActionStore::LoadBars { .. }
             | ActionStore::SaveBars { .. }
             | ActionStore::DeleteUser { .. }
+            | ActionStore::ForgetItem { .. }
             | ActionStore::RecordAccess { .. } => {}
         }
 

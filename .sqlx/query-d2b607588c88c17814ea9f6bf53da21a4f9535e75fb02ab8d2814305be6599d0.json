@@ -1,0 +1,92 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT at, symbol,\n                  interval AS \"interval: BarInterval\",\n                  outcome AS \"outcome: FetchOutcome\"\n           FROM fetch_log\n           WHERE at >= $1 AND outcome <> 'ok'\n           ORDER BY at",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "at",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "fetch_log",
+            "name": "at"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "symbol",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "fetch_log",
+            "name": "symbol"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "interval: BarInterval",
+        "type_info": {
+          "Custom": {
+            "name": "bar_interval",
+            "kind": {
+              "Enum": [
+                "1m",
+                "2m",
+                "5m",
+                "15m",
+                "30m",
+                "1h",
+                "1d",
+                "1wk"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "fetch_log",
+            "name": "interval"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "outcome: FetchOutcome",
+        "type_info": {
+          "Custom": {
+            "name": "fetch_outcome",
+            "kind": {
+              "Enum": [
+                "ok",
+                "rate_limited",
+                "refused",
+                "failed"
+              ]
+            }
+          }
+        },
+        "origin": {
+          "Table": {
+            "table": "fetch_log",
+            "name": "outcome"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d2b607588c88c17814ea9f6bf53da21a4f9535e75fb02ab8d2814305be6599d0"
+}

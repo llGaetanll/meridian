@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT ts, close FROM (\n               SELECT ts, close,\n                      row_number() OVER (ORDER BY ts) AS rn,\n                      count(*) OVER () AS total\n               FROM bars\n               WHERE source = $1 AND symbol = $2 AND interval = $3 AND ts >= $4\n           ) points\n           WHERE (rn - 1) % GREATEST(total / $5, 1) = 0\n           ORDER BY ts",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "ts",
+        "type_info": "Timestamptz",
+        "origin": {
+          "Table": {
+            "table": "bars",
+            "name": "ts"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "close",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "bars",
+            "name": "close"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "bar_source",
+            "kind": {
+              "Enum": [
+                "yahoo",
+                "coingecko"
+              ]
+            }
+          }
+        },
+        "Text",
+        {
+          "Custom": {
+            "name": "bar_interval",
+            "kind": {
+              "Enum": [
+                "1m",
+                "2m",
+                "5m",
+                "15m",
+                "30m",
+                "1h",
+                "1d",
+                "1wk"
+              ]
+            }
+          }
+        },
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "57f25de96f48bd404449ecaf08b7a3c47b27edf13ef395b68df4a29f668df332"
+}
