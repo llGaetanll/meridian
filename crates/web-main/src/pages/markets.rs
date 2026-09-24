@@ -23,12 +23,12 @@ use web_components::RangeSelector;
 use web_components::TradeComposer;
 use web_components::VolumeChart;
 use web_components::math;
-use web_ui::SearchBar;
 use web_ui::Tone;
 
 use crate::fake;
 use crate::io::AssetQuote;
 use crate::io::ChartRange;
+use crate::io::clock;
 use crate::state::MarketsState;
 
 /// 2026-08-02 — "today" for the parts still on stand-in data.
@@ -44,6 +44,11 @@ pub fn MarketsPage() -> impl IntoView {
     let quote = state.quote;
     let history = state.history;
 
+    // The price under the crosshair, written by the chart. There is no small
+    // readout beside the plot: hovering moves the header's own number, and
+    // leaving puts the live price back.
+    let hover_price = RwSignal::new(None);
+
     let position = fake::position();
     let holdings = fake::holdings();
     let portfolio_count = holdings.len();
@@ -56,7 +61,11 @@ pub fn MarketsPage() -> impl IntoView {
             .map(|q| q.prices.range_time())
     });
 
-    let price = Signal::derive(move || quote.get().and_then(|q| q.ok()).map(|q| q.price));
+    let price = Signal::derive(move || {
+        hover_price
+            .get()
+            .or_else(|| quote.get().and_then(|q| q.ok()).map(|q| q.price))
+    });
     let details = Signal::derive(move || {
         quote
             .get()
@@ -68,8 +77,6 @@ pub fn MarketsPage() -> impl IntoView {
     view! {
         <div class="asset-layout">
             <div class="col">
-                <SearchBar />
-
                 <div>
                     <AssetHeader
                         symbol=state.symbol()
@@ -84,7 +91,8 @@ pub fn MarketsPage() -> impl IntoView {
                         None => view! { <ChartPlaceholder message="Loading…" /> }.into_any(),
                         Some(Err(error)) => view! { <ChartPlaceholder message=error /> }.into_any(),
                         Some(Ok(quote)) => {
-                            view! { <SessionCharts quote=quote /> }.into_any()
+                            view! { <SessionCharts quote=quote hover_price=hover_price /> }
+                                .into_any()
                         }
                     }}
 
@@ -136,7 +144,7 @@ pub fn MarketsPage() -> impl IntoView {
 /// and passing the same one down is what keeps a bar under its point and the
 /// closed hours in the same place on both charts.
 #[component]
-fn SessionCharts(quote: AssetQuote) -> impl IntoView {
+fn SessionCharts(quote: AssetQuote, hover_price: RwSignal<Option<f64>>) -> impl IntoView {
     let tone = match quote.open.or(quote.previous_close) {
         Some(open) => Tone::of(quote.price - open),
         None => Tone::Neutral,
@@ -149,16 +157,25 @@ fn SessionCharts(quote: AssetQuote) -> impl IntoView {
     let prices = quote.prices.resample_last(CHART_RESOLUTION);
     let volume = quote.volume.resample_sum(CHART_RESOLUTION);
 
+    // The layout keeps the exchange's offset — an overnight gap is a fact
+    // about the exchange's day — while everything *printed* is on the
+    // viewer's clock.
     let layout = Layout::new(&prices, quote.utc_offset);
-    let labels = axis_labels(&prices, &layout, 6, quote.utc_offset);
+    let labels = axis_labels(&prices, &layout, 6, clock::local_offset());
 
     // The point the crosshair is on. The price chart sets it; the time axis
     // reads it, so that the two say the same thing.
     let hover = RwSignal::new(None);
-    let cursor = cursor_labels(&prices, &layout, hover, quote.utc_offset);
+    let cursor = cursor_labels(&prices, &layout, hover, clock::local_offset());
 
     view! {
-        <PriceChart data=prices layout=layout.clone() tone=tone hover=hover />
+        <PriceChart
+            data=prices
+            layout=layout.clone()
+            tone=tone
+            hover=hover
+            hover_price=hover_price
+        />
         <VolumeChart data=volume layout=layout hover=hover />
         <ChartFoot labels=labels cursor=cursor />
     }
@@ -169,7 +186,7 @@ fn SessionCharts(quote: AssetQuote) -> impl IntoView {
 fn HistoryStrip(history: AssetQuote, shown: Option<Range<Timestamp>>) -> impl IntoView {
     let prices = history.prices.resample_last(CHART_RESOLUTION);
 
-    let labels = range_labels(&prices, 7, history.utc_offset);
+    let labels = range_labels(&prices, 7, clock::local_offset());
     let window = window_of(&prices, shown);
 
     view! {
@@ -239,8 +256,8 @@ fn range_labels(data: &ChartData, count: usize, utc_offset: i64) -> Vec<String> 
         .collect()
 }
 
-/// Read a timestamp where the asset trades, so days turn over at the
-/// exchange's midnight rather than UTC's.
+/// Read a timestamp on the viewer's clock. Timestamps are UTC everywhere but
+/// on the way out of a formatter, and every label goes through here.
 fn local(ts: Timestamp, utc_offset: i64) -> Timestamp {
     ts.saturating_add_signed(utc_offset)
 }

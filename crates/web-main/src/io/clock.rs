@@ -14,6 +14,16 @@ pub fn now() -> u64 {
     u64::try_from(chrono::Utc::now().timestamp()).unwrap_or(0)
 }
 
+/// Seconds to add to a UTC timestamp to read it in this browser's local
+/// time.
+///
+/// The one place the viewer's timezone is asked for: timestamps are stored
+/// and shipped as UTC, and become somebody's wall clock only as they are
+/// printed.
+pub fn local_offset() -> i64 {
+    -(js_sys::Date::new_0().get_timezone_offset() as i64) * 60
+}
+
 /// Wait this long.
 ///
 /// A `setTimeout` behind a promise. With no window to ask, it returns at

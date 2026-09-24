@@ -100,12 +100,12 @@
    The cursor value stays mounted, holding the last point it read, so that it
    has something to fade out. */
 .y-axis span, .chart-foot span { transition: opacity 0.14s ease; }
-.y-axis .cursor-val, .chart-foot .cursor-val {
+.chart-foot .cursor-val {
   opacity: 0;
   color: var(--text-faint); font-weight: inherit;
 }
-.y-axis.cursor span, .chart-foot.cursor span { opacity: 0; }
-.y-axis.cursor .cursor-val, .chart-foot.cursor .cursor-val { opacity: 1; }
+.chart-foot.cursor span { opacity: 0; }
+.chart-foot.cursor .cursor-val { opacity: 1; }
 
 .volume-wrap { position: relative; padding-right: 66px; margin-top: 6px; }
 .volume { width: 100%; height: 86px; display: block; }

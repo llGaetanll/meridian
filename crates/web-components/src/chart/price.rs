@@ -29,6 +29,10 @@ pub fn PriceChart(
     #[prop(into, default = String::from("price"))] id: String,
     #[prop(optional)] tone: Tone,
     #[prop(optional)] hover: Option<RwSignal<Option<usize>>>,
+    /// The price under the pointer, for whatever big number wants to follow
+    /// the crosshair — the header's, not a readout of this chart's own.
+    #[prop(optional)]
+    hover_price: Option<RwSignal<Option<Price>>>,
     /// Formats the price axis labels.
     #[prop(optional)]
     y_fmt: Option<Box<dyn Fn(Price) -> String>>,
@@ -54,19 +58,12 @@ pub fn PriceChart(
             .map(|(i, (_, px))| Cursor {
                 x: layout.fraction(i) * 100.0,
                 y: math::px_to_y(px, &px_rng, 100.0),
-                label: y_fmt(px),
             })
             .collect::<Vec<_>>(),
     );
 
-    // The point under the pointer, or the last one there. Holding on to it is
-    // what lets the axis value fade out where it stood instead of vanishing.
-    let last = Memo::new(move |prev: Option<&Option<Cursor>>| {
-        hover
-            .get()
-            .and_then(|i| cursors.with_value(|cs| cs.get(i).cloned()))
-            .or_else(|| prev.cloned().flatten())
-    });
+    // The prices themselves, for the big number that follows the crosshair.
+    let prices = StoredValue::new(data.iter().map(|(_, px)| px).collect::<Vec<Price>>());
 
     let plot = NodeRef::<html::Div>::new();
     let axis_of = StoredValue::new(layout.clone());
@@ -121,8 +118,22 @@ pub fn PriceChart(
     view! {
         <div
             class="chart-wrap"
-            on:mousemove=move |ev| hover.set(point_at(&ev))
-            on:mouseleave=move |_| hover.set(None)
+            on:mousemove=move |ev| {
+                let at = point_at(&ev);
+
+                hover.set(at);
+
+                if let Some(hover_price) = hover_price {
+                    hover_price.set(at.and_then(|i| prices.with_value(|px| px.get(i).copied())));
+                }
+            }
+            on:mouseleave=move |_| {
+                hover.set(None);
+
+                if let Some(hover_price) = hover_price {
+                    hover_price.set(None);
+                }
+            }
         >
             <svg
                 class="chart-grid"
@@ -193,24 +204,16 @@ pub fn PriceChart(
                 }}
             </div>
 
-            <div class="y-axis" class:cursor=move || hover.get().is_some()>
-                {axis}
-                <span
-                    class="cursor-val"
-                    style=move || last.get().map(|c| format!("top:{:.2}%", c.y))
-                >
-                    {move || last.get().map(|c| c.label)}
-                </span>
-            </div>
+            // No readout of its own follows the crosshair here: the hovered
+            // price goes out through `hover_price`, to the big number.
+            <div class="y-axis">{axis}</div>
         </div>
     }
 }
 
-/// Where the crosshair sits for one point, as percentages of the plot, with
-/// the price already written out for the axis.
+/// Where the crosshair sits for one point, as percentages of the plot.
 #[derive(Clone, PartialEq)]
 struct Cursor {
     x: f64,
     y: f64,
-    label: String,
 }
