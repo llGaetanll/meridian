@@ -227,10 +227,16 @@ body {
    but measured rather than counted, because these rows are not one height.
    `--y` and `--h` are where the pointer last landed, set by the row itself.
 
-   The rows paint no ground of their own, or there would be two answers to
-   where the pointer is while this one is still travelling. */
+   No row paints a ground of its own, or there are two answers to where the
+   pointer is while this one is still travelling. The destructive row has to
+   be said twice as loudly as the rest: the sheet's rule for it is written on
+   `.item.grave:hover`, which weighs the same as the plain one here and is
+   read afterwards, so only a selector heavier than both of them takes it off.
+   That was the second rectangle. */
 .ui .menu.account-open .item:hover,
+.ui .menu.account-open .item.grave:hover,
 .ui .menu.account-open .account:hover { background: none; }
+
 .ui .menu.account-open .menu-pill {
   position: absolute; left: 5px; right: 5px; top: 0;
   height: var(--h, 0);
@@ -240,10 +246,20 @@ body {
   transition:
     transform var(--spring-time) var(--spring),
     height var(--spring-time) var(--spring),
+    background 140ms ease,
     opacity 140ms ease;
   pointer-events: none;
 }
+/* The rectangle carries the row's colour rather than the row carrying its
+   own, so moving from Sign out onto Delete my account is one thing turning
+   rose and not two rectangles crossing. */
+.ui .menu.account-open .menu-pill.grave { background: var(--down-tint); }
 .ui .menu.account-open .menu-pill.off { opacity: 0; }
+/* The frame it appears in. Nowhere to have come from, so it does not travel —
+   it is simply already where the pointer is, and only fades up. */
+.ui .menu.account-open .menu-pill.still {
+  transition: background 140ms ease, opacity 140ms ease;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .ui .menu.account-open,

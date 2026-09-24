@@ -34,13 +34,21 @@ pub fn Shell(
     #[prop(into)] leaving: Signal<bool>,
     #[prop(into)] error: Signal<Option<String>>,
     on_screen: Callback<Screen>,
+    on_markets: Callback<()>,
     on_retry: Callback<()>,
     ui: Callback<EventUi>,
     children: Children,
 ) -> impl IntoView {
     view! {
         <div class="shell">
-            <Sidebar dock=dock who=who markets=markets on_screen=on_screen ui=ui />
+            <Sidebar
+                dock=dock
+                who=who
+                markets=markets
+                on_screen=on_screen
+                on_markets=on_markets
+                ui=ui
+            />
             <div class="main">
                 <div class="content">
                     <SearchRow />
@@ -85,6 +93,7 @@ fn Sidebar(
     who: Signal<Option<ViewWho>>,
     markets: Signal<bool>,
     on_screen: Callback<Screen>,
+    on_markets: Callback<()>,
     ui: Callback<EventUi>,
 ) -> impl IntoView {
     // The dock's Account is the block at the foot rather than a row here.
@@ -159,9 +168,16 @@ fn Sidebar(
                     Portfolios
                 </a>
 
-                // Locked: the page is built but runs on stand-in data, and the
-                // markets side of the app is a later pass.
-                <a class="dead" aria-disabled="true">
+                // The web's own page, lit from `markets` rather than the
+                // dock: it is not one of the machine's screens.
+                <a
+                    class:on=move || markets.get()
+                    href="#"
+                    on:click=move |ev| {
+                        ev.prevent_default();
+                        on_markets.run(());
+                    }
+                >
                     <Icon kind=IconKind::Markets class="icon" />
                     Markets
                 </a>
@@ -178,14 +194,25 @@ fn Sidebar(
     }
 }
 
+/// Where the lit rectangle stands, and what colour it is.
+#[derive(Clone, Copy, PartialEq)]
+struct Lit {
+    top: i32,
+    height: i32,
+
+    /// The row that cannot be undone, which lights rose rather than grey.
+    grave: bool,
+}
+
 /// Who is signed in, at the foot of the sidebar, and what can be done about
 /// it.
 ///
-/// Pressing the chip does not change page. It opens a card that the chip is
-/// then *inside*: the card lands where the chip's own edge was, the chip gives
-/// up its border and two pixels of padding, and everything printed on it stays
-/// the size it was. Nothing animates and nothing moves sideways, so there is
-/// nothing to watch arrive — see the note in `css/app.css`.
+/// Pressing the chip does not change page. It grows the card the chip already
+/// sits in — the card is there in both states, and opening it is five pixels
+/// of ground appearing inside while the same five come off the outside, so
+/// everything printed on the chip stays exactly where it was. The geometry and
+/// the timing are both in `css/app.css`; what is here is only which state it
+/// is in and which row the pointer is on.
 ///
 /// The card closes on a press anywhere else, which is a listener on the window
 /// rather than a sheet of nothing over the page: a page you cannot scroll
@@ -199,17 +226,52 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
     // changes it.
     let theme = RwSignal::new(theme_label(theme::is_light()));
 
-    // Where the lit rectangle stands, as a top and a height inside the card.
-    // Measured rather than counted, unlike the nav's, because these rows are
-    // not one height: four of them are a line of text and the last is a face.
-    let lit = RwSignal::new(None::<(i32, i32)>);
+    // Where the lit rectangle stands. Measured rather than counted, unlike the
+    // nav's, because these rows are not one height: four of them are a line of
+    // text and the last is a face.
+    let lit = RwSignal::new(None::<Lit>);
+
+    // Whether it may travel to get there. Off for the frame it appears in, so
+    // it arrives under the pointer instead of sliding in from wherever it last
+    // stood — which is the whole difference between a rectangle that follows
+    // the mouse and one that chases it.
+    let travel = RwSignal::new(false);
+
+    let stand = move |row: &web_sys::HtmlElement, grave: bool| {
+        let arriving = lit.with_untracked(Option::is_none);
+
+        lit.set(Some(Lit {
+            top: row.offset_top(),
+            height: row.offset_height(),
+            grave,
+        }));
+
+        if arriving {
+            travel.set(false);
+
+            // A frame later, once it has been painted where it landed. Set in
+            // the same breath and the browser would have nothing to move from.
+            request_animation_frame(move || travel.set(true));
+        }
+    };
+
+    let on_row = move |grave: bool| {
+        move |event: leptos::ev::PointerEvent| {
+            let row = event
+                .current_target()
+                .and_then(|target| target.dyn_into::<web_sys::HtmlElement>().ok());
+
+            if let Some(row) = row {
+                stand(&row, grave);
+            }
+        }
+    };
 
     let press = Callback::new(move |()| {
         open.update(|open| *open = !*open);
 
-        // Nothing is under the pointer at the moment the card opens, and a
-        // rectangle left standing where the last one was would slide out of a
-        // row nobody is on.
+        // Nothing is under the pointer at the moment the card opens or shuts,
+        // and a rectangle left standing would slide out of a row nobody is on.
         lit.set(None);
     });
 
@@ -234,8 +296,10 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
                 <span
                     class="menu-pill"
                     class:off=move || lit.get().is_none()
+                    class:still=move || !travel.get()
+                    class:grave=move || lit.get().is_some_and(|lit| lit.grave)
                     style=move || match lit.get() {
-                        Some((top, height)) => format!("--y:{top}px;--h:{height}px"),
+                        Some(lit) => format!("--y:{}px;--h:{}px", lit.top, lit.height),
                         None => String::new(),
                     }
                 />
@@ -245,7 +309,7 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
                 // that animates.
                 <div class="options">
                     <div class="in">
-                        <button class="item" on:pointerenter=stand(lit)
+                        <button class="item" on:pointerenter=on_row(false)
                             on:click=move |_| {
                                 open.set(false);
                                 on_screen.run(Screen::Account);
@@ -255,7 +319,7 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
                             {settings}
                         </button>
 
-                        <button class="item" on:pointerenter=stand(lit)
+                        <button class="item" on:pointerenter=on_row(false)
                             on:click=move |_| theme.set(theme_label(theme::toggle() == "light"))
                         >
                             <Icon kind=IconKind::Theme />
@@ -265,7 +329,7 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
 
                         <div class="cut" />
 
-                        <button class="item" on:pointerenter=stand(lit)
+                        <button class="item" on:pointerenter=on_row(false)
                             on:click=move |_| {
                                 open.set(false);
                                 ui.run(EventUi::SignOutRequested);
@@ -278,7 +342,7 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
                         // Opens the confirmation, which lives on the Account
                         // screen: there is no undo, and a popup over the
                         // ledger is not where that is asked.
-                        <button class="item grave" on:pointerenter=stand(lit)
+                        <button class="item grave" on:pointerenter=on_row(true)
                             on:click=move |_| {
                                 open.set(false);
                                 on_screen.run(Screen::Account);
@@ -293,28 +357,13 @@ fn Account(who: ViewWho, on_screen: Callback<Screen>, ui: Callback<EventUi>) -> 
                     </div>
                 </div>
 
-                <Chip who=who on_press=press lit=lit />
+                // The chip lights only while the card is open, where it is a
+                // row among rows. Shut, it is the thing you press to open the
+                // card and nothing more — a rectangle appearing under it would
+                // be the card answering a pointer it has not been given.
+                <Chip who=who on_press=press lit=Signal::derive(move || open.get()) on_over=Box::new(on_row(false)) />
             </div>
         </div>
-    }
-}
-
-/// What a row does when the pointer arrives on it: says where it is, so the
-/// lit rectangle can go there.
-///
-/// Read off the element rather than counted from an index, and read at the
-/// moment the pointer lands rather than kept — the card is still growing when
-/// the first of these fires, and a measurement taken earlier would be of a
-/// row that has since moved.
-fn stand(lit: RwSignal<Option<(i32, i32)>>) -> impl Fn(leptos::ev::PointerEvent) + 'static {
-    move |event| {
-        let row = event
-            .current_target()
-            .and_then(|target| target.dyn_into::<web_sys::HtmlElement>().ok());
-
-        if let Some(row) = row {
-            lit.set(Some((row.offset_top(), row.offset_height())));
-        }
     }
 }
 
@@ -327,14 +376,20 @@ fn stand(lit: RwSignal<Option<(i32, i32)>>) -> impl Fn(leptos::ev::PointerEvent)
 fn Chip(
     who: ViewWho,
     on_press: Callback<()>,
-    #[prop(optional)] lit: Option<RwSignal<Option<(i32, i32)>>>,
+    /// Whether this chip is one of the rows the card's rectangle visits, which
+    /// it is only while the card is open.
+    #[prop(into, optional)]
+    lit: Signal<bool>,
+    #[prop(optional)] on_over: Option<Box<dyn Fn(leptos::ev::PointerEvent)>>,
 ) -> impl IntoView {
     view! {
         <div
             class="account"
             on:pointerenter=move |event| {
-                if let Some(lit) = lit {
-                    stand(lit)(event);
+                if lit.get_untracked()
+                    && let Some(on_over) = &on_over
+                {
+                    on_over(event);
                 }
             }
             on:click=move |event| {
