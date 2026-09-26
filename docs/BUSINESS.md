@@ -74,11 +74,20 @@ Three billing shapes, and which one a product uses is the whole of its cost:
 | Per request | Per successful call | none |
 | One-time | Once per Item, at link | none |
 
-**Plaid publishes no rates.** The pricing page is a contact-sales page; the
-real numbers appear during the Production access request and then in the
-billing dashboard. Secondhand reports put per-Item subscriptions in the
-$0.30–$3.00/mo range, which is a factor of ten and therefore not a number to
-plan on.
+**The rates, quoted at the Production application 2026-09-26.** Pay As You
+Go — no commitment, no quantity discounts:
+
+| Product | $/Item/mo |
+| --- | --- |
+| Transactions | 0.30 |
+| Recurring Transactions | 0.15 |
+| Investments Holdings | 0.18 |
+| Investments Transactions | 0.35 |
+
+A bank Item — Transactions plus Recurring — costs **$0.45/mo**, and a
+brokerage Item carrying all four subscriptions **$0.98/mo**. Recurring is
+confirmed as its own subscription rather than bundled. The secondhand
+$0.30–$3.00 range this replaces was right only at its floor.
 
 Three things follow regardless of the rate:
 
@@ -134,25 +143,26 @@ Annual billing is worth roughly one free month per user. Offer it.
   contribution = price − (2.9% × price + $0.30) − (Plaid per Item × their Items)
 ```
 
-At $5/mo billed monthly, Stripe leaves $4.55. What Plaid then takes depends
-entirely on the per-Item rate:
+At $5/mo billed monthly, Stripe leaves $4.55. At the quoted rates a bank
+Item takes $0.45 and a brokerage Item $0.98:
 
-| Plaid $/Item/mo | 1 Item | 2 Items | 3 Items |
-| --- | --- | --- | --- |
-| 0.30 | 4.25 | 3.95 | 3.65 |
-| 1.00 | 3.55 | 2.55 | 1.55 |
-| 2.00 | 2.55 | 0.55 | −1.45 |
-| 3.00 | 1.55 | −1.45 | −4.45 |
+| Their Items | Plaid | Contribution |
+| --- | --- | --- |
+| 1 bank | 0.45 | 4.10 |
+| 2 banks | 0.90 | 3.65 |
+| 2 banks + 1 brokerage | 1.88 | 2.67 |
+| 3 banks + 2 brokerages | 3.31 | 1.24 |
 
 Fixed costs are $27.41/mo, so break-even is a single-digit number of
-subscribers at any rate in the top half of that table. **The price is set by
-what the product is worth, not by what it costs to run** — the risk is not the
-server, it is the bottom-right of that table.
+subscribers. **The price is set by what the product is worth, not by what it
+costs to run** — and at these rates the old fear is retired: it takes a
+double-digit Item count to push a $5 subscriber under water.
 
 ## What breaks the model
 
-- **A high per-Item rate.** Everything above depends on one number nobody has
-  yet. Get it before setting a price.
+- **The quoted rates moving.** Pay As You Go commits neither side; the
+  numbers above are 2026-09-26's, and a repricing lands on every Item at
+  once.
 - **A user with six banks.** Cost is per Item, revenue is not. Either cap
   Items on the cheap tier, or price by Item.
 - **Balance uncached.** See above.
@@ -160,13 +170,13 @@ server, it is the bottom-right of that table.
 
 ## Confirm these
 
-- [ ] Plaid: the actual per-Item Transactions rate on the account's plan, from
-      the billing dashboard, not from a blog post. **Everything else is
-      guesswork until this one is known.**
-- [ ] Plaid: is Recurring Transactions a separate subscription or bundled?
+- [x] Plaid: the per-Item rates, quoted at the application 2026-09-26 and in
+      the table above. Confirm they match the billing dashboard once the plan
+      is live
+- [x] Plaid: Recurring Transactions is a separate subscription, priced apart
 - [ ] Plaid: the per-request Balance rate, and whether a failed call bills.
-- [ ] Plaid: what plan replaces Trial, its Item ceiling, and its monthly
-      minimum — Growth has one.
+- [x] Plaid: Pay As You Go replaces Trial — no minimum, no commitment. No
+      Item ceiling was shown (?)
 - [ ] `.io` renewal price at Namecheap.
 - [ ] Stripe: whether Link/wallet or non-US cards change the 2.9% + 30¢.
 - [ ] LLC: an accountant's word that an Albany address is fine for an LLC run

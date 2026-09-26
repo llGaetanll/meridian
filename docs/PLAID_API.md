@@ -5,10 +5,12 @@ what Plaid actually sells, how each piece is billed, and which of it we use.
 It exists because the calls we make were chosen while getting connected, not
 by looking at this list — #51 is what that looks like from the outside.
 
-**Plaid publishes no rates.** Everything here is the billing *model* — which
-is documented — plus third-party-reported ranges where noted. The actual
-numbers for our account are in the dashboard, and reading them off is still an
-open item in [BUSINESS.md](BUSINESS.md).
+**Plaid publishes no rates**, so most of this is the billing *model* — which
+is documented — plus third-party-reported ranges where noted. The numbers for
+our account were quoted at the Production application, 2026-09-26, and live in
+[BUSINESS.md](BUSINESS.md): Transactions $0.30, Recurring Transactions $0.15,
+Investments Holdings $0.18, Investments Transactions $0.35 — each per Item
+per month, Pay As You Go.
 
 ## The four billing shapes
 
