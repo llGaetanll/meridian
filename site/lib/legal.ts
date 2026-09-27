@@ -12,7 +12,7 @@ export const legal = {
   jurisdiction: "the State of New York, United States",
   courts: "the state and federal courts located in New York",
   effective: "September 11, 2026",
-  updated: "September 14, 2026",
+  updated: "September 26, 2026",
 
   /// Who the ledger is built from. Named here because both documents refer to
   /// them and a list that disagrees with itself is the one thing a privacy
@@ -37,6 +37,11 @@ export const legal = {
       name: "DigitalOcean",
       does: "hosts the server and the database the service runs on",
       link: "https://www.digitalocean.com/legal/privacy-policy",
+    },
+    {
+      name: "PostHog",
+      does: "holds the usage analytics described in section 2 — never any part of your ledger",
+      link: "https://posthog.com/privacy",
     },
   ],
 } as const;

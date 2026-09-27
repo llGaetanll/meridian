@@ -61,11 +61,22 @@ const SECTIONS: LegalSection[] = [
           from. They exist to find faults and to stop abuse.
         </p>
         <p>
+          <strong>What our analytics records.</strong> We measure how the
+          website and the applications are used: the pages and screens opened,
+          the interactions with them, the referrer or campaign a visit arrived
+          from, and the browser, device and approximate location the request
+          came from. On this website that includes a recording of the visit —
+          the pages, the movement and the clicks, with typed input masked
+          before it leaves the browser. This measurement is held apart from
+          your ledger: no balance, transaction, holding or institution name is
+          ever part of it. It relies on a cookie that gives your browser a
+          random identifier.
+        </p>
+        <p>
           <strong>What we do not collect.</strong> Your bank username and
           password never reach us — you type those on your institution&rsquo;s
           own page inside Plaid. We do not ask for your government ID, your
-          social security number, your phone number or your date of birth. This
-          website sets no cookies and runs no analytics.
+          social security number, your phone number or your date of birth.
         </p>
       </>
     ),
@@ -90,6 +101,11 @@ const SECTIONS: LegalSection[] = [
           <li>
             <strong>To keep it working and safe.</strong> Diagnosing faults,
             rate-limiting, and investigating abuse.
+          </li>
+          <li>
+            <strong>To improve the Service.</strong> Usage analytics tell us
+            which pages are read, where sign-up is abandoned, and which
+            campaign brought a visitor.
           </li>
           <li>
             <strong>To answer you.</strong> Support email, and the account
@@ -194,6 +210,10 @@ const SECTIONS: LegalSection[] = [
           </li>
           <li>
             <strong>Request logs</strong> — up to 90 days.
+          </li>
+          <li>
+            <strong>Usage analytics</strong> — events for up to one year;
+            recordings of a visit to this website for 30 days.
           </li>
           <li>
             <strong>Invoices and tax records</strong> — as long as tax law
@@ -340,9 +360,10 @@ export default function Privacy() {
           The short version: we hold your email, and the ledger your institutions
           send us through Plaid, so the app can show it to you. Your bank
           credentials never reach us and our access is read-only. We do not sell
-          your data, we run no ads, and there is no analytics on this site.
-          Remove a bank and its history goes with it; close your account and the
-          rest follows.
+          your data and we run no ads. We measure how the website and the app
+          are used, and that measurement never includes your ledger. Remove a
+          bank and its history goes with it; close your account and the rest
+          follows.
         </>
       }
       sections={SECTIONS}

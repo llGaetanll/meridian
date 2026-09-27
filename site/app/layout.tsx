@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 
+import { Analytics } from "@/components/analytics";
 import { SiteFoot } from "@/components/site-foot";
 import { SiteHead } from "@/components/site-head";
 import { site } from "@/lib/site";
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <SiteHead />
         {children}
         <SiteFoot />
+        <Analytics />
       </body>
     </html>
   );

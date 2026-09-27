@@ -22,6 +22,15 @@ RUN npm ci
 
 COPY sketches/shared /app/sketches/shared
 COPY site ./
+
+# The PostHog project key, which is public by design: it can write events and
+# read nothing. Baked in here the way the server address is in
+# deploy/web/Dockerfile. A build without it — `npm run dev`, a plain
+# `npm run build` — loads no analytics, which is what keeps development
+# out of the numbers.
+ARG NEXT_PUBLIC_POSTHOG_KEY=phc_sHH6bp8CNQXrLk5tusiaZVN58472uefcFpjjdpKCrUXE
+ENV NEXT_PUBLIC_POSTHOG_KEY=$NEXT_PUBLIC_POSTHOG_KEY
+
 RUN npm run build
 
 # Compressed once here rather than on every request by a one-CPU box. Caddy

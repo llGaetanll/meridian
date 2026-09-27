@@ -114,7 +114,33 @@
 
 # The site: the landing page and the two legal documents.
 {$MERIDIAN_SITE_DOMAIN} {
-	reverse_proxy site:8080
+	# Analytics, forwarded to PostHog from under this name so that the
+	# request is first-party: a blocklist that names *.posthog.com never
+	# sees that host here. The Host header is rewritten because PostHog
+	# routes by it; the cookie is stripped on the way out because PostHog
+	# authenticates by the key in the body and the visitor's cookies are
+	# not its to read. `/static` is the recorder script and its like, which
+	# PostHog serves from a separate assets host.
+	handle /relay/static/* {
+		uri strip_prefix /relay
+		reverse_proxy https://us-assets.i.posthog.com:443 {
+			header_up Host us-assets.i.posthog.com
+			header_up -Cookie
+			header_down -Access-Control-Allow-Origin
+		}
+	}
+	handle /relay/* {
+		uri strip_prefix /relay
+		reverse_proxy https://us.i.posthog.com:443 {
+			header_up Host us.i.posthog.com
+			header_up -Cookie
+			header_down -Access-Control-Allow-Origin
+		}
+	}
+
+	handle {
+		reverse_proxy site:8080
+	}
 
 	header {
 		Strict-Transport-Security "max-age=15552000"

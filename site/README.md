@@ -38,9 +38,10 @@ The pages name the LLC and no person. The only street address is the one on
 the LLC's New York filing, which is its registered agent's in Albany.
 
 The documents also assume things that are true today and have to stay true:
-connections are read-only, nothing is sold, there is no analytics on this site,
-and the assistant never sends the raw ledger to a model. If one of those
-changes, the policy changes in the same pass.
+connections are read-only, nothing is sold, the analytics never sees any part
+of the ledger, and the assistant never sends the raw ledger to a model. If one
+of those changes, the policy changes in the same pass. What the analytics is
+and the rules it runs under are `docs/ANALYTICS.md`.
 
 **Neither document has been reviewed by a lawyer.** They are written to be
 accurate about what the software actually does; that is a different thing from
