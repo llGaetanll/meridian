@@ -85,6 +85,15 @@ by-hand laptop dump are the second and third copies. The bucket shares the
 DigitalOcean account with the droplet — accepted 2026-09-21, revisited when
 there are real users at scale.
 
+**Vulnerabilities.** Debian's unattended-upgrades applies OS security patches
+on the droplet on its own (`docs/DEPLOY.md`). The dependency tree is watched
+two ways: GitHub's Dependabot alerts on the repository, enabled 2026-09-26
+(#156), and `scripts/audit.sh`, which runs `cargo audit` over it against the
+RustSec advisory database. A vulnerability identified as critical is patched
+within 7 days; any other within 30. Nothing runs past its support window:
+Debian stable and the pinned Rust toolchain (`rust-toolchain.toml`) are moved
+forward before theirs lapse.
+
 **Review.** This program is re-read at every Plaid milestone — the
 questionnaire, the application, the first real customer — and at least
 yearly. Each pass gets a date at the top.
