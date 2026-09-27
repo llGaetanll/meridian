@@ -84,38 +84,61 @@ cmd=${1:-}
 
 case "$cmd" in
     ship)
-        # A dirty tree is refused because the stamp would lie. Building on the
-        # box made this impossible — it could only ever build what had been
-        # pushed — and building here gives that guarantee away, so it has to be
-        # bought back explicitly. An image labelled with a commit that does not
-        # contain it is worse than no label: it sends whoever is reading the
-        # log to the wrong source.
-        if ! git diff --quiet HEAD; then
-            echo "the tree is dirty — commit or stash before shipping." >&2
-            exit 1
+        # What goes out is HEAD, not the working tree. The commit stamped into
+        # every log line is decided here now, and an image labelled with a
+        # commit that does not contain it is worse than no label: it sends
+        # whoever is reading the log to the wrong source. Building on the box
+        # made that impossible — it could only ever build what had been pushed
+        # — and building here gives the guarantee away unless it is bought
+        # back.
+        #
+        # It is bought back by exporting the commit, rather than by refusing to
+        # ship until the tree is clean. Refusing means the laptop cannot be
+        # worked in while a deploy goes out, which is most of a day; and the
+        # commit that ships is the last one committed either way.
+        # Resolved once and used everywhere below, rather than naming HEAD
+        # three times. Another session can commit while this runs, and HEAD
+        # moving between the label and the export is exactly the lie the label
+        # is here to prevent.
+        commit=$(git rev-parse HEAD)
+        sha=$(git rev-parse --short "$commit")
+
+        export_dir=$(mktemp -d)
+        trap 'rm -rf "$export_dir"' EXIT
+        git archive "$commit" | tar -x -C "$export_dir"
+
+        # Said out loud, because the tree being ahead of what went out is the
+        # normal case now rather than a refused one, and a deploy that looks on
+        # screen like it carried the edit is the one mistake this can cause.
+        if ! git diff --quiet "$commit"; then
+            echo "shipping $sha — these changes stay here:"
+            git diff --name-only "$commit" | sed 's/^/  /'
         fi
 
-        sha=$(git rev-parse --short HEAD)
+        # Everything below reads from the export. The compose files, the
+        # Caddyfile and the two scripts piped over ssh are as much a part of a
+        # commit as the code is, and taking half of a deploy from the tree is
+        # the same lie in a different place.
 
         # `docker build` rather than `docker compose build`, so the tag is the
         # one named here rather than one compose derives from the directory
         # name. The box and this line have to agree on it exactly or `up` finds
         # no image.
-        docker build --build-arg "MERIDIAN_SHA=$sha" -t "meridian-server:$sha" .
+        docker build --build-arg "MERIDIAN_SHA=$sha" -t "meridian-server:$sha" "$export_dir"
 
         # The web app and the site, from the same root and under the same tag:
         # one commit is one deploy of all three. Each Dockerfile has an ignore
         # file of its own beside it, since the root one is the server's.
-        docker build -f deploy/web/Dockerfile -t "meridian-web:$sha" .
-        docker build -f deploy/site/Dockerfile -t "meridian-site:$sha" .
+        docker build -f "$export_dir/deploy/web/Dockerfile" -t "meridian-web:$sha" "$export_dir"
+        docker build -f "$export_dir/deploy/site/Dockerfile" -t "meridian-site:$sha" "$export_dir"
 
         # How the box is run, which is not in the image and changes far more
         # often than the code. Its `.env` is deliberately not in this list: it
         # holds that box's secrets, it is not ours to overwrite, and a deploy
         # that resets it is a deploy that logs somebody out.
         ssh "$MERIDIAN_HOST" "mkdir -p '$MERIDIAN_PATH'"
-        scp docker-compose.yml docker-compose.prod.yml Caddyfile \
-            deploy/box/backup.sh \
+        scp "$export_dir/docker-compose.yml" "$export_dir/docker-compose.prod.yml" \
+            "$export_dir/Caddyfile" "$export_dir/deploy/box/backup.sh" \
             "$MERIDIAN_HOST:$MERIDIAN_PATH/"
 
         # Before `up`, because the compose file just copied mounts `./certs`
@@ -127,7 +150,7 @@ case "$cmd" in
         # machine that needs it, which also means the laptop's certificate and
         # the box's are unrelated — losing one tells you nothing about the
         # other.
-        ssh "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && sh -s" < scripts/db-certs.sh
+        ssh "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && sh -s" < "$export_dir/scripts/db-certs.sh"
 
         # Gzipped because the layer that carries the binary does not compress
         # on the wire otherwise, and this runs over whatever connection the
@@ -142,7 +165,7 @@ case "$cmd" in
         # After the swap, so the commit being pruned against is the one that is
         # now running. Every ship lands three more images on a 25 GB box, and a
         # trim nobody has to remember is the only kind that happens.
-        ssh "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && sh -s -- $KEEP" < scripts/prune-images.sh
+        ssh "$MERIDIAN_HOST" "cd '$MERIDIAN_PATH' && sh -s -- $KEEP" < "$export_dir/scripts/prune-images.sh"
         ;;
 
     # Every image within the last few commits is still on the box under its own

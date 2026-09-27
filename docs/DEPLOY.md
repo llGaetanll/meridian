@@ -392,9 +392,17 @@ the token out of Postgres before it can reject it, so a database that is down
 answers 500 there rather than 401.
 
 After that, every deploy is that same command: build here, load it there, swap.
-It refuses a dirty tree, because the commit it stamps into every log line is
-decided on the laptop now and an image labelled with a commit that does not
-contain it sends the next reader to the wrong source.
+
+What it builds is `HEAD`, not the working tree, and it says which files it is
+leaving behind when the two differ. The commit stamped into every log line is
+decided on the laptop now, and an image labelled with a commit that does not
+contain it sends the next reader to the wrong source — so `ship` exports the
+commit with `git archive` into a temporary directory and builds from that. The
+compose files, the Caddyfile and the two scripts it pipes over ssh come from the
+same export: taking half a deploy from the tree is the same lie in a different
+place. Nothing about this touches the tree or the index, so a deploy can go out
+while the laptop is being worked in — which is the point, since the alternative
+was stashing to ship.
 
 Going back does not rebuild anything. The last five commits' images are on the
 box under their own tags:
