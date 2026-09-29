@@ -72,5 +72,5 @@ until docker compose exec -T db pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/nul
 done
 
 echo
-echo "postgres is up on 127.0.0.1:5432, database '$DB_NAME'"
+echo "postgres is up on 127.0.0.1:7110, database '$DB_NAME'"
 echo "migrations apply when the server starts: cargo run -p server-main"

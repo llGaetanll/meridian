@@ -42,7 +42,7 @@ listen`, and a webhook signed by one does not verify against the other.
 **Nothing has to be typed for this in development, and the CLI does not have to
 be installed.** `stripe listen` is a service in docker-compose.yml, behind the
 `dev` profile, started by `scripts/dev.sh` with everything else. It forwards to
-the host's port 8082, so it reaches the server whether that is the container or
+the host's port 7120, so it reaches the server whether that is the container or
 a `cargo run`. It subscribes to the same three events the deployed endpoint is
 registered for and no others, so a laptop sees what the box will see.
 

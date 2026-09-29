@@ -13,7 +13,7 @@ proxy, each in a container of its own.
                     │  caddy  │  TLS, and nothing else. Certificates from Let's Encrypt.
                     └────┬────┘
          ┌───────────────┼───────────────┐   over the compose network
-         │ server:8082   │ web:8080      │ site:8080
+         │ server:7120   │ web:3000      │ site:3000
     ┌────▼────┐     ┌────▼────┐     ┌────▼────┐
     │ server  │     │   web   │     │  site   │   web and site: Caddy handing out files
     └────┬────┘     └─────────┘     └─────────┘
@@ -23,9 +23,11 @@ proxy, each in a container of its own.
     └─────────┘
 ```
 
-The server publishes 8082 and the web app 8080, both on loopback only —
-`SERVER_BIND` and `WEB_BIND` in `.env` are what pin them there (#145); the
-site publishes nothing.
+The server publishes 7121 on loopback and nothing else does: the prod file
+states that with `!override`, which replaces the dev file's ports rather than
+appending to them, so the box is safe without anyone remembering a variable
+(#145). The web app and the site publish nothing. `docs/PORTS.md` is where the
+numbers are allocated.
 
 Everything is driven from a laptop with `scripts/deploy.sh`, which is ssh and
 nothing else — no registry, no CI, and a deploy that still works on the day
@@ -287,15 +289,10 @@ MERIDIAN_APP_DOMAIN=app.meridiancash.io
 MERIDIAN_SITE_DOMAIN=meridiancash.io
 TLS_EMAIL=you@example.com
 
-# Loopback, not every interface. Caddy reaches the server by service name over
-# the compose network; the published port is only good for a `curl` from a
-# shell on the box.
-SERVER_BIND=127.0.0.1
-
-# Same story for the web app's port. The dev file publishes 8080 for a phone
-# on the laptop's LAN, the merge carries that to the box, and without this
-# line the box serves the app over plain HTTP to the internet (#145).
-WEB_BIND=127.0.0.1
+# Nothing here pins the published ports any more: docker-compose.prod.yml
+# states them with `!override`, so the box gets 127.0.0.1:7121 for the server
+# and no publish at all for the web app, whatever a `.env` says. SERVER_BIND
+# and WEB_BIND remain for laptops, which want 0.0.0.0 for a phone on the LAN.
 
 # The database, inside the network. Generate the password — do not reuse the
 # development one, which is `meridian` and is in the repo.
@@ -337,7 +334,7 @@ RESEND_API_KEY=…          # the box's own key, not a copy of the laptop's
 RESEND_FROM=noreply@mail.meridiancash.io
 
 # The origins a browser may call this server from. The web app, and nothing
-# else — a laptop's `http://127.0.0.1:8080` here would be a value that matches
+# else — a laptop's `http://127.0.0.1:7130` here would be a value that matches
 # no browser on the internet and blocks the real one.
 WEB_ORIGINS=https://app.meridiancash.io
 

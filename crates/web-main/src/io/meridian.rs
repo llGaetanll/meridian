@@ -28,7 +28,7 @@ const SOURCE: Source = Source::new("meridian").through(&[redact_session]);
 
 /// Where the server is when the build does not name one. `MERIDIAN_SERVER` at
 /// build time points it elsewhere, as the same variable does on the phone.
-const DEFAULT_BASE_URL: &str = "http://127.0.0.1:8082/";
+const DEFAULT_BASE_URL: &str = "http://127.0.0.1:7120/";
 
 /// As much of a refused stream's body as is worth reading. `WireUnpaid` is
 /// two fields, and anything past this is not that.

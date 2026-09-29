@@ -75,6 +75,6 @@ ENV MARKET_UNIVERSE=/etc/meridian/universe.txt
 
 # Matches `PORT` in crates/server-main/src/runtime_server.rs. Documentation
 # rather than a rule — compose is what actually publishes it.
-EXPOSE 8082
+EXPOSE 7120
 
 CMD ["server-main"]

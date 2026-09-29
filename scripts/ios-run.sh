@@ -32,7 +32,7 @@ DEPLOYMENT=17.0
 # so the Mac's own loopback is what `cargo run -p server-main` is reachable on.
 # MERIDIAN_SERVER overrides the whole address, which is how a simulator is
 # pointed at the hosted server instead.
-MERIDIAN_SERVER=${MERIDIAN_SERVER:-http://127.0.0.1:8082}
+MERIDIAN_SERVER=${MERIDIAN_SERVER:-http://127.0.0.1:7120}
 
 BINDINGS=swift/Sources/Meridian
 APP=target/ios/Meridian.app

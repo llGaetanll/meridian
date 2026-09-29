@@ -26,9 +26,9 @@ cp .env.example .env
 ./scripts/dev.sh
 ```
 
-That is four containers: Postgres, the server on :8082, `trunk serve` on :8080
+That is four containers: Postgres, the server on :7120, `trunk serve` on :7130
 with the working tree mounted, and `stripe listen` forwarding webhooks to the
-server. Open <http://127.0.0.1:8080>, edit `crates/web-main`, and trunk
+server. Open <http://127.0.0.1:7130>, edit `crates/web-main`, and trunk
 rebuilds on save exactly as it would on the host — the first start compiles the
 app's dependencies for the browser and takes a few minutes, and every one after
 it is quick.
@@ -52,13 +52,13 @@ been linked. [PLAID.md](PLAID.md) has the rest.
 
 The containers are a convenience, not a requirement, and writing server code is
 usually easier with `cargo run` — three seconds against twenty for an image.
-The `stripe` container forwards to the host's port 8082 either way, so webhooks
+The `stripe` container forwards to the host's port 7120 either way, so webhooks
 still arrive.
 
 ```
 ./scripts/dev.sh                          # leave it in its window
-./scripts/dev.sh stop server              # the port is 8082 for one of them only
-cargo run -p server-main                  # :8082
+./scripts/dev.sh stop server              # the port is 7120 for one of them only
+cargo run -p server-main                  # :7120
 ```
 
 Running trunk on the host too needs the tools the container already carries:
@@ -172,12 +172,12 @@ Two commands, like the web front-end: the server that holds the Plaid secret,
 and the app.
 
 ```
-cargo run -p server-main       # :8082
+cargo run -p server-main       # :7120
 ./scripts/ios-run.sh           # builds, installs, launches
 ```
 
 The simulator reaches the server over the Mac's own loopback, so both of these
-are the same `127.0.0.1:8082` the web app uses — the script writes that address
+are the same `127.0.0.1:7120` the web app uses — the script writes that address
 into the bundle it builds, over the hosted server the plist names.
 `MERIDIAN_SERVER=https://api.meridiancash.io` points the simulator at the box
 instead. A different simulator is an argument — any name from `xcrun simctl
@@ -240,14 +240,14 @@ for, and one that was not plugged in when it was issued will not run the app.
 Then the app itself, two commands like the simulator's:
 
 ```
-cargo run -p server-main       # :8082
+cargo run -p server-main       # :7120
 ./scripts/ios-device.sh        # builds, signs, installs, launches
 ```
 
 A phone cannot reach the Mac's loopback, so `ios-device.sh` looks up the Mac's
 address on the LAN and writes it into the bundle it builds. Both machines have
 to be on the same network, and a network change means building again.
-`MERIDIAN_SERVER=http://host:8082` names the address yourself when the server
+`MERIDIAN_SERVER=http://host:7120` names the address yourself when the server
 is somewhere else, and `MERIDIAN_SERVER=https://api.meridiancash.io` points the
 phone at the hosted server. A second phone is an argument, as the simulator's
 is — any identifier from `xcrun devicectl list devices`.

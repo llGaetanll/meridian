@@ -21,7 +21,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 [ -f .env ] && . ./.env
-DB_URL=${DATABASE_URL:-postgres://meridian:meridian@localhost:5432/meridian}
+DB_URL=${DATABASE_URL:-postgres://meridian:meridian@localhost:7110/meridian}
 DB_NAME=${POSTGRES_DB:-meridian}
 
 # Guard one. The host out of a postgres:// URL: everything between the last `@`

@@ -45,4 +45,4 @@ COPY --from=builder /app/site/out /srv
 
 RUN caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 
-EXPOSE 8080
+EXPOSE 3000

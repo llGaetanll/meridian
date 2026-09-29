@@ -1,14 +1,14 @@
-# The web app's container: the files trunk built, over plain http on 8080.
+# The web app's container: the files trunk built, over plain http on 3000.
 #
 # TLS, HSTS and the log are the root Caddyfile's, which is the one on the
-# internet and reaches this one as `web:8080` over the compose network.
+# internet and reaches this one as `web:3000` over the compose network.
 {
 	admin off
 	persist_config off
 	auto_https off
 }
 
-:8080 {
+:3000 {
 	root * /srv
 
 	# trunk names what it builds for its content — `web-main-<hash>.js`, the

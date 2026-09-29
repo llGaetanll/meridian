@@ -21,6 +21,13 @@ services:
     # the stack comes back only when somebody notices it is gone.
     restart: unless-stopped
 
+    # The prod number, replacing the dev file's rather than being appended to
+    # it: a merge appends ports, and `!override` is how a list is replaced.
+    # The last digit is the environment, so what a shell on the box reaches is
+    # never the number a laptop uses. docs/PORTS.md has the scheme.
+    ports: !override
+      - "127.0.0.1:7111:5432"
+
     # The second exception to "this file only adds". On a laptop Postgres
     # writes to the meridian-db named volume; on the box that would be the
     # droplet's own disk, which DigitalOcean does not encrypt at rest. This
@@ -40,6 +47,13 @@ services:
         max-file: "5"
 
   server:
+    # Loopback, always, and stated here rather than left to SERVER_BIND: the
+    # box cannot get this wrong by forgetting a variable. Caddy reaches the
+    # server by service name; what this is for is asking it something directly
+    # from a shell on the box (#145).
+    ports: !override
+      - "127.0.0.1:7121:7120"
+
     # Built on a laptop and shipped as an image, so this names a tag rather than
     # a build. `build:` from docker-compose.yml is still merged in here and is
     # deliberately never reached: compose builds only when the tag is missing,
@@ -64,15 +78,17 @@ services:
   # all three.
   #
   # No ports of their own — Caddy below reaches each by service name, and
-  # there is nothing in either worth asking for from a shell on the box. But
-  # the dev file's 8080 on `web` still merges in, since a merge appends ports
-  # rather than removing them, which is why the box's `.env` sets
-  # WEB_BIND=127.0.0.1 (#145).
+  # there is nothing in either worth asking for from a shell on the box. The
+  # dev file's publish on `web` would otherwise merge in, since a merge appends
+  # ports rather than removing them; `!override` with an empty list is what
+  # actually takes it away, and it is a better answer than the box remembering
+  # to set WEB_BIND (#145).
   web:
     profiles: ["server"]
     image: meridian-web:${MERIDIAN_SHA:?}
     restart: unless-stopped
     logging: *logging
+    ports: !override []
 
   site:
     profiles: ["server"]

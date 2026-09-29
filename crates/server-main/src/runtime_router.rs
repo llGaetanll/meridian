@@ -29,7 +29,7 @@ use crate::router_server;
 use server_wire::WireSyncStatus;
 
 /// A different port from either front-end, so all three can run at once.
-const PORT: u16 = 8082;
+const PORT: u16 = 7120;
 
 /// How many requests may be waiting to enter the loop.
 ///

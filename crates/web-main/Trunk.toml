@@ -16,6 +16,14 @@ watch = [
 [build]
 target = "index.html"
 
+# trunk's own default is 8080, which this machine allocates to nothing. 7130 is
+# the web app's number in docs/PORTS.md and the one WEB_ORIGINS names, so a
+# trunk run on the host is the same address as the container's published port.
+# The container overrides this with --port 3000 and is published on 7130, since
+# inside a container a web app belongs on 3000.
+[serve]
+port = 7130
+
 [[assets]]
 file = "input.css"
 

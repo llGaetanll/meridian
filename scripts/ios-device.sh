@@ -67,11 +67,11 @@ if [ -z "$MERIDIAN_SERVER" ]; then
 
     if [ -z "$HOST" ]; then
         echo "no LAN address on en0 or en1 — is the Mac on a network?" >&2
-        echo "set MERIDIAN_SERVER=http://host:8082 to name it yourself." >&2
+        echo "set MERIDIAN_SERVER=http://host:7120 to name it yourself." >&2
         exit 1
     fi
 
-    MERIDIAN_SERVER=http://$HOST:8082
+    MERIDIAN_SERVER=http://$HOST:7120
 fi
 
 # The signing identity. A free Apple ID issues one called "Apple Development",

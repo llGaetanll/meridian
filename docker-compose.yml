@@ -4,7 +4,7 @@
 #                                             the host with `cargo run`
 #   docker compose --profile server up        both, exactly as deployed
 #   scripts/dev.sh                            those and the `dev` profile too:
-#                                             trunk on :8080 and `stripe listen`
+#                                             trunk on :7130 and `stripe listen`
 #
 # The split is a development convenience and nothing more. `cargo run` rebuilds
 # in about three seconds where an image rebuild is closer to twenty, so the
@@ -30,9 +30,13 @@ services:
 
     ports:
       # Loopback only. The phone needs to reach the *server*; nothing outside
-      # this machine has any business reaching the database, and `5432:5432`
-      # would put it on the network for anyone to try.
-      - "127.0.0.1:5432:5432"
+      # this machine has any business reaching the database, and publishing
+      # 5432 on every interface would put it on the network for anyone to try.
+      #
+      # 7110 rather than 5432 because this machine runs more than one project
+      # and two of them have a Postgres. docs/PORTS.md gives every service a
+      # number nothing else wants.
+      - "127.0.0.1:7110:5432"
 
     volumes:
       - meridian-db:/var/lib/postgresql/data
@@ -210,7 +214,7 @@ services:
       # from a shell on the box, rather than through the proxy — see the
       # `health` subcommand in `scripts/deploy.sh` for the request that says
       # everything is up.
-      - "${SERVER_BIND:-0.0.0.0}:8082:8082"
+      - "${SERVER_BIND:-0.0.0.0}:7120:7120"
 
   # The web app, served by trunk, watching the working tree. Behind the `dev`
   # profile: it is a toolchain with a bind mount, and it has no business on the
@@ -245,14 +249,16 @@ services:
 
     ports:
       # Every interface, like the server, so a phone on the LAN can open the web
-      # app too. The browser should still say `127.0.0.1:8080`, which is what
+      # app too. The browser should still say `127.0.0.1:7130`, which is what
       # WEB_ORIGINS names and what CORS is checked against.
       #
-      # This line reaches the box as well: the prod file's `web` merges over
-      # this one, and a merge appends ports rather than removing them. So the
-      # box sets WEB_BIND=127.0.0.1, or the web app answers plain HTTP to the
-      # internet around Caddy (#145).
-      - "${WEB_BIND:-0.0.0.0}:8080:8080"
+      # 3000 inside, 7130 out: a web app on 3000 is what every toolchain
+      # assumes, and the host side follows docs/PORTS.md like everything else.
+      #
+      # The prod file drops this publish outright — Caddy reaches the web app
+      # by service name and nothing on the box should answer plain HTTP on an
+      # interface of its own (#145).
+      - "${WEB_BIND:-0.0.0.0}:7130:3000"
 
   # `stripe listen`, which is the only way a webhook reaches a laptop: Stripe
   # calls the CLI, the CLI calls the server. Without it a subscription is paid
@@ -277,7 +283,9 @@ services:
     # The server is reached through the host, not by service name, because it
     # is not always a container: `cargo run` on the host is the usual way to
     # write server code, and it publishes nothing on this network. The host's
-    # port 8082 is the one address that is right either way.
+    # port 7120 is the one address that is right either way — which is why the
+    # server listens on 7120 inside the container too, rather than being
+    # published under one number and answering on another.
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -293,7 +301,7 @@ services:
       - customer.subscription.created,customer.subscription.updated,customer.subscription.deleted
 
       - --forward-to
-      - http://host.docker.internal:8082/stripe/webhook
+      - http://host.docker.internal:7120/stripe/webhook
 
 volumes:
   meridian-db:
