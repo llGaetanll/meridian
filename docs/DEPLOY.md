@@ -150,6 +150,10 @@ compiles. Debian, and the public key above.
 Sizing is reversible in one direction only: CPU and RAM can be raised and
 lowered again, but growing the disk is permanent. So start at the bottom.
 
+**It is now `s-1vcpu-2gb`, with the disk grown to 50 GB**, because the box
+hosts other services besides Meridian. Growing the disk is the irreversible
+half, so the box cannot go back below $12/mo.
+
 ```sh
 doctl compute droplet create meridian \
     --region nyc3 --size s-1vcpu-1gb --image debian-13-x64 \
@@ -168,8 +172,8 @@ installs a package fails with `Could not get lock /var/lib/apt/lists/lock`
 rather than waiting. It clears on its own in a minute or two; the fix is to
 wait for it, not to break the lock.
 
-**Swap, because 1 GB has no headroom for a surprise.** Nothing here needs it in
-steady state; it is what turns an unexpected spike into a slow minute rather
+**Swap, because a small box has no headroom for a surprise.** Nothing here
+needs it in steady state; it is what turns an unexpected spike into a slow minute rather
 than the OOM killer choosing between Postgres and the server.
 
 ```sh

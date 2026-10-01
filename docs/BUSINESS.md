@@ -10,8 +10,8 @@ confirm is at the bottom.
 
 | Line | $/mo | Note |
 | --- | --- | --- |
-| DigitalOcean droplet `s-1vcpu-1gb` | 6.00 | 25 GB. Server 11 MiB, Postgres 98 MiB — it is not close to full |
-| Droplet backups (20%, weekly) | 1.20 | Cheapest backup DO sells |
+| DigitalOcean droplet `s-1vcpu-2gb` | 12.00 | 2 GB, 50 GB disk. Meridian's containers total ~200 MiB and 4.9 GB — the box is shared now, see below |
+| Droplet backups (20%, weekly) | 2.40 | Cheapest backup DO sells |
 | Volume: `meridian-db`, 10 GiB | 1.00 | Postgres data, encrypted at rest by DO (#33) |
 | Spaces: `meridiancash-backups` | 5.00 | Daily encrypted `pg_dump`, 30-day retention (#38). $5 is the Spaces minimum |
 | Resend | 0.00 | Free to 3,000 emails/mo, capped 100/day |
@@ -19,10 +19,19 @@ confirm is at the bottom.
 | Apple Developer Program | 8.25 | $99/yr, unavoidable to ship on iOS |
 | Google Play | 0.17 | $25 once |
 | New York LLC upkeep | 2.46 (?) | $25/yr state filing fee, $9 biennial statement. See below |
-| **Total** | **27.41** | Of which **13.20** is the server and its storage |
+| **Total** | **34.61** | Of which **20.40** is the server and its storage |
 
-Next step up is $12/mo (2 GB) — only when Postgres or the image build on the
-box says so, which is not soon.
+**The box is no longer Meridian's alone** — it hosts other services too, and
+that is what the resize from `s-1vcpu-1gb` to `s-1vcpu-2gb` paid for. The disk
+is being grown to the 50 GB the size carries, which is permanent, so **$12/mo
+plus $2.40 of backups is locked in**: CPU and RAM can come back down, a disk
+cannot.
+
+Two things follow. **$14.40 is the whole box, not Meridian's share of it** —
+the table above charges Meridian for all of it, which overstates its costs and
+is the safe direction to be wrong in. And the next step up is $18/mo
+(`s-2vcpu-2gb`, a second vCPU), which now gets decided by whatever the box is
+busiest with rather than by Meridian.
 
 ## The company — required before release, and the biggest bill so far
 
@@ -153,7 +162,7 @@ Item takes $0.45 and a brokerage Item $0.98:
 | 2 banks + 1 brokerage | 1.88 | 2.67 |
 | 3 banks + 2 brokerages | 3.31 | 1.24 |
 
-Fixed costs are $27.41/mo, so break-even is a single-digit number of
+Fixed costs are $34.61/mo, so break-even is a single-digit number of
 subscribers. **The price is set by what the product is worth, not by what it
 costs to run** — and at these rates the old fear is retired: it takes a
 double-digit Item count to push a $5 subscriber under water.
