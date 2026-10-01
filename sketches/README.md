@@ -39,6 +39,15 @@ three doors — there is one, the email — and the paywall's wallet buttons. Th
 phone has none of it: there, paying still happens when Connect a bank is
 pressed. Anything you implement from here is a change, not a transcription.
 
+Newest on both, and built nowhere yet, is the **passkey** (#157). It is one
+screen, and it is in the Bank part rather than at the front on purpose: a key
+asked for before the paywall is friction protecting an empty account, and it
+is where a funnel can least afford a step. At the bank it explains itself.
+Nothing is written down and nothing is saved — no recovery codes — because the
+emailed code is still a way in, and from then on the key is how you sign in.
+The rule the key exists for is that **connecting a bank and deleting the
+account need it**, and nothing else does.
+
 ### Finding a screen
 
 The top of each board lists every box on it, grouped by part, each one a link
@@ -54,10 +63,10 @@ order they are drawn:
 
 | Part | Ids |
 | --- | --- |
-| Account | `welcome` `welcome-out` `apple` `google` `email` `email-bad` `code` `code-filled` `code-refused` `code-resend` `welcome-back` |
+| Account | `welcome` `welcome-out` `apple` `google` `email` `email-bad` `code` `code-filled` `code-refused` `code-resend` `passkey-ask` `welcome-back` |
 | Payment | `paywall` `pay-chrome` `pay-declined` `pay-ended` `pay-unknown` `pay-waiting` `stripe` `confirming` `conf-again` |
 | Your name | `name` |
-| Bank | `bank` `bank-waiting` `plaid` `failed` `failed-block` `failed-linked` |
+| Bank | `passkey` `passkey-failed` `passkey-os` `bank` `bank-waiting` `plaid` `failed` `failed-block` `failed-linked` |
 | Finishing | `sync` `ready` `app` |
 
 `name` sits after the payment rather than beside the address, and that is
@@ -69,7 +78,10 @@ part of its own rather than the tail of Account.
 The phone board uses the same ids for the screens it has. It has `storekit`
 where the desktop has `stripe`, and it has no `pay-chrome`, `confirming`,
 `conf-again` or `failed-block`: Apple sells the subscription, so there is no
-Stripe page, no webhook to wait on and no browser to block a window.
+Stripe page, no webhook to wait on and no browser to block a window. Both
+boards carry `passkey-os` and `passkey-ask`, which are one sheet under two
+names: asking a device to make a key and asking it for one it already holds
+are different moments on the road, and neither is ours to draw.
 
 ### What the marks mean
 
