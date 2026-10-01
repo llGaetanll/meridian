@@ -65,7 +65,7 @@ services:
     # rebuild from.
     #
     # There is no source tree on the box, so a `--build` typed here fails
-    # rather than quietly recompiling 427 crates on a 1 GB machine. That is the
+    # rather than quietly recompiling 427 crates on a 2 GB machine. That is the
     # right answer: the failure is the message.
     image: meridian-server:${MERIDIAN_SHA:?}
 
@@ -74,8 +74,8 @@ services:
 
   # The web app and the site, each a Caddy handing out files that were built on
   # the laptop — `deploy/web` and `deploy/site`. Shipped with the server under
-  # the same tag, so one commit is one deploy of all three and a rollback names
-  # all three.
+  # the same tag, so one commit is one deploy of every image and a rollback names
+  # them all.
   #
   # No ports of their own — Caddy below reaches each by service name, and
   # there is nothing in either worth asking for from a shell on the box. The
@@ -95,6 +95,36 @@ services:
     image: meridian-site:${MERIDIAN_SHA:?}
     restart: unless-stopped
     logging: *logging
+
+  # The bookkeeper: once a day it pulls the month's numbers from Stripe and
+  # the database and rewrites the Google Sheet. docs/BOOKS.md is the whole of
+  # it, including the two secrets below that reach a box by hand — the
+  # service-account key beside the certificates, and BOOKS_* in `.env`.
+  books:
+    profiles: ["server"]
+    image: meridian-books:${MERIDIAN_SHA:?}
+    restart: unless-stopped
+    logging: *logging
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    environment:
+      # The same URL the server gets, for two SELECTs of created_at columns.
+      # No MERIDIAN_DB_KEY: nothing here reads a sealed column.
+      DATABASE_URL: postgres://${POSTGRES_USER:-meridian}:${POSTGRES_PASSWORD:-meridian}@db:5432/${POSTGRES_DB:-meridian}?sslmode=verify-full&sslrootcert=/certs/ca.crt
+
+      # A restricted key that can read balance transactions and nothing else,
+      # never the server's secret key. Empty is allowed: the pass logs it and
+      # writes the fixed costs alone.
+      BOOKS_STRIPE_KEY: ${BOOKS_STRIPE_KEY:-}
+
+      BOOKS_GOOGLE_KEY: /certs/books-google-key.json
+
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+      - ./certs/books-google-key.json:/certs/books-google-key.json:ro
 
   caddy:
     # Behind the same profile as the server, so a bare `up` on the box still

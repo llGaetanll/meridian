@@ -127,10 +127,11 @@ case "$cmd" in
         docker build --build-arg "MERIDIAN_SHA=$sha" -t "meridian-server:$sha" "$export_dir"
 
         # The web app and the site, from the same root and under the same tag:
-        # one commit is one deploy of all three. Each Dockerfile has an ignore
+        # one commit is one deploy of them all. Each Dockerfile has an ignore
         # file of its own beside it, since the root one is the server's.
         docker build -f "$export_dir/deploy/web/Dockerfile" -t "meridian-web:$sha" "$export_dir"
         docker build -f "$export_dir/deploy/site/Dockerfile" -t "meridian-site:$sha" "$export_dir"
+        docker build -f "$export_dir/deploy/books/Dockerfile" -t "meridian-books:$sha" "$export_dir"
 
         # How the box is run, which is not in the image and changes far more
         # often than the code. Its `.env` is deliberately not in this list: it
@@ -154,9 +155,9 @@ case "$cmd" in
 
         # Gzipped because the layer that carries the binary does not compress
         # on the wire otherwise, and this runs over whatever connection the
-        # laptop has rather than a datacentre one. One archive for all three,
+        # laptop has rather than a datacentre one. One archive for them all,
         # so the Caddy under the web app and the site crosses it once.
-        docker save "meridian-server:$sha" "meridian-web:$sha" "meridian-site:$sha" | gzip | \
+        docker save "meridian-server:$sha" "meridian-web:$sha" "meridian-site:$sha" "meridian-books:$sha" | gzip | \
             ssh "$MERIDIAN_HOST" "gunzip | docker load"
 
         remote "echo '$sha' > .sha"
@@ -185,7 +186,7 @@ case "$cmd" in
         # All three or nothing. A commit shipped before the web app and the site
         # had images of their own has only the server's, and is refused here
         # rather than brought half up.
-        remote "docker image inspect 'meridian-server:$sha' 'meridian-web:$sha' 'meridian-site:$sha' >/dev/null"
+        remote "docker image inspect 'meridian-server:$sha' 'meridian-web:$sha' 'meridian-site:$sha' 'meridian-books:$sha' >/dev/null"
         remote "echo '$sha' > .sha"
         remote "$COMPOSE up -d"
         ;;

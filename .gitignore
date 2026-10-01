@@ -32,3 +32,7 @@ certs/
 !crates/src-apple/certs/
 
 .claude/
+
+# Python bytecode, from the books container's modules when a pass is run on
+# the host rather than in the image.
+__pycache__/

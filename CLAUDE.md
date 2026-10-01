@@ -158,6 +158,13 @@ say. The rule that matters: **only ever use Stripe test mode unless the user
 explicitly says otherwise.** `STRIPE_ENV` names the mode, and a live key
 charges a real card.
 
+## Bookkeeping
+
+`docs/BOOKS.md` explains the `books` container, which rewrites the Meridian
+Books Google Sheet daily — money in against money out, one tab per month.
+The cost figures it amortizes live in `books/costs.toml` and are justified in
+`docs/BUSINESS.md`; a price change edits both.
+
 ## Compliance
 
 `docs/COMPLIANCE.md` says who may publish Meridian on each platform and what

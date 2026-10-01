@@ -1,0 +1,51 @@
+# What Meridian costs when nobody uses it, in dollars per month, amortized
+# over each month's days by main.py. The figures and where each one comes
+# from are docs/BUSINESS.md; a price change is an edit here.
+
+[plaid]
+# Transactions plus Recurring Transactions, per bank Item per month, at the
+# Pay As You Go rates quoted 2026-09-26.
+bank_item_monthly = 0.45
+
+[[fixed]]
+label = "DigitalOcean droplet"
+monthly = 12.00
+
+[[fixed]]
+label = "Droplet backups"
+monthly = 2.40
+
+[[fixed]]
+label = "Database volume"
+monthly = 1.00
+
+[[fixed]]
+label = "Spaces backups"
+monthly = 5.00
+
+[[fixed]]
+label = "Domain"
+monthly = 3.33
+
+[[fixed]]
+label = "Apple Developer Program"
+monthly = 8.25
+
+[[fixed]]
+label = "Google Play"
+monthly = 0.17
+
+[[fixed]]
+label = "New York LLC"
+monthly = 2.46
+
+# Free at this size. Rows so that the day either starts costing something
+# there is already a place for it.
+
+[[fixed]]
+label = "Resend"
+monthly = 0.00
+
+[[fixed]]
+label = "PostHog"
+monthly = 0.00

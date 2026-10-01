@@ -46,7 +46,7 @@ for tag in $tags; do
         continue
     fi
 
-    for repo in meridian-server meridian-web meridian-site; do
+    for repo in meridian-server meridian-web meridian-site meridian-books; do
         docker image rm "$repo:$tag" >/dev/null 2>&1 || true
     done
 

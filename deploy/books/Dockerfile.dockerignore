@@ -1,0 +1,5 @@
+# The books image's context, in place of the root `.dockerignore`.
+# Everything is out unless it is named.
+
+*
+!books/
