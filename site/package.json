@@ -10,7 +10,7 @@
     "clean": "rm -rf node_modules .next out next-env.d.ts *.tsbuildinfo"
   },
   "dependencies": {
-    "next": "16.3.4",
+    "next": "16.4.3",
     "posthog-js": "^1.434.15",
     "react": "19.1.1",
     "react-dom": "19.1.1"
