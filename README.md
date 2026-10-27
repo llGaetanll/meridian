@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.png">
-    <img src="docs/assets/logo-light.png" alt="Meridian" width="320">
-  </picture>
+  <img src="docs/assets/logo.png" alt="Meridian" width="320">
 </p>
 
 <p align="center">
@@ -10,8 +7,13 @@
   with the tools to explore what any of it means.</strong>
 </p>
 
+> [!NOTE]
+> **Meridian is no longer maintained.** It was a company, and the company is
+> closed. The code is published to be read rather than run: nothing here is
+> being updated, and issues and pull requests will not be picked up.
+
 <p align="center">
-  <img src="docs/assets/shot-app.webp" alt="The Markets page, showing a position in SPY across three portfolios" width="820">
+  <img src="docs/assets/shot-app.png" alt="The Markets page, showing a position in SPY across three portfolios" width="820">
 </p>
 
 ## What it is
@@ -32,7 +34,7 @@ years.
 Banks and brokerages connect through Plaid, so nothing is typed in by hand.
 
 <p align="center">
-  <img src="docs/assets/shot-phone.webp" alt="The Recurring page on the phone, breaking a month down by category" width="300">
+  <img src="docs/assets/shot-phone.png" alt="The Recurring page on the phone, breaking a month down by category" width="300">
 </p>
 
 ## How it is built
