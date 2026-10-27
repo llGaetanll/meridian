@@ -6,8 +6,9 @@ everything you spend, with the tools to explore what any of it means.
 It shows you your money. It does not tell you what to do with it — the user
 asks the questions, and the app answers them with a number.
 
-It runs on the web, on the desktop (Tauri), and on the phone (iOS/Android),
-against a central server. The same crates back all three.
+It runs on the web and on the phone (iOS/Android), against a central server,
+and the same crates back both. A desktop app was drawn and never built —
+`sketches/desktop/` is as far as it got.
 
 ## Who it's for
 

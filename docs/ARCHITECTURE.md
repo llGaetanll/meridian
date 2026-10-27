@@ -1,7 +1,8 @@
 # Architecture
 
-Meridian ships as a desktop app (Tauri), a web app, and a phone app. The same
-crates back all three, so the split between them is what keeps that possible.
+Meridian ships as a web app and a phone app. The same crates back both, so the
+split between them is what keeps that possible — and is what a desktop shell
+would have been dropped onto, had one ever been built.
 
 ## Keep state and IO apart
 
