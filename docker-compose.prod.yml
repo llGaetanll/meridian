@@ -147,6 +147,9 @@ services:
       - "443:443/udp"
 
     volumes:
+      # The box's own, written by hand at `/srv/meridian/Caddyfile` and not
+      # shipped by `deploy.sh`: the machine serves other projects and the file
+      # names them. `deploy/box/Caddyfile` is Meridian's share of it.
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
 
       # The certificate and the account key. This is the volume that matters:

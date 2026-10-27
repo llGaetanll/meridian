@@ -4,8 +4,6 @@ Shared library for the device renders.
 The devices are real models imported from glTF, not geometry built here. What
 this module does is put a screen image onto the one object in an imported model
 that is the screen, light it, and render it.
-
-Follows the pattern in ~/GitHub/printside/render/lib.py.
 """
 
 import math

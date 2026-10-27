@@ -244,10 +244,16 @@ machine runs rather than somebody's work:
 sudo install -d -o meridian -g meridian /srv/meridian
 ```
 
-That is all. It is not a checkout — `ship` copies the two compose files and the
-Caddyfile into it, and the box's `.env` below is written once by hand. Nothing
-on the box is ever `git pull`ed, so there is no branch here to be on and no
-state here to conflict.
+That is all. It is not a checkout — `ship` copies the two compose files into
+it, and the box's `.env` and `Caddyfile` are written there by hand. Nothing on
+the box is ever `git pull`ed, so there is no branch here to be on and no state
+here to conflict.
+
+The `Caddyfile` is by hand because the machine serves other projects of mine
+beside this one, and the file it reads names them. `deploy/box/Caddyfile` is
+Meridian's share of it: the API, the web app and the site. Adding a block means
+editing `/srv/meridian/Caddyfile` on the box and reloading Caddy, and the two
+drifting apart is the price of a shared machine.
 
 ## DNS, and why it comes before the first deploy
 
@@ -266,17 +272,19 @@ Namecheap, under Advanced DNS for `meridiancash.io`:
 
 | Type | Host | Value |
 | --- | --- | --- |
-| `A` | `@` | `138.197.20.171` |
-| `AAAA` | `@` | `2604:a880:800:14:0:3:7423:5000` |
+| `A` | `@` | `203.0.113.7` |
+| `AAAA` | `@` | `2001:db8::1` |
 | `CNAME` | `app` | `api.meridiancash.io.` |
 | `CNAME` | `www` | `meridiancash.io.` |
 
-The two addresses are the box's, as `api.meridiancash.io` answers them. The
-apex has to carry them itself, since a CNAME is not allowed there; `app` and
-`www` name another name instead, so moving the box changes the records that
-carry addresses and leaves these two alone. `dig +short app.meridiancash.io`,
-`www.` and the apex answering the box is the check, before the `.env` lines
-below go in.
+The two addresses above are placeholders. The box's own are whatever
+`dig +short api.meridiancash.io` answers, and they are not written down here:
+this document is public, and one that names the machine saves a stranger the
+lookup. The apex has to carry the addresses itself, since a CNAME is not
+allowed there; `app` and `www` name another name instead, so moving the box
+changes the records that carry addresses and leaves these two alone.
+`dig +short app.meridiancash.io`, `www.` and the apex answering the box is the
+check, before the `.env` lines below go in.
 
 ## The box's `.env`
 
@@ -399,9 +407,8 @@ leaving behind when the two differ. The commit stamped into every log line is
 decided on the laptop now, and an image labelled with a commit that does not
 contain it sends the next reader to the wrong source — so `ship` exports the
 commit with `git archive` into a temporary directory and builds from that. The
-compose files, the Caddyfile and the two scripts it pipes over ssh come from the
-same export: taking half a deploy from the tree is the same lie in a different
-place. Nothing about this touches the tree or the index, so a deploy can go out
+compose files and the two scripts it pipes over ssh come from the same export:
+taking half a deploy from the tree is the same lie in a different place. Nothing about this touches the tree or the index, so a deploy can go out
 while the laptop is being worked in — which is the point, since the alternative
 was stashing to ship.
 

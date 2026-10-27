@@ -28,7 +28,7 @@ There is no second "dev" PostHog project.
 ## The relay
 
 Events travel first-party: the page sends to `/relay/*` on its own origin, and
-the root `Caddyfile` forwards that to PostHog's ingestion host with the `Host`
+the box's `Caddyfile` forwards that to PostHog's ingestion host with the `Host`
 header rewritten and the visitor's cookies stripped. An ad blocker that names
 `*.posthog.com` never sees that host here, which is worth roughly a third of
 the attribution data. The `/relay/static/*` branch is PostHog's assets host,

@@ -134,12 +134,17 @@ case "$cmd" in
         docker build -f "$export_dir/deploy/books/Dockerfile" -t "meridian-books:$sha" "$export_dir"
 
         # How the box is run, which is not in the image and changes far more
-        # often than the code. Its `.env` is deliberately not in this list: it
-        # holds that box's secrets, it is not ours to overwrite, and a deploy
-        # that resets it is a deploy that logs somebody out.
+        # often than the code. Two files are deliberately not in this list,
+        # both for the same reason: they are the box's rather than ours, and a
+        # deploy that overwrites one breaks something this repository cannot
+        # see. `.env` holds that box's secrets, and resetting it logs
+        # everybody out. `Caddyfile` names the other projects the machine
+        # serves, and replacing it with Meridian's share alone takes an
+        # unrelated site down. `deploy/box/Caddyfile` is that share, and it
+        # reaches the box by hand.
         ssh "$MERIDIAN_HOST" "mkdir -p '$MERIDIAN_PATH'"
         scp "$export_dir/docker-compose.yml" "$export_dir/docker-compose.prod.yml" \
-            "$export_dir/Caddyfile" "$export_dir/deploy/box/backup.sh" \
+            "$export_dir/deploy/box/backup.sh" \
             "$MERIDIAN_HOST:$MERIDIAN_PATH/"
 
         # Before `up`, because the compose file just copied mounts `./certs`

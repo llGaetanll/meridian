@@ -51,9 +51,10 @@ A server run on the host with `cargo run` instead of in its container still
 gets its webhooks: the `stripe` service forwards to the host's port 7120, which
 is the same address either way.
 
-`docs/PORTS.md` says which port belongs to which service and why. Every host
-port this machine publishes is allocated there, across projects — read it
-before adding one or moving one.
+`docs/PORTS.md` says which port belongs to which service and why. It covers
+Meridian's `71xx` block — read it before adding a port or moving one. The
+machine runs other projects that hold the blocks above it, and their
+allocation is not kept here.
 
 To read logs, ask for the slice you want and let it return: `docker compose
 logs --since 2m server`. Never `-f`, which does not return.

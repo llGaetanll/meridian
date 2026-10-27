@@ -1,4 +1,13 @@
-# The only thing on the box that meets the internet.
+# Meridian's share of the box's Caddy config: the API, the web app and the
+# site, as this project needs them served.
+#
+# This is not the file Caddy reads. The box runs other projects of its own, and
+# the file at `/srv/meridian/Caddyfile` that `docker-compose.prod.yml` mounts is
+# a superset holding their names too. It is maintained on the box and
+# `deploy.sh ship` leaves it alone, for the same reason it leaves the box's
+# `.env` alone: it is that machine's, and a deploy that overwrote it would take
+# an unrelated site down. A block added here reaches the box by hand, and
+# docs/DEPLOY.md says how.
 #
 # Caddy holds 80 and 443 and reaches the server, the web app and the site over
 # the compose network, which is why docker-compose.yml publishes 7120 on
@@ -15,6 +24,7 @@
 # The variables come from the box's `.env` by way of docker-compose.prod.yml.
 # They are not written in here because a second box would be this same file
 # with a different name in it.
+
 {
 	# Where Let's Encrypt writes when renewal has been failing. It is the one
 	# warning that arrives *before* an outage rather than during it, so it is
@@ -154,25 +164,4 @@
 # about where it lives.
 www.{$MERIDIAN_SITE_DOMAIN} {
 	redir https://{$MERIDIAN_SITE_DOMAIN}{uri} permanent
-}
-
-# The other tenant. printside runs its own compose project on this box and
-# attaches to this one's network, so Caddy reaches it the same way it reaches
-# everything else: by service name, at the port the service listens on inside
-# its container. No published port is involved, and printside's own numbers in
-# docs/PORTS.md are only for a shell on the box.
-#
-# These two blocks were added on the box by hand and lived only there, which
-# meant the next `deploy.sh ship` — which copies this file over — would have
-# taken printside.net down without saying so. They belong here.
-#
-# Literal names rather than variables, unlike meridian's own: there is one
-# printside and it is not a per-deployment choice, and a variable that no
-# `.env` sets is a Caddy that refuses to start.
-printside.net {
-	reverse_proxy printside-web:3000
-}
-
-poster.printside.net {
-	reverse_proxy printside-poster:8080
 }

@@ -22,6 +22,15 @@ logs/
 backups/
 *.dump
 
+# The box's Caddy config. The machine serves other projects beside this one,
+# so the file it reads names hosts that are nothing to do with Meridian and is
+# the box's to keep. `deploy/box/Caddyfile` is Meridian's share of it.
+/Caddyfile
+
+# Policy documents exported for a partner's review. They name the company, the
+# operator and every system that holds user data.
+docs/exports/
+
 # The database's TLS certificates, from scripts/db-certs.sh. Per machine and
 # never shared: the laptop makes its own and so does the box, because a private
 # key that travels has been on two disks and in whatever carried it.
